@@ -9,6 +9,12 @@
   "reactor": {
     "port": 4001
   },
-  "packages": [],
+  "packages": [
+    {
+      "packageName": "@powerhousedao/clint-common",
+      "version": "0.1.0-dev.76",
+      "provider": "local"
+    }
+  ],
   "packageRegistryUrl": "https://registry.dev.vetra.io"
 }

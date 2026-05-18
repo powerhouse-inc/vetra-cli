@@ -11,8 +11,11 @@ import path from 'node:path';
 import { CLI_NAME, CLI_VERSION, CLI_ROOT } from './config.js';
 import { configSchema, secretsSchema } from './framework.js';
 import { documentModels } from 'vetra-app';
+import { documentModels as extModels } from '@powerhousedao/clint-common';
 import { createAgent } from './agents/agent.js';
+import { chatSessionWatchTrigger } from '@powerhousedao/clint-common/chat';
 import { observability } from '@powerhousedao/ph-clint-observability';
+import { specCommands } from './commands/spec/index.js';
 // @clint:end imports
 
 export const cli = defineCli({
@@ -26,7 +29,9 @@ export const cli = defineCli({
   secretsSchema,
 
   // @clint:begin commands
-  commands: [],
+  commands: [
+    ...specCommands,
+  ],
   // @clint:end commands
 
   // @clint:begin services
@@ -34,7 +39,7 @@ export const cli = defineCli({
   // @clint:end services
 
   // @clint:begin triggers
-  triggers: [],
+  triggers: [chatSessionWatchTrigger],
   // @clint:end triggers
 
   // @clint:begin prompts
@@ -43,6 +48,16 @@ export const cli = defineCli({
     agents: {
       'vetra-agent': {
         name: 'vetra-agent',
+        sections: ['base.md'],
+        skills: [],
+      },
+      'agent-document-model': {
+        name: 'agent-document-model',
+        sections: ['base.md'],
+        skills: [],
+      },
+      'agent-editor': {
+        name: 'agent-editor',
         sections: ['base.md'],
         skills: [],
       },
@@ -79,7 +94,7 @@ export const cli = defineCli({
 cli.configureReactor({
   create: (ctx) =>
     buildDefaultReactor(ctx, {
-      documentModels: [...documentModels],
+      documentModels: [...documentModels, ...extModels],
       drive: { name: 'vetra-cli' },
       subscriptions: {},
     }),

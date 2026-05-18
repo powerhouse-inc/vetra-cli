@@ -6,11 +6,14 @@
  * this file will be overwritten.
  */
 import { defineRegistry } from '@powerhousedao/ph-clint';
+import { ChatSession } from '@powerhousedao/clint-common/document-models/chat-session';
 
 /**
  * Typed document registry derived from the reactor package's document models.
  * Regenerated whenever the spec's packages or document types change.
  */
-export const registry = defineRegistry([] as const);
+export const registry = defineRegistry([
+  ChatSession,
+] as const);
 
 export type Registry = typeof registry;
