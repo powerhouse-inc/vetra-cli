@@ -1,0 +1,45 @@
+/**
+ * Per-CLI typed framework binding.
+ *
+ * This file is USER-OWNED. ph-clint-cli emits it once at project
+ * creation and never overwrites it afterwards — edit `configSchema`
+ * and `secretsSchema` freely.
+ *
+ * Typed factories (`defineCommand`, `defineTrigger`, ...) and the
+ * document `registry` come from `framework.gen.ts`, which IS
+ * regenerated whenever the spec's `documentTypes` list changes.
+ */
+import { z } from 'zod';
+import { createTypes } from '@powerhousedao/ph-clint';
+import { registry } from './framework.gen.js';
+
+export const configSchema = z.object({
+  // @clint:begin framework-config
+  model: z.string().default('anthropic/claude-sonnet-4-5').describe('LLM model for the main agent (sub-agent models come from the spec)'),
+  agentLogging: z.boolean().default(false).describe('Enable agent conversation logging'),
+  // @clint:end framework-config
+});
+
+export const secretsSchema = z.object({
+  // @clint:begin framework-secrets
+  anthropicApiKey: z.string().optional().describe('anthropic API key'),
+  // @clint:end framework-secrets
+});
+
+export type Config = z.infer<typeof configSchema> &
+  z.infer<typeof secretsSchema>;
+
+const fullConfigSchema = configSchema.extend(secretsSchema.shape);
+
+export const {
+  defineCommand,
+  defineTrigger,
+  defineService,
+  createDocumentChangeTrigger,
+} = createTypes({
+  configSchema: fullConfigSchema,
+  registry,
+});
+
+export { registry } from './framework.gen.js';
+export type { Registry } from './framework.gen.js';

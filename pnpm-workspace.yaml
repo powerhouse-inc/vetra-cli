@@ -1,0 +1,20 @@
+packages:
+  - 'vetra-app'
+  - 'vetra-cli'
+
+overrides:
+  'mastra>@mastra/deployer': '1.22.0'
+  zod: '4.3.6'
+
+allowBuilds:
+  '@apollo/protobufjs': true
+  '@datadog/pprof': true
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@sentry/cli': true
+  esbuild: true
+  prisma: true
+  protobufjs: true
+  sqlite3: true
+  unrs-resolver: true

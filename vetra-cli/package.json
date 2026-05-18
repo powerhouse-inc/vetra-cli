@@ -1,0 +1,53 @@
+{
+  "name": "vetra-cli",
+  "version": "0.0.1-dev.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "vetra": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build:assets": "tsx scripts/build-assets.ts",
+    "build": "pnpm build:assets && tsc",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --detectOpenHandles",
+    "lint": "eslint src",
+    "mastra:dev": "mastra dev",
+    "mastra:build": "mastra build",
+    "mastra:start": "mastra start",
+    "telemetry:dev": "ph-telemetry-dev --cli-name=vetra"
+  },
+  "dependencies": {
+    "@powerhousedao/ph-clint": "0.1.0-dev.76",
+    "zod": "^4.3.6",
+    "@mastra/core": "~1.32.0",
+    "@mastra/libsql": "^1.7.4",
+    "@mastra/mcp": "^1.4.1",
+    "@mastra/memory": "^1.13.1",
+    "@powerhousedao/ph-clint-observability": "0.1.0-dev.76",
+    "vetra-app": "workspace:*",
+    "@powerhousedao/reactor": "6.0.0-dev.239",
+    "@powerhousedao/reactor-api": "6.0.0-dev.239",
+    "@powerhousedao/shared": "6.0.0-dev.239",
+    "document-model": "6.0.0-dev.239"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.2.0",
+    "@types/node": "^25.5.2",
+    "jest": "^30.2.0",
+    "@powerhousedao/ph-clint-dev": "0.1.0-dev.76",
+    "ts-jest": "^29.4.6",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.33.0"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

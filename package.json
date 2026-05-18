@@ -1,0 +1,16 @@
+{
+  "name": "vetra",
+  "version": "0.0.1-dev.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter vetra-app build && pnpm --filter vetra-app connect build --outDir dist/connect && pnpm --filter vetra-cli build",
+    "test": "pnpm -r run test",
+    "dev": "pnpm --filter vetra-cli dev",
+    "start": "pnpm --filter vetra-cli start",
+    "lint": "pnpm -r run lint",
+    "publish:dev": "pnpm --filter vetra-cli exec ph-publish dev -c ../publish.config.js --verify-connect",
+    "publish:staging": "pnpm --filter vetra-cli exec ph-publish staging -c ../publish.config.js --verify-connect",
+    "publish:production": "pnpm --filter vetra-cli exec ph-publish production -c ../publish.config.js --verify-connect"
+  }
+}

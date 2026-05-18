@@ -1,0 +1,31 @@
+{
+  "type": "clint-project",
+  "features": {
+    "agent": {
+      "id": "vetra-agent",
+      "name": "Vetra Agent",
+      "description": null,
+      "image": null,
+      "models": [
+        {
+          "id": "anthropic/claude-sonnet-4-5"
+        }
+      ]
+    },
+    "powerhouse": {
+      "support": "Connect",
+      "package": "vetra-app"
+    },
+    "observability": {
+      "enabled": true,
+      "package": "@powerhousedao/ph-clint-observability",
+      "envVars": {
+        "sentryDsn": "VETRA_CLI_SENTRY_DSN",
+        "otelExporterOtlpEndpoint": "VETRA_CLI_OTEL_EXPORTER_OTLP_ENDPOINT"
+      }
+    }
+  },
+  "serviceCommand": "vetra",
+  "proxyEnabled": false,
+  "supportedResources": []
+}
