@@ -264,19 +264,38 @@ Three end-to-end scenarios verified with vetra-cli running interactive, the apps
    ```
    The first line is the trigger's per-failure log; the second is the `cli.ts` `package:reload-failed` event handler. The structured event carries `{packageName, version, target, error}` — the agent and user both see why the package didn't land.
 
-**Both the Switchboard reload pathway and the load-failure notification pathway are proven end-to-end through a running vetra-cli.**
+### Scenario D — Connect-side runtime error
+8. With Connect running, POST a synthetic error payload to its /__reload/error endpoint (this is what the injected browser script would do on a runtime import failure):
+   ```bash
+   curl -sS -X POST http://localhost:27370/__reload/error \
+     -H "content-type: application/json" \
+     -d '{"message":"TypeError: bundle blew up","filename":"http://localhost:8765/-/cdn/vetra-app@1.0.1/node/document-models/index.mjs"}'
+   ```
+   Trigger output:
+   ```
+   [ERROR] [publish-reload] connect package error (vetra-app@1.0.1): TypeError: bundle blew up
+   [ERROR] ✗ Failed to reload vetra-app@1.0.1 on connect: TypeError: bundle blew up
+   ```
+   The package name/version is parsed out of the filename (scoped specs like `@powerhousedao/codegen@1.0.0` work too). For real browser tabs, the injected script wires `window.addEventListener('error', ...)` + `unhandledrejection` to do the same POST automatically when a CDN module URL throws.
+
+**Both the Switchboard reload pathway and both directions of the load-failure notification pathway are proven end-to-end through a running vetra-cli.**
 
 ## Connect reload protocol
 
 `connect-server.js` (static mode) exposes:
-- `GET /__reload` — SSE stream. Browser tabs subscribe; receive `event: reload\ndata: {}` on broadcast.
-- `POST /__reload` — broadcast. Returns `204 No Content` with `X-Reload-Clients: <count>` header.
+- `GET /__reload` — SSE stream emitting two event types:
+  - `reload` — browser tabs run `location.reload()`.
+  - `package-error` — carries `{ message, filename, stack? }`; the publish-reload trigger listens for this to surface runtime browser-side import failures.
+- `POST /__reload` — broadcast a `reload` event. Returns `204` with `X-Reload-Clients: <count>` header.
+- `POST /__reload/error` — accept a browser-side error report `{ message, filename, stack? }` and broadcast it as a `package-error` SSE event. Returns `204`.
 
-Every served HTML has a `<script>` injected just before `</body>` that opens an `EventSource('/__reload')` and calls `location.reload()` on each `reload` event.
+Every served HTML has a `<script>` injected just before `</body>` that:
+- Subscribes to `/__reload` and calls `location.reload()` on `reload` events.
+- Hooks `window.error` and `unhandledrejection`, filters to URLs containing `/-/cdn/` (i.e. modules pulled from the local registry CDN), and POSTs `{ message, filename, stack? }` to `/__reload/error`. This is what closes the loop on Connect-side runtime load failures.
 
-The trigger calls `POST <connect-url>/__reload` regardless of mode. Static mode is fully implemented; studio mode (vite dev server) still needs a parallel vite plugin that exposes the same endpoints + injects the same script — see "Things NOT done" #5.
+The trigger calls `POST <connect-url>/__reload` regardless of Connect mode for the reload signal, and subscribes to `<connect-url>/__reload` for `package-error` events. Static mode is fully implemented; studio mode (vite dev server) still needs a parallel vite plugin that exposes the same endpoints + injects the same script — see "Things NOT done" #5.
 
-Background: ph-clint's `cli.ts:286` auto-detects Connect mode by checking for `<connect-workdir>/dist/connect/index.html`. vetra-app's prebuilt bundle exists, so the embedded Connect always runs static in vetra-cli today. That's fine because static mode now supports `/__reload`.
+Background: ph-clint's `cli.ts:286` auto-detects Connect mode by checking for `<connect-workdir>/dist/connect/index.html`. vetra-app's prebuilt bundle exists, so the embedded Connect always runs static in vetra-cli today. That's fine because static mode supports the full protocol.
 
 ## Known issues
 
@@ -342,9 +361,7 @@ Same as #1 but worth flagging: the pnpm overrides in `vetra-cli/pnpm-workspace.y
 
 5. **Studio-mode `/__reload` parity is missing.** The static side (`connect-server.js`) implements the protocol. The vite-dev-server side (studio mode via `ph connect`) needs a sibling vite plugin that exposes the same `GET /__reload` SSE + `POST /__reload` broadcast and injects the same `<script>` into the index transform. Right now in studio mode the trigger would get 404 on the POST (and the load-failure handler fires, which is consistent but unhelpful).
 
-6. **Connect-side load failures aren't surfaced.** If switchboard's `installPackage` succeeds but the package crashes at runtime inside the browser (Connect dynamic-imports it), Connect knows but the server doesn't. To surface this we'd need a feedback channel — e.g. extend the injected script to POST `/__reload/error` with `window.addEventListener('error', …)` filtered to the package's module URL. Then the trigger emits another `package:reload-failed` event with `target: 'connect'`. The structured event payload already supports this case; the wiring is missing.
-
-7. **Hot-reload subgraph regen** — when a new package's document types are installed, apps/switchboard's PackageManager calls `regenerateDocumentModelSubgraphs`. We saw this fire on `ph vetra` runs; the embedded path should be doing it too. Verify the log line shows up on the embedded reactor after a `Packages.installPackage` call.
+6. **Hot-reload subgraph regen** — when a new package's document types are installed, apps/switchboard's PackageManager calls `regenerateDocumentModelSubgraphs`. We saw this fire on `ph vetra` runs; the embedded path should be doing it too. Verify the log line shows up on the embedded reactor after a `Packages.installPackage` call.
 
 ## Suggested next steps in order
 
@@ -354,11 +371,9 @@ Same as #1 but worth flagging: the pnpm overrides in `vetra-cli/pnpm-workspace.y
 
 3. **Implement the studio-mode `/__reload` plugin** so the trigger is mode-uniform end-to-end.
 
-4. **Add Connect-side error feedback** so runtime browser-side import failures surface alongside Switchboard ones.
+4. **Add `registryUrl` plumbing as a callback** so consumers can derive it from config dynamically instead of hardcoding.
 
-5. **Add `registryUrl` plumbing as a callback** so consumers can derive it from config dynamically instead of hardcoding.
-
-6. **Trigger unit tests.** Mock the service manager + fetch + the GraphQL response shapes; assert the trigger calls the right endpoints and emits `package:reload-failed` on each failure mode.
+5. **Trigger unit tests.** Mock the service manager + fetch + the GraphQL response shapes; assert the trigger calls the right endpoints and emits `package:reload-failed` on each failure mode.
 
 ## Useful diagnostic commands
 
@@ -391,5 +406,5 @@ find /Users/acaldas/dev/powerhouse -name "switchboard" -path "*@powerhousedao*" 
 - **`@powerhousedao/registry`** — the `ph-registry` binary (Verdaccio + Powerhouse CDN). The local-registry service starts it on port 8080 (vetra-cli runs it on 8765 to avoid collisions).
 - **`reactor-project` service** — per-project `ph vetra` that runs its own full Switchboard. Used for preview docs. NOT the publish-reload target after retarget.
 - **publish-reload trigger** — vetra-cli's trigger that consumes `/-/events` SSE and runs `Packages.{uninstallPackage,installPackage}` on the embedded Switchboard + `POST /__reload` on Connect. Emits `package:reload-failed` events when either side rejects.
-- **`/__reload` protocol** — uniform Connect reload HTTP surface. `GET` is the SSE stream a browser tab subscribes to; `POST` broadcasts. Static-mode implementation lives in ph-clint's `connect-server.ts`; studio-mode plugin still TODO.
+- **`/__reload` protocol** — uniform Connect reload HTTP surface. `GET /__reload` is an SSE stream emitting `reload` and `package-error` events. `POST /__reload` broadcasts a `reload`. `POST /__reload/error` accepts a `{message, filename, stack?}` payload and rebroadcasts it as `package-error`. Static-mode implementation lives in ph-clint's `connect-server.ts`; studio-mode plugin still TODO.
 - **`package:reload-failed` event** — emitted by the publish-reload trigger on load failure. Payload: `{ packageName, version, target: 'switchboard'|'connect', error }`. `cli.ts` registers a default handler that logs it as `ERROR`.
