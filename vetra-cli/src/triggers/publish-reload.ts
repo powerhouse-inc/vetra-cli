@@ -45,11 +45,33 @@ async function postGraphql(
   return { ok: res.ok, body };
 }
 
+interface ReloadFailure {
+  packageName: string;
+  version: string;
+  target: 'switchboard' | 'connect';
+  error: string;
+}
+
+function extractGraphQLError(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as {
+      errors?: { message: string }[];
+    };
+    if (parsed.errors && parsed.errors.length > 0) {
+      return parsed.errors.map((e) => e.message).join('; ');
+    }
+  } catch {
+    // body wasn't JSON
+  }
+  return undefined;
+}
+
 async function reloadOnSwitchboard(
   switchboardUrl: string,
   registryUrl: string,
   event: PublishEvent,
-  log: { debug: (m: string) => void; warn: (m: string) => void } | undefined,
+  log: { debug: (m: string) => void; warn: (m: string) => void; error: (m: string) => void } | undefined,
+  reportFailure: (failure: ReloadFailure) => void,
 ): Promise<void> {
   // The reactor stores packages under the literal name passed to installPackage,
   // including the version suffix ("vetra-app@1.0.0"). To re-install with a new
@@ -102,10 +124,18 @@ async function reloadOnSwitchboard(
      }`,
     { name: `${event.packageName}@${event.version}`, registryUrl },
   );
-  if (!install.ok) {
-    log?.warn(
-      `[publish-reload] installPackage(${event.packageName}@${event.version}) failed: ${install.body.slice(0, 200)}`,
+  const gqlError = install.ok ? extractGraphQLError(install.body) : undefined;
+  if (!install.ok || gqlError) {
+    const message = gqlError ?? install.body.slice(0, 400);
+    log?.error(
+      `[publish-reload] installPackage(${event.packageName}@${event.version}) failed: ${message}`,
     );
+    reportFailure({
+      packageName: event.packageName,
+      version: event.version,
+      target: 'switchboard',
+      error: message,
+    });
     return;
   }
   log?.debug(
@@ -116,15 +146,23 @@ async function reloadOnSwitchboard(
 async function reloadOnConnect(
   connectUrl: string,
   event: PublishEvent,
-  log: { debug: (m: string) => void; warn: (m: string) => void } | undefined,
+  log: { debug: (m: string) => void; warn: (m: string) => void; error: (m: string) => void } | undefined,
+  reportFailure: (failure: ReloadFailure) => void,
 ): Promise<void> {
   const reloadUrl = `${connectUrl.replace(/\/$/, '')}/__reload`;
   try {
     const res = await fetch(reloadUrl, { method: 'POST' });
     if (!res.ok) {
-      log?.warn(
-        `[publish-reload] POST ${reloadUrl} returned ${res.status} for ${event.packageName}@${event.version}`,
+      const message = `${reloadUrl} returned ${res.status}`;
+      log?.error(
+        `[publish-reload] connect reload failed for ${event.packageName}@${event.version}: ${message}`,
       );
+      reportFailure({
+        packageName: event.packageName,
+        version: event.version,
+        target: 'connect',
+        error: message,
+      });
       return;
     }
     const clients = res.headers.get('x-reload-clients');
@@ -133,11 +171,16 @@ async function reloadOnConnect(
         (clients ? ` (${clients} client${clients === '1' ? '' : 's'})` : ''),
     );
   } catch (err) {
-    log?.warn(
-      `[publish-reload] connect reload failed (${reloadUrl}): ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+    const message = err instanceof Error ? err.message : String(err);
+    log?.error(
+      `[publish-reload] connect reload failed (${reloadUrl}): ${message}`,
     );
+    reportFailure({
+      packageName: event.packageName,
+      version: event.version,
+      target: 'connect',
+      error: message,
+    });
   }
 }
 
@@ -298,10 +341,15 @@ export const publishReloadTrigger = defineTrigger<TriggerState>({
       .find((s) => s.status === 'ready' && s.endpoints?.['connect-studio'])
       ?.endpoints?.['connect-studio'];
 
+    const emit = ctx.context.emit;
+    const reportFailure = (failure: ReloadFailure): void => {
+      emit?.('package:reload-failed' as never, failure as never);
+    };
+
     for (const event of events) {
-      await reloadOnSwitchboard(switchboardUrl, registryUrl, event, log);
+      await reloadOnSwitchboard(switchboardUrl, registryUrl, event, log, reportFailure);
       if (connectUrl) {
-        await reloadOnConnect(connectUrl, event, log);
+        await reloadOnConnect(connectUrl, event, log, reportFailure);
       } else {
         log?.debug('[publish-reload] embedded connect URL not available');
       }

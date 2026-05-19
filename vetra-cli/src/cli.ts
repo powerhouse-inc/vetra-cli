@@ -144,6 +144,17 @@ export const cli = defineCli({
     'service:stopped': (event, log) => {
       log.info(`■ ${event.name} stopped`);
     },
+    'package:reload-failed': (event: unknown, log) => {
+      const { packageName, version, target, error } = event as {
+        packageName: string;
+        version: string;
+        target: 'switchboard' | 'connect';
+        error: string;
+      };
+      log.error(
+        `✗ Failed to reload ${packageName}@${version} on ${target}: ${error}`,
+      );
+    },
   },
   // @clint:end events
 
