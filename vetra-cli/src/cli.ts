@@ -53,22 +53,48 @@ export const cli = defineCli({
       'vetra-agent': {
         name: 'vetra-agent',
         sections: ['base.md'],
-        skills: ['reactor-project-management'],
+        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation'],
       },
       'agent-document-model': {
         name: 'agent-document-model',
         sections: ['base.md'],
-        skills: [],
+        skills: ['document-modeling'],
       },
       'agent-editor': {
         name: 'agent-editor',
         sections: ['base.md'],
-        skills: [],
+        skills: ['document-editor-creation'],
       },
     },
     skills: {
       'reactor-project-management': {
         description: 'Initialize, build, and publish Reactor Package projects',
+        inputSchema: z.object({
+          mode: z
+            .enum(['expert', 'discovery', 'one-shot'])
+            .default('expert')
+            .describe(
+              'Expert: align technical design decisions between fellow experts. Discovery: explain the process and guide non-expert users to decisions. One-shot: make all design decisions autonomously and execute without asking',
+            ),
+        }),
+        instructionTemplate:
+          'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
+      },
+      'document-modeling': {
+        description: 'Design Powerhouse document models with state schemas, operations, and reducers',
+        inputSchema: z.object({
+          mode: z
+            .enum(['expert', 'discovery', 'one-shot'])
+            .default('expert')
+            .describe(
+              'Expert: align technical design decisions between fellow experts. Discovery: explain the process and guide non-expert users to decisions. One-shot: make all design decisions autonomously and execute without asking',
+            ),
+        }),
+        instructionTemplate:
+          'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
+      },
+      'document-editor-creation': {
+        description: 'Build React editor components for Powerhouse document types',
         inputSchema: z.object({
           mode: z
             .enum(['expert', 'discovery', 'one-shot'])
