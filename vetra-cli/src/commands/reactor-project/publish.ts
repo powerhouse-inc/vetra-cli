@@ -46,9 +46,8 @@ function npmLogin(
     child.stderr.on('data', handleData);
     child.on('error', reject);
     child.on('close', (code) => {
-      code === 0
-        ? resolve()
-        : reject(new Error(`npm adduser exited with code ${code}`));
+      if (code === 0) resolve();
+      else reject(new Error(`npm adduser exited with code ${code}`));
     });
   });
 }

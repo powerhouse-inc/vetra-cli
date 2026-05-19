@@ -18,6 +18,7 @@ import { chatSessionWatchTrigger } from '@powerhousedao/clint-common/chat';
 import { observability } from '@powerhousedao/ph-clint-observability';
 import { specCommands } from './commands/spec/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
+import { reactorProject } from './services/reactor-project.js';
 // @clint:end imports
 
 export const cli = defineCli({
@@ -38,7 +39,7 @@ export const cli = defineCli({
   // @clint:end commands
 
   // @clint:begin services
-  services: [],
+  services: [reactorProject],
   // @clint:end services
 
   // @clint:begin triggers
@@ -84,7 +85,37 @@ export const cli = defineCli({
   // @clint:end prompts
 
   // @clint:begin events
-  events: {},
+  events: {
+    'service:pattern-matched': (event, log) => {
+      log.info(`  ✓ ${event.patternName} matched (${event.remaining} remaining)`);
+    },
+    'service:ready': (event, log) => {
+      const ep = event.endpoints ?? {};
+      log.info(
+        `✓ ${event.name} is ready` +
+          (ep['vetra-studio'] ? ` — Vetra Studio at ${ep['vetra-studio']}` : ''),
+      );
+    },
+    'service:failed': (event, log) => {
+      log.error(`✗ ${event.name} failed: ${event.error}`);
+      if (event.id === 'reactor-project' && /exited before becoming ready/.test(event.error ?? '')) {
+        log.info(
+          '  Hint: Is the working directory a Reactor package project? Try: reactor-project-start --workdir <project-name>',
+        );
+      }
+      if (/max instances/.test(event.error ?? '')) {
+        log.info(
+          `  Hint: ${event.name} is already running. Stop it first with ${event.id}-stop, or use ${event.id}-restart.`,
+        );
+      }
+    },
+    'service:restarting': (event, log) => {
+      log.warn(`↻ ${event.name} restarting (attempt ${event.attempt}/${event.maxRetries})`);
+    },
+    'service:stopped': (event, log) => {
+      log.info(`■ ${event.name} stopped`);
+    },
+  },
   // @clint:end events
 
   // @clint:begin proxy
