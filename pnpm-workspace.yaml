@@ -20,6 +20,11 @@ overrides:
   '@powerhousedao/codegen': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/codegen'
   '@powerhousedao/ph-cli': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/clis/ph-cli'
   '@powerhousedao/registry': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/registry'
+  '@powerhousedao/switchboard': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/apps/switchboard'
+  '@powerhousedao/ph-clint': 'link:../../ph-clint/packages/ph-clint'
+  '@powerhousedao/ph-clint-dev': 'link:../../ph-clint/packages/ph-clint-dev'
+  '@powerhousedao/ph-clint-observability': 'link:../../ph-clint/packages/ph-clint-observability'
+  '@powerhousedao/clint-common': 'link:../../ph-clint/packages/clint-common'
 
 allowBuilds:
   '@apollo/protobufjs': true

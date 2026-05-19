@@ -175,8 +175,19 @@ cli.configureReactor({
       drive: { name: 'vetra-cli' },
       subscriptions: {},
     }),
-  switchboard: { enabled: true },
-  connect: { enabled: true },
+  switchboard: {
+    enabled: true,
+    // Wire the local-registry's URL into the embedded switchboard so the
+    // `Packages` GraphQL subgraph picks it up — required for the
+    // publish-reload trigger's install/uninstall mutations.
+    registryUrl: 'http://localhost:8765',
+  },
+  connect: {
+    enabled: true,
+    // Forwarded to Connect's vite config as PH_CONNECT_PACKAGES_REGISTRY so
+    // the browser fetches Powerhouse package bundles from the local registry.
+    registryUrl: 'http://localhost:8765',
+  },
 });
 // @clint:end reactor
 
