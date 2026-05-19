@@ -188,6 +188,47 @@ interface TriggerState {
   pending: PublishEvent[];
   registryUrl: string | undefined;
   unsubscribe: (() => void) | undefined;
+  /** Set to the connect URL we're already subscribed to (or undefined). */
+  connectSubscribedUrl: string | undefined;
+  unsubscribeConnect: (() => void) | undefined;
+}
+
+/**
+ * Parse a CDN URL like `http://.../-/cdn/<name>[@<version>]/<path>` and
+ * extract the package name and version. Handles scoped names
+ * (`@scope/pkg@version`). Returns undefined when the URL doesn't look like
+ * a registry CDN module.
+ */
+export function parseCdnPackageSpec(
+  url: string,
+): { packageName: string; version: string } | undefined {
+  const idx = url.indexOf('/-/cdn/');
+  if (idx === -1) return undefined;
+  const rest = url.slice(idx + '/-/cdn/'.length);
+  // package spec ends at the first `/` that begins a deeper path segment;
+  // for scoped specs the first `/` is *inside* the scope, so consume two
+  // segments when the spec starts with `@`.
+  let endOfSpec: number;
+  if (rest.startsWith('@')) {
+    const firstSlash = rest.indexOf('/');
+    if (firstSlash === -1) return undefined;
+    const secondSlash = rest.indexOf('/', firstSlash + 1);
+    endOfSpec = secondSlash === -1 ? rest.length : secondSlash;
+  } else {
+    const firstSlash = rest.indexOf('/');
+    endOfSpec = firstSlash === -1 ? rest.length : firstSlash;
+  }
+  const spec = rest.slice(0, endOfSpec);
+  // Version is after the LAST `@` (so scoped @org/name@1.0.0 splits correctly).
+  const lastAt = spec.lastIndexOf('@');
+  if (lastAt <= 0) {
+    // unscoped name with no version (e.g. "vetra-app/...") — no version info
+    return { packageName: spec, version: 'unknown' };
+  }
+  return {
+    packageName: spec.slice(0, lastAt),
+    version: spec.slice(lastAt + 1) || 'unknown',
+  };
 }
 
 /**
@@ -272,7 +313,13 @@ function sleep(ms: number): Promise<void> {
 export const publishReloadTrigger = defineTrigger<TriggerState>({
   id: 'publish-reload',
   type: 'condition',
-  state: () => ({ pending: [], registryUrl: undefined, unsubscribe: undefined }),
+  state: () => ({
+    pending: [],
+    registryUrl: undefined,
+    unsubscribe: undefined,
+    connectSubscribedUrl: undefined,
+    unsubscribeConnect: undefined,
+  }),
 
   async setup(ctx) {
     const log = ctx.context.log;
@@ -311,6 +358,7 @@ export const publishReloadTrigger = defineTrigger<TriggerState>({
 
   async teardown(ctx) {
     ctx.state.unsubscribe?.();
+    ctx.state.unsubscribeConnect?.();
   },
 
   async poll(ctx) {
@@ -318,11 +366,62 @@ export const publishReloadTrigger = defineTrigger<TriggerState>({
     if (!ctx.state.unsubscribe) {
       await this.setup?.(ctx);
     }
+
+    const services = ctx.context.services;
+    const log = ctx.context.log;
+    const emit = ctx.context.emit;
+    const reportFailure = (failure: ReloadFailure): void => {
+      emit?.('package:reload-failed' as never, failure as never);
+    };
+
+    // Connect's URL is captured by ph-clint as the `connect-studio` endpoint
+    // on a service named `${cliName}-studio` (e.g. vetra-studio). Look it up
+    // each poll so the lazy-bind to /__reload happens as soon as Connect is
+    // ready, independently of whether the registry has emitted any events.
+    const connectUrl = services
+      ?.list()
+      .find((s) => s.status === 'ready' && s.endpoints?.['connect-studio'])
+      ?.endpoints?.['connect-studio'];
+
+    if (connectUrl && ctx.state.connectSubscribedUrl !== connectUrl) {
+      ctx.state.unsubscribeConnect?.();
+      const sseUrl = `${connectUrl.replace(/\/$/, '')}/__reload`;
+      log?.debug(`[publish-reload] subscribing to connect ${sseUrl}`);
+      ctx.state.connectSubscribedUrl = connectUrl;
+      ctx.state.unsubscribeConnect = subscribeToSSE(
+        sseUrl,
+        (eventName, data) => {
+          if (eventName !== 'package-error') return;
+          let payload: {
+            message?: string;
+            filename?: string;
+            stack?: string;
+          };
+          try {
+            payload = JSON.parse(data) as typeof payload;
+          } catch {
+            return;
+          }
+          const filename = payload.filename ?? '';
+          const spec = parseCdnPackageSpec(filename);
+          const message = payload.message ?? 'connect import failed';
+          log?.error(
+            `[publish-reload] connect package error${spec ? ` (${spec.packageName}@${spec.version})` : ''}: ${message}`,
+          );
+          reportFailure({
+            packageName: spec?.packageName ?? 'unknown',
+            version: spec?.version ?? 'unknown',
+            target: 'connect',
+            error: message,
+          });
+        },
+        log,
+      );
+    }
+
     if (ctx.state.pending.length === 0) return null;
 
     const events = ctx.state.pending.splice(0, ctx.state.pending.length);
-    const services = ctx.context.services;
-    const log = ctx.context.log;
     const registryUrl = ctx.state.registryUrl;
     if (!services || !registryUrl) return null;
 
@@ -332,19 +431,6 @@ export const publishReloadTrigger = defineTrigger<TriggerState>({
       log?.debug('[publish-reload] embedded switchboard URL not available');
       return null;
     }
-
-    // Connect's URL is captured by ph-clint as the `connect-studio` endpoint
-    // on a service named `${cliName}-studio` (e.g. vetra-studio). It isn't
-    // surfaced on ReactorContext, so look it up via the service manager.
-    const connectUrl = services
-      .list()
-      .find((s) => s.status === 'ready' && s.endpoints?.['connect-studio'])
-      ?.endpoints?.['connect-studio'];
-
-    const emit = ctx.context.emit;
-    const reportFailure = (failure: ReloadFailure): void => {
-      emit?.('package:reload-failed' as never, failure as never);
-    };
 
     for (const event of events) {
       await reloadOnSwitchboard(switchboardUrl, registryUrl, event, log, reportFailure);
