@@ -34,7 +34,7 @@ Single shared instance of Connect/Switchboard inside `vetra-cli` (the CLI's embe
 
 6. **No-auth GraphQL works in dev.** With `auth_enabled` undefined (the default) the `isAdmin` gate collapses to `() => true` (see `reactor-api/src/graphql/graphql-manager.ts:486`). The publish-reload trigger relies on this — there's no token plumbing.
 
-7. **Load failures are surfaced via `package:reload-failed` events.** When `installPackage` returns a GraphQL error or `POST /__reload` fails, the trigger emits a structured event (`{packageName, version, target, error}`) on the event bus. `cli.ts` registers a handler that logs it as a visible `ERROR` line. The agent and the user both see the failure.
+7. **Load failures are surfaced via `package:reload-failed` events.** When `installPackage` returns a GraphQL error, `POST /__reload` fails, or a browser tab posts a runtime import failure to `/__reload/error`, the trigger emits a structured event (`{packageName, version, target, error}`) on the event bus. `cli.ts` registers a handler that logs it as a visible `ERROR` line. **The user sees the log line, the agent does not yet — see "How the agent learns about failures" below.**
 
 ## Repositories touched
 
@@ -262,7 +262,7 @@ Three end-to-end scenarios verified with vetra-cli running interactive, the apps
    [ERROR] [publish-reload] installPackage(vetra-app@1.0.3) failed: Unexpected identifier 'is'
    [ERROR] ✗ Failed to reload vetra-app@1.0.3 on switchboard: Unexpected identifier 'is'
    ```
-   The first line is the trigger's per-failure log; the second is the `cli.ts` `package:reload-failed` event handler. The structured event carries `{packageName, version, target, error}` — the agent and user both see why the package didn't land.
+   The first line is the trigger's per-failure log; the second is the `cli.ts` `package:reload-failed` event handler. The structured event carries `{packageName, version, target, error}`. **The user sees this in the terminal; the agent does NOT see it via these logs.** See "How the agent learns about failures" for the gap and three possible fixes.
 
 ### Scenario D — Connect-side runtime error
 8. With Connect running, POST a synthetic error payload to its /__reload/error endpoint (this is what the injected browser script would do on a runtime import failure):
@@ -296,6 +296,40 @@ Every served HTML has a `<script>` injected just before `</body>` that:
 The trigger calls `POST <connect-url>/__reload` regardless of Connect mode for the reload signal, and subscribes to `<connect-url>/__reload` for `package-error` events. Static mode is fully implemented; studio mode (vite dev server) still needs a parallel vite plugin that exposes the same endpoints + injects the same script — see "Things NOT done" #5.
 
 Background: ph-clint's `cli.ts:286` auto-detects Connect mode by checking for `<connect-workdir>/dist/connect/index.html`. vetra-app's prebuilt bundle exists, so the embedded Connect always runs static in vetra-cli today. That's fine because static mode supports the full protocol.
+
+## How the agent learns about failures
+
+This is the **open gap** in the current implementation. The `package:reload-failed` event handler in `cli.ts` calls `log.error(...)` — that writes to the CLI's stderr/stdout. A human operator watching the REPL sees the red ERROR line; the Mastra agent (the LLM driving the chat) does **not**. The agent only ingests:
+- Tool call responses on its current turn.
+- Memory content for its current thread.
+- Messages from the chat session document the `chatSessionWatchTrigger` is watching.
+
+### Two channels carry input to the agent today
+
+vetra-cli runs the agent in two distinct modes; they don't share an input channel:
+
+1. **Interactive REPL** (`ph-clint/packages/ph-clint/src/interactive/session.ts`).
+   - Each REPL session gets a `threadId = opts.threadId ?? randomUUID()`.
+   - User types → `handleAgentPrompt(text)` → `agentProvider.stream(text, { threadId })` streams the response.
+   - Memory is keyed by `threadId` through Mastra's memory layer; no chat-session document.
+
+2. **Non-interactive (chat-session document)** (`@powerhousedao/clint-common/chat`'s `chatSessionWatchTrigger`).
+   - An external actor (another agent, an editor, an MCP tool) writes a user message into a `powerhouse/chat-session` document in the embedded reactor.
+   - The trigger watches for new messages and forwards them to the agent.
+
+A trigger or event handler that wants the agent to see something has to push into the right channel for the mode the user is in.
+
+### Three options to actually inform the agent
+
+In rough order of effort + invasiveness:
+
+1. **Pretty-print in the REPL (status quo).** A REPL-side listener prints `[publish-reload] Failed to reload …` in the user's terminal; the operator manually mentions it to the agent. Effectively where we are today — the operator is the messenger.
+
+2. **Pending-context queue drained per turn.** The event handler buffers failures into a queue; `handleAgentPrompt` drains the queue and prepends a `(System: while you were thinking, vetra-app@1.0.1 failed to load on switchboard: …)` block to the next user message. Implementation lives entirely in vetra-cli / the REPL session. Works for interactive mode only — non-interactive flow needs equivalent wiring on its side.
+
+3. **`pushAgentNotice(message)` primitive in ph-clint.** ph-clint exposes a single API that triggers / event handlers call; the framework routes the notice to whichever channel is active (Mastra memory for interactive, append to chat session for non-interactive). Right contract long-term, biggest upstream change. Both modes converge on one call site.
+
+The HANDOFF previously asserted "the agent sees the failure" — that was wrong. Until one of the above lands, only the human watching the terminal sees it.
 
 ## Known issues
 
@@ -363,6 +397,8 @@ Same as #1 but worth flagging: the pnpm overrides in `vetra-cli/pnpm-workspace.y
 
 6. **Hot-reload subgraph regen** — when a new package's document types are installed, apps/switchboard's PackageManager calls `regenerateDocumentModelSubgraphs`. We saw this fire on `ph vetra` runs; the embedded path should be doing it too. Verify the log line shows up on the embedded reactor after a `Packages.installPackage` call.
 
+7. **The agent doesn't actually receive failure notifications.** The `package:reload-failed` handler logs to stderr; the agent only sees what's in its chat thread / chat session. See "How the agent learns about failures" — this is the most important pending gap if the goal is for the agent (not just the human operator) to react to load errors.
+
 ## Suggested next steps in order
 
 1. **Get the lockfile to honor the workspace override** for `@powerhousedao/switchboard` in ph-clint. Without this, every fresh `pnpm install` reverts the symlink.
@@ -371,9 +407,11 @@ Same as #1 but worth flagging: the pnpm overrides in `vetra-cli/pnpm-workspace.y
 
 3. **Implement the studio-mode `/__reload` plugin** so the trigger is mode-uniform end-to-end.
 
-4. **Add `registryUrl` plumbing as a callback** so consumers can derive it from config dynamically instead of hardcoding.
+4. **Route `package:reload-failed` into the agent's input channel.** Pick one of the three options under "How the agent learns about failures". (b) — pending-context queue drained per agent turn — is the lowest-effort path that actually closes the loop for interactive mode. (c) — `pushAgentNotice` upstream in ph-clint — is the right long-term contract for both modes.
 
-5. **Trigger unit tests.** Mock the service manager + fetch + the GraphQL response shapes; assert the trigger calls the right endpoints and emits `package:reload-failed` on each failure mode.
+5. **Add `registryUrl` plumbing as a callback** so consumers can derive it from config dynamically instead of hardcoding.
+
+6. **Trigger unit tests.** Mock the service manager + fetch + the GraphQL response shapes; assert the trigger calls the right endpoints and emits `package:reload-failed` on each failure mode.
 
 ## Useful diagnostic commands
 
@@ -407,4 +445,5 @@ find /Users/acaldas/dev/powerhouse -name "switchboard" -path "*@powerhousedao*" 
 - **`reactor-project` service** — per-project `ph vetra` that runs its own full Switchboard. Used for preview docs. NOT the publish-reload target after retarget.
 - **publish-reload trigger** — vetra-cli's trigger that consumes `/-/events` SSE and runs `Packages.{uninstallPackage,installPackage}` on the embedded Switchboard + `POST /__reload` on Connect. Emits `package:reload-failed` events when either side rejects.
 - **`/__reload` protocol** — uniform Connect reload HTTP surface. `GET /__reload` is an SSE stream emitting `reload` and `package-error` events. `POST /__reload` broadcasts a `reload`. `POST /__reload/error` accepts a `{message, filename, stack?}` payload and rebroadcasts it as `package-error`. Static-mode implementation lives in ph-clint's `connect-server.ts`; studio-mode plugin still TODO.
-- **`package:reload-failed` event** — emitted by the publish-reload trigger on load failure. Payload: `{ packageName, version, target: 'switchboard'|'connect', error }`. `cli.ts` registers a default handler that logs it as `ERROR`.
+- **`package:reload-failed` event** — emitted by the publish-reload trigger on load failure (switchboard mutation rejection, `POST /__reload` failure, or browser-side error posted to `/__reload/error`). Payload: `{ packageName, version, target: 'switchboard'|'connect', error }`. `cli.ts` registers a default handler that logs it as `ERROR` to the terminal. **Does not yet reach the agent's input channel** — see the "How the agent learns about failures" section for the gap and three resolution options.
+- **`threadId` (interactive)** vs. **chat-session document (non-interactive)** — the two distinct agent input channels. Interactive REPL uses a Mastra `threadId` keyed against Mastra's memory layer; non-interactive flow goes through the `chatSessionWatchTrigger` watching a `powerhouse/chat-session` doc. A trigger that wants to inform the agent has to push into the right one.
