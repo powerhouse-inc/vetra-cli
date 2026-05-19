@@ -17,12 +17,17 @@ export const configSchema = z.object({
   // @clint:begin framework-config
   model: z.string().default('anthropic/claude-sonnet-4-5').describe('LLM model for the main agent (sub-agent models come from the spec)'),
   agentLogging: z.boolean().default(false).describe('Enable agent conversation logging'),
+  phVersion: z.string().optional().describe('Powerhouse version (defaults to installed ph CLI version)'),
+  registryUrl: z.string().optional().describe('Registry URL to use when publishing packages'),
+  registryUsername: z.string().optional().describe('Username for registry authentication'),
+  registryEmail: z.email().optional().describe('Email for registry authentication'),
   // @clint:end framework-config
 });
 
 export const secretsSchema = z.object({
   // @clint:begin framework-secrets
   anthropicApiKey: z.string().optional().describe('anthropic API key'),
+  registryPassword: z.string().optional().describe('Password for registry authentication'),
   // @clint:end framework-secrets
 });
 

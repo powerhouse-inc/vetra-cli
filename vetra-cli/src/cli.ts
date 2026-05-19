@@ -7,6 +7,7 @@
  */
 // @clint:begin imports
 import { defineCli, buildDefaultReactor } from '@powerhousedao/ph-clint';
+import { z } from 'zod';
 import path from 'node:path';
 import { CLI_NAME, CLI_VERSION, CLI_ROOT } from './config.js';
 import { configSchema, secretsSchema } from './framework.js';
@@ -16,6 +17,7 @@ import { createAgent } from './agents/agent.js';
 import { chatSessionWatchTrigger } from '@powerhousedao/clint-common/chat';
 import { observability } from '@powerhousedao/ph-clint-observability';
 import { specCommands } from './commands/spec/index.js';
+import { reactorProjectCommands } from './commands/reactor-project/index.js';
 // @clint:end imports
 
 export const cli = defineCli({
@@ -31,6 +33,7 @@ export const cli = defineCli({
   // @clint:begin commands
   commands: [
     ...specCommands,
+    ...reactorProjectCommands,
   ],
   // @clint:end commands
 
@@ -49,7 +52,7 @@ export const cli = defineCli({
       'vetra-agent': {
         name: 'vetra-agent',
         sections: ['base.md'],
-        skills: [],
+        skills: ['reactor-project-management'],
       },
       'agent-document-model': {
         name: 'agent-document-model',
@@ -62,7 +65,21 @@ export const cli = defineCli({
         skills: [],
       },
     },
-    skills: {},
+    skills: {
+      'reactor-project-management': {
+        description: 'Initialize, build, and publish Reactor Package projects',
+        inputSchema: z.object({
+          mode: z
+            .enum(['expert', 'discovery', 'one-shot'])
+            .default('expert')
+            .describe(
+              'Expert: align technical design decisions between fellow experts. Discovery: explain the process and guide non-expert users to decisions. One-shot: make all design decisions autonomously and execute without asking',
+            ),
+        }),
+        instructionTemplate:
+          'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
+      },
+    },
   },
   // @clint:end prompts
 

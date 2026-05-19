@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
+import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
 import { formatSchema, loadByName, renderProjected } from "./_helpers.js";
 
 /* Narrow a doc's state down to its latest specification entry. Only doc-model
@@ -56,6 +57,7 @@ export const specGet = defineCommand({
   description:
     "Read a spec. Pass --filter (or --latest) for data; otherwise returns summary + help.",
   inputSchema: z.object({
+    project: projectInputSchema,
     name: z
       .string()
       .describe("Spec document name (unique within the project)."),
@@ -80,7 +82,8 @@ export const specGet = defineCommand({
     format: formatSchema.optional(),
   }),
   execute: async (input, { workdir }) => {
-    const doc = await loadByName(workdir, input.name);
+    const base = resolveReactorProjectPath(workdir, input.project);
+    const doc = await loadByName(base, input.name);
     const opsTotal = doc.operations.global.length + doc.operations.local.length;
     const summary = `${doc.header.documentType} "${doc.header.name}" — ${opsTotal} operation(s).`;
 

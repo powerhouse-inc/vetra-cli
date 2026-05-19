@@ -1,12 +1,14 @@
 import { getDocuments } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
+import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
 import { formatColumns } from "./_helpers.js";
 
 export const specList = defineCommand({
   id: "spec-list",
   description: "List spec documents. Filter with --type.",
   inputSchema: z.object({
+    project: projectInputSchema,
     type: z
       .string()
       .optional()
@@ -15,7 +17,8 @@ export const specList = defineCommand({
       ),
   }),
   execute: async (input, { workdir }) => {
-    const docs = await getDocuments(workdir, { documentType: input.type });
+    const base = resolveReactorProjectPath(workdir, input.project);
+    const docs = await getDocuments(base, { documentType: input.type });
     if (docs.length === 0) {
       return { text: "(no specs)", data: { documents: [] } };
     }

@@ -8,6 +8,7 @@ import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { applyJsonPath, encodeValue, type OutputFormat } from "./projection.js";
 
+
 export const formatSchema = z
   .enum(["json", "toon"])
   .describe(

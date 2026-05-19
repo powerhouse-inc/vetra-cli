@@ -11,6 +11,7 @@ import { buildTsMorphProject } from "@powerhousedao/codegen/utils";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
+import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
 
 type Project = Parameters<typeof extractAllDocuments>[0];
 
@@ -25,28 +26,30 @@ export const specExtract = defineCommand({
   id: "spec-extract",
   description: "Extract specs by reverse-engineering existing package source.",
   inputSchema: z.object({
+    project: projectInputSchema,
     type: typeSchema,
   }),
   execute: async (input, { workdir }) => {
+    const base = resolveReactorProjectPath(workdir, input.project);
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
      * gap; identical at runtime. */
-    const project = buildTsMorphProject(workdir) as unknown as Project;
+    const tsProject = buildTsMorphProject(base) as unknown as Project;
     const docs: PHDocument[] = (() => {
       switch (input.type) {
         case "document-model":
-          return extractDocumentModelDocuments(project);
+          return extractDocumentModelDocuments(tsProject);
         case "editor":
-          return extractEditorDocuments(project);
+          return extractEditorDocuments(tsProject);
         case "app":
-          return extractAppDocuments(project);
+          return extractAppDocuments(tsProject);
         case "processor":
-          return extractProcessorDocuments(project);
+          return extractProcessorDocuments(tsProject);
         case "subgraph":
-          return extractSubgraphDocuments(project);
+          return extractSubgraphDocuments(tsProject);
         case "all": {
-          const all = extractAllDocuments(project);
+          const all = extractAllDocuments(tsProject);
           return [
             ...all.documentModels,
             ...all.editors,
@@ -60,7 +63,7 @@ export const specExtract = defineCommand({
 
     const written: string[] = [];
     for (const doc of docs) {
-      written.push(await saveSpec(doc, workdir));
+      written.push(await saveSpec(doc, base));
     }
 
     return {

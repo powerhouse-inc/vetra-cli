@@ -1,6 +1,7 @@
 import { specCreate } from "./create.js";
 import { specDelete } from "./delete.js";
 import { specExtract } from "./extract.js";
+import { specGenerate } from "./generate.js";
 import { specGet } from "./get.js";
 import { specList } from "./list.js";
 import { specSchema } from "./schema.js";
@@ -14,6 +15,7 @@ export const specCommands = [
   specUpdate,
   specDelete,
   specExtract,
+  specGenerate,
   specSchemaList,
   specSchema,
 ];

@@ -1,16 +1,19 @@
 import { deleteDocument } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
+import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
 import { findByName } from "./_helpers.js";
 
 export const specDelete = defineCommand({
   id: "spec-delete",
   description: "Delete a spec document by name.",
   inputSchema: z.object({
+    project: projectInputSchema,
     name: z.string().describe("Spec document name."),
   }),
   execute: async (input, { workdir }) => {
-    const { doc, path } = await findByName(workdir, input.name);
+    const base = resolveReactorProjectPath(workdir, input.project);
+    const { doc, path } = await findByName(base, input.name);
     const result = await deleteDocument(path);
     return {
       text: result.success
