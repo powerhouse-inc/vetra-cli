@@ -24,13 +24,17 @@ Single shared instance of Connect/Switchboard inside `vetra-cli` (the CLI's embe
 
 1. **Embedded reactor stays as source of truth.** `cli.configureReactor` in `vetra-cli/src/cli.ts` continues to build the reactor via `buildDefaultReactor`. The agent's drive (chat sessions, agent state) keeps its in-process `IReactorClient` access.
 
-2. **Embedded Switchboard now uses `apps/switchboard`, not `reactor-api.initializeAndStartAPI`.** The slim `reactor-api` agent-mode API does NOT register `PackagesSubgraph`; only `apps/switchboard` does. Without the subgraph, the publish-reload trigger can't call `Packages.installPackage` / `uninstallPackage`. Swap is implemented by adding `reactor?: ReactorClientModule` to switchboard's `StartServerOptions` so it can accept a pre-built reactor instead of always building its own.
+2. **Embedded Switchboard uses `apps/switchboard`, not `reactor-api.initializeAndStartAPI`.** The slim `reactor-api` agent-mode API does NOT register `PackagesSubgraph`; only `apps/switchboard` does. Without the subgraph, the publish-reload trigger can't call `Packages.installPackage` / `uninstallPackage`. The swap is enabled by adding `reactor?: ReactorClientModule` to switchboard's `StartServerOptions` so it accepts a pre-built reactor instead of always building its own.
 
-3. **Connect runs in studio mode** (`ph connect` → vite dev server). We forward `PH_CONNECT_PACKAGES_REGISTRY` to it so its vite config resolves Powerhouse packages from the local registry CDN.
+3. **Connect speaks a uniform `/__reload` HTTP protocol regardless of mode.** Static mode (`connect-server.js`) exposes `GET /__reload` (SSE) + `POST /__reload` (broadcast) and injects a tiny `<script>` into every served HTML that runs `location.reload()` on each SSE event. Studio mode (vite dev) should expose the same endpoints via a vite plugin — still TODO. Either way the caller does a single `POST <connect-url>/__reload`; no mode-awareness in the trigger.
 
-4. **publish-reload trigger targets the embedded reactor only** (after retarget). Per-project `reactor-project` instances are NOT included in the fan-out yet — they'd be a follow-up if you want runtime reloading of preview-doc reactors too. The trigger uses `ctx.reactor().switchboardUrl` for the switchboard, and `services.list()` looking for `endpoints['connect-studio']` for Connect (because ph-clint doesn't populate `ReactorContext.connectUrl`).
+4. **Connect forwards `PH_CONNECT_PACKAGES_REGISTRY` to its vite config** so the browser resolves Powerhouse package bundles from the local registry CDN.
 
-5. **No-auth GraphQL works in dev.** With `auth_enabled` undefined (the default) the `isAdmin` gate collapses to `() => true` (see `reactor-api/src/graphql/graphql-manager.ts:486`). The publish-reload trigger relies on this — there's no token plumbing.
+5. **publish-reload trigger targets the embedded reactor only.** Per-project `reactor-project` instances are NOT in the fan-out — that's a deliberate scope choice for the current iteration. The trigger uses `ctx.reactor().switchboardUrl` for the switchboard mutations and `services.list()` scanning for `endpoints['connect-studio']` for the Connect URL (because ph-clint doesn't populate `ReactorContext.connectUrl` — flagged as Known Issue #2).
+
+6. **No-auth GraphQL works in dev.** With `auth_enabled` undefined (the default) the `isAdmin` gate collapses to `() => true` (see `reactor-api/src/graphql/graphql-manager.ts:486`). The publish-reload trigger relies on this — there's no token plumbing.
+
+7. **Load failures are surfaced via `package:reload-failed` events.** When `installPackage` returns a GraphQL error or `POST /__reload` fails, the trigger emits a structured event (`{packageName, version, target, error}`) on the event bus. `cli.ts` registers a handler that logs it as a visible `ERROR` line. The agent and the user both see the failure.
 
 ## Repositories touched
 
@@ -63,27 +67,30 @@ All three need to be on the same commits at the same time during dev.
 ### ph-clint (`ph-clint/packages/ph-clint/`)
 
 - `package.json`
-  - Add `@powerhousedao/switchboard: "^6.0.0-dev.253"` to `peerDependencies` and `peerDependenciesMeta` (optional).
+  - `@powerhousedao/switchboard: "^6.0.0-dev.253"` added to `peerDependencies` and `peerDependenciesMeta` (optional).
 
 - `src/integrations/powerhouse/types.ts`
-  - Add `registryUrl?: string` to `SwitchboardConfig` (forwarded to apps/switchboard).
-  - Add `registryUrl?: string` to `ConnectConfig` (forwarded to `ph connect` as `PH_CONNECT_PACKAGES_REGISTRY`).
+  - `registryUrl?: string` on `SwitchboardConfig` (forwarded to apps/switchboard).
+  - `registryUrl?: string` on `ConnectConfig` (forwarded to `ph connect` as `PH_CONNECT_PACKAGES_REGISTRY`).
 
 - `src/integrations/powerhouse/switchboard.ts`
-  - Header comment rewritten — no historical narration.
-  - `StartSwitchboardOptions` gains `registryUrl?: string`.
+  - `StartSwitchboardOptions.registryUrl?: string`.
   - `SwitchboardApi` type renamed to `SwitchboardHandle` and reduced to `{ shutdown: () => Promise<void> }`.
   - `buildSwitchboardInstance` takes the handle and forwards `shutdown` directly.
-  - `startSwitchboard` now lazy-imports `@powerhousedao/switchboard/server` (not `@powerhousedao/reactor-api`) and calls `startSwitchboardImpl({ reactor, port, dbPath, mcp:true, packages:[], registryUrl, strictPort:true })`.
+  - `startSwitchboard` lazy-imports `@powerhousedao/switchboard/server` and calls `startSwitchboardImpl({ reactor, port, dbPath, mcp:true, packages:[], registryUrl, strictPort:true })`.
 
 - `src/integrations/powerhouse/connect.ts`
   - `env()` forwards `connectConfig.registryUrl` as `PH_CONNECT_PACKAGES_REGISTRY` when set.
+
+- `src/integrations/powerhouse/connect-server.ts`
+  - `GET /__reload` (SSE) + `POST /__reload` (broadcast) endpoints.
+  - Injects a small `<script>` into every served HTML that opens an `EventSource('/__reload')` and runs `location.reload()` on each `reload` event. This is the static-mode side of the uniform Connect reload protocol.
 
 - `src/core/runtime.ts`
   - Passes `registryUrl: reactorConfig.switchboard.registryUrl` to `startSwitchboard()`.
 
 - `pnpm-workspace.yaml`
-  - Added top-level `overrides:` block with `@powerhousedao/switchboard: link:../monorepo/.claude/worktrees/vetra-codegen-agent-api/apps/switchboard`. **NOTE: this override is NOT actually being honored by pnpm in this repo right now.** See "Known issues" below.
+  - Top-level `overrides:` block with `@powerhousedao/switchboard: link:../monorepo/.claude/worktrees/vetra-codegen-agent-api/apps/switchboard`. **NOTE: this override is NOT honored by pnpm in this repo with the existing lockfile** — see "Known issues" #1.
 
 - Build with `CI=true pnpm run build` from inside `packages/ph-clint/`. Plain `tsc`.
 
@@ -96,16 +103,20 @@ All three need to be on the same commits at the same time during dev.
   - Added `@powerhousedao/switchboard: 6.0.0-dev.253` as a direct dependency so pnpm pulls the linked package.
 
 - `vetra-cli/src/cli.ts`
-  - `cli.configureReactor`'s `switchboard:` now carries `registryUrl: 'http://localhost:8765'`.
-  - `cli.configureReactor`'s `connect:` now carries `registryUrl: 'http://localhost:8765'`.
-  - Hardcoded for now — `ctx.config.registryUrl` isn't accessible at `configureReactor` call time.
+  - `cli.configureReactor`'s `switchboard:` carries `registryUrl: 'http://localhost:8765'`.
+  - `cli.configureReactor`'s `connect:` carries `registryUrl: 'http://localhost:8765'`.
+  - Hardcoded — `ctx.config.registryUrl` isn't accessible at `configureReactor` call time.
+  - `events:` registers a `'package:reload-failed'` handler that logs the structured failure as a visible `ERROR` line.
 
 - `vetra-cli/src/triggers/publish-reload.ts`
-  - Doc header rewritten to describe targeting the embedded reactor (no more reactor-project fan-out).
-  - `poll()` resolves switchboard URL from `(await ctx.reactor())?.switchboardUrl` and Connect URL from `services.list().find(s => s.endpoints?.['connect-studio'])`.
-  - Switchboard mutations: list installed packages, uninstall every entry matching `<name>` or `<name>@*`, install version-qualified `<name>@<version>`. Version suffix is essential to bust Node's ESM URL cache on reinstall.
-  - Connect reload: open `ws://<connectUrl>` with subprotocol `vite-hmr`, send `{"type":"full-reload"}`.
+  - Targets the embedded reactor: `(await ctx.reactor())?.switchboardUrl` for switchboard, `services.list().find(s => s.endpoints?.['connect-studio'])` for Connect.
+  - Switchboard mutations: list installed packages, uninstall every entry matching `<name>` or `<name>@*`, install version-qualified `<name>@<version>`. Version suffix bust Node's ESM URL cache on reinstall.
+  - Connect reload: single `POST <connect-url>/__reload`. No transport detection — both static and studio modes will expose the same endpoint.
+  - Captures load errors: `installPackage` GraphQL errors (200 OK with `data.errors[]`) and `POST /__reload` HTTP failures are surfaced via the `package:reload-failed` event with `{packageName, version, target: 'switchboard'|'connect', error}`.
   - SSE consumption is a hand-rolled fetch-stream reader because `globalThis.EventSource` isn't reliably present on the Node runtime we use.
+
+- `vetra-cli/jest.config.js`
+  - `modulePathIgnorePatterns` + `watchPathIgnorePatterns` exclude `<rootDir>/.ph/`. Without this the local-registry's `cdn-cache/<pkg>/<version>/package.json` clones make Jest's Haste map abort with "lookup is ambiguous".
 
 - `vetra-cli/src/services/local-registry.ts` — defines the `local-registry` service that spawns `ph-registry` on port 8080 (default) with storage at `<workdir>/.ph/registry/{storage,cdn-cache}/`.
 
@@ -188,55 +199,84 @@ All three need to be on the same commits at the same time during dev.
    npm publish --registry http://localhost:8765/
    ```
 
-7. Watch the vetra-cli log for trigger output:
+7. Optionally pre-open the Connect reload SSE channel in a sidecar shell so you can see the broadcast hit the static server:
+   ```bash
+   curl -sS -N http://localhost:27370/__reload
+   ```
+   First line is `event: connected\ndata: {}\n\n`; each reload broadcast adds `event: reload\ndata: {}\n\n`.
+
+8. Watch the vetra-cli log for trigger output:
    ```
    [DEBUG] [publish-reload] switchboard reloaded vetra-app@1.0.0
-   [DEBUG] [publish-reload] connect full-reload sent for vetra-app@1.0.0
+   [DEBUG] [publish-reload] connect reload broadcast for vetra-app@1.0.0 (1 client)
    ```
+   The client-count comes from the `X-Reload-Clients` response header on `POST /__reload`.
 
-8. Bump and republish to test the reload:
+9. Bump and republish to test the reload:
    ```bash
    node -e "const fs=require('fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); const [a,b,c]=j.version.split('.'); j.version=\`\${a}.\${b}.\${parseInt(c)+1}\`; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n');"
    pnpm exec ph-cli build
    npm publish --registry http://localhost:8765/
    ```
-   Trigger should: list installed packages (sees `vetra-app@1.0.0`), uninstall it, install `vetra-app@1.0.1`, send full-reload to Connect.
+   Trigger should: list installed packages (sees `vetra-app@1.0.0`), uninstall it, install `vetra-app@1.0.1`, broadcast reload to Connect.
 
-9. Verify on the Switchboard:
-   ```bash
-   curl -sS -X POST http://localhost:59220/graphql \
-     -H "content-type: application/json" \
-     -d '{"query":"{ Packages { installedPackages { name } } }"}'
-   ```
-   Expected: `{"data":{"Packages":{"installedPackages":[{"name":"vetra-app@1.0.1"}]}}}`.
+10. Verify on the Switchboard:
+    ```bash
+    curl -sS -X POST http://localhost:59220/graphql \
+      -H "content-type: application/json" \
+      -d '{"query":"{ Packages { installedPackages { name } } }"}'
+    ```
+    Expected: `{"data":{"Packages":{"installedPackages":[{"name":"vetra-app@1.0.1"}]}}}`.
 
-10. Verify on Connect: open `http://localhost:27370/` in a browser — it should refresh automatically when you republish.
+11. Verify on Connect: open `http://localhost:27370/` in a browser. View the page source and confirm the injected `<script>` near `</body>` opens `EventSource('/__reload')`. Republish; the page should refresh automatically.
+
+12. **Optional — error path.** Bump again, build, but corrupt the bundle before publishing:
+    ```bash
+    echo "this is not valid javascript {{ broken (((" > dist/node/document-models/index.mjs
+    npm publish --registry http://localhost:8765/
+    ```
+    Expected vetra-cli log:
+    ```
+    [ERROR] [publish-reload] installPackage(vetra-app@<ver>) failed: Unexpected identifier 'is'
+    [ERROR] ✗ Failed to reload vetra-app@<ver> on switchboard: Unexpected identifier 'is'
+    ```
+    The second line confirms `cli.ts`'s `package:reload-failed` event handler is wired and the structured event is reaching it.
 
 ## Live test result
 
-Performed end-to-end with vetra-cli running interactive, the new trigger, the apps/switchboard swap, and ph-clint's local link in place:
+Three end-to-end scenarios verified with vetra-cli running interactive, the apps/switchboard swap active, ph-clint locally linked, and `connect-server.js` exposing `/__reload`:
 
-1. Boot vetra-cli → log emits `Registered /graphql/packages subgraph` (proves the apps/switchboard swap is active) and `[publish-reload] subscribing to http://localhost:8765/-/events`.
-2. Started `local-registry` via `pnpm dev local-registry-start --port 8765`. The trigger's `setup()` retries on poll and successfully subscribed once the registry was up.
-3. Created Verdaccio user via `PUT /-/user/org.couchdb.user:test` with Basic auth, wrote the returned JWT into `vetra-app/.npmrc`, published `vetra-app@1.0.0`.
-4. Trigger log: `[publish-reload] switchboard reloaded vetra-app@1.0.0`. Switchboard `installedPackages` query confirmed: `[{"name":"vetra-app@1.0.0","documentTypes":[]}]`.
-5. Bumped to `vetra-app@1.0.1`, rebuilt, republished. Trigger log: `[publish-reload] switchboard reloaded vetra-app@1.0.1`. Switchboard now reports only `[{"name":"vetra-app@1.0.1"}]` — uninstall + install pathway works correctly.
+### Scenario A — clean publish round-trip
+1. Boot vetra-cli → `Registered /graphql/packages subgraph` (apps/switchboard swap active), `[publish-reload] subscribing to http://localhost:8765/-/events`.
+2. `pnpm dev local-registry-start --port 8765` started the registry; trigger's poll-retry subscribed to SSE on the next tick.
+3. Created Verdaccio user via `PUT /-/user/org.couchdb.user:test` with Basic auth, wrote token to `vetra-app/.npmrc`, published `vetra-app@1.0.0`.
+4. Trigger log: `[publish-reload] switchboard reloaded vetra-app@1.0.0` and `connect reload broadcast for vetra-app@1.0.0 (1 client)` (a `curl -N /__reload` subscriber was open). `installedPackages` query returned `[{"name":"vetra-app@1.0.0","documentTypes":[]}]`.
+5. The simulated browser SSE subscriber received `event: reload\ndata: {}` — confirming the broadcast path.
 
-**The Switchboard side of publish→reload is proven end-to-end against the running embedded reactor.**
+### Scenario B — bump + republish
+6. Bumped to `vetra-app@1.0.1`, rebuilt, republished. Trigger logged `switchboard reloaded vetra-app@1.0.1`. `installedPackages` now `[{"name":"vetra-app@1.0.1"}]` — confirming uninstall + install correctly busts Node's ESM URL cache via the version-qualified spec.
 
-Connect side warned `[publish-reload] connect full-reload failed (ws://localhost:27370/): ws error` — see "Connect static-mode trap" below. Not a trigger bug; the vite-hmr WS protocol only applies in studio mode.
+### Scenario C — load-failure surfacing
+7. Bumped to `vetra-app@1.0.3`, built, overwrote `dist/node/document-models/index.mjs` with deliberately invalid JS, published. Output:
+   ```
+   [ERROR] [publish-reload] installPackage(vetra-app@1.0.3) failed: Unexpected identifier 'is'
+   [ERROR] ✗ Failed to reload vetra-app@1.0.3 on switchboard: Unexpected identifier 'is'
+   ```
+   The first line is the trigger's per-failure log; the second is the `cli.ts` `package:reload-failed` event handler. The structured event carries `{packageName, version, target, error}` — the agent and user both see why the package didn't land.
 
-## Connect static-mode trap
+**Both the Switchboard reload pathway and the load-failure notification pathway are proven end-to-end through a running vetra-cli.**
 
-ph-clint's `cli.ts:286` auto-detects Connect mode: if `<connect-workdir>/dist/connect/index.html` exists, it sets `assetsDir` automatically, which switches Connect to static-server mode (`connect-server.js --dir ...`, no vite). vetra-app's prebuilt `dist/connect/` exists (from `ph-cli build`), so the embedded Connect always runs static.
+## Connect reload protocol
 
-In static mode the vite-hmr full-reload doesn't apply — there's no WebSocket server. The trigger logs a `ws error` and moves on. Three ways forward:
+`connect-server.js` (static mode) exposes:
+- `GET /__reload` — SSE stream. Browser tabs subscribe; receive `event: reload\ndata: {}` on broadcast.
+- `POST /__reload` — broadcast. Returns `204 No Content` with `X-Reload-Clients: <count>` header.
 
-1. **Force studio mode** by removing/renaming `vetra-app/dist/connect/` before booting vetra-cli, OR by adding an explicit ph-clint flag like `connect.studio: true` to opt out of the auto-detection.
-2. **Wire `RegistryClient.onPublish` in `apps/connect`** (the real fix) so the SPA listens to the registry's SSE stream itself. Out of vetra-cli scope but the right long-term answer.
-3. **Accept the warning** — in production deployments Connect is always static; reload happens through different paths (manual refresh, dynamic-import cache invalidation).
+Every served HTML has a `<script>` injected just before `</body>` that opens an `EventSource('/__reload')` and calls `location.reload()` on each `reload` event.
 
-For dev iteration today, option 1 is the easiest unblocker.
+The trigger calls `POST <connect-url>/__reload` regardless of mode. Static mode is fully implemented; studio mode (vite dev server) still needs a parallel vite plugin that exposes the same endpoints + injects the same script — see "Things NOT done" #5.
+
+Background: ph-clint's `cli.ts:286` auto-detects Connect mode by checking for `<connect-workdir>/dist/connect/index.html`. vetra-app's prebuilt bundle exists, so the embedded Connect always runs static in vetra-cli today. That's fine because static mode now supports `/__reload`.
 
 ## Known issues
 
@@ -294,15 +334,17 @@ Same as #1 but worth flagging: the pnpm overrides in `vetra-cli/pnpm-workspace.y
 
 1. **Per-project reactor-project fan-out.** The trigger no longer touches `services.list('reactor-project')`. If preview-doc reactors are running and should also reload on publish, add a second pass.
 
-2. **No tests for the trigger.** The smoke + spec command tests still pass (41/41), but the publish-reload trigger has no unit tests. Hard to test cleanly because it needs a live SSE source, a live Switchboard, and a live vite WS server.
+2. **No tests for the trigger.** The smoke + spec command tests still pass (41/41), but the publish-reload trigger has no unit tests. Hard to test cleanly because it needs a live SSE source, a live Switchboard, and a live SPA serving the injected script.
 
-3. **No commit yet** of any of the changes in this branch. The apps/switchboard, ph-clint, and vetra-cli changes are all in the working tree. Three separate commits in three separate repos.
+3. **`shutdown()` on `SwitchboardInstance` doesn't surface.** ph-clint's `SwitchboardInstance` uses its own `shutdown` field that wraps the apps/switchboard handle. The richer apps/switchboard-provided `shutdown` is forwarded but not exposed for ph-clint consumers who might want finer-grained teardown.
 
-4. **`shutdown()` on `SwitchboardInstance` doesn't surface.** ph-clint's `SwitchboardInstance` still uses its own `shutdown` field that wraps the handle. The apps/switchboard-provided `shutdown` is forwarded but not exposed for ph-clint consumers who might want richer teardown.
+4. **The `auth_enabled = false` assumption is implicit.** No code defends against an auth-enabled reactor; the trigger gets a 401 from the GraphQL mutation and now surfaces it via `package:reload-failed` (so at least the user sees the failure), but there's no token plumbing.
 
-5. **The `auth_enabled = false` assumption is implicit.** No code defends against an auth-enabled reactor; the trigger silently fails with 401 from the mutation. Worth a clearer log line.
+5. **Studio-mode `/__reload` parity is missing.** The static side (`connect-server.js`) implements the protocol. The vite-dev-server side (studio mode via `ph connect`) needs a sibling vite plugin that exposes the same `GET /__reload` SSE + `POST /__reload` broadcast and injects the same `<script>` into the index transform. Right now in studio mode the trigger would get 404 on the POST (and the load-failure handler fires, which is consistent but unhelpful).
 
-6. **Hot reload assumption.** When running the embedded reactor, repeated reinstall+publish should refresh subgraphs. We saw the subgraph regen log line on apps/switchboard's standalone run; verify it still fires on the embedded path.
+6. **Connect-side load failures aren't surfaced.** If switchboard's `installPackage` succeeds but the package crashes at runtime inside the browser (Connect dynamic-imports it), Connect knows but the server doesn't. To surface this we'd need a feedback channel — e.g. extend the injected script to POST `/__reload/error` with `window.addEventListener('error', …)` filtered to the package's module URL. Then the trigger emits another `package:reload-failed` event with `target: 'connect'`. The structured event payload already supports this case; the wiring is missing.
+
+7. **Hot-reload subgraph regen** — when a new package's document types are installed, apps/switchboard's PackageManager calls `regenerateDocumentModelSubgraphs`. We saw this fire on `ph vetra` runs; the embedded path should be doing it too. Verify the log line shows up on the embedded reactor after a `Packages.installPackage` call.
 
 ## Suggested next steps in order
 
@@ -310,11 +352,13 @@ Same as #1 but worth flagging: the pnpm overrides in `vetra-cli/pnpm-workspace.y
 
 2. **Wire `connectUrl` onto `ReactorContext` in ph-clint/runtime.ts.** One-line change. Lets the trigger drop the service-manager lookup.
 
-3. **End-to-end smoke test from scratch.** Follow the "How to test" section above on a clean repo state. Document any divergence from the expected log lines.
+3. **Implement the studio-mode `/__reload` plugin** so the trigger is mode-uniform end-to-end.
 
-4. **Commit the changes**, three commits across three repos. Reference each other by SHA.
+4. **Add Connect-side error feedback** so runtime browser-side import failures surface alongside Switchboard ones.
 
-5. **Add `registryUrl` plumbing as a callback** so consumers can derive it from config dynamically.
+5. **Add `registryUrl` plumbing as a callback** so consumers can derive it from config dynamically instead of hardcoding.
+
+6. **Trigger unit tests.** Mock the service manager + fetch + the GraphQL response shapes; assert the trigger calls the right endpoints and emits `package:reload-failed` on each failure mode.
 
 ## Useful diagnostic commands
 
@@ -346,4 +390,6 @@ find /Users/acaldas/dev/powerhouse -name "switchboard" -path "*@powerhousedao*" 
 - **`@powerhousedao/ph-clint`** — the framework vetra-cli is built on. Owns the agent's reactor lifecycle, services, triggers, routine loop. Lazy-imports the Switchboard layer.
 - **`@powerhousedao/registry`** — the `ph-registry` binary (Verdaccio + Powerhouse CDN). The local-registry service starts it on port 8080 (vetra-cli runs it on 8765 to avoid collisions).
 - **`reactor-project` service** — per-project `ph vetra` that runs its own full Switchboard. Used for preview docs. NOT the publish-reload target after retarget.
-- **publish-reload trigger** — vetra-cli's trigger that consumes `/-/events` SSE and fires mutations on the embedded Switchboard + vite-hmr full-reload on Connect.
+- **publish-reload trigger** — vetra-cli's trigger that consumes `/-/events` SSE and runs `Packages.{uninstallPackage,installPackage}` on the embedded Switchboard + `POST /__reload` on Connect. Emits `package:reload-failed` events when either side rejects.
+- **`/__reload` protocol** — uniform Connect reload HTTP surface. `GET` is the SSE stream a browser tab subscribes to; `POST` broadcasts. Static-mode implementation lives in ph-clint's `connect-server.ts`; studio-mode plugin still TODO.
+- **`package:reload-failed` event** — emitted by the publish-reload trigger on load failure. Payload: `{ packageName, version, target: 'switchboard'|'connect', error }`. `cli.ts` registers a default handler that logs it as `ERROR`.
