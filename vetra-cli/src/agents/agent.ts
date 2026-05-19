@@ -27,8 +27,8 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     description: "Assist in developing document model specifications",
     instructions: m.getAgentInstructions('agent-document-model'),
     model: ctx.config.anthropicApiKey
-      ? { id: "anthropic/claude-sonnet-4-5" as `${string}/${string}`, apiKey: ctx.config.anthropicApiKey }
-      : ("anthropic/claude-sonnet-4-5" as `${string}/${string}`),
+      ? { id: "anthropic/claude-sonnet-4-5", apiKey: ctx.config.anthropicApiKey }
+      : ("anthropic/claude-sonnet-4-5"),
     tools: async () => {
       ctx.context.log?.debug(`[agent agent-document-model] resolving tools`);
       return m.getTools({ MCPClient, include: [] });
@@ -42,8 +42,8 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     description: "Assists in developing document model editors",
     instructions: m.getAgentInstructions('agent-editor'),
     model: ctx.config.anthropicApiKey
-      ? { id: "anthropic/claude-sonnet-4-5" as `${string}/${string}`, apiKey: ctx.config.anthropicApiKey }
-      : ("anthropic/claude-sonnet-4-5" as `${string}/${string}`),
+      ? { id: "anthropic/claude-sonnet-4-5", apiKey: ctx.config.anthropicApiKey }
+      : ("anthropic/claude-sonnet-4-5"),
     tools: async () => {
       ctx.context.log?.debug(`[agent agent-editor] resolving tools`);
       return m.getTools({ MCPClient, include: [] });

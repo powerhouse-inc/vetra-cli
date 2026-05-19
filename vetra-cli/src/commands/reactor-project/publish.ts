@@ -36,7 +36,7 @@ function npmLogin(
       const text = data.toString();
       for (const [prompt, answer] of Object.entries(answers)) {
         if (text.includes(prompt)) {
-          child.stdin!.write(answer + '\n');
+          child.stdin?.write(answer + '\n');
           return;
         }
       }

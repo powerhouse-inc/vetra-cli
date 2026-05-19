@@ -16,7 +16,7 @@ export const specUpdate = defineCommand({
          * '[...]'`, which arrives as a JSON-encoded string. Accept both. */
         if (typeof v !== "string") return v;
         try {
-          return JSON.parse(v);
+          return JSON.parse(v) as unknown;
         } catch {
           return v;
         }

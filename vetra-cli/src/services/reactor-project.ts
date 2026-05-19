@@ -17,8 +17,8 @@ export const reactorProject = defineService({
   command: (params) => {
     const parts = ['ph', 'vetra'];
     if (params?.watch !== false) parts.push('--watch');
-    if (params?.connectPort) parts.push('--connect-port', String(params.connectPort));
-    if (params?.switchboardPort) parts.push('--switchboard-port', String(params.switchboardPort));
+    if (typeof params?.connectPort === 'number') parts.push('--connect-port', String(params.connectPort));
+    if (typeof params?.switchboardPort === 'number') parts.push('--switchboard-port', String(params.switchboardPort));
     return parts.join(' ');
   },
   paramsSchema: reactorProjectParams,
