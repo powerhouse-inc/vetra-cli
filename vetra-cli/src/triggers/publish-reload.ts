@@ -48,16 +48,44 @@ async function reloadOnSwitchboard(
   event: PublishEvent,
   log: { debug: (m: string) => void; warn: (m: string) => void } | undefined,
 ): Promise<void> {
-  // Uninstall first; if not installed yet this is a no-op (mutation returns false).
-  const uninstall = await postGraphql(
+  // The reactor stores packages under the literal name passed to installPackage,
+  // including any version qualifier ("vetra-app@1.0.0"). To re-install with a
+  // new version we have to uninstall every previously-installed spec for the
+  // same package, since uninstall(name: "vetra-app") wouldn't match the keyed
+  // entry "vetra-app@1.0.0".
+  const listed = await postGraphql(
     switchboardUrl,
-    `mutation Uninstall($name: String!) { Packages { uninstallPackage(name: $name) } }`,
-    { name: event.packageName },
+    `{ Packages { installedPackages { name } } }`,
+    {},
   );
-  if (!uninstall.ok) {
-    log?.warn(
-      `[publish-reload] uninstallPackage(${event.packageName}) failed: ${uninstall.body.slice(0, 200)}`,
-    );
+  if (listed.ok) {
+    try {
+      const parsed = JSON.parse(listed.body) as {
+        data?: { Packages?: { installedPackages?: { name: string }[] } };
+      };
+      const installed = parsed.data?.Packages?.installedPackages ?? [];
+      const targets = installed
+        .map((p) => p.name)
+        .filter(
+          (n) => n === event.packageName || n.startsWith(`${event.packageName}@`),
+        );
+      for (const target of targets) {
+        const res = await postGraphql(
+          switchboardUrl,
+          `mutation Uninstall($name: String!) { Packages { uninstallPackage(name: $name) } }`,
+          { name: target },
+        );
+        if (!res.ok) {
+          log?.warn(
+            `[publish-reload] uninstallPackage(${target}) failed: ${res.body.slice(0, 200)}`,
+          );
+        }
+      }
+    } catch (err) {
+      log?.warn(
+        `[publish-reload] installedPackages parse failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   const install = await postGraphql(
