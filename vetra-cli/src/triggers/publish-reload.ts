@@ -14,10 +14,10 @@
  *                 otherwise reinstall would return the already-cached
  *                 module.
  *
- *   Connect:      ws://<connect-host>/ with subprotocol "vite-hmr", send
- *                 {"type":"full-reload"}. The CLI hosts Connect under a
- *                 vite dev server (default-config local dev — no hmr token,
- *                 accepts arbitrary clients).
+ *   Connect:      POST <connect-host>/__reload. The static-server and the
+ *                 studio (vite) modes both expose this endpoint and inject
+ *                 a small EventSource client into the served HTML, so any
+ *                 connected SPA tab refreshes on broadcast.
  *
  * In a default-dev reactor, auth_enabled defaults to false and the admin
  * gate degenerates to () => true (see reactor-api graphql-manager.ts:486),
@@ -118,28 +118,23 @@ async function reloadOnConnect(
   event: PublishEvent,
   log: { debug: (m: string) => void; warn: (m: string) => void } | undefined,
 ): Promise<void> {
-  const wsUrl = connectUrl.replace(/^http/, 'ws');
+  const reloadUrl = `${connectUrl.replace(/\/$/, '')}/__reload`;
   try {
-    const ws = new WebSocket(wsUrl, ['vite-hmr']);
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timeout')), 3_000);
-      ws.addEventListener('open', () => {
-        clearTimeout(timer);
-        ws.send(JSON.stringify({ type: 'full-reload' }));
-        ws.close();
-        resolve();
-      });
-      ws.addEventListener('error', () => {
-        clearTimeout(timer);
-        reject(new Error('ws error'));
-      });
-    });
+    const res = await fetch(reloadUrl, { method: 'POST' });
+    if (!res.ok) {
+      log?.warn(
+        `[publish-reload] POST ${reloadUrl} returned ${res.status} for ${event.packageName}@${event.version}`,
+      );
+      return;
+    }
+    const clients = res.headers.get('x-reload-clients');
     log?.debug(
-      `[publish-reload] connect full-reload sent for ${event.packageName}@${event.version}`,
+      `[publish-reload] connect reload broadcast for ${event.packageName}@${event.version}` +
+        (clients ? ` (${clients} client${clients === '1' ? '' : 's'})` : ''),
     );
   } catch (err) {
     log?.warn(
-      `[publish-reload] connect full-reload failed (${wsUrl}): ${
+      `[publish-reload] connect reload failed (${reloadUrl}): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

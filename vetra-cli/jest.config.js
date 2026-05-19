@@ -8,4 +8,6 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   testMatch: ['**/tests/**/*.test.ts'],
+  modulePathIgnorePatterns: ['<rootDir>/\\.ph/'],
+  watchPathIgnorePatterns: ['<rootDir>/\\.ph/'],
 };
