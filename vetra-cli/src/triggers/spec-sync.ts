@@ -2,12 +2,18 @@
  * Spec-sync trigger — Vetra-drive → filesystem mirror.
  *
  * Subscribes to spec document changes in the CLI's embedded reactor and
- * writes each doc to disk under `<workdir>/specs/<subdir>/` via
- * `@powerhousedao/vetra/codegen#saveSpec`.
+ * writes each doc to disk via `@powerhousedao/vetra/codegen#saveSpec`. The
+ * workspace uses one shared drive with a folder per project, and each project
+ * folder mirrors to `<workdir>/<project>/specs/<subdir>/`.
  *
- * The reverse direction (FS → drive) is handled by the per-project
- * `ph vetra --watch` service: when a spec file changes on disk, the
- * running reactor-project reactor picks it up automatically.
+ * Today this writes to `<workdir>/specs/<subdir>/` (the workdir-as-single-
+ * project case). Routing per project folder needs the drive's folder
+ * metadata for each document — follow-up once we read that off the change
+ * event payload.
+ *
+ * The reverse direction (FS → drive) is handled by the running
+ * reactor-project service: `ph vetra --watch` picks up spec file changes
+ * automatically.
  */
 import { createDocumentChangeTrigger } from "@powerhousedao/ph-clint";
 import { saveSpec } from "@powerhousedao/vetra/codegen";

@@ -19,6 +19,7 @@ import { observability } from '@powerhousedao/ph-clint-observability';
 import { specCommands } from './commands/spec/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject } from './services/reactor-project.js';
+import { localRegistry } from './services/local-registry.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 // @clint:end imports
 
@@ -40,7 +41,7 @@ export const cli = defineCli({
   // @clint:end commands
 
   // @clint:begin services
-  services: [reactorProject],
+  services: [reactorProject, localRegistry],
   // @clint:end services
 
   // @clint:begin triggers

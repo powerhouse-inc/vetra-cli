@@ -35,6 +35,7 @@
     "@powerhousedao/ph-clint-observability": "0.1.0-dev.76",
     "@powerhousedao/reactor": "6.0.0-dev.239",
     "@powerhousedao/reactor-api": "6.0.0-dev.239",
+    "@powerhousedao/registry": "6.0.0-dev.253",
     "@powerhousedao/shared": "6.0.0-dev.253",
     "@powerhousedao/vetra": "6.0.0-dev.253",
     "@toon-format/toon": "^2.2.0",

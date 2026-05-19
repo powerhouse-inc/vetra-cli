@@ -18,7 +18,7 @@ export const configSchema = z.object({
   model: z.string().default('anthropic/claude-sonnet-4-5').describe('LLM model for the main agent (sub-agent models come from the spec)'),
   agentLogging: z.boolean().default(false).describe('Enable agent conversation logging'),
   phVersion: z.string().optional().describe('Powerhouse version (defaults to installed ph CLI version)'),
-  registryUrl: z.string().optional().describe('Registry URL to use when publishing packages'),
+  registryUrl: z.string().default('http://localhost:8080').describe('Registry URL to use when publishing packages (defaults to the local-registry service)'),
   registryUsername: z.string().optional().describe('Username for registry authentication'),
   registryEmail: z.email().optional().describe('Email for registry authentication'),
   // @clint:end framework-config

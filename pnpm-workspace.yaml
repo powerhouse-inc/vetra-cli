@@ -19,6 +19,7 @@ overrides:
   '@powerhousedao/connect': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/apps/connect'
   '@powerhousedao/codegen': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/codegen'
   '@powerhousedao/ph-cli': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/clis/ph-cli'
+  '@powerhousedao/registry': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/registry'
 
 allowBuilds:
   '@apollo/protobufjs': true
