@@ -310,18 +310,29 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export const publishReloadTrigger = defineTrigger<TriggerState>({
-  id: 'publish-reload',
-  type: 'condition',
-  state: () => ({
-    pending: [],
-    registryUrl: undefined,
-    unsubscribe: undefined,
-    connectSubscribedUrl: undefined,
-    unsubscribeConnect: undefined,
-  }),
+export type SseSubscriber = (
+  url: string,
+  onEvent: (eventName: string, data: string) => void,
+  log: { debug: (m: string) => void; warn: (m: string) => void } | undefined,
+) => () => void;
 
-  async setup(ctx) {
+export function createPublishReloadTrigger(opts: {
+  subscribe?: SseSubscriber;
+} = {}) {
+  const subscribe: SseSubscriber = opts.subscribe ?? subscribeToSSE;
+
+  return defineTrigger<TriggerState>({
+    id: 'publish-reload',
+    type: 'condition',
+    state: () => ({
+      pending: [],
+      registryUrl: undefined,
+      unsubscribe: undefined,
+      connectSubscribedUrl: undefined,
+      unsubscribeConnect: undefined,
+    }),
+
+    async setup(ctx) {
     const log = ctx.context.log;
     const services = ctx.context.services;
     if (!services) {
@@ -340,7 +351,7 @@ export const publishReloadTrigger = defineTrigger<TriggerState>({
     ctx.state.registryUrl = registryUrl;
     log?.debug(`[publish-reload] subscribing to ${sseUrl}`);
 
-    const close = subscribeToSSE(
+    const close = subscribe(
       sseUrl,
       (eventName, data) => {
         if (eventName !== 'publish') return;
@@ -388,7 +399,7 @@ export const publishReloadTrigger = defineTrigger<TriggerState>({
       const sseUrl = `${connectUrl.replace(/\/$/, '')}/__reload`;
       log?.debug(`[publish-reload] subscribing to connect ${sseUrl}`);
       ctx.state.connectSubscribedUrl = connectUrl;
-      ctx.state.unsubscribeConnect = subscribeToSSE(
+      ctx.state.unsubscribeConnect = subscribe(
         sseUrl,
         (eventName, data) => {
           if (eventName !== 'package-error') return;
@@ -444,4 +455,7 @@ export const publishReloadTrigger = defineTrigger<TriggerState>({
     // Side-effect-only trigger; no agent work item.
     return null;
   },
-});
+  });
+}
+
+export const publishReloadTrigger = createPublishReloadTrigger();
