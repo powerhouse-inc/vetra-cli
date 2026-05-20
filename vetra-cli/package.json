@@ -40,6 +40,7 @@
     "@powerhousedao/switchboard": "6.0.0-dev.253",
     "@powerhousedao/vetra": "6.0.0-dev.253",
     "@toon-format/toon": "^2.2.0",
+    "chokidar": "^3.6.0",
     "document-model": "6.0.0-dev.239",
     "jsonpath-plus": "^10.4.0",
     "vetra-app": "workspace:*",

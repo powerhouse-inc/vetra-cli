@@ -21,6 +21,7 @@ import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
+import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
 // @clint:end imports
 
@@ -46,7 +47,7 @@ export const cli = defineCli({
   // @clint:end services
 
   // @clint:begin triggers
-  triggers: [chatSessionWatchTrigger, specSyncTrigger, publishReloadTrigger],
+  triggers: [chatSessionWatchTrigger, specSyncTrigger, specFsSyncTrigger, publishReloadTrigger],
   // @clint:end triggers
 
   // @clint:begin prompts
