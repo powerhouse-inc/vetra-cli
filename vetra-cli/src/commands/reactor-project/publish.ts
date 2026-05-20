@@ -100,9 +100,11 @@ Prerequisites: You must be authenticated with the npm registry.
 Run \`npm login --registry <url>\` to create an account with a username, password, and email.`,
   inputSchema: publishInputSchema,
   execute: async (
-    { name, version, registry, tag, skipBuild, dryRun, log },
+    { name, version, registry, tag, skipBuild, dryRun, log, username: usernameArg, password: passwordArg },
     { workdir, config, stdout },
   ) => {
+    const registryUsername = usernameArg ?? config.registryUsername;
+    const registryPassword = passwordArg ?? config.registryPassword;
     const projectPath = resolveReactorProjectPath(workdir, name);
     const packageJsonPath = path.join(projectPath, 'package.json');
 
@@ -147,23 +149,24 @@ Run \`npm login --registry <url>\` to create an account with a username, passwor
         // not authenticated, will attempt to log in
       }
 
-      if (config.registryUsername && username && username !== config.registryUsername) {
+      if (registryUsername && username && username !== registryUsername) {
         await npmLogout(registryUrl, projectPath);
         username = undefined;
       }
 
       if (!username) {
-        if (config.registryUsername && config.registryPassword) {
+        if (registryUsername && registryPassword) {
           await npmLogin(
             registryUrl,
-            config.registryUsername || '',
-            config.registryPassword || '',
+            registryUsername,
+            registryPassword,
             config.registryEmail,
             projectPath,
           );
+          username = registryUsername;
         } else {
           return {
-            text: `**Error:** Not authenticated with registry \`${registryUrl}\`. Please provide registryUsername and registryPassword in your config, or run \`npm login --registry ${registryUrl}\` to log in.`,
+            text: `**Error:** Not authenticated with registry \`${registryUrl}\`. Please provide username and password (as tool args or via config.registryUsername / config.registryPassword), or run \`npm login --registry ${registryUrl}\` to log in.`,
           };
         }
       }
