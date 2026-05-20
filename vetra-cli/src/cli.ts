@@ -20,6 +20,7 @@ import { specCommands } from './commands/spec/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
+import { LOCAL_REGISTRY_URL } from './constants.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
@@ -192,13 +193,13 @@ cli.configureReactor({
     // Wire the local-registry's URL into the embedded switchboard so the
     // `Packages` GraphQL subgraph picks it up — required for the
     // publish-reload trigger's install/uninstall mutations.
-    registryUrl: 'http://localhost:8765',
+    registryUrl: LOCAL_REGISTRY_URL,
   },
   connect: {
     enabled: true,
     // Forwarded to Connect's vite config as PH_CONNECT_PACKAGES_REGISTRY so
     // the browser fetches Powerhouse package bundles from the local registry.
-    registryUrl: 'http://localhost:8765',
+    registryUrl: LOCAL_REGISTRY_URL,
   },
 });
 // @clint:end reactor
