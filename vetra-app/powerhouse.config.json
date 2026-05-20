@@ -16,5 +16,5 @@
       "provider": "local"
     }
   ],
-  "packageRegistryUrl": "https://registry.dev.vetra.io"
+  "packageRegistryUrl": "http://localhost:8765"
 }
