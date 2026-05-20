@@ -14,7 +14,7 @@
  *                 otherwise reinstall would return the already-cached
  *                 module.
  *
- *   Connect:      POST <connect-host>/__reload. The static-server and the
+ *   Connect:      POST <connect-host>/__packages. The static-server and the
  *                 studio (vite) modes both expose this endpoint and inject
  *                 a small EventSource client into the served HTML, so any
  *                 connected SPA tab refreshes on broadcast.
@@ -145,17 +145,48 @@ async function reloadOnSwitchboard(
 
 async function reloadOnConnect(
   connectUrl: string,
+  switchboardUrl: string,
   event: PublishEvent,
   log: { debug: (m: string) => void; warn: (m: string) => void; error: (m: string) => void } | undefined,
   reportFailure: (failure: ReloadFailure) => void,
 ): Promise<void> {
-  const reloadUrl = `${connectUrl.replace(/\/$/, '')}/__reload`;
+  // Query Switchboard for the post-install package list, strip the version
+  // suffix (entries look like `<name>@<version>`), and push it to Connect.
+  // Connect's static bundle bakes in only the build-time list, so the only
+  // way for a browser tab to see a newly-published package is for us to
+  // replace `ph-packages.json`'s `packages` array before broadcasting reload.
+  let packages: string[] = [];
+  const listed = await postGraphql(
+    switchboardUrl,
+    `{ Packages { installedPackages { name } } }`,
+    {},
+  );
+  if (listed.ok) {
+    try {
+      const parsed = JSON.parse(listed.body) as {
+        data?: { Packages?: { installedPackages?: { name: string }[] } };
+      };
+      packages = (parsed.data?.Packages?.installedPackages ?? [])
+        .map((p) => p.name.replace(/@[^/@]+$/, ''))
+        .filter((name, idx, arr) => arr.indexOf(name) === idx);
+    } catch (err) {
+      log?.warn(
+        `[publish-reload] connect package list parse failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  const pushUrl = `${connectUrl.replace(/\/$/, '')}/__packages`;
   try {
-    const res = await fetch(reloadUrl, { method: 'POST' });
+    const res = await fetch(pushUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ packages }),
+    });
     if (!res.ok) {
-      const message = `${reloadUrl} returned ${res.status}`;
+      const message = `${pushUrl} returned ${res.status}`;
       log?.error(
-        `[publish-reload] connect reload failed for ${event.packageName}@${event.version}: ${message}`,
+        `[publish-reload] connect package push failed for ${event.packageName}@${event.version}: ${message}`,
       );
       reportFailure({
         packageName: event.packageName,
@@ -165,15 +196,17 @@ async function reloadOnConnect(
       });
       return;
     }
-    const clients = res.headers.get('x-reload-clients');
+    const subscribers = res.headers.get('x-subscribers');
     log?.debug(
-      `[publish-reload] connect reload broadcast for ${event.packageName}@${event.version}` +
-        (clients ? ` (${clients} client${clients === '1' ? '' : 's'})` : ''),
+      `[publish-reload] connect packages-changed broadcast for ${event.packageName}@${event.version} ` +
+        `(packages: ${packages.length}` +
+        (subscribers ? `, ${subscribers} subscriber${subscribers === '1' ? '' : 's'}` : '') +
+        ')',
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log?.error(
-      `[publish-reload] connect reload failed (${reloadUrl}): ${message}`,
+      `[publish-reload] connect package push failed (${pushUrl}): ${message}`,
     );
     reportFailure({
       packageName: event.packageName,
@@ -387,7 +420,7 @@ export function createPublishReloadTrigger(opts: {
 
     // Connect's URL is captured by ph-clint as the `connect-studio` endpoint
     // on a service named `${cliName}-studio` (e.g. vetra-studio). Look it up
-    // each poll so the lazy-bind to /__reload happens as soon as Connect is
+    // each poll so the lazy-bind to /__packages happens as soon as Connect is
     // ready, independently of whether the registry has emitted any events.
     const connectUrl = services
       ?.list()
@@ -396,7 +429,7 @@ export function createPublishReloadTrigger(opts: {
 
     if (connectUrl && ctx.state.connectSubscribedUrl !== connectUrl) {
       ctx.state.unsubscribeConnect?.();
-      const sseUrl = `${connectUrl.replace(/\/$/, '')}/__reload`;
+      const sseUrl = `${connectUrl.replace(/\/$/, '')}/__packages`;
       log?.debug(`[publish-reload] subscribing to connect ${sseUrl}`);
       ctx.state.connectSubscribedUrl = connectUrl;
       ctx.state.unsubscribeConnect = subscribe(
@@ -446,7 +479,7 @@ export function createPublishReloadTrigger(opts: {
     for (const event of events) {
       await reloadOnSwitchboard(switchboardUrl, registryUrl, event, log, reportFailure);
       if (connectUrl) {
-        await reloadOnConnect(connectUrl, event, log, reportFailure);
+        await reloadOnConnect(connectUrl, switchboardUrl, event, log, reportFailure);
       } else {
         log?.debug('[publish-reload] embedded connect URL not available');
       }
