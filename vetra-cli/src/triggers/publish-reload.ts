@@ -167,7 +167,7 @@ async function reloadOnConnect(
         data?: { Packages?: { installedPackages?: { name: string }[] } };
       };
       packages = (parsed.data?.Packages?.installedPackages ?? [])
-        .map((p) => p.name.replace(/@[^/@]+$/, ''))
+        .map((p) => p.name)
         .filter((name, idx, arr) => arr.indexOf(name) === idx);
     } catch (err) {
       log?.warn(
@@ -224,6 +224,7 @@ interface TriggerState {
   /** Set to the connect URL we're already subscribed to (or undefined). */
   connectSubscribedUrl: string | undefined;
   unsubscribeConnect: (() => void) | undefined;
+  initialReconcileDone: boolean;
 }
 
 /**
@@ -363,6 +364,7 @@ export function createPublishReloadTrigger(opts: {
       unsubscribe: undefined,
       connectSubscribedUrl: undefined,
       unsubscribeConnect: undefined,
+      initialReconcileDone: false,
     }),
 
     async setup(ctx) {
@@ -461,6 +463,52 @@ export function createPublishReloadTrigger(opts: {
         },
         log,
       );
+    }
+
+    if (!ctx.state.initialReconcileDone && connectUrl) {
+      const reactorForReconcile = await ctx.reactor();
+      const switchboardUrlForReconcile = reactorForReconcile?.switchboardUrl;
+      if (switchboardUrlForReconcile) {
+        try {
+          const listed = await postGraphql(
+            switchboardUrlForReconcile,
+            `{ Packages { installedPackages { name } } }`,
+            {},
+          );
+          if (listed.ok) {
+            const parsed = JSON.parse(listed.body) as {
+              data?: { Packages?: { installedPackages?: { name: string }[] } };
+            };
+            const packages = (parsed.data?.Packages?.installedPackages ?? [])
+              .map((p) => p.name)
+              .filter((name, idx, arr) => arr.indexOf(name) === idx);
+            const pushUrl = `${connectUrl.replace(/\/$/, '')}/__packages`;
+            const res = await fetch(pushUrl, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ packages }),
+            });
+            if (res.ok) {
+              log?.debug(
+                `[publish-reload] initial reconcile pushed ${packages.length} packages to connect`,
+              );
+              ctx.state.initialReconcileDone = true;
+            } else {
+              log?.warn(
+                `[publish-reload] initial reconcile push failed: ${pushUrl} returned ${res.status}`,
+              );
+            }
+          } else {
+            log?.warn(
+              `[publish-reload] initial reconcile list failed: ${listed.body.slice(0, 200)}`,
+            );
+          }
+        } catch (err) {
+          log?.warn(
+            `[publish-reload] initial reconcile error: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
     }
 
     if (ctx.state.pending.length === 0) return null;
