@@ -5,26 +5,6 @@ packages:
 overrides:
   'mastra>@mastra/deployer': '1.22.0'
   zod: '4.3.6'
-  # Local links to upstream monorepo worktree.
-  # Paths are relative to this workspace root.
-  '@powerhousedao/reactor': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/reactor'
-  '@powerhousedao/reactor-api': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/reactor-api'
-  '@powerhousedao/reactor-browser': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/reactor-browser'
-  '@powerhousedao/shared': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/shared'
-  'document-model': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/document-model'
-  '@powerhousedao/vetra': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/vetra'
-  '@powerhousedao/powerhouse-vetra-packages': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/powerhouse-vetra-packages'
-  '@powerhousedao/design-system': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/design-system'
-  '@powerhousedao/analytics-engine-core': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/analytics-engine/core'
-  '@powerhousedao/connect': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/apps/connect'
-  '@powerhousedao/codegen': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/codegen'
-  '@powerhousedao/ph-cli': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/clis/ph-cli'
-  '@powerhousedao/registry': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/packages/registry'
-  '@powerhousedao/switchboard': 'link:../../monorepo/.claude/worktrees/vetra-codegen-agent-api/apps/switchboard'
-  '@powerhousedao/ph-clint': 'link:../../ph-clint/packages/ph-clint'
-  '@powerhousedao/ph-clint-dev': 'link:../../ph-clint/packages/ph-clint-dev'
-  '@powerhousedao/ph-clint-observability': 'link:../../ph-clint/packages/ph-clint-observability'
-  '@powerhousedao/clint-common': 'link:../../ph-clint/packages/clint-common'
 
 allowBuilds:
   '@apollo/protobufjs': true
@@ -33,6 +13,7 @@ allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
   '@sentry/cli': true
+  aws-sdk: set this to true or false
   esbuild: true
   prisma: true
   protobufjs: true
