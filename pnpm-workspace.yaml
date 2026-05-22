@@ -13,7 +13,7 @@ allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
   '@sentry/cli': true
-  aws-sdk: set this to true or false
+  aws-sdk: true
   esbuild: true
   prisma: true
   protobufjs: true

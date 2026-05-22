@@ -14,8 +14,8 @@
   "scripts": {
     "build:assets": "tsx scripts/build-assets.ts",
     "build": "pnpm build:assets && tsc",
-    "dev": "tsx src/main.ts",
-    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts --workdir ../../vetra-test",
+    "start": "node dist/main.js --workdir ../../vetra-test",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest --detectOpenHandles",
     "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage --collectCoverageFrom='src/**/*.ts'",
     "lint": "eslint src tests",
