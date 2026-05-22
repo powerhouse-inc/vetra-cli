@@ -2,6 +2,42 @@ packages:
   - 'vetra-app'
   - 'vetra-cli'
 
+catalog:
+  # @powerhousedao/monorepo packages (pinned together for local-link compatibility)
+  '@powerhousedao/academy': '6.0.0-dev.257'
+  '@powerhousedao/builder-tools': '6.0.0-dev.257'
+  '@powerhousedao/codegen': '6.0.0-dev.257'
+  '@powerhousedao/common': '6.0.0-dev.257'
+  '@powerhousedao/config': '6.0.0-dev.257'
+  '@powerhousedao/connect': '6.0.0-dev.257'
+  '@powerhousedao/design-system': '6.0.0-dev.257'
+  '@powerhousedao/opentelemetry-instrumentation-reactor': '6.0.0-dev.257'
+  '@powerhousedao/pglite-fs': '6.0.0-dev.257'
+  '@powerhousedao/ph-cli': '6.0.0-dev.257'
+  '@powerhousedao/powerhouse-vetra-packages': '6.0.0-dev.257'
+  '@powerhousedao/reactor': '6.0.0-dev.257'
+  '@powerhousedao/reactor-api': '6.0.0-dev.257'
+  '@powerhousedao/reactor-attachments': '6.0.0-dev.257'
+  '@powerhousedao/reactor-browser': '6.0.0-dev.257'
+  '@powerhousedao/reactor-drive': '6.0.0-dev.257'
+  '@powerhousedao/reactor-hypercore': '6.0.0-dev.257'
+  '@powerhousedao/reactor-mcp': '6.0.0-dev.257'
+  '@powerhousedao/registry': '6.0.0-dev.257'
+  '@powerhousedao/shared': '6.0.0-dev.257'
+  '@powerhousedao/switchboard': '6.0.0-dev.257'
+  '@powerhousedao/vetra': '6.0.0-dev.257'
+  '@renown/sdk': '6.0.0-dev.257'
+  document-model: '6.0.0-dev.257'
+  ph-cmd: '6.0.0-dev.257'
+
+  # other shared deps
+  '@powerhousedao/clint-common': '0.1.0-dev.77'
+  '@types/node': '^25.5.2'
+  eslint-config-prettier: '^10.1.8'
+  typescript: '^6.0.2'
+  typescript-eslint: '^8.46.2'
+  zod: '4.3.6'
+
 overrides:
   'mastra>@mastra/deployer': '1.22.0'
   zod: '4.3.6'
