@@ -20,7 +20,7 @@ import { specCommands } from './commands/spec/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
-import { LOCAL_REGISTRY_URL } from './constants.js';
+import { LOCAL_REGISTRY_ENABLED, LOCAL_REGISTRY_URL } from './constants.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
@@ -44,11 +44,16 @@ export const cli = defineCli({
   // @clint:end commands
 
   // @clint:begin services
-  services: [reactorProject, localRegistry],
+  services: [reactorProject, ...(LOCAL_REGISTRY_ENABLED ? [localRegistry] : [])],
   // @clint:end services
 
   // @clint:begin triggers
-  triggers: [chatSessionWatchTrigger, specSyncTrigger, specFsSyncTrigger, publishReloadTrigger],
+  triggers: [
+    chatSessionWatchTrigger,
+    specSyncTrigger,
+    specFsSyncTrigger,
+    ...(LOCAL_REGISTRY_ENABLED ? [publishReloadTrigger] : []),
+  ],
   // @clint:end triggers
 
   // @clint:begin prompts
@@ -197,13 +202,13 @@ cli.configureReactor({
     // Wire the local-registry's URL into the embedded switchboard so the
     // `Packages` GraphQL subgraph picks it up — required for the
     // publish-reload trigger's install/uninstall mutations.
-    registryUrl: LOCAL_REGISTRY_URL,
+    ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
   connect: {
     enabled: true,
     // Forwarded to Connect's vite config as PH_CONNECT_PACKAGES_REGISTRY so
     // the browser fetches Powerhouse package bundles from the local registry.
-    registryUrl: LOCAL_REGISTRY_URL,
+    ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
 });
 // @clint:end reactor

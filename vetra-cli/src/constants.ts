@@ -9,3 +9,11 @@
  */
 export const LOCAL_REGISTRY_PORT = 8765;
 export const LOCAL_REGISTRY_URL = `http://localhost:${LOCAL_REGISTRY_PORT}`;
+
+/**
+ * Internal kill-switch for the local-registry + publish-reload integration
+ * with the embedded Switchboard and Connect. When false, the registry
+ * service, publish-reload trigger, and `registryUrl` wiring on the embedded
+ * reactor are all skipped. Flip to true to restore the integration.
+ */
+export const LOCAL_REGISTRY_ENABLED = false;

@@ -24,6 +24,8 @@ Single shared instance of Connect/Switchboard inside `vetra-cli` (the CLI's embe
 
 ## Architecture decisions made
 
+0. **Local-registry integration is currently disabled (opt-in kill-switch).** `LOCAL_REGISTRY_ENABLED` in `vetra-cli/src/constants.ts` defaults to `false`. While off, `cli.ts` skips registering the `local-registry` service, skips the `publish-reload` trigger, and omits `registryUrl` from both `switchboard` and `connect` reactor config (so they fall back to defaults). Flip the constant to `true` to restore everything decisions 2–7 below describe. Not surfaced in `configSchema`.
+
 1. **Embedded reactor stays as source of truth.** `cli.configureReactor` in `vetra-cli/src/cli.ts` continues to build the reactor via `buildDefaultReactor`. The agent's drive (chat sessions, agent state) keeps its in-process `IReactorClient` access.
 
 2. **Embedded Switchboard uses `apps/switchboard`, not `reactor-api.initializeAndStartAPI`.** The slim `reactor-api` agent-mode API does NOT register `PackagesSubgraph`; only `apps/switchboard` does. Without the subgraph, the publish-reload trigger can't call `Packages.installPackage` / `uninstallPackage`. The swap is enabled by adding `reactor?: ReactorClientModule` to switchboard's `StartServerOptions` so it accepts a pre-built reactor instead of always building its own.
