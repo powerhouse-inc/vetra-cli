@@ -60,7 +60,10 @@ export const specGet = defineCommand({
     project: projectInputSchema,
     name: z
       .string()
-      .describe("Spec document name (unique within the project)."),
+      .default("")
+      .describe(
+        "Spec to read — accepts display name, slug, or id (see spec-list).",
+      ),
     full: z
       .boolean()
       .default(false)
@@ -82,7 +85,7 @@ export const specGet = defineCommand({
     format: formatSchema.optional(),
   }),
   execute: async (input, { workdir }) => {
-    const base = resolveReactorProjectPath(workdir, input.project);
+    const base = await resolveReactorProjectPath(workdir, input.project);
     const doc = await loadByName(base, input.name);
     const opsTotal = doc.operations.global.length + doc.operations.local.length;
     const summary = `${doc.header.documentType} "${doc.header.name}" — ${opsTotal} operation(s).`;

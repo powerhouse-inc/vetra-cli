@@ -8,6 +8,7 @@ import {
   formatColumns,
   resolveActionsInput,
   renderProjected,
+  suggestNames,
 } from "../../src/commands/spec/_helpers.js";
 import { makeCtx, makeWorkdir } from "./_fixtures.js";
 
@@ -70,6 +71,71 @@ describe("renderProjected", () => {
   });
 });
 
+describe("suggestNames", () => {
+  /* Real action lists from the codegen — these are the cases the agent
+   * actually missed in the logs. Keep them in sync with reality. */
+  const SUBGRAPH = ["SET_SUBGRAPH_NAME", "SET_SUBGRAPH_STATUS"];
+  const DOC_MODEL = [
+    "SET_MODEL_NAME",
+    "SET_MODEL_ID",
+    "SET_AUTHOR_NAME",
+    "ADD_MODULE",
+    "ADD_OPERATION",
+    "RELEASE_NEW_VERSION",
+  ];
+  const EDITOR = [
+    "SET_EDITOR_NAME",
+    "ADD_DOCUMENT_TYPE",
+    "REMOVE_DOCUMENT_TYPE",
+    "SET_EDITOR_STATUS",
+  ];
+
+  it("suggests via the prefix-drop containment case", () => {
+    expect(suggestNames("SET_NAME", SUBGRAPH)).toEqual([
+      "SET_SUBGRAPH_NAME",
+    ]);
+    expect(suggestNames("SET_STATUS", SUBGRAPH)).toEqual([
+      "SET_SUBGRAPH_STATUS",
+    ]);
+  });
+
+  it("ranks the closer container higher", () => {
+    /* `SET_NAME` is a substring of every `SET_*_NAME`; the closer length
+     * (SET_MODEL_NAME, gap 6) should beat SET_EDITOR_NAME (gap 7). */
+    expect(suggestNames("SET_NAME", DOC_MODEL.concat(EDITOR))[0]).toBe(
+      "SET_MODEL_NAME",
+    );
+  });
+
+  it("is case-insensitive", () => {
+    expect(suggestNames("set_name", SUBGRAPH)).toEqual(["SET_SUBGRAPH_NAME"]);
+  });
+
+  it("matches a one-char typo via Levenshtein", () => {
+    expect(suggestNames("SET_MODL_NAME", DOC_MODEL)).toContain(
+      "SET_MODEL_NAME",
+    );
+  });
+
+  it("returns an empty list when nothing is close", () => {
+    /* `ADD_SPECIFICATION` shares no substring with `RELEASE_NEW_VERSION`
+     * and the Levenshtein distance is far beyond the threshold — better
+     * to suggest nothing than to mislead. */
+    expect(suggestNames("ADD_SPECIFICATION", DOC_MODEL)).not.toContain(
+      "RELEASE_NEW_VERSION",
+    );
+  });
+
+  it("caps the result at the requested max", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `SET_FIELD_${i}_NAME`);
+    expect(suggestNames("SET_NAME", many, 3)).toHaveLength(3);
+  });
+
+  it("returns [] for an empty candidate list", () => {
+    expect(suggestNames("WHATEVER", [])).toEqual([]);
+  });
+});
+
 describe("findByName", () => {
   let workdir: string;
   let cleanup: () => void;
@@ -87,7 +153,87 @@ describe("findByName", () => {
   });
 
   it("throws when the name is not found", async () => {
-    await expect(findByName(workdir, "Nope")).rejects.toThrow(/No spec found/);
+    await expect(findByName(workdir, "Nope")).rejects.toThrow(
+      /Unknown spec "Nope"/,
+    );
+  });
+
+  it("resolves by slug", async () => {
+    const created = await specCreate.execute(
+      { type: "powerhouse/document-model", name: "Slug Match", dryRun: false },
+      makeCtx(workdir),
+    );
+    const { doc } = await findByName(workdir, "slug-match");
+    expect(doc.header.id).toBe(created.data!.document.header.id);
+  });
+
+  it("resolves by id", async () => {
+    const created = await specCreate.execute(
+      { type: "powerhouse/document-model", name: "ById", dryRun: false },
+      makeCtx(workdir),
+    );
+    const { doc } = await findByName(workdir, created.data!.document.header.id);
+    expect(doc.header.name).toBe("ById");
+  });
+
+  it("lists available specs when --name is omitted", async () => {
+    await specCreate.execute(
+      { type: "powerhouse/document-model", name: "Alpha", dryRun: false },
+      makeCtx(workdir),
+    );
+    await specCreate.execute(
+      { type: "powerhouse/document-model", name: "Beta", dryRun: false },
+      makeCtx(workdir),
+    );
+    await expect(findByName(workdir, "")).rejects.toThrow(
+      /Missing required option --name\.\nAvailable specs: Alpha, Beta/,
+    );
+  });
+
+  it("falls back to a no-specs message when there are none", async () => {
+    await expect(findByName(workdir, "")).rejects.toThrow(
+      /Missing required option --name\.\nNo specs found in this project\./,
+    );
+  });
+
+  it("suggests the closest name on a typo", async () => {
+    await specCreate.execute(
+      { type: "powerhouse/document-model", name: "Workout", dryRun: false },
+      makeCtx(workdir),
+    );
+    await expect(findByName(workdir, "Wrkout")).rejects.toThrow(
+      /Did you mean: Workout(, |\?)/,
+    );
+  });
+});
+
+describe("slugify", () => {
+  /* `slugify` is not exported by name, but `spec-create` sets `header.slug =
+   * slugify(input.name)`. Exercise it via that public path. */
+  it("kebab-cases the name into header.slug on create", async () => {
+    const { workdir, cleanup } = makeWorkdir();
+    try {
+      const result = await specCreate.execute(
+        { type: "powerhouse/document-model", name: "Hello World 42", dryRun: true },
+        makeCtx(workdir),
+      );
+      expect(result.data!.document.header.slug).toBe("hello-world-42");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("strips diacritics and collapses non-alnum runs", async () => {
+    const { workdir, cleanup } = makeWorkdir();
+    try {
+      const result = await specCreate.execute(
+        { type: "powerhouse/document-model", name: "Café — Très Bien!", dryRun: true },
+        makeCtx(workdir),
+      );
+      expect(result.data!.document.header.slug).toBe("cafe-tres-bien");
+    } finally {
+      cleanup();
+    }
   });
 });
 

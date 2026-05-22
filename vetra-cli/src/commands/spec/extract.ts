@@ -12,6 +12,7 @@ import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import { slugify } from "./_helpers.js";
 
 type Project = Parameters<typeof extractAllDocuments>[0];
 
@@ -30,7 +31,7 @@ export const specExtract = defineCommand({
     type: typeSchema,
   }),
   execute: async (input, { workdir }) => {
-    const base = resolveReactorProjectPath(workdir, input.project);
+    const base = await resolveReactorProjectPath(workdir, input.project);
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
@@ -63,6 +64,11 @@ export const specExtract = defineCommand({
 
     const written: string[] = [];
     for (const doc of docs) {
+      /* The extract* helpers only seed `header.name`; populate slug here so
+       * extracted docs match the invariant established by `spec-create`. */
+      if (!doc.header.slug && doc.header.name) {
+        doc.header.slug = slugify(doc.header.name);
+      }
       written.push(await saveSpec(doc, base));
     }
 

@@ -52,11 +52,11 @@ export const specGenerate = defineCommand({
       .string()
       .optional()
       .describe(
-        "Spec document name. When omitted, generate code for every spec under specs/.",
+        "Spec to generate — accepts display name, slug, or id (see spec-list). When omitted, generate code for every spec under specs/.",
       ),
   }),
   execute: async (input, { workdir }) => {
-    const base = resolveReactorProjectPath(workdir, input.project);
+    const base = await resolveReactorProjectPath(workdir, input.project);
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural

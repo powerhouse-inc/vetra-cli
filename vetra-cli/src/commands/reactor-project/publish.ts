@@ -105,7 +105,7 @@ Run \`npm login --registry <url>\` to create an account with a username, passwor
   ) => {
     const registryUsername = usernameArg ?? config.registryUsername;
     const registryPassword = passwordArg ?? config.registryPassword;
-    const projectPath = resolveReactorProjectPath(workdir, name);
+    const projectPath = await resolveReactorProjectPath(workdir, name);
     const packageJsonPath = path.join(projectPath, 'package.json');
 
     if (!fs.existsSync(packageJsonPath)) {

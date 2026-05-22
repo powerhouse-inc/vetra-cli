@@ -129,7 +129,7 @@ describe("spec-get", () => {
   it("throws when the spec is missing", async () => {
     await expect(
       specGet.execute({ name: "DoesNotExist" }, makeCtx(workdir)),
-    ).rejects.toThrow(/No spec found/);
+    ).rejects.toThrow(/Unknown spec "DoesNotExist"/);
   });
 });
 
@@ -184,6 +184,46 @@ describe("spec-update", () => {
       ),
     ).rejects.toThrow(/JSON array/);
   });
+
+  it("enriches invalid-input errors with the action's GraphQL input schema", async () => {
+    /* SET_MODEL_NAME requires `name: String!` — pass a wrong-shaped payload and
+     * expect the error to include the schema so the agent can self-correct. */
+    await expect(
+      specUpdate.execute(
+        {
+          name: "Target",
+          actions: [{ type: "SET_MODEL_NAME", input: { wrong: 1 } }],
+        },
+        makeCtx(workdir),
+      ),
+    ).rejects.toThrow(/input SetModelNameInput[\s\S]*name: String!/);
+  });
+
+  it("lists valid action types when the action is unknown", async () => {
+    await expect(
+      specUpdate.execute(
+        {
+          name: "Target",
+          actions: [{ type: "NOT_A_REAL_ACTION", input: {} }],
+        },
+        makeCtx(workdir),
+      ),
+    ).rejects.toThrow(/Valid action types[\s\S]*SET_MODEL_NAME/);
+  });
+
+  it("suggests the closest action name on a near-miss", async () => {
+    /* `SET_NAME` is the canonical agent miss for subgraph; here on
+     * document-model the closest match is `SET_MODEL_NAME`. */
+    await expect(
+      specUpdate.execute(
+        {
+          name: "Target",
+          actions: [{ type: "SET_NAME", input: { name: "x" } }],
+        },
+        makeCtx(workdir),
+      ),
+    ).rejects.toThrow(/Did you mean:[^\n]*SET_MODEL_NAME/);
+  });
 });
 
 describe("spec-delete", () => {
@@ -209,7 +249,7 @@ describe("spec-delete", () => {
   it("throws if the spec is missing", async () => {
     await expect(
       specDelete.execute({ name: "Missing" }, makeCtx(workdir)),
-    ).rejects.toThrow(/No spec found/);
+    ).rejects.toThrow(/Unknown spec "Missing"/);
   });
 });
 
@@ -239,9 +279,9 @@ describe("spec-schema", () => {
       { type: DOC_TYPE, state: false, full: false },
       makeCtx(workdir),
     );
-    expect(result.text).toMatch(/^Schema for /);
-    expect(result.text).toMatch(/module\(s\)/);
-    expect(result.text).toMatch(/JSONPath cookbook/);
+    expect(result.text).toMatch(new RegExp(`^${DOC_TYPE} —`));
+    expect(result.text).toMatch(/^Modules: /m);
+    expect(result.text).toMatch(/^JSONPath examples/m);
     // Default must NOT dump the full schema payload.
     expect(result.data).toBeUndefined();
   });
@@ -270,6 +310,26 @@ describe("spec-schema", () => {
     );
     expect(result.text.length).toBeGreaterThan(0);
     expect(result.text).not.toMatch(/^Schema for /);
+  });
+
+  it("--action rejects unknown action names with a discovery hint", async () => {
+    await expect(
+      specSchema.execute(
+        { type: DOC_TYPE, action: "NOT_A_REAL_ACTION", state: false },
+        makeCtx(workdir),
+      ),
+    ).rejects.toThrow(
+      /Unknown action "NOT_A_REAL_ACTION"[\s\S]*spec-schema --type/,
+    );
+  });
+
+  it("--action suggests the closest match on a near-miss", async () => {
+    await expect(
+      specSchema.execute(
+        { type: DOC_TYPE, action: "SET_NAME", state: false },
+        makeCtx(workdir),
+      ),
+    ).rejects.toThrow(/Did you mean:[^.]*SET_MODEL_NAME/);
   });
 
   it("rejects --action combined with --state", async () => {

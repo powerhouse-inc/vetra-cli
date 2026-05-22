@@ -1,27 +1,77 @@
 import { getDocumentModelSchema } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
-import { formatSchema, renderProjected } from "./_helpers.js";
+import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
+import {
+  assertKnownDocumentType,
+  formatSchema,
+  renderProjected,
+} from "./_helpers.js";
 
-const HELP_TEXT = [
-  "Usage:",
-  "  spec-schema --type <type>                       summary + help (this text)",
-  "  spec-schema --type <type> --action <NAME>       GraphQL input for one operation (latest spec)",
-  "  spec-schema --type <type> --state               GraphQL state schema (latest spec)",
-  "  spec-schema --type <type> --filter <jsonpath>   custom slice",
-  "",
-  "Shortcuts (--action, --state) target the LATEST specification — the one the reducer edits.",
-  "",
-  "JSONPath cookbook (use [(@.length-1)] to reach the latest spec):",
-  "  $.specifications[(@.length-1)].modules[*].operations[*].name",
-  "    → all operation names in the latest spec",
-  "  $.specifications[(@.length-1)].modules[*].operations[?(@.name=='SET_MODEL_NAME')].schema",
-  "    → one operation's GraphQL input",
-  "  $.specifications[(@.length-1)].state.global.schema",
-  "    → global state GraphQL",
-  "",
-  "Tip: combine with --format toon to compact large results.",
-].join("\n");
+/* `--action` and `--state` always read from `specifications.at(-1)` (the
+ * version the reducer is currently against). `--filter` is applied to the
+ * whole schema, so JSONPath callers reach the latest spec with
+ * `[(@.length-1)]`. */
+function buildNextSteps(
+  type: string,
+  sample: { moduleName: string; actionName: string },
+): string {
+  return [
+    "Next:",
+    `  spec-schema --type ${type} --action <NAME>     GraphQL input for one action (latest spec)`,
+    `  spec-schema --type ${type} --state             state GraphQL (latest spec)`,
+    `  spec-schema --type ${type} --filter <jsonpath> arbitrary JSONPath against the full schema`,
+    `  spec-schema --type ${type} --full              full schema (token-heavy; pair with --format toon)`,
+    "",
+    "JSONPath examples (use [(@.length-1)] to reach the latest spec):",
+    "  All action names in the latest spec:",
+    "    --filter '$.specifications[(@.length-1)].modules[*].operations[*].name'",
+    `  Actions belonging to one module (e.g. "${sample.moduleName}"):`,
+    `    --filter '$.specifications[(@.length-1)].modules[?(@.name=="${sample.moduleName}")].operations[*].name'`,
+    `  One action's GraphQL input (same as --action ${sample.actionName}):`,
+    `    --filter '$.specifications[(@.length-1)].modules[*].operations[?(@.name=="${sample.actionName}")].schema'`,
+  ].join("\n");
+}
+
+type LatestSpec = {
+  version?: number;
+  modules?: ReadonlyArray<{
+    name?: string | null;
+    operations?: ReadonlyArray<{ name?: string | null }>;
+  }>;
+};
+
+function buildSummary(type: string, schema: { specifications: LatestSpec[] }) {
+  const specs = schema.specifications;
+  const latest = specs.at(-1);
+  const version = latest?.version ?? specs.length;
+  const moduleNames = (latest?.modules ?? [])
+    .map((m) => m.name)
+    .filter((n): n is string => typeof n === "string" && n.length > 0);
+  const modules =
+    moduleNames.length > 0 ? moduleNames.join(", ") : "(none)";
+  return [
+    `${type} — ${specs.length} specification(s), latest is v${version}.`,
+    `Modules: ${modules}`,
+  ].join("\n");
+}
+
+/* Pick the first module and its first action so the JSONPath examples are
+ * grounded in the schema being inspected, rather than referencing a name from
+ * a different doc-type. Falls back to generic placeholders for empty schemas. */
+function pickSampleNames(latest: LatestSpec | undefined): {
+  moduleName: string;
+  actionName: string;
+} {
+  for (const mod of latest?.modules ?? []) {
+    if (!mod.name) continue;
+    for (const op of mod.operations ?? []) {
+      if (op.name) return { moduleName: mod.name, actionName: op.name };
+    }
+    return { moduleName: mod.name, actionName: "ACTION_NAME" };
+  }
+  return { moduleName: "module-name", actionName: "ACTION_NAME" };
+}
 
 export const specSchema = defineCommand({
   id: "spec-schema",
@@ -30,6 +80,7 @@ export const specSchema = defineCommand({
   inputSchema: z.object({
     type: z
       .string()
+      .default("")
       .describe('Document model type, e.g. "powerhouse/document-editor".'),
     full: z
       .boolean()
@@ -69,17 +120,41 @@ export const specSchema = defineCommand({
       );
     }
 
+    requireOption(input.type, "type", "Run `spec-schema-list` to see valid types.");
+    assertKnownDocumentType(input.type);
     const schema = getDocumentModelSchema(input.type);
     const latest = schema.specifications.at(-1);
-    const summary = `Schema for ${input.type}: ${schema.specifications.length} spec(s), latest has ${latest?.modules.length ?? 0} module(s).`;
+    const summary = buildSummary(input.type, schema);
 
     const sliced = input.filter || input.action || input.state;
     if (!input.full && !sliced) {
-      return { text: `${summary}\n\n${HELP_TEXT}` };
+      const sample = pickSampleNames(latest);
+      return {
+        text: `${summary}\n\n${buildNextSteps(input.type, sample)}`,
+      };
     }
 
     let filter = input.filter;
     if (input.action) {
+      const validNames = (latest?.modules ?? []).flatMap((m) =>
+        (m.operations ?? [])
+          .map((o) => o.name)
+          .filter((n): n is string => typeof n === "string"),
+      );
+      if (!validNames.includes(input.action)) {
+        /* Schemas can have dozens of actions; dumping them all drowns out the
+         * "Did you mean" line. Above the inline cap, point at the discovery
+         * command instead. */
+        throw unknownValueError({
+          subject: "action",
+          value: input.action,
+          context: `for ${input.type}`,
+          candidates: validNames,
+          knownLabel: "Valid action types",
+          inlineLimit: 12,
+          overflowHint: `Run \`spec-schema --type ${input.type}\` to explore the schema.`,
+        });
+      }
       filter = `$.specifications[(@.length-1)].modules[*].operations[?(@.name=='${input.action}')].schema`;
     } else if (input.state) {
       filter = "$.specifications[(@.length-1)].state.global.schema";

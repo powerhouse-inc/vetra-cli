@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { defineCommand } from '../../framework.js';
+import { requireOption } from '../../helpers/cli-errors.js';
 
 function getPhVersion(): string {
   try {
@@ -23,10 +24,12 @@ function getPhVersion(): string {
   }
 }
 
+const NAME_PATTERN = /^[a-zA-Z0-9-_]+$/;
+
 const inputSchema = z.object({
   name: z
     .string()
-    .regex(/^[a-zA-Z0-9-_]+$/)
+    .default('')
     .describe('Project name (alphanumeric, hyphens, underscores)'),
   version: z
     .string()
@@ -47,6 +50,12 @@ export const reactorProjectInit = defineCommand({
   description: 'Initialize a new Reactor package project',
   inputSchema,
   execute: async ({ name, version }, { workdir, config, runProcess }) => {
+    requireOption(name, 'name');
+    if (!NAME_PATTERN.test(name)) {
+      throw new Error(
+        `Invalid project name "${name}". Only alphanumeric characters, hyphens, and underscores are allowed.`,
+      );
+    }
     const projectPath = path.join(workdir, name);
     const phVersion = version ?? config.phVersion ?? getPhVersion();
 

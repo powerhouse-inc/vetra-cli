@@ -46,7 +46,7 @@ export const reactorProjectBuild = defineCommand({
   description: 'Build a Reactor package project (runs ph build)',
   inputSchema,
   execute: async ({ name }, { workdir, runProcess }) => {
-    const projectPath = resolveReactorProjectPath(workdir, name);
+    const projectPath = await resolveReactorProjectPath(workdir, name);
 
     const { success } = await runProcess('ph build', {
       label: 'ph-build',

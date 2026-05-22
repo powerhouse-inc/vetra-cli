@@ -2,14 +2,24 @@ import { addActions, saveSpec } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
-import { actionInputSchema, loadByName, resolveActionsInput } from "./_helpers.js";
+import {
+  actionInputSchema,
+  enrichActionValidationError,
+  loadByName,
+  resolveActionsInput,
+} from "./_helpers.js";
 
 export const specUpdate = defineCommand({
   id: "spec-update",
   description: "Apply actions to a spec via the document model's reducer.",
   inputSchema: z.object({
     project: projectInputSchema,
-    name: z.string().describe("Spec document name."),
+    name: z
+      .string()
+      .default("")
+      .describe(
+        "Spec to update — accepts display name, slug, or id (see spec-list).",
+      ),
     actions: z
       .preprocess((v) => {
         /* Tool/MCP callers pass a real array; shell users pass `--actions
@@ -33,13 +43,18 @@ export const specUpdate = defineCommand({
       ),
   }),
   execute: async (input, { workdir }) => {
-    const base = resolveReactorProjectPath(workdir, input.project);
+    const base = await resolveReactorProjectPath(workdir, input.project);
+    const doc = await loadByName(base, input.name);
     const actions = await resolveActionsInput({
       actions: input.actions,
       from: input.from,
     });
-    const doc = await loadByName(base, input.name);
-    const next = addActions(doc, actions);
+    let next: ReturnType<typeof addActions>;
+    try {
+      next = addActions(doc, actions);
+    } catch (err) {
+      enrichActionValidationError(err, doc.header.documentType);
+    }
     const opsCount =
       next.operations.global.length + next.operations.local.length;
     const path = await saveSpec(next, base);

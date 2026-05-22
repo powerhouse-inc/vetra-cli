@@ -42,6 +42,8 @@ Aim to reduce token usage. Start narrow, not wide. Don't fetch the whole state u
   spec-get --name X --latest --filter "$.modules[?(@.name=='details')].operations[*].name"
   spec-get --name X --latest --filter "$.modules[?(@.name=='details')].operations[?(@.name=='SET_BUG_TITLE')]"
 
+Always wrap `--filter` paths in quotes — they contain `$`, `*`, `(`, `[`, which shells (zsh in particular) expand. The examples above use `"..."` so JSONPath's own `'...'` segments nest cleanly.
+
 If applicable, use `--format toon` — it is ~40% smaller than JSON.
 
 Use `spec-schema --type <doc-type>` to discover the actions you can apply to a
@@ -56,5 +58,11 @@ unnecessary detours.
 
   spec-update --name Bug --actions '[{"type":"ADD_OPERATION","input":{...}}]'
 
-- Minimize "addActions" calls by batching multiple actions together
-- Always check document model schema before calling addActions
+- Action `type` values are LITERAL strings defined per doc-type. Never invent
+  them, never strip a prefix, never extrapolate by pattern. For example:
+  `powerhouse/subgraph` uses `SET_SUBGRAPH_NAME` / `SET_SUBGRAPH_STATUS` — not
+  `SET_NAME` / `SET_STATUS`. `powerhouse/document-model` releases a new spec
+  version with `RELEASE_NEW_VERSION` — there is no `ADD_SPECIFICATION`.
+- Before composing any `spec-update`, fetch the canonical names with:
+    spec-schema --type <doc-type> --filter "$.specifications[(@.length-1)].modules[*].operations[*].name"
+- Batch multiple actions into a single `spec-update` call where possible.

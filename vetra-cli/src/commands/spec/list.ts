@@ -17,13 +17,14 @@ export const specList = defineCommand({
       ),
   }),
   execute: async (input, { workdir }) => {
-    const base = resolveReactorProjectPath(workdir, input.project);
+    const base = await resolveReactorProjectPath(workdir, input.project);
     const docs = await getDocuments(base, { documentType: input.type });
     if (docs.length === 0) {
       return { text: "(no specs)", data: { documents: [] } };
     }
     const rows = docs.map((d) => [
       d.header.name,
+      d.header.slug || "—",
       d.header.documentType,
       d.header.id,
     ]);
@@ -32,6 +33,7 @@ export const specList = defineCommand({
       data: {
         documents: docs.map((d) => ({
           name: d.header.name,
+          slug: d.header.slug,
           type: d.header.documentType,
           id: d.header.id,
         })),
