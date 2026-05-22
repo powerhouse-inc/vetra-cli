@@ -1,13 +1,13 @@
 # Architecture: vetra-cli
 
 This document describes how `vetra-cli` is put together — the components
-that run in-process, the services it spawns, the package-distribution
-pipeline, and the dynamic-load chain that lets a freshly-published
-Powerhouse package light up inside a running Connect tab.
+that run in-process, the services it spawns, and the preview pipeline
+that lets a freshly-generated document model be rendered live in a
+browser editor as the agent iterates.
 
-For setup steps, build commands and the publish-pipeline test plan, see
-`HANDOFF.md`. This file is the durable map of how the pieces fit; that
-file is the working state of the open work.
+For in-progress work and setup steps, see `HANDOFF.md`. This file is
+the durable map of how the pieces fit; that file is the working state
+of the open work.
 
 ## High-level component map
 
@@ -23,48 +23,54 @@ file is the working state of the open work.
                   │  ┌────────▼────────┐    ┌──────────────────┐   │
                   │  │ Mastra agent    │◄──►│ Embedded Reactor │   │
                   │  │ (`createAgent`) │    │ (in-process DM)  │   │
-                  │  └─────────────────┘    └────────┬─────────┘   │
-                  │                                  │             │
-                  │  ┌───────────────────────────────▼───────────┐ │
-                  │  │ Embedded Switchboard (apps/switchboard)    │ │
-                  │  │ GraphQL + MCP + PackagesSubgraph           │ │
-                  │  │ http://localhost:59220/graphql             │ │
-                  │  └────────┬───────────────────────────────────┘ │
-                  │           │                                    │
-                  │  ┌────────▼────────────────┐                   │
-                  │  │ publish-reload trigger   │                  │
-                  │  │ (routine, polls SSE)     │                  │
-                  │  └────────┬────────────────┘                   │
-                  │           │                                    │
+                  │  └────────┬────────┘    └────────┬─────────┘   │
+                  │           │                      │             │
+                  │  ┌────────▼─────────────────┐    │             │
+                  │  │ vetra-cli local API      │    │             │
+                  │  │ HTTP + SSE on fixed port │    │             │
+                  │  │ projects, workflows      │    │             │
+                  │  └────────┬─────────────────┘    │             │
+                  │           │                      │             │
+                  │  ┌────────▼──────────────────────▼──────────┐  │
+                  │  │ Embedded Switchboard (apps/switchboard)  │  │
+                  │  │ GraphQL + MCP                            │  │
+                  │  │ http://localhost:59220/graphql           │  │
+                  │  └────────┬─────────────────────────────────┘  │
                   └───────────┼────────────────────────────────────┘
                               │
-                ┌─────────────┼──────────────────┐
-                │             │                  │
-                ▼             ▼                  ▼
-       ┌─────────────┐  ┌───────────────┐  ┌────────────────────────┐
-       │ Connect     │  │ local-registry│  │ reactor-project        │
-       │ (static SPA)│  │ (Verdaccio +  │  │ (per-project `ph vetra`│
-       │ port 27370  │  │ CDN, port     │  │  Switchboard, optional)│
-       └─────────────┘  │ 8765)         │  └────────────────────────┘
-                        └───────────────┘
+                ┌─────────────┼───────────────────────┐
+                │             │                       │
+                ▼             ▼                       ▼
+       ┌──────────────────┐  ┌─────────────────────┐  ┌──────────────────┐
+       │ Connect          │  │ reactor-project(s)  │  │ (dormant)        │
+       │ (static SPA      │  │ per-chat-session    │  │ local-registry   │
+       │ serving          │  │ ph vetra dev-mode   │  │ gated off; see   │
+       │ vetra-app)       │  │ Switchboard +       │  │ footnote         │
+       │ Drive editor =   │  │ Connect with Vite   │  └──────────────────┘
+       │ Vetra Studio     │  │ HMR. Preview docs   │
+       │ port 27370       │  │ live here.          │
+       └────────┬─────────┘  └─────────────────────┘
+                │                       ▲
+                │  iframe deep-linked   │
+                └───────────────────────┘
 ```
 
 The whole thing is one user-launched binary (`pnpm dev -i` or
-`pnpm start -i`). Both scripts pass `--workdir ../../vetra-test` so
-projects created via `reactor-project-init` land in
-`vetra/vetra-test/` rather than polluting the CLI source tree; the
+`pnpm start -i`). Both scripts pass `--workdir ../../vetra-test`. The
 embedded reactor's storage (`<workdir>/.ph/vetra/`) and agent
-conversation logs (`<workdir>/.ph/vetra/logs/<agent>/`) live there too.
+conversation logs (`<workdir>/.ph/vetra/logs/<agent>/`) live there.
+
 Internally:
 
-- The **reactor**, **agent**, and **Switchboard** all run inside the
-  vetra-cli node process. The Switchboard is the API surface (GraphQL +
-  MCP); the reactor is the document store underneath it.
-- The **routine** (a ph-clint construct) runs registered **triggers** on
-  a poll loop in the same process. `publish-reload` is one of them.
-- **Connect**, **local-registry**, and any **reactor-project** sessions
-  run as separate child processes, started and supervised by ph-clint's
-  service manager.
+- The **reactor**, **agent**, **Switchboard**, and the **vetra-cli
+  local API** all run inside the vetra-cli node process.
+- The **routine** runs registered **triggers** on a poll loop in the
+  same process (`chatSessionWatchTrigger`, spec-sync triggers).
+- **Connect** (serving vetra-app) and any **reactor-project** sessions
+  run as separate child processes managed by ph-clint's service
+  manager. Connect is the user's landing surface (Vetra Studio).
+  reactor-projects are previews — one per active build, spawned on
+  demand by the agent.
 
 ## Repositories
 
@@ -72,352 +78,299 @@ The runtime composition links three repositories. The pnpm workspace
 overrides in `vetra-cli/pnpm-workspace.yaml` point at local checkouts so
 edits anywhere in this stack are picked up after a rebuild.
 
-- `/Users/acaldas/dev/powerhouse/vetra/vetra-cli/` — this repo. Contains
-  the CLI definition, agents, services, triggers, and the `vetra-app`
-  reactor project that the embedded reactor uses as its source of truth
-  for document models, editors, processors and subgraphs.
-- `/Users/acaldas/dev/powerhouse/ph-clint/` — the framework vetra-cli is
-  built on. Owns the reactor lifecycle, service manager, routine loop,
-  interactive REPL, agent loader, and the Switchboard / Connect
-  integration glue.
+- `/Users/acaldas/dev/powerhouse/vetra/vetra-cli/` — this repo. CLI
+  definition, agents, services, triggers, tool implementations, the
+  local API server, and the `vetra-app` reactor project that the
+  embedded reactor uses for document models, editors, processors and
+  subgraphs.
+- `/Users/acaldas/dev/powerhouse/ph-clint/` — framework. Owns the
+  reactor lifecycle, service manager, routine loop, interactive REPL,
+  agent loader, and the Switchboard / Connect integration glue.
 - `/Users/acaldas/dev/powerhouse/monorepo/.claude/worktrees/vetra-codegen-agent-api/`
-  — the Powerhouse monorepo worktree. Contains `apps/switchboard`,
-  `apps/connect`, `packages/reactor`, `packages/reactor-browser`,
-  `packages/registry`, and the bundled Powerhouse packages
-  (`@powerhousedao/vetra`, `@powerhousedao/powerhouse-vetra-packages`).
+  — Powerhouse monorepo worktree. Contains `apps/switchboard`,
+  `apps/connect`, `packages/reactor`, `packages/reactor-browser`, and
+  bundled Powerhouse packages.
 
 ## Components, in detail
 
 ### Embedded reactor
 
 Built by `cli.configureReactor` in `vetra-cli/src/cli.ts` via
-`buildDefaultReactor`. Composes the document models from `vetra-app` and
-`@powerhousedao/clint-common`, names the primary drive `vetra-cli`, and
-returns a `ReactorContext` that the agent and the Switchboard both share.
-Storage lives at `<workdir>/.ph/vetra/`.
+`buildDefaultReactor`. Composes the document models from `vetra-app`
+and `@powerhousedao/clint-common`. Primary drive name: `vetra-cli`.
+Storage: `<workdir>/.ph/vetra/`.
+
+The vetra-cli drive holds: chat session documents, spec documents
+(mirrored from the reactor-project filesystems by the spec-sync
+triggers), and any other domain content the studio surfaces.
 
 ### Embedded Switchboard
 
-`@powerhousedao/switchboard`'s `startSwitchboard()`, invoked from
-ph-clint's `switchboard.ts`. ph-clint passes its own pre-built reactor
-in via `StartServerOptions.reactor` so the Switchboard and the agent
-share one document store rather than each running their own.
+`@powerhousedao/switchboard`'s `startSwitchboard()`. Reuses the
+pre-built reactor from the step above rather than spinning up its
+own. Exposes:
 
-The Switchboard exposes:
-
-- `/graphql` — supergraph composing every registered subgraph
-  (`reactor-drive`, `document-model`, `vetra-package`, `chat-session`,
-  `Packages`, …).
-- `/graphql/packages` — the `PackagesSubgraph` that fronts
-  `PackageManagementService.installPackage / uninstallPackage`. This is
-  the API the publish-reload trigger drives.
+- `/graphql` — supergraph composing every registered subgraph.
 - `/mcp` — Model Context Protocol endpoint.
 - `/d/:drive` — per-drive GraphQL endpoint.
 
-The Switchboard remembers its installed packages in the read-model DB
-(`<workdir>/.ph/read-storage`). However, it currently starts with
-`packages: []` and **does not yet re-register persisted packages on
-boot** — see "Known gaps" below.
+`PackagesSubgraph` is still registered (cheap, harmless), but the
+agent and editor no longer drive it; package installation is not part
+of the live path.
 
-### Embedded Connect
+### Embedded Connect (Vetra Studio)
 
-A static SPA served by ph-clint's `connect-server.js` (Node + Express)
-out of `<vetra-app>/dist/connect/`. ph-clint auto-detects static mode in
-`packages/ph-clint/src/core/cli.ts` by looking for
-`<connect-workdir>/dist/connect/index.html`; falls back to studio mode
-(`ph connect` via Vite) if missing.
+Static SPA served by ph-clint's `connect-server.js` out of
+`<vetra-app>/dist/connect/`. The bundle is produced by `pnpm exec
+ph-cli connect build --outDir dist/connect` inside `vetra-app`.
 
-The bundle is produced by `pnpm exec ph-cli connect build --outDir
-dist/connect` inside `vetra-app`. That command runs Vite over
-`@powerhousedao/connect`'s source (linked from the monorepo worktree)
-with `vetra-app` as the local-package import. It bakes
-`vetra-app/dist/connect/ph-packages.json` with the build-time package
-list and the local package metadata.
+The user's landing experience — `Vetra Studio` — is a custom **drive
+editor** registered against `powerhouse/document-drive` and selected
+via the vetra-cli drive's `preferredEditor` field. The editor renders:
 
-The connect-server exposes:
+- Left rail: list of chat session documents in the drive, plus a
+  "What will you build today?" entry point that creates a new session.
+- Right pane: the **active workflow scaffold** for the current chat
+  session. Default scaffold renders four vertical step cards
+  (`ideate`, `specify`, `build`, `deploy`). The BUILD card hosts an
+  iframe deep-linked into the chat session's current reactor-project
+  Connect.
 
-- `GET /` and `/assets/*` — the SPA and its chunks.
-- `GET /__packages` — SSE stream. On connect emits a `connected` event
-  and an immediate `packages-changed` event carrying the merged baked +
-  dynamic list. Subsequent events: `packages-changed` (new full list)
-  and `package-error` (forwarded from `/__packages/error` posts).
-- `POST /__packages` — body `{ packages: string[] }`. Replaces the
-  in-memory dynamic overlay and broadcasts `packages-changed`. Returns
-  204 with `X-Subscribers: <count>`.
-- `POST /__packages/error` — accepts `{ message, filename, stack? }`
-  and rebroadcasts as `package-error`.
-- `GET /ph-packages.json` — merged baked + dynamic list (so a fresh
-  page load sees what running tabs already know).
+### vetra-cli local API
 
-On the SPA side, `apps/connect/src/store/reactor.ts`'s
-`subscribeToPackagesChannel` opens an EventSource against `/__packages`
-and reconciles each event with `BrowserPackageManager` (see "Dynamic
-package loading" below).
+New HTTP + SSE service hosted inside the vetra-cli node process on a
+fixed port (`VETRA_CLI_API_PORT`). Read-only for now. CORS allows
+`http://localhost:27370` (embedded Connect's origin) only.
 
-### local-registry
+Endpoints (planned shape):
 
-`@powerhousedao/registry` (Verdaccio + Powerhouse CDN + SSE webhooks),
-spawned as a separate process by ph-clint's service manager. Defined in
-`vetra-cli/src/services/local-registry.ts`. Binds to a hardcoded port
-(`LOCAL_REGISTRY_PORT = 8765` in `vetra-cli/src/constants.ts`) so the
-embedded Switchboard and Connect can hardcode the registry URL at
-configuration time — see Known Issue #3 in HANDOFF for the lazy-callback
-follow-up.
+- `GET /projects` — one-shot list of reactor-project instances.
+- `GET /projects/subscribe` — SSE stream; emits `projects-changed`
+  on lifecycle events (start, stop, error).
+- `GET /chat-sessions/:id/workflows` — one-shot list of workflow
+  instances bound to a chat session.
+- `GET /chat-sessions/:id/workflows/subscribe` — SSE stream;
+  `workflows-changed` on registry mutations.
 
-The local-registry is currently **not auto-started** at vetra-cli boot.
-ph-clint's startup sequence only auto-starts the reactor, Switchboard
-and Connect; arbitrary services declared in `defineCli.services` sit
-dormant until something calls `services.start('local-registry')`.
+The API surfaces two kinds of state:
 
-Storage:
-- `<workdir>/.ph/registry/storage/` — Verdaccio package storage.
-- `<workdir>/.ph/registry/cdn-cache/` — extracted bundles served from
-  `/-/cdn/<name>@<version>/...` for browser-side dynamic imports.
+- **Project runtime state** — projection of the service manager's
+  on-disk state files. Source of truth remains `<workdir>/.ph/<cli>/
+  services/reactor-project/<instance>.json`; the API is a fanout.
+- **Workflow registry state** — in-memory map of workflow instances
+  per chat session. Agent tools mutate it; SSE pushes changes. State
+  vanishes on vetra-cli restart (acceptable for MVP; persistence is a
+  later concern).
 
-The registry emits a `publish` event on `<registryUrl>/-/events` (SSE)
-whenever a package is published. The publish-reload trigger subscribes
-to this stream.
+The API exists for **cross-session, ephemeral runtime state** that the
+editor needs to see live but that doesn't belong in CRDT-replicated
+documents. The line is intentional (see "State transport" below).
 
-Anonymous publish is the default — no `npm login` flow is required.
-`--auth-renown` enables signed bearer-token verification for hosted
-deployments.
+### State transport: chat-session document vs local API
+
+Two parallel channels carry state from the agent / runtime to the
+browser-side editor. Each has a clearly-scoped purpose.
+
+- **Chat-session document (reactor)** carries domain content and
+  within-session UI signals: user/agent messages, tool calls, tool
+  results, workflow dispatch events. Replicated, persistent,
+  scrollable history. Read via standard reactor-browser
+  subscriptions. The editor's "show this preview" signal is just the
+  most recent relevant tool call in the session's history.
+
+- **vetra-cli local API (HTTP + SSE)** carries ephemeral runtime
+  state that lives across or outside agent turns: project lifecycle,
+  workflow live state (especially when V2 background tasks need to
+  update state without an agent turn happening). Not persisted, not
+  replicated; recomputed on each vetra-cli boot.
+
+The distinction is deliberate. Ephemeral runtime state in a CRDT
+document creates noise in history and forces the editor to constantly
+re-derive "current" from a log. Domain content in HTTP+SSE loses
+replayability and forces re-fetching on every reload. Putting each
+class where it belongs keeps both subsystems simple.
+
+### Drive editor (Vetra Studio) in vetra-app
+
+A custom editor registered for `powerhouse/document-drive`. Lives at
+`vetra-app/editors/vetra-studio/` (planned). The vetra-cli drive's
+document sets `preferredEditor` to this editor's id so Connect picks
+it up automatically.
+
+Composition:
+
+- Subscribes via `useDocument` to the drive doc itself (to list chat
+  sessions) and to the currently-selected chat session (for messages,
+  tool calls, and stage content derived from tool history).
+- Subscribes via `fetch` + `EventSource` to the vetra-cli local API
+  for project and workflow live state.
+- Renders the active workflow scaffold (default = four-step vertical
+  layout) in the right pane. Scaffold component reads tool-call
+  history from the chat session to populate step cards; reads project
+  state from the local API to resolve iframe URLs.
+
+### reactor-project service
+
+Per-project `ph vetra` instance running its own full Switchboard +
+Connect in dev mode (Vite HMR for editors). Spawned by the agent via
+the `reactor-project-start` tool. Each project lives at a known
+workdir under `<workdir>/projects/<project-name>/` and exposes its
+own ports.
+
+Each reactor-project has a **preview drive** with a hardcoded slug
+shared by its Switchboard and Connect. Preview documents (instances
+of in-progress document models) live in this drive. The agent's
+`spec-preview-*` tools target this drive by default. The editor
+composes iframe URLs as deep links into this drive's editor route.
+
+A chat session may associate with a reactor-project throughout its
+lifecycle, and may also switch projects mid-session if the agent
+needs to touch multiple projects. The chat-session document carries
+a reference to its current project (id or workdir path); switching
+is an explicit action.
 
 ### Agent
 
-Created via `cli.configureAgent(createAgent)` in
-`vetra-cli/src/agents/agent.ts`. Uses Mastra for chat session memory and
-tool execution. Tools are auto-injected from `cli.commands[]` and the
-registered skills. The agent has direct in-process access to the reactor
-via `ctx.reactor()` from inside tools.
+Created via `cli.configureAgent(createAgent)`. Mastra-backed.
+
+Tool surface for MVP (see `HANDOFF.md` for the implementation
+checklist):
+
+- **Existing project lifecycle:** `reactor-project-init`,
+  `reactor-project-start`, `reactor-project-stop`, `reactor-project-ls`.
+- **Existing spec lifecycle:** `spec-create`, `spec-get`, `spec-list`,
+  `spec-update`, `spec-delete`, `spec-extract`, `spec-generate`.
+- **Preview document lifecycle (planned):** `spec-preview-create`,
+  `spec-preview-get`, `spec-preview-list`, `spec-preview-update`,
+  `spec-preview-delete`. Mirror the `spec-*` shape; operate on the
+  preview drive of a named reactor-project.
+- **Workflow tools (planned):** `start_workflow({ scaffold, input? })`,
+  `set_step_content({ instanceId, step, payload })`,
+  `complete_step({ instanceId, step })`,
+  `promote_workflow({ instanceId })`,
+  `complete_workflow({ instanceId, status })`.
+
+Workflow scaffolds are React components in vetra-app. The default
+scaffold's step ids are `'ideate' | 'specify' | 'build' | 'deploy'`.
+BUILD step payload shape: `{ projectId, documentId, title? }`. The
+scaffold resolves the iframe URL from the editor's project-state
+subscription; the agent does not construct Connect URLs.
 
 ### Triggers
 
-Registered in `cli.ts`. Run as part of ph-clint's routine loop (every
-N seconds via `routine.tick()`).
+Registered in `cli.ts`. Run as part of ph-clint's routine loop.
 
-- `chatSessionWatchTrigger` (clint-common) — watches the chat-session
-  document for new user messages and forwards them to the agent.
+- `chatSessionWatchTrigger` (clint-common) — watches chat-session
+  documents for new user messages and forwards them to the agent.
 - `specSyncTrigger` — drive → filesystem mirror for spec documents.
 - `specFsSyncTrigger` — filesystem → drive (chokidar-based).
-- `publishReloadTrigger` — the focus of this document; described in
-  "Publish flow" below.
+- `publishReloadTrigger` — **dormant**; gated by
+  `LOCAL_REGISTRY_ENABLED = false` in `constants.ts`. Not registered
+  at runtime. See footnote.
 
 ### Services
 
-Declared in `cli.ts`. Spawned and supervised by ph-clint's service
-manager. Persistent state lives at
-`<workdir>/.ph/<cli>/services/<id>/<instance>.json`.
-
-- `reactor-project` — runs `ph vetra` for a per-project Switchboard
-  + Connect pair. Not in the publish-reload fan-out (see HANDOFF
-  decision #5). Used to preview a project's own documents.
-- `local-registry` — the Verdaccio-based registry described above.
+- `reactor-project` — `ph vetra` in dev mode for the preview surface.
+  Persistent state at `<workdir>/.ph/vetra-cli/services/reactor-project/
+  <instance>.json` (read by `reactor-project-ls` and projected over
+  the local API).
+- `local-registry` — **dormant**; gated by `LOCAL_REGISTRY_ENABLED`.
+  See footnote.
 
 ## Boot sequence
 
-ph-clint's `startupSequence` in
-`ph-clint/src/core/runtime.ts`:
+ph-clint's `startupSequence`:
 
-1. **Proxy** (if configured) — multiplexed front-door for downstream
-   services. Not used in default vetra-cli config.
-2. **Reactor** — `reactorConfig.create(ctx)` builds and starts the
-   in-process document store. Drive is created or loaded; folder
-   commands are injected if the drive supports them. Persistence at
-   `<workdir>/.ph/vetra/`.
-3. **Switchboard** — `startSwitchboard()` from `apps/switchboard`
-   (lazy-imported). Reuses the reactor module from step 2 — does not
-   spin up a second reactor. Listens on port 59220 by default.
-   `PackagesSubgraph` is registered. Identity is generated via Renown.
-4. **Connect** — `services.start('vetra-studio')` spawns
-   `connect-server.js` against `vetra-app/dist/connect/`. Detects static
-   vs studio mode based on whether the prebuilt bundle exists. Listens
-   on port 27370 by default. The SPA's `BrowserPackageManager.init()`
-   then registers the bundled `@powerhousedao/powerhouse-vetra-packages`
-   and `@powerhousedao/vetra` packages plus the local `vetra-app`
-   project package, then loads any registry packages declared in
-   `ph-packages.json`.
-5. **Routine** — the trigger loop starts. Each trigger's `setup(ctx)`
-   runs once; thereafter `poll(ctx)` runs on every tick.
+1. **Reactor** — `reactorConfig.create(ctx)` builds the in-process
+   document store. Persistence at `<workdir>/.ph/vetra/`.
+2. **Switchboard** — `startSwitchboard()` reuses the reactor from
+   step 1. Listens on 59220 by default.
+3. **Connect** — `services.start('vetra-studio')` spawns
+   `connect-server.js` against `vetra-app/dist/connect/`. Listens on
+   27370 by default.
+4. **vetra-cli local API** — HTTP + SSE server starts on the fixed
+   port. Subscribes to the service manager's events to project
+   reactor-project state, and exposes the workflow registry.
+5. **Routine** — trigger loop starts.
 
-Services registered in `cli.services` but not part of `startupSequence`
-(currently `local-registry` and any `reactor-project` instances) stay
-dormant until the user explicitly starts them.
+`reactor-project` instances stay dormant until the agent starts one
+via the `reactor-project-start` tool.
 
-## Publish flow
+## Preview flow
 
-What happens when a user publishes a new Reactor package to the local
-registry.
+What happens when the agent previews an in-progress document model.
 
 ```
-  developer
-     │
-     ▼
-  npm publish ──► local-registry
-                    │
-                    │  SSE event: { type: "publish",
-                    │              packageName,
-                    │              version, ... }
-                    │  on /-/events
-                    ▼
-              publish-reload trigger
-                    │
-        ┌───────────┼───────────┐
-        │                       │
-        ▼                       ▼
-    Switchboard              Connect
-    GraphQL                  /__packages
-    Packages.uninstall       (HTTP POST)
-    Packages.install         + SSE broadcast
-    (with @version)             to subscribers
-        │                       │
-        ▼                       ▼
-   PackageMgr re-      BrowserPackageManager
-   loads bundle via    diff vs current, refetches
-   HttpPackageLoader   on version bump, notifies
-                          │
-                          ▼
-                       useVetraPackages
-                       re-renders → DocumentEditor's
-                       version-keyed `key` flips →
-                       editor remounts with new bundle
+  agent
+    │
+    ▼
+  spec-create / spec-update → vetra-cli drive
+                              ↓ (specFsSyncTrigger)
+                       reactor-project tree (project source)
+                              ↓ (ph vetra dev mode, Vite HMR)
+                       reactor-project picks up new document model
+    │
+    ▼
+  spec-preview-create({ projectId, specSlug })
+    → reactor-project Switchboard GraphQL mutation
+    → returns { documentId, driveId }
+    │
+    ▼
+  set_step_content({ instanceId, step: 'build',
+                     payload: { projectId, documentId, title } })
+    → recorded in chat session as a tool call
+    │
+    ▼
+  Drive editor scaffold's BUILD card observes the tool call,
+  reads the reactor-project's Connect URL from local API state,
+  sets <iframe src> to a deep link into the preview drive
+    │
+    ▼
+  User watches the editor render live as the agent iterates;
+  Vite HMR re-renders on each codegen pass.
 ```
 
-Details, from `vetra-cli/src/triggers/publish-reload.ts`:
+The chain has no package boundary: specs are generated directly into
+the reactor-project's source tree, the dev-mode Switchboard registers
+the document model from the project's own code, the dev-mode Connect
+imports the editor via Vite. No `npm publish`, no local registry, no
+dynamic bundle swap.
 
-1. The trigger subscribes to `<registry>/-/events` in its `setup(ctx)`,
-   parsing each `publish` SSE event into `{ packageName, version }` and
-   queuing it onto `ctx.state.pending`.
-2. On each `poll(ctx)` tick the trigger drains pending events and runs
-   `reloadOnSwitchboard` followed by `reloadOnConnect` for each.
-3. `reloadOnSwitchboard` queries
-   `{ Packages { installedPackages { name } } }`, uninstalls every prior
-   entry matching `<name>` or `<name>@*`, then installs
-   `<name>@<version>`. The version suffix bypasses Node's ESM URL cache.
-4. `reloadOnConnect` queries `installedPackages` again, deduplicates,
-   and POSTs the version-qualified list to `<connect-url>/__packages`.
-   The connect-server replaces its dynamic overlay and broadcasts
-   `packages-changed` to all SSE subscribers.
+## Workflow scaffolds
 
-In addition, the trigger does a **one-shot initial reconciliation** on
-its first poll once both the Switchboard URL and Connect URL are ready:
-it queries `installedPackages` and POSTs the result to
-`/__packages`. This means Connect tabs see the Switchboard's persisted
-state immediately on boot, without waiting for a publish event.
+A workflow scaffold is a React component in vetra-app that owns the
+right-pane layout for a class of agent task. Scaffolds:
 
-Failures are surfaced via the `package:reload-failed` event bus event,
-which `cli.ts` registers a handler for to print a visible `ERROR` line
-in the terminal. The agent does **not** yet receive these failures
-through its input channel — see "Open gaps".
+- Declare the step ids they accept (`'ideate' | 'specify' | 'build' |
+  'deploy'` for the default scaffold).
+- Define per-step payload shapes.
+- Render whatever UI fits the task. The default scaffold is a vertical
+  timeline of step cards; future scaffolds can be single full-bleed
+  iframes, side-by-side comparisons, etc.
 
-## Dynamic package loading in Connect
+Workflow instances live in vetra-cli's in-memory registry. Each chat
+session can have multiple instances; one is `primary` and renders in
+the right pane. Non-primary instances surface as a small indicator
+(badge / status strip).
 
-The SPA receives the version-qualified package list and reconciles
-without a page reload.
-
-`apps/connect/src/store/reactor.ts → subscribeToPackagesChannel`:
-
-1. Opens `EventSource('/__packages')`.
-2. The first `packages-changed` event after `connected` is treated as
-   the initial replay — packages get reconciled but no toast is shown.
-3. On each subsequent event:
-   - Parse every incoming spec into `{ bareName, version }`.
-   - Diff against `packageManager.getRegistryPackages()` — registry-
-     tracked entries only. Bundled (common/project) packages are never
-     touched.
-   - For each removed name → `packageManager.removePackage(name)` +
-     `toast("Removed package …")`.
-   - For each added name → `packageManager.addPackage(spec)` +
-     `toast("Installed package …")`.
-   - For each known name with a different version →
-     `packageManager.addPackage(spec)` + `toast("Updated package …")`.
-
-`BrowserPackageManager.addPackage(spec)`:
-
-- Short-circuits with the existing entry only when the requested
-  version matches the stored version (or no version was requested or
-  the package is bundled/local).
-- On a version bump, unmounts the old stylesheet, loads the new bundle
-  from `<registry>/-/cdn/<name>@<version>/...`, and calls
-  `#registerPackage` which overwrites the entry in `#packages` and
-  `#storage`, then fires `#notifyPackagesChanged()`.
-
-## Editor hot-reload chain
-
-When a user has an editor open and republishes a new version:
-
-1. Trigger pushes version-qualified specs to `/__packages` (see above).
-2. SSE handler detects version diff → `addPackage(spec)` refetches.
-3. `#notifyPackagesChanged()` notifies the `useSyncExternalStore`-backed
-   subscribers in `useVetraPackageManager`.
-4. `useVetraPackages()` returns the new package list.
-5. `DocumentEditor` in `apps/connect/src/components/editors.tsx`
-   recomputes:
-   ```
-   const editorBundleKey = `${owningPackageName}@${owningPackageVersion}`;
-   ```
-   The owning package is resolved by iterating `vetraPackages` and
-   matching the editor module to its `editors[]` array.
-6. The React `key` on the inner `<EditorComponent>` is
-   `${editorBundleKey}:${documentId}`. When the version changes, the
-   key changes, React unmounts the old subtree, and the next mount
-   imports the new bundle.
-
-This chain only works because (a) `addPackage` actually refetches on
-version bump, (b) the trigger sends version-qualified specs, and (c)
-the editor host reads the version reactively from the package manager
-rather than capturing it once.
-
-## Workspace overrides
-
-`vetra-cli/pnpm-workspace.yaml` declares overrides that link every
-Powerhouse package to its source checkout — switchboard, reactor-api,
-reactor-browser, connect, vetra, powerhouse-vetra-packages, registry,
-ph-cli, ph-clint and clint-common all resolve to the monorepo / ph-clint
-working trees rather than to npmjs.org releases.
-
-This has consequences:
-
-- A rebuild of any linked package is immediately visible to vetra-cli
-  on next process start. No re-publish needed.
-- The pnpm lockfile sometimes resists override changes — see HANDOFF
-  Known Issue #1. The standard workaround is to bump the consumer's
-  version spec, or to manually re-symlink in `node_modules`.
-- Connect's static bundle (`vetra-app/dist/connect/`) is a build
-  artifact — rebuild via `pnpm exec ph-cli connect build --outDir
-  dist/connect` after touching apps/connect or any of its dependencies.
-  `ph-cli build` alone does not produce the Connect bundle; it only
-  builds the lib (`dist/node`, `dist/browser`, types).
-
-## Configuration surface
-
-`vetra-cli/src/framework.ts`:
-
-- `configSchema` — Zod schema for `cli.config`. Includes `registryUrl`
-  (defaults to `LOCAL_REGISTRY_URL`), `phVersion`, model selection, and
-  registry credentials.
-- `secretsSchema` — Zod schema for `cli.secrets`. Holds the Anthropic
-  API key and registry password.
-
-`vetra-cli/src/constants.ts`:
-
-- `LOCAL_REGISTRY_PORT = 8765`
-- `LOCAL_REGISTRY_URL = "http://localhost:8765"`
-
-Both Switchboard and Connect read `LOCAL_REGISTRY_URL` at configure
-time and pass it down. The `Packages.installPackage` GraphQL mutation
-defaults to this URL when the caller doesn't pass one.
+The agent dispatches workflows via `start_workflow({ scaffold,
+input? })` and mutates them via the other workflow tools. For MVP,
+workflows have no engine — they're declarative state that the agent
+maintains. V2 will plug Mastra workflow runners into the same
+registry without changing the agent or editor surfaces.
 
 ## Filesystem layout
 
 ```
 vetra-cli/
 ├── ARCHITECTURE.md            ← you are here
-├── HANDOFF.md                 ← open work + setup steps
+├── HANDOFF.md                 ← open work + next steps
 ├── package.json
 ├── pnpm-workspace.yaml        ← overrides linking to ph-clint + monorepo
 ├── vetra-app/                 ← embedded reactor's project
 │   ├── document-models/
 │   ├── editors/
+│   │   └── vetra-studio/      ← drive editor (Vetra Studio); planned
 │   ├── processors/
 │   ├── subgraphs/
 │   ├── powerhouse.config.json
@@ -426,71 +379,74 @@ vetra-cli/
     ├── src/
     │   ├── cli.ts             ← defineCli + configureReactor
     │   ├── framework.ts       ← config + secrets schemas
-    │   ├── constants.ts       ← LOCAL_REGISTRY_*
+    │   ├── constants.ts       ← LOCAL_REGISTRY_* (dormant), API port
     │   ├── agents/agent.ts    ← Mastra agent factory
-    │   ├── commands/          ← spec-* and reactor-project-* commands
+    │   ├── api/               ← vetra-cli local API server; planned
+    │   ├── commands/          ← spec-*, reactor-project-*, spec-preview-*
     │   ├── services/
-    │   │   ├── local-registry.ts
+    │   │   ├── local-registry.ts   ← dormant
     │   │   └── reactor-project.ts
-    │   └── triggers/
-    │       ├── publish-reload.ts
-    │       ├── spec-sync.ts
-    │       └── spec-fs-sync.ts
+    │   ├── triggers/
+    │   │   ├── publish-reload.ts   ← dormant
+    │   │   ├── spec-sync.ts
+    │   │   └── spec-fs-sync.ts
+    │   └── workflows/         ← workflow registry; planned
     └── .ph/                   ← runtime state
         ├── vetra/             ← reactor PGlite
         ├── read-storage       ← Switchboard read-model DB
-        ├── registry/          ← local registry storage + cdn-cache
-        ├── vetra-cli/services/ ← service manager state files
-        └── connect-build/     ← intermediate Connect build output
+        └── vetra-cli/services/ ← service manager state
 ```
 
 ## Open gaps
 
-These are known limitations called out in the code or HANDOFF; they are
-not bugs in the current iteration but are worth tracking.
+These are limitations of the current direction; not bugs.
 
-- **Switchboard cold-start package set is empty.** `startSwitchboard`
-  is called with `packages: []`. On a fresh boot, `installedPackages`
-  returns `[]` until the publish-reload trigger reconciles via SSE.
-  Persisted packages in `<workdir>/.ph/read-storage` aren't replayed.
-  Three resolution paths under consideration: (1) trigger queries the
-  registry on startup and re-installs each package; (2) trigger persists
-  its own `installed-packages.json` and replays it; (3) apps/switchboard
-  self-restores from its read-model DB. Tracked in HANDOFF.
+- **Workflow registry is in-memory.** vetra-cli restart drops all
+  active workflows; the editor reconnects to a fresh registry. For
+  MVP this is fine. Persistence (and the resumable-vs-abandonable
+  question that comes with it) is V2.
 
-- **local-registry doesn't auto-start.** ph-clint's `startupSequence`
-  only auto-starts reactor, Switchboard and Connect. The user must run
-  `local-registry-start` (or it must be started programmatically). The
-  proper fix is either an `autoStart: true` flag on `defineService` or
-  exposing `services` on `LifecycleInitContext` so a vetra-cli
-  lifecycle plugin can call `services.start('local-registry')`.
+- **Project state is not a drive document.** Chat sessions reference
+  their current project by a transient handle (path or service
+  instance id). Renaming or moving a project workdir invalidates
+  references in any chat sessions that pointed at it. Promoting
+  project to a document model in the vetra-cli drive is phase 2;
+  it'll resolve this and let the editor enumerate projects via the
+  reactor instead of a side-channel API.
 
-- **Connect URL not on `ReactorContext`.** ph-clint's
-  `runtime.ts:282` computes `connectUrl` but only uses it for a stdout
-  line. The publish-reload trigger compensates by doing the same
-  `services.list(connectName)[0].endpoints['connect-studio']` lookup
-  itself. A one-line ph-clint change would cache it.
+- **Agent doesn't see runtime failures.** Service errors, workflow
+  failures, and reactor-project crashes surface in the terminal via
+  log handlers; the agent's input channels (chat session + Mastra
+  thread) don't yet receive them. Same gap as the older `package:
+  reload-failed` issue. A `pushAgentNotice(message)` primitive in
+  ph-clint, or a per-turn pending-context queue, would close it.
 
-- **`registryUrl` is hardcoded.** `cli.configureReactor` runs before
-  config resolution; the embedded Switchboard / Connect therefore
-  can't read a user-overridden `registryUrl` from `ctx.config`. The
-  hardcoded `LOCAL_REGISTRY_URL` is the single source of truth.
-  ph-clint accepting a lazy `registryUrl: (ctx) => string` callback
-  would unblock this.
+- **Studio-mode parity.** Connect runs static in vetra-cli today
+  (vetra-app's prebuilt bundle exists). The dynamic-package-loading
+  endpoints in `connect-server.ts` (`/__packages` SSE, etc.) are
+  upstream and remain in place, but they're not exercised by
+  vetra-cli's live path anymore.
 
-- **Reactor-projects aren't in the publish fan-out.** Per HANDOFF
-  decision #5, the trigger targets only the embedded reactor's
-  Switchboard + Connect. Per-project `ph vetra` instances (if running)
-  don't see published packages until a manual restart.
+## Footnote: dormant local-registry path
 
-- **Agent doesn't see `package:reload-failed`.** The event reaches
-  `cli.ts`'s handler and prints a terminal `ERROR` line, but the
-  Mastra agent only ingests tool-call results, its memory thread, and
-  chat-session document messages. None of those carry the trigger's
-  failure events.
+A previous iteration drove preview through a different mechanism:
+the agent published a Reactor package to a local Verdaccio-based
+registry, and a `publish-reload` trigger reconciled the embedded
+Switchboard + Connect's installed packages via SSE for dynamic bundle
+swaps. That whole chain remains in the source tree, gated by
+`LOCAL_REGISTRY_ENABLED = false` in `constants.ts`. Affected pieces:
 
-- **Studio-mode `/__packages` plugin is missing.** Static-mode
-  `connect-server.js` implements the full protocol. Studio mode (Vite
-  dev) doesn't expose the endpoints, so the publish-reload trigger
-  gets 404s when Connect is in studio mode. A parallel Vite plugin is
-  the proper fix.
+- `services/local-registry.ts` (Verdaccio supervisor service)
+- `triggers/publish-reload.ts` (SSE consumer + Switchboard/Connect
+  reconciler)
+- `commands/reactor-project/publish.ts` (publish flow)
+- `LOCAL_REGISTRY_URL` / `LOCAL_REGISTRY_PORT` constants
+- `registryUrl` wiring in `cli.configureReactor`'s switchboard/connect
+  options
+
+With the flag false, none of this runs. The code is retained as
+reference for future scenarios where dynamic package loading is the
+right primitive (e.g. previewing a package against a real
+remote-registry deploy). The live path is the reactor-project + Vite
+HMR flow described above; do not extend the dormant chain unless the
+flag is being deliberately re-enabled.
