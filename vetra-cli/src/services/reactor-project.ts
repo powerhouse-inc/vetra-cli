@@ -38,8 +38,13 @@ export const reactorProject = defineService({
       },
       {
         name: 'vetra-drive-url',
-        pattern: /Drive URL:\s*(https?:\/\/[^\s]+)/,
+        pattern: /(?<!Preview )Drive URL:\s*(https?:\/\/[^\s]+)/,
         captures: { 'vetra-drive-url': { group: 1, type: 'other' } },
+      },
+      {
+        name: 'vetra-preview-drive-url',
+        pattern: /Preview Drive URL:\s*(https?:\/\/[^\s]+)/,
+        captures: { 'vetra-preview-drive-url': { group: 1, type: 'other' } },
       },
       {
         name: 'vetra-switchboard',

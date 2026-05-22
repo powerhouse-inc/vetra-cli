@@ -17,6 +17,7 @@ import { createAgent } from './agents/agent.js';
 import { chatSessionWatchTrigger } from '@powerhousedao/clint-common/chat';
 import { observability } from '@powerhousedao/ph-clint-observability';
 import { specCommands } from './commands/spec/index.js';
+import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
@@ -39,6 +40,7 @@ export const cli = defineCli({
   // @clint:begin commands
   commands: [
     ...specCommands,
+    ...specPreviewCommands,
     ...reactorProjectCommands,
   ],
   // @clint:end commands
