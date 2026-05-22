@@ -7,7 +7,15 @@
     "url": ""
   },
   "documentModels": [],
-  "apps": [],
+  "apps": [
+    {
+      "name": "vetra-studio",
+      "id": "vetra-studio",
+      "documentTypes": [
+        "powerhouse/document-drive"
+      ]
+    }
+  ],
   "editors": [],
   "processors": [],
   "subgraphs": [],

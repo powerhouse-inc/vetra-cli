@@ -194,7 +194,7 @@ cli.configureReactor({
   create: (ctx) =>
     buildDefaultReactor(ctx, {
       documentModels: [...documentModels, ...extModels],
-      drive: { name: 'vetra-cli' },
+      drive: { name: 'vetra-cli', preferredEditor: 'vetra-studio' },
       subscriptions: {},
     }),
   switchboard: {

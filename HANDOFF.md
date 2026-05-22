@@ -35,6 +35,17 @@ them across every commit and every edit.
 - **Service state is on disk.** ph-clint's ServiceManager reads
   `<workdir>/.ph/<cli>/services/<id>/<instance>.json`, so externally-
   started services *are* visible to a running CLI's `services.list()`.
+- **vetra-app rebuild after editor/manifest edits.** Editing
+  `vetra-app/editors/*` or `vetra-app/powerhouse.manifest.json` requires
+  *two* builds and a restart: `pnpm build` (refreshes `dist/{browser,
+  node,types}` for vetra-cli's node imports) and `pnpm exec ph-cli
+  connect build --outDir dist/connect` (refreshes the SPA bundle that
+  `connect-server.js` serves). Then restart vetra-cli. The connect
+  bundle freezes the manifest at build time — skipping the connect
+  build leaves the SPA carrying the pre-edit manifest, so Connect
+  falls back to `GenericDriveExplorer` and the new drive editor never
+  appears. See ARCHITECTURE.md → "Embedded Connect (Vetra Studio) →
+  Build-output split".
 
 ## Overall goal
 

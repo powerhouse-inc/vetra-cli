@@ -121,8 +121,30 @@ of the live path.
 ### Embedded Connect (Vetra Studio)
 
 Static SPA served by ph-clint's `connect-server.js` out of
-`<vetra-app>/dist/connect/`. The bundle is produced by `pnpm exec
-ph-cli connect build --outDir dist/connect` inside `vetra-app`.
+`<vetra-app>/dist/connect/`. See "Build-output split" below for how
+that directory is produced.
+
+**Build-output split — two independent commands.** `vetra-app` ships
+two artifact families and they are built separately:
+
+- `pnpm build` (= `ph-cli build`) emits `dist/{browser,node,types}` —
+  the package's consumable exports. This is what the vetra-cli node
+  process imports at startup (document models, editor module
+  registrations, processor factory).
+- `pnpm exec ph-cli connect build --outDir dist/connect` emits the
+  SPA bundle the embedded `connect-server.js` serves. The bundle
+  freezes a snapshot of `powerhouse.manifest.json` and the local
+  editor modules at build time.
+
+`pnpm build` does **not** rebuild `dist/connect/`. Editing
+`vetra-app/editors/*`, `vetra-app/powerhouse.manifest.json`, or
+anything the SPA loads requires running both commands and restarting
+vetra-cli (the connect-server is launched at vetra-cli startup with
+`--dir` pointing at `dist/connect`; it has no watch). A common
+failure mode: the source manifest lists the new app under `apps[]`
+but the bundled SPA still carries the empty pre-edit manifest, so
+Connect falls back to `GenericDriveExplorer` and the new drive
+editor never shows up.
 
 The user's landing experience — `Vetra Studio` — is a custom **drive
 editor** registered against `powerhouse/document-drive` and selected
