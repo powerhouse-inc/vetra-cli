@@ -11,7 +11,7 @@
  * syncSpecsToFs helper on top of the subscription).
  */
 
-import {AppModule} from "@powerhousedao/vetra/document-models"
+import {AppModuleV1} from "@powerhousedao/vetra/document-models"
 import {AppModuleDocument, setAppName} from "@powerhousedao/vetra/document-models/app-module"
 import {baseLoadFromFile} from "document-model/node"
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
@@ -88,7 +88,7 @@ describe('spec-sync drive → FS integration', () => {
       },
     );
 
-    const doc = AppModule.utils.createDocument();
+    const doc = AppModuleV1.utils.createDocument();
     doc.header.name = 'my-test-app';
     doc.header.documentType = 'powerhouse/app';
     await module.client.create(doc);
@@ -112,7 +112,7 @@ describe('spec-sync drive → FS integration', () => {
       ),
     ).toBe(true);
 
-    const specDoc = await baseLoadFromFile(expectedPath, AppModule.reducer);
+    const specDoc = await baseLoadFromFile(expectedPath, AppModuleV1.reducer);
     const inMemory = await module.client.get<AppModuleDocument>(doc.header.id);
 
     expect(specDoc).toEqual(inMemory);

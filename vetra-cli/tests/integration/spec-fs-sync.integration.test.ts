@@ -19,7 +19,7 @@ import {
 } from "@powerhousedao/reactor";
 import { documentModels as vetraDocumentModels } from "@powerhousedao/vetra";
 import { documentModels as driveDocumentModels } from "@powerhousedao/clint-common";
-import { AppModule } from "@powerhousedao/vetra/document-models";
+import { AppModuleV1 } from "@powerhousedao/vetra/document-models";
 import {
   type AppModuleDocument,
   setAppName,
@@ -129,7 +129,7 @@ describe("spec-fs-sync FS → drive", () => {
    * saveSpec, or the saved file is unsyncable (no ops to replay).
    */
   async function makeSpecFile(name: string): Promise<{ id: string; path: string }> {
-    const draft = AppModule.utils.createDocument();
+    const draft = AppModuleV1.utils.createDocument();
     draft.header.name = name;
     draft.header.documentType = "powerhouse/app";
     await module.client.create(draft as never);
@@ -162,7 +162,7 @@ describe("spec-fs-sync FS → drive", () => {
       .withReactorBuilder(producerBuilder)
       .buildModule();
     try {
-      const draft = AppModule.utils.createDocument();
+      const draft = AppModuleV1.utils.createDocument();
       draft.header.name = "fresh-app";
       draft.header.documentType = "powerhouse/app";
       await producer.client.create(draft as never);
@@ -214,8 +214,8 @@ describe("spec-fs-sync FS → drive", () => {
 
     // Edit the file offline (no reactor involvement): load, apply
     // setAppName via the reducer, save back.
-    const loaded = await baseLoadFromFile(filePath, AppModule.reducer);
-    const mutated = AppModule.reducer(
+    const loaded = await baseLoadFromFile(filePath, AppModuleV1.reducer);
+    const mutated = AppModuleV1.reducer(
       loaded,
       setAppName({ name: "renamed-offline" }),
     );

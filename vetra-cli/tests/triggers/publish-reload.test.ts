@@ -89,7 +89,7 @@ function installFetchMock(handlers: Handlers): {
   const original = globalThis.fetch;
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
-    if (url.endsWith('/__reload') && init?.method === 'POST') {
+    if (url.endsWith('/__packages') && init?.method === 'POST') {
       return mockResponse(handlers.connectReload?.() ?? { status: 204 });
     }
     // GraphQL endpoint — branch on operation in the body
@@ -262,7 +262,7 @@ describe('publishReloadTrigger.poll', () => {
     expect(bodies).toContain('"name":"vetra-app@1.0.0"');
 
     const reloadCall = fetchMock.calls.find((c) =>
-      c.url.endsWith('/__reload'),
+      c.url.endsWith('/__packages'),
     );
     expect(reloadCall).toBeDefined();
     expect(reloadCall!.init?.method).toBe('POST');
@@ -297,7 +297,7 @@ describe('publishReloadTrigger.poll', () => {
     });
   });
 
-  it('emits package:reload-failed for connect target when POST /__reload returns non-ok', async () => {
+  it('emits package:reload-failed for connect target when POST /__packages returns non-ok', async () => {
     fetchMock = installFetchMock({
       connectReload: () => ({ ok: false, status: 500, body: '' }),
     });
@@ -344,7 +344,7 @@ describe('publishReloadTrigger.poll', () => {
     ]);
   });
 
-  it('subscribes to Connect /__reload SSE and emits package:reload-failed on package-error', async () => {
+  it('subscribes to Connect /__packages SSE and emits package:reload-failed on package-error', async () => {
     fetchMock = installFetchMock({});
     const handlers: Record<
       string,
@@ -365,7 +365,7 @@ describe('publishReloadTrigger.poll', () => {
 
     await trigger.poll(ctx);
 
-    const connectHandler = handlers['http://connect.local/__reload'];
+    const connectHandler = handlers['http://connect.local/__packages'];
     expect(connectHandler).toBeDefined();
     expect(ctx.state.connectSubscribedUrl).toBe('http://connect.local');
 
@@ -414,7 +414,7 @@ describe('publishReloadTrigger.poll', () => {
     ctx.state.unsubscribeConnect = undefined;
 
     await trigger.poll(ctx);
-    handlers['http://connect.local/__reload'](
+    handlers['http://connect.local/__packages'](
       'package-error',
       JSON.stringify({ message: 'oops', filename: 'http://example/foo.js' }),
     );
@@ -448,11 +448,11 @@ describe('publishReloadTrigger.poll', () => {
     ctx.state.unsubscribeConnect = undefined;
 
     await trigger.poll(ctx);
-    handlers['http://connect.local/__reload'](
+    handlers['http://connect.local/__packages'](
       'reload',
       JSON.stringify({}),
     );
-    handlers['http://connect.local/__reload'](
+    handlers['http://connect.local/__packages'](
       'package-error',
       'not-json',
     );
