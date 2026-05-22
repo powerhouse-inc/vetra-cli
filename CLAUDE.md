@@ -26,10 +26,16 @@ non-trivial session:
 - **`TODO.md`** — when you notice something worth tracking (a follow-up,
   a migration, a quick-fix idea), suggest it to the user and ask for
   confirmation before adding it. Don't write to `TODO.md` unprompted.
-- **`HANDOFF.md`** — you may edit freely without asking, but at the end
-  of the turn tell the user what you changed (a short summary: which
-  sections, what was added / removed / reworded). The user needs to know
-  the doc moved.
+- **`HANDOFF.md`** — tracks the in-progress publish-pipeline / dynamic-load
+  thread specifically. Only update it when the work you just did materially
+  shifts that thread: a decision changed, a known issue was resolved or newly
+  discovered, a "Things NOT done" item flipped state, a file in the publish /
+  reactor / Switchboard / Connect / triggers / registry chain changed in a way
+  the next session needs to know. Do **not** log routine work, prompt
+  tweaks, tool-description edits, agent-session reviews, or anything
+  unrelated to the publish-pipeline thread — those go in commit messages or
+  stay in the conversation. When in doubt, ask. When you do update, tell the
+  user at end-of-turn which sections moved.
 - **`ARCHITECTURE.md`** — update in the same commit as the code change
   that shifted the architecture.
 
