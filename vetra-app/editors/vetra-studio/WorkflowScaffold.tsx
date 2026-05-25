@@ -27,8 +27,18 @@ export function WorkflowScaffold({
     );
   }
 
+  const hasPreview = Boolean(buildPreviewUrl);
+  /* When the BUILD preview is active, let the iframe own as much vertical and
+   * horizontal space as the pane gives us: drop the narrow column constraint,
+   * tighten padding, and let the build card flex-grow. Without an active
+   * preview, keep the centred-column scaffold so the placeholder steps stay
+   * readable. */
+  const containerClass = hasPreview
+    ? "flex h-full flex-col gap-4 px-4 py-4"
+    : "mx-auto flex h-full max-w-2xl flex-col gap-4 px-8 py-12";
+
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col gap-4 px-8 py-12">
+    <div className={containerClass}>
       {STEPS.map((step) => (
         <StepCard
           key={step.id}
@@ -48,7 +58,7 @@ type StepCardProps = {
 function StepCard({ label, buildPreviewUrl }: StepCardProps) {
   if (buildPreviewUrl) {
     return (
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-4 py-2">
           <span className="text-xs font-semibold tracking-wider text-gray-500">
             {label}
@@ -57,7 +67,7 @@ function StepCard({ label, buildPreviewUrl }: StepCardProps) {
         <iframe
           src={buildPreviewUrl}
           title="Preview"
-          className="h-[480px] w-full border-0"
+          className="min-h-0 w-full flex-1 border-0"
         />
       </div>
     );
