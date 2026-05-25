@@ -25,6 +25,7 @@ import { LOCAL_REGISTRY_ENABLED, LOCAL_REGISTRY_URL } from './constants.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
+import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectRebuildOnSwitchboardReady } from './lifecycle/connect-rebuild.js';
 // @clint:end imports
 
@@ -55,6 +56,7 @@ export const cli = defineCli({
     chatSessionWatchTrigger,
     specSyncTrigger,
     specFsSyncTrigger,
+    previewServerTrigger,
     ...(LOCAL_REGISTRY_ENABLED ? [publishReloadTrigger] : []),
   ],
   // @clint:end triggers
@@ -65,7 +67,7 @@ export const cli = defineCli({
     agents: {
       'vetra-agent': {
         name: 'vetra-agent',
-        sections: ['base.md'],
+        sections: ['base.md', 'tools.md'],
         skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation'],
       },
       'agent-document-model': {

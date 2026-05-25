@@ -66,3 +66,11 @@ unnecessary detours.
 - Before composing any `spec-update`, fetch the canonical names with:
     spec-schema --type <doc-type> --filter "$.specifications[(@.length-1)].modules[*].operations[*].name"
 - Batch multiple actions into a single `spec-update` call where possible.
+
+# Surfacing a preview to the user (BUILD pane)
+
+The vetra-studio chat UI has a BUILD pane next to the chat that renders an iframe of a reactor-project preview document. **The pane only shows a doc when you call `spec-preview-show`.** `spec-preview-create` makes the document exist but does not surface it — always follow create with show when you want the user to see what you just made.
+
+The pane auto-starts the reactor project if it isn't running, so `spec-preview-show` works even against a stopped project — but the user sees a "starting" state until the reactor is ready. If you've just initialized a project or want the iframe ready faster, pre-warm it: `reactor-project-start --workdir <project>` is idempotent and a no-op when already running.
+
+`spec-preview-show` overrides whatever the BUILD pane currently shows. Don't call it for documents unrelated to what the user is iterating on — each chat session's pane reflects the most recent successful `spec-preview-show` from that session.
