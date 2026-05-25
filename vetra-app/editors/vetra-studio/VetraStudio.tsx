@@ -115,13 +115,12 @@ export function VetraStudio({
         aria-label="Resize chat panel"
         onMouseDown={handleResizeMouseDown}
         onDoubleClick={handleResizeDoubleClick}
-        className="group relative flex w-3 shrink-0 cursor-col-resize items-center justify-center bg-gray-100 hover:bg-gray-200 active:bg-gray-300"
+        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-gray-200 bg-white hover:bg-gray-100 active:bg-gray-200"
       >
-        {/* Grip dots — clear, distinct from any neighboring scrollbar. */}
-        <div className="pointer-events-none flex flex-col gap-1 rounded-full bg-gray-400 px-1 py-1.5 opacity-80 group-hover:bg-gray-600 group-hover:opacity-100">
-          <div className="h-0.5 w-0.5 rounded-full bg-white" />
-          <div className="h-0.5 w-0.5 rounded-full bg-white" />
-          <div className="h-0.5 w-0.5 rounded-full bg-white" />
+        <div className="pointer-events-none flex flex-col gap-1">
+          <div className="h-1 w-1 rounded-full bg-gray-400 group-hover:bg-gray-700" />
+          <div className="h-1 w-1 rounded-full bg-gray-400 group-hover:bg-gray-700" />
+          <div className="h-1 w-1 rounded-full bg-gray-400 group-hover:bg-gray-700" />
         </div>
       </div>
       <main className="flex flex-1 flex-col overflow-hidden bg-gray-50">
