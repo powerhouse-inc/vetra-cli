@@ -9,7 +9,7 @@
   "documentModels": [],
   "apps": [
     {
-      "name": "vetra-studio",
+      "name": "Vetra Studio",
       "id": "vetra-studio",
       "documentTypes": [
         "powerhouse/document-drive"

@@ -11,6 +11,6 @@ export const VetraStudio: EditorModule = {
   documentTypes: ["powerhouse/document-drive"],
   config: {
     id: "vetra-studio",
-    name: "vetra-studio",
+    name: "Vetra Studio",
   },
 };
