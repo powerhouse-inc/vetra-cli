@@ -12,7 +12,6 @@
  */
 import crypto from "node:crypto";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
-import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { unknownValueError } from "./cli-errors.js";
 
 const PREVIEW_DRIVE_PREFIX = "preview";
@@ -155,9 +154,23 @@ const GET_DOCUMENT_QUERY = /* GraphQL */ `
   }
 `;
 
-const CREATE_DOCUMENT_MUTATION = /* GraphQL */ `
-  mutation CreatePreviewDocument($document: JSONObject!, $parentIdentifier: String) {
-    createDocument(document: $document, parentIdentifier: $parentIdentifier) {
+const CREATE_EMPTY_DOCUMENT_MUTATION = /* GraphQL */ `
+  mutation CreateEmptyPreviewDocument($documentType: String!, $parentIdentifier: String) {
+    createEmptyDocument(documentType: $documentType, parentIdentifier: $parentIdentifier) {
+      id
+      slug
+      name
+      documentType
+      preferredEditor
+      state
+      revisionsList { scope revision }
+    }
+  }
+`;
+
+const RENAME_DOCUMENT_MUTATION = /* GraphQL */ `
+  mutation RenamePreviewDocument($documentIdentifier: String!, $name: String!) {
+    renameDocument(documentIdentifier: $documentIdentifier, name: $name) {
       id
       slug
       name
@@ -213,30 +226,64 @@ export async function getPreviewDocument(
   return data.document?.document ?? null;
 }
 
-/** Create a new document in the preview drive. */
-export async function createPreviewDocument(
+/**
+ * Create a new document in the preview drive by delegating instantiation to the
+ * reactor. The reactor looks up `documentType` against its registered document
+ * model modules at runtime, so any type the running reactor knows about works
+ * — both framework spec types and document models from installed packages.
+ *
+ * Two round trips: `createEmptyDocument` (the schema-exposed mutation has no
+ * `name` arg) followed by `renameDocument` to set the display name.
+ */
+export async function createEmptyPreviewDocument(
   switchboardUrl: string,
   driveId: string,
-  document: PHDocument,
+  documentType: string,
+  name: string,
 ): Promise<PreviewDocumentFull> {
-  const data = await gqlRequest<{ createDocument: PreviewDocumentFull }>(
+  const created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
     switchboardUrl,
-    CREATE_DOCUMENT_MUTATION,
-    { document, parentIdentifier: driveId },
+    CREATE_EMPTY_DOCUMENT_MUTATION,
+    { documentType, parentIdentifier: driveId },
   );
-  return data.createDocument;
+  const renamed = await gqlRequest<{ renameDocument: PreviewDocumentFull }>(
+    switchboardUrl,
+    RENAME_DOCUMENT_MUTATION,
+    { documentIdentifier: created.createEmptyDocument.id, name },
+  );
+  return renamed.renameDocument;
 }
 
-/** Apply actions to an existing preview document via the document model reducer. */
+/**
+ * Apply actions to an existing preview document via the document model reducer.
+ *
+ * The reactor's reducer pipeline copies `action.timestampUtcMs` straight onto
+ * the operation without a fallback (see `operationFromAction` in
+ * `@powerhousedao/shared/document-model`); a missing timestamp lands in the
+ * Kysely store as `new Date(undefined)`, which throws "Invalid time value" when
+ * Kysely serialises it. Action `id` is similarly trusted to be present. We
+ * therefore stamp both fields here, where the action enters the GraphQL
+ * boundary, so callers can keep passing minimal `{type, input, scope?}` shapes.
+ */
 export async function mutatePreviewDocument(
   switchboardUrl: string,
   documentIdentifier: string,
-  actions: ReadonlyArray<unknown>,
+  actions: ReadonlyArray<Record<string, unknown>>,
 ): Promise<PreviewDocumentFull> {
+  const nowIso = new Date().toISOString();
+  const stamped = actions.map((a) => ({
+    ...a,
+    id: typeof a.id === "string" && a.id ? a.id : crypto.randomUUID(),
+    timestampUtcMs:
+      typeof a.timestampUtcMs === "string" && a.timestampUtcMs
+        ? a.timestampUtcMs
+        : nowIso,
+    scope: typeof a.scope === "string" && a.scope ? a.scope : "global",
+  }));
   const data = await gqlRequest<{ mutateDocument: PreviewDocumentFull }>(
     switchboardUrl,
     MUTATE_DOCUMENT_MUTATION,
-    { documentIdentifier, actions },
+    { documentIdentifier, actions: stamped },
   );
   return data.mutateDocument;
 }

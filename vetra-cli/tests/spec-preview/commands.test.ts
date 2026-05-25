@@ -61,11 +61,10 @@ describe("spec-preview command shapes", () => {
     expect(specPreviewList.inputSchema.shape).toHaveProperty("type");
   });
 
-  it("specPreviewCreate exposes id, type, name, dryRun", () => {
+  it("specPreviewCreate exposes id, type, name", () => {
     expect(specPreviewCreate.id).toBe("spec-preview-create");
     expect(specPreviewCreate.inputSchema.shape).toHaveProperty("type");
     expect(specPreviewCreate.inputSchema.shape).toHaveProperty("name");
-    expect(specPreviewCreate.inputSchema.shape).toHaveProperty("dryRun");
   });
 
   it("specPreviewGet exposes id, name, full, filter, format", () => {
@@ -87,26 +86,6 @@ describe("spec-preview command shapes", () => {
   });
 });
 
-describe("spec-preview-create dry run", () => {
-  let workdir: string;
-  let cleanup: () => void;
-  beforeEach(() => ({ workdir, cleanup } = makeWorkdir()));
-  afterEach(() => cleanup());
-
-  it("builds a document in-memory without touching the reactor-project", async () => {
-    const result = await specPreviewCreate.execute(
-      { type: "powerhouse/document-model", name: "Preview Model", dryRun: true },
-      makeCtx(workdir),
-    );
-    expect(result.text).toMatch(/in-memory/i);
-    expect(result.data?.document?.header?.name).toBe("Preview Model");
-    expect(result.data?.document?.header?.slug).toBe("preview-model");
-    expect(result.data?.document?.header?.documentType).toBe(
-      "powerhouse/document-model",
-    );
-  });
-});
-
 describe("spec-preview commands without a running reactor-project", () => {
   let workdir: string;
   let cleanup: () => void;
@@ -119,10 +98,10 @@ describe("spec-preview commands without a running reactor-project", () => {
     ).rejects.toThrow(/service manager not available/i);
   });
 
-  it("specPreviewCreate (non-dry) errors with no service manager", async () => {
+  it("specPreviewCreate errors with no service manager", async () => {
     await expect(
       specPreviewCreate.execute(
-        { type: "powerhouse/document-model", name: "X", dryRun: false },
+        { type: "powerhouse/document-model", name: "X" },
         makeCtx(workdir),
       ),
     ).rejects.toThrow(/service manager not available/i);
@@ -216,24 +195,34 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
     expect(result.text).toMatch(/Alpha/);
   });
 
-  it("specPreviewCreate posts a createDocument mutation and returns header info", async () => {
-    mockGqlResponses(fetchSpy, [{ createDocument: SAMPLE_FULL }]);
+  it("specPreviewCreate delegates to createEmptyDocument + renameDocument and accepts any document type", async () => {
+    mockGqlResponses(fetchSpy, [
+      { createEmptyDocument: { ...SAMPLE_FULL, name: "" } },
+      { renameDocument: { ...SAMPLE_FULL, name: "Alpha" } },
+    ]);
     const result = await specPreviewCreate.execute(
       {
-        type: "powerhouse/document-model",
+        type: "powerhouse/workout-tracker",
         name: "Alpha",
-        dryRun: false,
       },
       withLiveReactorProject(workdir),
     );
     expect(result.text).toMatch(/Created/);
     expect(result.data?.document?.header?.id).toBe("doc-1");
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(
+    expect(result.data?.document?.header?.name).toBe("Alpha");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const createBody = JSON.parse(
       String(fetchSpy.mock.calls[0]?.[1]?.body ?? "{}"),
     ) as { query: string; variables: Record<string, unknown> };
-    expect(body.query).toMatch(/createDocument/);
-    expect(body.variables.parentIdentifier).toBeDefined();
+    expect(createBody.query).toMatch(/createEmptyDocument/);
+    expect(createBody.variables.documentType).toBe("powerhouse/workout-tracker");
+    expect(createBody.variables.parentIdentifier).toBeDefined();
+    const renameBody = JSON.parse(
+      String(fetchSpy.mock.calls[1]?.[1]?.body ?? "{}"),
+    ) as { query: string; variables: Record<string, unknown> };
+    expect(renameBody.query).toMatch(/renameDocument/);
+    expect(renameBody.variables.name).toBe("Alpha");
+    expect(renameBody.variables.documentIdentifier).toBe("doc-1");
   });
 
   it("specPreviewUpdate looks up the doc then posts mutateDocument", async () => {
@@ -256,6 +245,16 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
     expect(result.text).toMatch(/Applied 1 action/);
     expect(result.data?.document?.operationsCount).toBe(3);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const mutateBody = JSON.parse(
+      String(fetchSpy.mock.calls[1]?.[1]?.body ?? "{}"),
+    ) as { variables: { actions: Array<Record<string, unknown>> } };
+    const [sentAction] = mutateBody.variables.actions;
+    expect(typeof sentAction.id).toBe("string");
+    expect(sentAction.id).toBeTruthy();
+    expect(typeof sentAction.timestampUtcMs).toBe("string");
+    expect(() => new Date(sentAction.timestampUtcMs as string).toISOString()).not.toThrow();
+    expect(sentAction.scope).toBe("global");
+    expect(sentAction.type).toBe("SET_NAME");
   });
 
   it("specPreviewDelete looks up the doc then posts deleteDocument", async () => {
