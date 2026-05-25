@@ -25,6 +25,7 @@ import { LOCAL_REGISTRY_ENABLED, LOCAL_REGISTRY_URL } from './constants.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
+import { connectRebuildOnSwitchboardReady } from './lifecycle/connect-rebuild.js';
 // @clint:end imports
 
 export const cli = defineCli({
@@ -171,7 +172,12 @@ export const cli = defineCli({
   // @clint:end proxy
 
   // @clint:begin lifecycle
-  lifecycle: [observability()],
+  lifecycle: [
+    observability(),
+    connectRebuildOnSwitchboardReady({
+      vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
+    }),
+  ],
   // @clint:end lifecycle
 
   configDefaults: {
