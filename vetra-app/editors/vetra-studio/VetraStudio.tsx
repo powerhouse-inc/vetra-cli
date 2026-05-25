@@ -3,15 +3,11 @@ import type {
   DocumentDriveAction,
   DocumentDriveDocument,
 } from "@powerhousedao/shared/document-drive";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChatPane } from "./ChatPane.js";
 import { WorkflowScaffold } from "./WorkflowScaffold.js";
 
-// Hardcoded so the BUILD card can be exercised before the workflow registry
-// supplies a real reactor-project preview URL. Point at a running
-// reactor-project's Connect (or any URL that allows iframe embedding).
-const DEMO_BUILD_PREVIEW_URL: string | undefined =
-  "http://localhost:3000/?embed=1";
+const PREVIEW_URL_STORAGE_KEY = "vetra-studio:build-preview-url";
 
 export type VetraStudioProps = {
   document: DocumentDriveDocument;
@@ -25,6 +21,19 @@ export function VetraStudio({
   className,
 }: VetraStudioProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string>();
+  const [buildPreviewUrl, setBuildPreviewUrl] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(PREVIEW_URL_STORAGE_KEY) ?? "";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (buildPreviewUrl) {
+      window.localStorage.setItem(PREVIEW_URL_STORAGE_KEY, buildPreviewUrl);
+    } else {
+      window.localStorage.removeItem(PREVIEW_URL_STORAGE_KEY);
+    }
+  }, [buildPreviewUrl]);
 
   return (
     <div className={className ?? "flex h-full w-full"}>
@@ -36,11 +45,30 @@ export function VetraStudio({
           onSelectSession={setSelectedSessionId}
         />
       </aside>
-      <main className="flex-1 overflow-y-auto bg-gray-50">
-        <WorkflowScaffold
-          selectedSessionId={selectedSessionId}
-          buildPreviewUrl={DEMO_BUILD_PREVIEW_URL}
-        />
+      <main className="flex flex-1 flex-col overflow-hidden bg-gray-50">
+        <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-2">
+          <label
+            htmlFor="vetra-studio-preview-url"
+            className="text-xs font-medium uppercase tracking-wider text-gray-500"
+          >
+            Preview URL
+          </label>
+          <input
+            id="vetra-studio-preview-url"
+            type="url"
+            value={buildPreviewUrl}
+            onChange={(event) => setBuildPreviewUrl(event.target.value)}
+            placeholder="paste output of spec-preview-show"
+            className="flex-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-xs text-gray-800 focus:border-gray-400 focus:bg-white focus:outline-none"
+            spellCheck={false}
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <WorkflowScaffold
+            selectedSessionId={selectedSessionId}
+            buildPreviewUrl={buildPreviewUrl || undefined}
+          />
+        </div>
       </main>
     </div>
   );
