@@ -27,6 +27,7 @@ import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
 import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectRebuildOnSwitchboardReady } from './lifecycle/connect-rebuild.js';
+import { studioUrlTrigger } from './triggers/studio-url.js';
 // @clint:end imports
 
 export const cli = defineCli({
@@ -57,6 +58,7 @@ export const cli = defineCli({
     specSyncTrigger,
     specFsSyncTrigger,
     previewServerTrigger,
+    studioUrlTrigger,
     ...(LOCAL_REGISTRY_ENABLED ? [publishReloadTrigger] : []),
   ],
   // @clint:end triggers
