@@ -45,7 +45,7 @@ export function resolvePreviewEndpoint(
   services: ServiceManager | undefined,
   projectPath: string,
   projectLabel: string,
-): { switchboardUrl: string; driveId: string } {
+): { switchboardUrl: string; connectUrl: string | undefined; driveId: string } {
   if (!services) {
     throw new Error(
       "Service manager not available in this context — cannot reach the reactor-project Switchboard.",
@@ -62,14 +62,15 @@ export function resolvePreviewEndpoint(
       `Reactor project "${projectLabel}" is not running. Start it with \`reactor-project-start ${projectLabel}\`.`,
     );
   }
-  const endpoint = live.endpoints?.["vetra-switchboard"];
-  if (!endpoint) {
+  const switchboardUrl = live.endpoints?.["vetra-switchboard"];
+  if (!switchboardUrl) {
     throw new Error(
       `Reactor project "${projectLabel}" is starting up — Switchboard endpoint not yet captured. Retry shortly.`,
     );
   }
   return {
-    switchboardUrl: endpoint,
+    switchboardUrl,
+    connectUrl: live.endpoints?.["vetra-studio"],
     driveId: getPreviewDriveId(projectPath),
   };
 }
