@@ -113,9 +113,10 @@ export function VetraStudio({
         aria-label="Resize chat panel"
         onMouseDown={handleResizeMouseDown}
         onDoubleClick={handleResizeDoubleClick}
-        title="Drag to resize. Double-click to reset."
-        className="w-1 shrink-0 cursor-col-resize bg-gray-200 transition-colors hover:bg-gray-400"
-      />
+        className="group relative -mx-1 w-2 shrink-0 cursor-col-resize bg-transparent"
+      >
+        <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gray-200 group-hover:bg-gray-400 group-active:bg-gray-500" />
+      </div>
       <main className="flex flex-1 flex-col overflow-hidden bg-gray-50">
         <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-2">
           <label
