@@ -29,18 +29,18 @@ export function WorkflowScaffold({
 
   const hasPreview = Boolean(buildPreviewUrl);
 
-  /* When the BUILD preview is active, the other steps don't have meaningful
-   * content yet — hide them so the iframe gets the full pane. Drop padding
-   * and the BUILD card's own border/header so nothing else competes for
-   * vertical space. The placeholders come back as soon as the preview is
-   * cleared, and full step UI lands once the workflow registry is wired. */
+  /* When BUILD has a real preview we surrender almost all vertical space to
+   * the iframe, but keep a thin progress strip on top so the user still sees
+   * where they are in the four-step flow. Step state is hardcoded to "build"
+   * for now; the workflow registry will drive it for real later. */
   if (hasPreview) {
     return (
-      <div className="h-full w-full">
+      <div className="flex h-full w-full flex-col">
+        <ProgressBar currentStep="build" />
         <iframe
           src={buildPreviewUrl}
           title="Preview"
-          className="block h-full w-full border-0"
+          className="block min-h-0 w-full flex-1 border-0"
         />
       </div>
     );
@@ -52,6 +52,59 @@ export function WorkflowScaffold({
         <StepCard key={step.id} label={step.label} />
       ))}
     </div>
+  );
+}
+
+function ProgressBar({ currentStep }: { currentStep: StepId }) {
+  const currentIndex = STEPS.findIndex((s) => s.id === currentStep);
+  return (
+    <ol className="flex shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-3 py-2">
+      {STEPS.map((step, index) => {
+        const state =
+          index < currentIndex
+            ? "done"
+            : index === currentIndex
+              ? "active"
+              : "todo";
+        return (
+          <li key={step.id} className="flex items-center gap-2">
+            <span
+              className={
+                "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tracking-wider " +
+                (state === "active"
+                  ? "bg-gray-900 text-white"
+                  : state === "done"
+                    ? "bg-gray-200 text-gray-700"
+                    : "border border-dashed border-gray-300 text-gray-400")
+              }
+            >
+              {state === "done" ? "✓" : index + 1}
+            </span>
+            <span
+              className={
+                "text-[11px] font-medium tracking-wider " +
+                (state === "active"
+                  ? "text-gray-900"
+                  : state === "done"
+                    ? "text-gray-600"
+                    : "text-gray-400")
+              }
+            >
+              {step.label}
+            </span>
+            {index < STEPS.length - 1 ? (
+              <span
+                aria-hidden
+                className={
+                  "ml-1 h-px w-6 " +
+                  (state === "done" ? "bg-gray-400" : "bg-gray-200")
+                }
+              />
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
