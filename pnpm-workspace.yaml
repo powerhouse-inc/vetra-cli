@@ -45,6 +45,8 @@ overrides:
   '@powerhousedao/ph-clint-dev': 'link:../../ph-clint/packages/ph-clint-dev'
   '@powerhousedao/ph-clint-observability': 'link:../../ph-clint/packages/ph-clint-observability'
   '@powerhousedao/clint-common': 'link:../../ph-clint/packages/clint-common'
+  '@powerhousedao/connect': 'link:../../monorepo/apps/connect'
+  '@powerhousedao/builder-tools': 'link:../../monorepo/packages/builder-tools'
 
 allowBuilds:
   '@apollo/protobufjs': true
