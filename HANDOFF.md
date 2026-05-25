@@ -84,10 +84,15 @@ against.
    switch projects.
 
 4. **A new HTTP + SSE API hosted in vetra-cli publishes cross-session
-   runtime state.** Read-only for MVP. CORS for
-   `http://localhost:27370` only. Surfaces: project list + status
-   (projection of the service manager) and the workflow registry
-   (in-memory). The editor subscribes for live updates.
+   runtime state.** Bound to `127.0.0.1:5180`. CORS is `*` (loopback
+   bind is the access control). Hosted by a trigger
+   (`previewServerTrigger`) so it gets full ServiceManager + event-bus
+   access. Live surface today is preview-resolution-focused:
+   `GET /resolve`, `POST /start` (idempotent reactor-project start —
+   scoped write the editor can trigger), `GET /events` SSE of
+   `service:*` events filtered to `reactor-project`, `GET /healthz`.
+   The broader `GET /projects` + workflow-registry endpoints from the
+   original design remain planned but unbuilt.
 
 5. **State transport split.**
    - **Chat-session document → reactor:** user/agent messages, tool
@@ -167,11 +172,17 @@ Suggested order. Each step is independently demoable.
    shell: chat-session list on the left, empty right pane. Verify
    Connect lands on it.
 
-2. **vetra-cli local API server.** Fixed-port HTTP + SSE server in
-   `src/api/`. Endpoints from ARCHITECTURE.md "vetra-cli local API"
-   section. CORS for `http://localhost:27370`. Wire to the service
-   manager for project state; expose an empty workflow registry for
-   now. Sanity-check with curl.
+2. **vetra-cli local API server — partial.** Built at
+   `src/preview-server/` (not `src/api/`), hosted by
+   `src/triggers/preview-server.ts`. Endpoints shipped: `/resolve`,
+   `/start`, `/events`, `/healthz`. Endpoints still planned:
+   `/projects`, `/projects/subscribe`,
+   `/chat-sessions/:id/workflows`, `…/workflows/subscribe`. The
+   workflow-registry endpoints depend on the workflow registry
+   itself (step 4) which is unbuilt. Browser-side client lives at
+   `vetra-app/editors/vetra-studio/hooks/preview-server-client.ts`
+   with the same `127.0.0.1:5180` URL hardcoded; promote to a
+   shared constant when adding env-driven config.
 
 3. **Chat session integration in the editor.** Left rail renders a
    list of chat session documents in the vetra-cli drive (clint-
@@ -233,9 +244,26 @@ Suggested order. Each step is independently demoable.
   path (vetra-app's static bundle exists, so Connect always runs
   static in vetra-cli). Remains an upstream-only concern.
 
-- **Per-chat-session "current project" setter.** Implicit for MVP
-  (most recently started project in the session's history). Add an
-  explicit `set-current-project` tool when ambiguity bites.
+- **Per-chat-session "current project" setter.** Implicit for MVP.
+  Concrete implementation today: the BUILD pane resolves its target
+  by walking the session's tool history for the latest successful
+  `spec-preview-show` and reading the `project` argument the agent
+  passed (`vetra-app/editors/vetra-studio/hooks/useSessionPreviewTarget.ts`).
+  `spec-preview-create` deliberately doesn't trigger the pane — show
+  is the user-visible "this is the current preview" signal. Add an
+  explicit `set-current-project` tool when ambiguity bites (e.g.
+  mid-session project switches that don't naturally re-emit a
+  `spec-preview-show`).
+
+- **Workflow registry + scaffold tooling.** Architecture decisions
+  7, 8, 9 and implementation steps 4, 5 describe an in-memory
+  workflow registry plus agent tools (`start_workflow`,
+  `set_step_content`, etc.) plus per-scaffold step contracts. None
+  of that is built. The BUILD pane currently bypasses this loop
+  entirely by reading `spec-preview-show` results directly from the
+  chat session. The rest of `WorkflowScaffold.tsx` is still the
+  four-card placeholder. The local API's planned
+  `…/workflows/subscribe` endpoint waits on this registry to exist.
 
 - **Auth on the local API.** None. Localhost-only, single-user
   assumption. Revisit if vetra-cli ever fronts a multi-user surface.
@@ -244,23 +272,32 @@ Suggested order. Each step is independently demoable.
 
 In order:
 
-1. Sketch the drive editor's component hierarchy and decide where the
-   right-pane scaffold registry lives. Probably
+1. Promote the preview-server URL to a shared constant. Today it's
+   hardcoded as `127.0.0.1:5180` in both
+   `vetra-cli/src/preview-server/config.ts` and the browser-side
+   `vetra-app/editors/vetra-studio/hooks/preview-server-client.ts`.
+   When the port becomes configurable, the browser side will need
+   `import.meta.env.PH_PREVIEW_SERVER_URL` or similar baked at
+   build time.
+
+2. Tighten CORS once the embedded Connect's origin is known and
+   stable — currently `*` for ease of dev.
+
+3. Sketch the drive editor's scaffold registry. Probably
    `vetra-app/editors/vetra-studio/scaffolds/{index,default}.tsx`.
+   Required to move past the current `spec-preview-show` shortcut
+   and into the `set_step_content`-driven model.
 
-2. Pick the fixed port for the local API (mirror the
-   `LOCAL_REGISTRY_PORT` constant pattern in `constants.ts`).
+4. Build the workflow registry + agent tools (decisions 7, 8, 9).
+   Once it exists, expose `/chat-sessions/:id/workflows` /
+   `…/subscribe` on the same preview-server.
 
-3. Decide the hardcoded preview-drive slug and ensure
-   `reactor-project-init` creates it. If the current init code
-   doesn't already create the project drive, add that step.
+5. Add `GET /projects` / `GET /projects/subscribe` to the local API
+   as a broader projection of `services.list("reactor-project")`
+   (today's `/resolve` is a per-target slice).
 
-4. Draft the tool input/output schemas in vetra-cli's command
-   modules before wiring the editor — the editor's render contract
-   depends on the payload shapes the agent emits.
-
-5. Once the skeleton end-to-end (chat session → local API → empty
-   scaffold) renders, add the preview chain.
+6. Decide the hardcoded preview-drive slug and ensure
+   `reactor-project-init` creates it.
 
 ## Useful diagnostic commands
 
@@ -273,8 +310,17 @@ curl -sS -X POST http://localhost:59220/graphql \
   -H "content-type: application/json" \
   -d '{"query":"{ __schema { types { name } } }"}' | grep -i drive
 
-# Once the local API ships, project subscription smoke test
-curl -sS -N http://localhost:<VETRA_CLI_API_PORT>/projects/subscribe
+# Preview-server liveness
+curl -sS http://127.0.0.1:5180/healthz
+
+# Resolve a session's preview target
+curl -sS "http://127.0.0.1:5180/resolve?project=<workdir-subdir>&doc=<slug-or-id>"
+
+# Trigger reactor-project start (idempotent)
+curl -sS -X POST "http://127.0.0.1:5180/start?project=<workdir-subdir>"
+
+# Watch the SSE stream of reactor-project events
+curl -sS -N http://127.0.0.1:5180/events
 ```
 
 ## Glossary
