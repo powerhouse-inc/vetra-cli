@@ -7,6 +7,12 @@ import { useState } from "react";
 import { ChatPane } from "./ChatPane.js";
 import { WorkflowScaffold } from "./WorkflowScaffold.js";
 
+// Hardcoded so the BUILD card can be exercised before the workflow registry
+// supplies a real reactor-project preview URL. Point at a running
+// reactor-project's Connect (or any URL that allows iframe embedding).
+const DEMO_BUILD_PREVIEW_URL: string | undefined =
+  "http://localhost:3000/?embed=1";
+
 export type VetraStudioProps = {
   document: DocumentDriveDocument;
   dispatch: DocumentDispatch<DocumentDriveAction>;
@@ -31,7 +37,10 @@ export function VetraStudio({
         />
       </aside>
       <main className="flex-1 overflow-y-auto bg-gray-50">
-        <WorkflowScaffold selectedSessionId={selectedSessionId} />
+        <WorkflowScaffold
+          selectedSessionId={selectedSessionId}
+          buildPreviewUrl={DEMO_BUILD_PREVIEW_URL}
+        />
       </main>
     </div>
   );
