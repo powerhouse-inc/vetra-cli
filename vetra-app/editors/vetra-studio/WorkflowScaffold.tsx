@@ -1,3 +1,4 @@
+import { PreviewStatusChip } from "./PreviewStatusChip.js";
 import type { ResolvedPreview } from "./hooks/useResolvedPreview.js";
 
 type StepId = "ideate" | "specify" | "build" | "deploy";
@@ -44,7 +45,10 @@ export function WorkflowScaffold({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <ProgressBar currentStep="build" />
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-white px-3 py-2">
+        <ProgressBar currentStep="build" />
+        <PreviewStatusChip preview={preview} />
+      </div>
       <PreviewBody preview={preview} />
     </div>
   );
@@ -136,7 +140,7 @@ function StatusBlock({
 function ProgressBar({ currentStep }: { currentStep: StepId }) {
   const currentIndex = STEPS.findIndex((s) => s.id === currentStep);
   return (
-    <ol className="flex shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-3 py-2">
+    <ol className="flex min-w-0 items-center gap-2">
       {STEPS.map((step, index) => {
         const state =
           index < currentIndex
