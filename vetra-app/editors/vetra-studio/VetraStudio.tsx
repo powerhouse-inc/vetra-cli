@@ -40,6 +40,7 @@ export function VetraStudio({
   const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(
     null,
   );
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -66,6 +67,7 @@ export function VetraStudio({
         startX: event.clientX,
         startWidth: chatWidth,
       };
+      setIsDragging(true);
 
       function onMove(e: MouseEvent) {
         const state = dragStateRef.current;
@@ -77,6 +79,7 @@ export function VetraStudio({
       }
       function onUp() {
         dragStateRef.current = null;
+        setIsDragging(false);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         window.document.body.style.removeProperty("cursor");
@@ -142,6 +145,16 @@ export function VetraStudio({
           />
         </div>
       </main>
+      {isDragging ? (
+        /* Catches mouse events that would otherwise route into the BUILD
+         * iframe and stall the drag. The overlay is only present while the
+         * pointer is held down. */
+        <div
+          aria-hidden
+          className="fixed inset-0 z-50 cursor-col-resize"
+          style={{ background: "transparent" }}
+        />
+      ) : null}
     </div>
   );
 }
