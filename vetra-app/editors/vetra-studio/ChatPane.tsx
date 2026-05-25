@@ -14,7 +14,7 @@ import type {
   DocumentDriveDocument,
   FileNode,
 } from "@powerhousedao/shared/document-drive";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, useTransition } from "react";
 
 const ChatSession = lazy(() =>
   import("@powerhousedao/clint-common/editors").then((m) => ({
@@ -43,6 +43,7 @@ export function ChatPane({
   );
 
   if (selectedSessionId) {
+    const knownSession = sessions.find((s) => s.id === selectedSessionId);
     return (
       <div className="flex h-full flex-col">
         <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2">
@@ -54,18 +55,15 @@ export function ChatPane({
             ← Sessions
           </button>
           <span className="ml-1 truncate text-sm font-medium text-gray-800">
-            {sessions.find((s) => s.id === selectedSessionId)?.name ?? ""}
+            {knownSession?.name ?? ""}
           </span>
         </header>
         <div className="flex-1 overflow-hidden">
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center text-sm text-gray-400">
-                Loading session…
-              </div>
-            }
-          >
-            <SessionView sessionId={selectedSessionId} />
+          <Suspense fallback={<SessionLoading />}>
+            <SessionView
+              sessionId={selectedSessionId}
+              knownInDrive={Boolean(knownSession)}
+            />
           </Suspense>
         </div>
       </div>
@@ -91,13 +89,25 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
   const [creating, setCreating] = useState(false);
   const toast = usePHToast();
 
+  const [, startTransition] = useTransition();
+  const [pendingSessionId, setPendingSessionId] = useState<string | undefined>(
+    undefined,
+  );
+
+  function selectSession(id: string) {
+    setPendingSessionId(id);
+    startTransition(() => {
+      onSelectSession(id);
+    });
+  }
+
   async function handleNewSession() {
     if (creating) return;
     setCreating(true);
     try {
       const name = `Session ${sessions.length + 1}`;
       const node = await addDocument(driveId, name, CHAT_SESSION_DOCUMENT_TYPE);
-      onSelectSession(node.id);
+      selectSession(node.id);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to create session";
@@ -109,47 +119,183 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-        <h2 className="text-sm font-semibold text-gray-700">Chat sessions</h2>
+    <div className="flex h-full flex-col bg-white">
+      <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h2 className="text-sm font-semibold tracking-tight text-gray-900">
+            Chat sessions
+          </h2>
+          {sessions.length > 0 ? (
+            <span className="text-xs font-medium text-gray-400 tabular-nums">
+              {sessions.length}
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={() => void handleNewSession()}
           disabled={creating}
-          className="rounded-md bg-gray-900 px-2 py-1 text-xs font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {creating ? "…" : "+ New"}
+          {creating ? (
+            <span aria-hidden>…</span>
+          ) : (
+            <>
+              <PlusIcon />
+              <span>New</span>
+            </>
+          )}
         </button>
       </header>
       {sessions.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-4 text-sm text-gray-400">
-          What will you build today?
-        </div>
+        <EmptyState onNewSession={() => void handleNewSession()} creating={creating} />
       ) : (
-        <ul className="flex-1 overflow-y-auto">
-          {sessions.map((session) => (
-            <li key={session.id}>
-              <button
-                type="button"
-                onClick={() => onSelectSession(session.id)}
-                className="block w-full px-4 py-3 text-left text-sm text-gray-800 hover:bg-gray-50"
-              >
-                {session.name}
-              </button>
-            </li>
-          ))}
+        <ul className="flex-1 divide-y divide-gray-100 overflow-y-auto">
+          {sessions.map((session) => {
+            const isPending = pendingSessionId === session.id;
+            return (
+              <li key={session.id}>
+                <button
+                  type="button"
+                  onClick={() => selectSession(session.id)}
+                  aria-busy={isPending || undefined}
+                  className={
+                    "group flex w-full items-center gap-3 border-l-2 px-4 py-2.5 text-left text-sm text-gray-800 transition-colors hover:border-gray-900 hover:bg-gray-50 focus:outline-none focus-visible:border-gray-900 focus-visible:bg-gray-50 " +
+                    (isPending
+                      ? "border-gray-900 bg-gray-50"
+                      : "border-transparent")
+                  }
+                >
+                  <ChatBubbleIcon
+                    className={
+                      "h-4 w-4 shrink-0 group-hover:text-gray-700 " +
+                      (isPending ? "text-gray-700" : "text-gray-400")
+                    }
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {session.name}
+                  </span>
+                  {isPending ? (
+                    <span
+                      aria-hidden
+                      className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-gray-500"
+                    />
+                  ) : (
+                    <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500" />
+                  )}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
   );
 }
 
-function SessionView({ sessionId }: { sessionId: string }) {
+function EmptyState({
+  onNewSession,
+  creating,
+}: {
+  onNewSession: () => void;
+  creating: boolean;
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+      <ChatBubbleIcon className="h-8 w-8 text-gray-300" />
+      <div>
+        <div className="text-sm font-medium text-gray-700">
+          What will you build today?
+        </div>
+        <div className="mt-1 text-xs text-gray-500">
+          Start a session to talk to the agent.
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onNewSession}
+        disabled={creating}
+        className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <PlusIcon />
+        <span>{creating ? "Creating…" : "New session"}</span>
+      </button>
+    </div>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden
+      className="h-3 w-3"
+    >
+      <path
+        d="M6 1.5v9M1.5 6h9"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ChatBubbleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="m4.5 2.5 3.5 3.5-3.5 3.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SessionView({
+  sessionId,
+  knownInDrive,
+}: {
+  sessionId: string;
+  /** True when the parent has already located the session in the drive's
+   *  node list — meaning a null document from useDocumentById is a transient
+   *  subscription lag, not a missing record. False when the id came from a
+   *  stale URL / link, in which case "not found" is honest. */
+  knownInDrive: boolean;
+}) {
   const [chatDocument, dispatch] = useDocumentById(
     sessionId,
   ) as UseDispatchResult<ChatSessionDocument, ChatSessionAction>;
 
   if (!chatDocument) {
+    if (knownInDrive) return <SessionLoading />;
     return (
       <div className="flex h-full items-center justify-center text-sm text-red-500">
         Session not found
@@ -158,4 +304,18 @@ function SessionView({ sessionId }: { sessionId: string }) {
   }
 
   return <ChatSession document={chatDocument} dispatch={dispatch} />;
+}
+
+function SessionLoading() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="flex items-center gap-2 text-sm text-gray-400">
+        <span
+          aria-hidden
+          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400"
+        />
+        Loading session…
+      </div>
+    </div>
+  );
 }
