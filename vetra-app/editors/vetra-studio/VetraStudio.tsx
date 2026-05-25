@@ -10,15 +10,38 @@ import { WorkflowScaffold } from "./WorkflowScaffold.js";
 const PREVIEW_URL_STORAGE_KEY = "vetra-studio:build-preview-url";
 const CHAT_WIDTH_STORAGE_KEY = "vetra-studio:chat-pane-width";
 /**
- * Keyed by the drive id so that two vetra-cli drives open in different tabs
- * (or the same tab over time) keep their own last-selected session, instead
- * of confusing the cross-drive state.
+ * URL query param holding the selected chat session id. Using the URL (rather
+ * than localStorage) makes the current selection link-shareable across users
+ * and tabs, and gives back/forward navigation for free.
  */
-const SESSION_STORAGE_KEY_PREFIX = "vetra-studio:selected-session-id:";
+const SESSION_QUERY_PARAM = "session";
 const CHAT_WIDTH_DEFAULT = 360;
 const CHAT_WIDTH_MIN = 240;
 /** Minimum width the right pane keeps regardless of how far the divider is pushed. */
 const MAIN_PANE_MIN = 320;
+
+function readSessionFromUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (
+    new URLSearchParams(window.location.search).get(SESSION_QUERY_PARAM) ??
+    undefined
+  );
+}
+
+function writeSessionToUrl(sessionId: string | undefined) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (sessionId) url.searchParams.set(SESSION_QUERY_PARAM, sessionId);
+  else url.searchParams.delete(SESSION_QUERY_PARAM);
+  /* replaceState rather than pushState so opening a session doesn't flood the
+   * history stack — selection within a drive is intra-page state, not
+   * navigation. */
+  window.history.replaceState(
+    window.history.state,
+    "",
+    url.pathname + url.search + url.hash,
+  );
+}
 
 export type VetraStudioProps = {
   document: DocumentDriveDocument;
@@ -31,31 +54,29 @@ export function VetraStudio({
   dispatch,
   className,
 }: VetraStudioProps) {
-  const driveId = document.header.id;
-  const sessionStorageKey = `${SESSION_STORAGE_KEY_PREFIX}${driveId}`;
-
-  // Rehydrate the last-selected session id, but only if a node with that id
-  // still exists in the drive — otherwise we'd render a dead session view.
+  // Initial selection comes from ?session=<id>. We don't validate against the
+  // node list here — the persisted node may not be in document.state yet on
+  // first render but appear after reactor sync, so we'd lose a valid id.
+  // ChatPane already handles the not-found case (renders "Session not found").
   const [selectedSessionId, setSelectedSessionId] = useState<
     string | undefined
-  >(() => {
-    if (typeof window === "undefined") return undefined;
-    const saved = window.localStorage.getItem(sessionStorageKey);
-    if (!saved) return undefined;
-    const stillExists = document.state.global.nodes.some(
-      (node) => node.id === saved,
-    );
-    return stillExists ? saved : undefined;
-  });
+  >(() => readSessionFromUrl());
 
+  // Keep the URL in sync when we mutate locally (clicks, programmatic).
+  useEffect(() => {
+    writeSessionToUrl(selectedSessionId);
+  }, [selectedSessionId]);
+
+  // Keep local state in sync when the URL changes externally (back/forward,
+  // someone editing the address bar, shared link arrives via in-page nav).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (selectedSessionId) {
-      window.localStorage.setItem(sessionStorageKey, selectedSessionId);
-    } else {
-      window.localStorage.removeItem(sessionStorageKey);
+    function onPopState() {
+      setSelectedSessionId(readSessionFromUrl());
     }
-  }, [selectedSessionId, sessionStorageKey]);
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const [buildPreviewUrl, setBuildPreviewUrl] = useState<string>(() => {
     if (typeof window === "undefined") return "";
