@@ -1,4 +1,12 @@
-import type { DocumentDispatch } from "@powerhousedao/reactor-browser";
+import type {
+  ChatSessionAction,
+  ChatSessionDocument,
+} from "@powerhousedao/clint-common/document-models/chat-session";
+import {
+  useDocumentById,
+  type DocumentDispatch,
+  type UseDispatchResult,
+} from "@powerhousedao/reactor-browser";
 import type {
   DocumentDriveAction,
   DocumentDriveDocument,
@@ -6,8 +14,9 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPane } from "./ChatPane.js";
 import { WorkflowScaffold } from "./WorkflowScaffold.js";
+import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
+import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
 
-const PREVIEW_URL_STORAGE_KEY = "vetra-studio:build-preview-url";
 const CHAT_WIDTH_STORAGE_KEY = "vetra-studio:chat-pane-width";
 /**
  * URL query param holding the selected chat session id. Using the URL (rather
@@ -78,10 +87,16 @@ export function VetraStudio({
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  const [buildPreviewUrl, setBuildPreviewUrl] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    return window.localStorage.getItem(PREVIEW_URL_STORAGE_KEY) ?? "";
-  });
+  /* The session doc is the source of truth for the BUILD preview: its tool
+   * history names the project and document the agent last surfaced via
+   * `spec-preview-show`. We re-resolve the URL each render from the live
+   * preview-server so reactor restarts don't strand the iframe. */
+  const [sessionDocument] = useDocumentById(
+    selectedSessionId ?? null,
+  ) as UseDispatchResult<ChatSessionDocument | undefined, ChatSessionAction>;
+  const previewTarget = useSessionPreviewTarget(sessionDocument ?? undefined);
+  const preview = useResolvedPreview(previewTarget);
+
   const [chatWidth, setChatWidth] = useState<number>(() => {
     if (typeof window === "undefined") return CHAT_WIDTH_DEFAULT;
     const raw = window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY);
@@ -94,15 +109,6 @@ export function VetraStudio({
     null,
   );
   const [isDragging, setIsDragging] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (buildPreviewUrl) {
-      window.localStorage.setItem(PREVIEW_URL_STORAGE_KEY, buildPreviewUrl);
-    } else {
-      window.localStorage.removeItem(PREVIEW_URL_STORAGE_KEY);
-    }
-  }, [buildPreviewUrl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -176,29 +182,10 @@ export function VetraStudio({
         </div>
       </div>
       <main className="flex flex-1 flex-col overflow-hidden bg-gray-50">
-        <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-2">
-          <label
-            htmlFor="vetra-studio-preview-url"
-            className="text-xs font-medium uppercase tracking-wider text-gray-500"
-          >
-            Preview URL
-          </label>
-          <input
-            id="vetra-studio-preview-url"
-            type="url"
-            value={buildPreviewUrl}
-            onChange={(event) => setBuildPreviewUrl(event.target.value)}
-            placeholder="paste output of spec-preview-show"
-            className="flex-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-xs text-gray-800 focus:border-gray-400 focus:bg-white focus:outline-none"
-            spellCheck={false}
-          />
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          <WorkflowScaffold
-            selectedSessionId={selectedSessionId}
-            buildPreviewUrl={buildPreviewUrl || undefined}
-          />
-        </div>
+        <WorkflowScaffold
+          selectedSessionId={selectedSessionId}
+          preview={preview}
+        />
       </main>
       {isDragging ? (
         /* Catches mouse events that would otherwise route into the BUILD
