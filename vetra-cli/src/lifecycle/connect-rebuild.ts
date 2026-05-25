@@ -14,8 +14,14 @@
  *
  * Trade-offs: the very first run (and any run after the drive id changes)
  * starts vetra-cli with a stale bundle, kicks the rebuild off in the
- * background, and asks the user to restart. Subsequent runs read the cache
- * and skip the rebuild — no startup penalty.
+ * background, and asks the user to reload their browser once the rebuild
+ * completes. Subsequent runs read the cache and skip the rebuild — no
+ * startup penalty.
+ *
+ * Detection is intentionally narrow: we only compare the live drive URL
+ * with what we built last. Source changes in vetra-app aren't detected —
+ * the developer's normal `pnpm build` + `ph-cli connect build` cycle is
+ * the right place for those.
  *
  * If a less disruptive option appears (a Switchboard alias URL, runtime
  * injection from connect-server, etc.) this hook is the first thing to
@@ -140,5 +146,5 @@ async function runRebuild(
   });
 
   writeFileSync(cacheFile, driveUrl);
-  log.info("[connect-rebuild] ✓ Bundle rebuilt. Restart vetra-cli to apply.");
+  log.info("[connect-rebuild] ✓ Bundle rebuilt. Reload your browser to apply.");
 }
