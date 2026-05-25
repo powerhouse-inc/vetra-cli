@@ -9,6 +9,12 @@ import { WorkflowScaffold } from "./WorkflowScaffold.js";
 
 const PREVIEW_URL_STORAGE_KEY = "vetra-studio:build-preview-url";
 const CHAT_WIDTH_STORAGE_KEY = "vetra-studio:chat-pane-width";
+/**
+ * Keyed by the drive id so that two vetra-cli drives open in different tabs
+ * (or the same tab over time) keep their own last-selected session, instead
+ * of confusing the cross-drive state.
+ */
+const SESSION_STORAGE_KEY_PREFIX = "vetra-studio:selected-session-id:";
 const CHAT_WIDTH_DEFAULT = 360;
 const CHAT_WIDTH_MIN = 240;
 /** Minimum width the right pane keeps regardless of how far the divider is pushed. */
@@ -25,7 +31,32 @@ export function VetraStudio({
   dispatch,
   className,
 }: VetraStudioProps) {
-  const [selectedSessionId, setSelectedSessionId] = useState<string>();
+  const driveId = document.header.id;
+  const sessionStorageKey = `${SESSION_STORAGE_KEY_PREFIX}${driveId}`;
+
+  // Rehydrate the last-selected session id, but only if a node with that id
+  // still exists in the drive — otherwise we'd render a dead session view.
+  const [selectedSessionId, setSelectedSessionId] = useState<
+    string | undefined
+  >(() => {
+    if (typeof window === "undefined") return undefined;
+    const saved = window.localStorage.getItem(sessionStorageKey);
+    if (!saved) return undefined;
+    const stillExists = document.state.global.nodes.some(
+      (node) => node.id === saved,
+    );
+    return stillExists ? saved : undefined;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (selectedSessionId) {
+      window.localStorage.setItem(sessionStorageKey, selectedSessionId);
+    } else {
+      window.localStorage.removeItem(sessionStorageKey);
+    }
+  }, [selectedSessionId, sessionStorageKey]);
+
   const [buildPreviewUrl, setBuildPreviewUrl] = useState<string>(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem(PREVIEW_URL_STORAGE_KEY) ?? "";
