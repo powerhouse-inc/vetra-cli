@@ -102,6 +102,7 @@ async function runRebuild(
   log.info(`[connect-rebuild] Rebuilding Connect with default drive URL...`);
   log.info(`  drive: ${driveUrl}`);
 
+  let stderr = "";
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(
       "pnpm",
@@ -117,17 +118,24 @@ async function runRebuild(
       ],
       {
         cwd: vetraAppDir,
-        stdio: "inherit",
+        stdio: ["ignore", "ignore", "pipe"],
         env: {
           ...process.env,
           PH_CONNECT_DEFAULT_DRIVES_URL: driveUrl,
         },
       },
     );
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
     proc.on("error", reject);
     proc.on("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`ph-cli connect build exited with code ${code}`));
+      else {
+        const trimmed = stderr.trim();
+        if (trimmed) log.error(trimmed);
+        reject(new Error(`ph-cli connect build exited with code ${code}`));
+      }
     });
   });
 
