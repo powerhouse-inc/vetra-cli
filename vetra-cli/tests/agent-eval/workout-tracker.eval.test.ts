@@ -192,18 +192,9 @@ async function driveAgent(opts: {
 }
 
 function aggregateUsage(chunks: RawChunk[]): UsageTotals {
-  /* Prefer the final `finish` chunk when it carries an authoritative
-   * total (Mastra surfaces this on the top-level finish). Otherwise sum
-   * the per-step `step-finish` chunks. The two paths agree in practice
-   * but we don't want to double-count. */
-  const finalFinish = [...chunks]
-    .reverse()
-    .find((c) => c.type === "finish" && c.usage);
-  if (finalFinish && typeof finalFinish.usage === "object") {
-    const totals = emptyUsage();
-    addUsage(totals, finalFinish.usage as Partial<UsageTotals>);
-    return totals;
-  }
+  /* Each Mastra `step-finish` carries one LLM turn's usage; the `finish`
+   * chunk only mirrors the last step's numbers (no aggregated total in
+   * this Mastra version), so we sum step-finishes and ignore `finish`. */
   const totals = emptyUsage();
   for (const chunk of chunks) {
     if (chunk.type === "step-finish" && chunk.usage) {

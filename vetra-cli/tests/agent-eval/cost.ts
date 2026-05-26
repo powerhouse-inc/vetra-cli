@@ -109,12 +109,15 @@ export async function computeCost(
       `No LiteLLM price entry for model "${modelId}" (tried key "${key}"). Add an alias in cost.ts.`,
     );
   }
-  /* For cached inputs, Anthropic does not bill the full input rate — only
-   * the cache-read rate. LiteLLM models this by giving each row two fields:
-   * `input_cost_per_token` (non-cached) and `cache_read_input_token_cost`.
-   * Cached tokens are subtracted from the input bucket so the non-cached
-   * remainder is what gets charged at the full rate. */
-  const nonCachedInput = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
+  /* Anthropic's `inputTokens` is the *total* — it folds in both
+   * `cache_read_input_tokens` and `cache_creation_input_tokens` alongside
+   * the genuinely fresh tokens. To avoid double-charging cache-creation
+   * tokens (once at the full input rate, again at the cache-write rate),
+   * subtract both buckets to recover the truly non-cached remainder. */
+  const nonCachedInput = Math.max(
+    0,
+    usage.inputTokens - usage.cachedInputTokens - usage.cacheCreationInputTokens,
+  );
   const inputUsd = nonCachedInput * (entry.input_cost_per_token ?? 0);
   const outputUsd = usage.outputTokens * (entry.output_cost_per_token ?? 0);
   const cacheReadUsd =
