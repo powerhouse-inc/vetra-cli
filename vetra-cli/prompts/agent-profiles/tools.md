@@ -61,11 +61,44 @@ unnecessary detours.
 - Action `type` values are LITERAL strings defined per doc-type. Never invent
   them, never strip a prefix, never extrapolate by pattern. For example:
   `powerhouse/subgraph` uses `SET_SUBGRAPH_NAME` / `SET_SUBGRAPH_STATUS` — not
-  `SET_NAME` / `SET_STATUS`. `powerhouse/document-model` releases a new spec
-  version with `RELEASE_NEW_VERSION` — there is no `ADD_SPECIFICATION`.
+  `SET_NAME` / `SET_STATUS`.
+- A freshly created `powerhouse/document-model` spec already contains v1 in
+  its `specifications` array. All edits (state schema, modules, operations,
+  reducers) apply to the latest version automatically — do **not** call
+  `RELEASE_NEW_VERSION` to "start working." That action seals the current
+  spec and opens an empty v(n+1), which leaves your v1 generated code as a
+  broken stub. Only call `RELEASE_NEW_VERSION` once v1 is stable and you
+  want to begin a backwards-incompatible v2.
 - Before composing any `spec-update`, fetch the canonical names with:
     spec-schema --type <doc-type> --filter "$.specifications[(@.length-1)].modules[*].operations[*].name"
 - Batch multiple actions into a single `spec-update` call where possible.
+
+## Defining custom operations on a `powerhouse/document-model`
+
+When you call `ADD_OPERATION` or `SET_OPERATION_NAME` on a document-model
+spec, the `name` field is the literal action `type` string — it ends up in
+generated code as `action.type === "ADD_WORKOUT"`. It is **not** a display
+label. It must be SCREAMING_SNAKE_CASE (`^[A-Z][A-Z0-9_]*$`); the reducer
+will throw with a `Did you mean "..."?` hint if it isn't. Pick the
+canonical form on the first try — e.g. `ADD_WORKOUT`, not `"Add Workout"`
+or `addWorkout`.
+
+## Verifying generated code
+
+`spec-generate` runs `tsc --noEmit` and `eslint` over the generated files
+after writing them, scoped to `gen/` paths. Diagnostics appear in the
+result text and under `data.diagnostics`. When you see errors, read the
+diagnostic first — they usually point at the spec change that needs
+fixing (missing input type, name format, schema not GraphQL SDL, etc.).
+Fix the spec via `spec-update` and re-run `spec-generate`; do not patch
+files under `document-models/`, `editors/`, `processors/`, or `subgraphs/`
+by hand.
+
+For a standalone check (after hand-edits to non-generated files, or to
+confirm a project compiles before stopping), use `reactor-project-check
+--project <name>`. Default scope is the whole project; pass `--scope
+generated` to match what `spec-generate` does, or `--skipLint` /
+`--skipTypecheck` to narrow.
 
 # Surfacing a preview to the user (BUILD pane)
 
