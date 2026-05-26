@@ -16,6 +16,7 @@ import { documentModels as extModels } from '@powerhousedao/clint-common';
 import { createAgent } from './agents/agent.js';
 import { chatSessionWatchTrigger } from '@powerhousedao/clint-common/chat';
 import { observability } from '@powerhousedao/ph-clint-observability';
+import { agentRun } from './commands/agent-run.js';
 import { specCommands } from './commands/spec/index.js';
 import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
@@ -45,6 +46,7 @@ export const cli = defineCli({
     ...specCommands,
     ...specPreviewCommands,
     ...reactorProjectCommands,
+    agentRun,
   ],
   // @clint:end commands
 
