@@ -11,6 +11,7 @@
  * running process owns the storage and concurrent file writes are unsafe.
  */
 import crypto from "node:crypto";
+import fs from "node:fs";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
 import { unknownValueError } from "./cli-errors.js";
 
@@ -23,14 +24,33 @@ const PREVIEW_DRIVE_PREFIX = "preview";
  * `monorepo/clis/ph-cli/src/utils.ts`: short sha256 of the project root path.
  * Keep the two implementations in sync — diverging here silently sends
  * mutations to a non-existent drive.
+ *
+ * Resolve symlinks before hashing because the reactor side uses
+ * `process.cwd()`, which on macOS normalises `/var/...` to `/private/var/...`
+ * automatically. Without realpath here, a workdir under `mkdtemp(tmpdir())`
+ * hashes to a different id on each side and `createEmptyDocument` fails with
+ * "Document not found: preview-…".
  */
 export function getPreviewDriveId(projectPath: string): string {
+  const canonical = canonicalProjectPath(projectPath);
   const hash = crypto
     .createHash("sha256")
-    .update(projectPath)
+    .update(canonical)
     .digest("hex")
     .slice(0, 8);
   return `${PREVIEW_DRIVE_PREFIX}-${hash}`;
+}
+
+function canonicalProjectPath(projectPath: string): string {
+  try {
+    return fs.realpathSync(projectPath);
+  } catch {
+    /* If the path doesn't exist yet (rare — callers go through
+     * resolveReactorProjectPath which already validates), fall back to the
+     * raw string. Better to attempt the request and surface a clear GQL
+     * error than to throw something cryptic from here. */
+    return projectPath;
+  }
 }
 
 /**
