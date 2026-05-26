@@ -50,7 +50,7 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
     try {
       ctx.state.handle = await startPreviewServer({
         services,
-        subscribe: (event, handler) => on(event, handler as (data?: unknown) => void),
+        subscribe: (event, handler) => on(event, handler),
         workdir,
         port: DEFAULT_PREVIEW_SERVER_PORT,
         log: {

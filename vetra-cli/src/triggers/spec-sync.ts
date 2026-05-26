@@ -60,7 +60,7 @@ export const specSyncTrigger = createDocumentChangeTrigger({
   documentType: SPEC_DOC_TYPES as unknown as string,
   initialReconcile: false,
   async onChange(docs, ctx) {
-    await syncSpecsToFs(docs as never, ctx.context.workdir, ctx.context.log);
+    await syncSpecsToFs(docs, ctx.context.workdir, ctx.context.log);
     // Side-effect-only trigger — no agent work item produced.
     return null;
   },

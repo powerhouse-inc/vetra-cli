@@ -36,7 +36,7 @@ export const specExtract = defineCommand({
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
      * gap; identical at runtime. */
-    const tsProject = buildTsMorphProject(base) as unknown as Project;
+    const tsProject = buildTsMorphProject(base);
     const docs: PHDocument[] = (() => {
       switch (input.type) {
         case "document-model":

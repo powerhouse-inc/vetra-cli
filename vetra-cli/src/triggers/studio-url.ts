@@ -31,7 +31,7 @@ export const studioUrlTrigger = defineTrigger({
     if (!connectUrl) return;
 
     const base = connectUrl.replace(/\/+$/, "");
-    // eslint-disable-next-line no-console
+     
     console.log(`Vetra Studio: ${base}/d/${driveId}`);
   },
 

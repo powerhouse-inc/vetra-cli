@@ -164,7 +164,7 @@ describe("findByName", () => {
       makeCtx(workdir),
     );
     const { doc } = await findByName(workdir, "slug-match");
-    expect(doc.header.id).toBe(created.data!.document.header.id);
+    expect(doc.header.id).toBe(created.data.document.header.id);
   });
 
   it("resolves by id", async () => {
@@ -172,7 +172,7 @@ describe("findByName", () => {
       { type: "powerhouse/document-model", name: "ById", dryRun: false },
       makeCtx(workdir),
     );
-    const { doc } = await findByName(workdir, created.data!.document.header.id);
+    const { doc } = await findByName(workdir, created.data.document.header.id);
     expect(doc.header.name).toBe("ById");
   });
 
@@ -217,7 +217,7 @@ describe("slugify", () => {
         { type: "powerhouse/document-model", name: "Hello World 42", dryRun: true },
         makeCtx(workdir),
       );
-      expect(result.data!.document.header.slug).toBe("hello-world-42");
+      expect(result.data.document.header.slug).toBe("hello-world-42");
     } finally {
       cleanup();
     }
@@ -230,7 +230,7 @@ describe("slugify", () => {
         { type: "powerhouse/document-model", name: "Café — Très Bien!", dryRun: true },
         makeCtx(workdir),
       );
-      expect(result.data!.document.header.slug).toBe("cafe-tres-bien");
+      expect(result.data.document.header.slug).toBe("cafe-tres-bien");
     } finally {
       cleanup();
     }
