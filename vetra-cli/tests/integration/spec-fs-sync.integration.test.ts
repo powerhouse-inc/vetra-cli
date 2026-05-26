@@ -24,7 +24,7 @@ import {
   type AppModuleDocument,
   setAppName,
 } from "@powerhousedao/vetra/document-models/app-module";
-import { saveSpec, specPath } from "@powerhousedao/vetra/codegen";
+import { saveSpec } from "@powerhousedao/vetra/codegen";
 import { baseLoadFromFile } from "document-model/node";
 import {
   applyFsChangesToReactor,
@@ -133,10 +133,10 @@ describe("spec-fs-sync FS → drive", () => {
     draft.header.name = name;
     draft.header.documentType = "powerhouse/app";
     await module.client.create(draft);
-    return { id: draft.header.id, path: await persistDocToFs(draft.header.id, name) };
+    return { id: draft.header.id, path: await persistDocToFs(draft.header.id) };
   }
 
-  async function persistDocToFs(id: string, _name: string): Promise<string> {
+  async function persistDocToFs(id: string): Promise<string> {
     const created = await module.client.get<AppModuleDocument>(id);
     const opsByScope = await module.reactor.getOperations(id);
     const operations: Record<string, unknown[]> = {};

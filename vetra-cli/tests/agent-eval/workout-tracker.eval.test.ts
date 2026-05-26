@@ -98,7 +98,6 @@ describeIfEnabled("live agent eval: workout tracker", () => {
       const workdir = mkdtempSync(join(tmpdir(), "vetra-eval-"));
       writeFileSync(join(workdir, "powerhouse.config.json"), "{}\n");
       const keepWorkdir = process.env.KEEP_AGENT_EVAL_WORKDIR === "1";
-      // eslint-disable-next-line no-console
       console.log(`[agent-eval] workdir: ${workdir}`);
       try {
         const { events, usage } = await driveAgent({
@@ -108,10 +107,8 @@ describeIfEnabled("live agent eval: workout tracker", () => {
 
         try {
           const cost = await computeCost(EVAL_MODEL_ID, usage);
-          // eslint-disable-next-line no-console
           console.log(`[agent-eval] ${formatCostLine(usage, cost)}`);
         } catch (err) {
-          // eslint-disable-next-line no-console
           console.warn(
             `[agent-eval] cost lookup failed: ${err instanceof Error ? err.message : String(err)}`,
           );
@@ -126,7 +123,6 @@ describeIfEnabled("live agent eval: workout tracker", () => {
           )
           .map((e) => (e as { error: { message: string } }).error.message);
         if (streamErrors.length > 0) {
-          // eslint-disable-next-line no-console
           console.error(
             `[agent-eval] stream errors during run:\n${streamErrors.map((m) => `  - ${m}`).join("\n")}`,
           );
@@ -163,7 +159,6 @@ describeIfEnabled("live agent eval: workout tracker", () => {
         if (!keepWorkdir) {
           rmSync(workdir, { recursive: true, force: true });
         } else {
-          // eslint-disable-next-line no-console
           console.log(`[agent-eval] preserved workdir: ${workdir}`);
         }
       }
@@ -198,7 +193,7 @@ function aggregateUsage(chunks: RawChunk[]): UsageTotals {
   const totals = emptyUsage();
   for (const chunk of chunks) {
     if (chunk.type === "step-finish" && chunk.usage) {
-      addUsage(totals, chunk.usage as Partial<UsageTotals>);
+      addUsage(totals, chunk.usage);
     }
   }
   return totals;
@@ -295,7 +290,11 @@ function spawnAgentRun(workdir: string, prompt: string): Promise<RawChunk[]> {
       clearInterval(heartbeat);
       reject(err);
     });
-    child.on("close", async (code) => {
+    child.on("close", (code) => {
+      void onClose(code);
+    });
+
+    async function onClose(code: number | null) {
       clearInterval(heartbeat);
       // Persist the raw transcript next to the workdir for post-mortem,
       // regardless of pass/fail. Helps when the run blows past the budget.
@@ -338,7 +337,7 @@ function spawnAgentRun(workdir: string, prompt: string): Promise<RawChunk[]> {
         }
       }
       resolve(chunks);
-    });
+    }
   });
 }
 

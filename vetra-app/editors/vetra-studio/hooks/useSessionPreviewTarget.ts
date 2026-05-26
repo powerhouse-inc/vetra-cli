@@ -54,7 +54,7 @@ export function extractPreviewTarget(
 ): PreviewTarget | undefined {
   if (!session) return undefined;
   const messages = session.state.global.messages;
-  if (!messages || messages.length === 0) return undefined;
+  if (messages.length === 0) return undefined;
 
   /* Walk backwards. For the first non-error spec-preview-show TOOL_RESULT we
    * find, locate the matching TOOL_CALL by toolCallId to recover `project`. */

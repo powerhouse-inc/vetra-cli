@@ -28,7 +28,14 @@ export type ResolvedPreview =
   | { kind: "unknown-project"; project: string; error: string }
   | { kind: "project-stopped"; project: string; projectPath: string }
   | { kind: "starting"; project: string; projectPath: string; driveId: string }
-  | { kind: "ready"; project: string; projectPath: string; driveId: string; documentId: string; url: string }
+  | {
+      kind: "ready";
+      project: string;
+      projectPath: string;
+      driveId: string;
+      documentId: string;
+      url: string;
+    }
   | { kind: "error"; message: string };
 
 export function useResolvedPreview(
@@ -105,9 +112,11 @@ export function useResolvedPreview(
 
     autoStartedFor.current = target.project;
     const ac = new AbortController();
-    void fetchStart({ project: target.project, signal: ac.signal }).catch(() => {
-      // Errors surface via the next /resolve; nothing to do here.
-    });
+    void fetchStart({ project: target.project, signal: ac.signal }).catch(
+      () => {
+        // Errors surface via the next /resolve; nothing to do here.
+      },
+    );
     return () => ac.abort();
   }, [state.kind, target?.project]);
 

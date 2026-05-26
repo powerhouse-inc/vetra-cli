@@ -49,9 +49,9 @@ describe("log-parser", () => {
       (e) => e.kind === "tool_use" && e.tool === "reactor-project-init",
     );
     expect(init).toBeDefined();
-    if (init && init.kind === "tool_use") {
-      expect((init.input as Record<string, unknown>).name).toBe("workout-tracker");
-    }
+    expect(init?.kind).toBe("tool_use");
+    const input = (init as { input: Record<string, unknown> }).input;
+    expect(input.name).toBe("workout-tracker");
   });
 });
 

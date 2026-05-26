@@ -18,11 +18,31 @@ export type ResolveResult =
   | { kind: "unknown-project"; project: string; error: string }
   | { kind: "project-stopped"; project: string; projectPath: string }
   | { kind: "starting"; project: string; projectPath: string; driveId: string }
-  | { kind: "ready"; project: string; projectPath: string; driveId: string; documentId: string; url: string };
+  | {
+      kind: "ready";
+      project: string;
+      projectPath: string;
+      driveId: string;
+      documentId: string;
+      url: string;
+    };
 
 export type StartResult =
-  | { kind: "started"; project: string; projectPath: string; instanceId: string; driveId: string }
-  | { kind: "already-running"; project: string; projectPath: string; instanceId: string; driveId: string; status: "starting" | "ready" }
+  | {
+      kind: "started";
+      project: string;
+      projectPath: string;
+      instanceId: string;
+      driveId: string;
+    }
+  | {
+      kind: "already-running";
+      project: string;
+      projectPath: string;
+      instanceId: string;
+      driveId: string;
+      status: "starting" | "ready";
+    }
   | { kind: "unknown-project"; project: string; error: string }
   | { kind: "failed"; project: string; error: string };
 
@@ -47,7 +67,10 @@ export async function fetchStart(args: {
 }): Promise<StartResult> {
   const u = new URL(`${PREVIEW_SERVER_BASE_URL}/start`);
   u.searchParams.set("project", args.project);
-  const res = await fetch(u.toString(), { method: "POST", signal: args.signal });
+  const res = await fetch(u.toString(), {
+    method: "POST",
+    signal: args.signal,
+  });
   // 202/200/404/500 are all expected response codes; let caller branch on body.
   return (await res.json()) as StartResult;
 }
@@ -58,8 +81,10 @@ let sharedSource: EventSource | undefined;
 const listeners = new Set<Listener>();
 
 function ensureSource(): EventSource | undefined {
-  if (typeof window === "undefined" || typeof EventSource === "undefined") return undefined;
-  if (sharedSource && sharedSource.readyState !== EventSource.CLOSED) return sharedSource;
+  if (typeof window === "undefined" || typeof EventSource === "undefined")
+    return undefined;
+  if (sharedSource && sharedSource.readyState !== EventSource.CLOSED)
+    return sharedSource;
   const src = new EventSource(`${PREVIEW_SERVER_BASE_URL}/events`);
   for (const type of [
     "service:starting",

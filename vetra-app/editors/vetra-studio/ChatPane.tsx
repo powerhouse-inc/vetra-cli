@@ -148,7 +148,10 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
         </button>
       </header>
       {sessions.length === 0 ? (
-        <EmptyState onNewSession={() => void handleNewSession()} creating={creating} />
+        <EmptyState
+          onNewSession={() => void handleNewSession()}
+          creating={creating}
+        />
       ) : (
         <ul className="flex-1 divide-y divide-gray-100 overflow-y-auto">
           {sessions.map((session) => {
@@ -226,12 +229,7 @@ function EmptyState({
 
 function PlusIcon() {
   return (
-    <svg
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden
-      className="h-3 w-3"
-    >
+    <svg viewBox="0 0 12 12" fill="none" aria-hidden className="h-3 w-3">
       <path
         d="M6 1.5v9M1.5 6h9"
         stroke="currentColor"
@@ -244,12 +242,7 @@ function PlusIcon() {
 
 function ChatBubbleIcon({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden className={className}>
       <path
         d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z"
         stroke="currentColor"
@@ -262,12 +255,7 @@ function ChatBubbleIcon({ className }: { className?: string }) {
 
 function ChevronRightIcon({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
+    <svg viewBox="0 0 12 12" fill="none" aria-hidden className={className}>
       <path
         d="m4.5 2.5 3.5 3.5-3.5 3.5"
         stroke="currentColor"

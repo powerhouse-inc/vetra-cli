@@ -64,7 +64,7 @@ export function parseAgentLog(source: string): AgentEvent[] {
         line: headerLine,
         time,
         content,
-      } as AgentEvent);
+      });
     } else if (useTool) {
       const input = parseJsonBlockOrRaw(body, /^\*\*Input\*\*:\s*$/);
       events.push({

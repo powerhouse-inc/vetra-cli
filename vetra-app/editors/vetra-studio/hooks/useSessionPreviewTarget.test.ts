@@ -30,7 +30,7 @@ function part(overrides: Partial<ContentPart>): ContentPart {
     filename: null,
     error: null,
     ...overrides,
-  } as ContentPart;
+  };
 }
 
 function msg(role: Message["role"], content: ContentPart[]): Message {
@@ -44,7 +44,10 @@ function msg(role: Message["role"], content: ContentPart[]): Message {
   };
 }
 
-function showCall(toolCallId: string, args: Record<string, unknown>): ContentPart {
+function showCall(
+  toolCallId: string,
+  args: Record<string, unknown>,
+): ContentPart {
   return part({
     id: `call-${toolCallId}`,
     type: "TOOL_CALL",
@@ -92,14 +95,17 @@ describe("extractPreviewTarget", () => {
 
   it("extracts project + doc from the latest successful spec-preview-show", () => {
     const session = makeSession([
-      msg("ASSISTANT", [showCall("c1", { project: "workout-tracker", name: "Bench Day" })]),
+      msg("ASSISTANT", [
+        showCall("c1", { project: "workout-tracker", name: "Bench Day" }),
+      ]),
       msg("TOOL", [
         showResult("c1", {
           projectPath: "/abs/workout-tracker",
           driveId: "preview-abcd1234",
           documentId: "doc-7",
           documentSlug: "bench-day",
-          previewUrl: "http://localhost:3001/d/preview-abcd1234/bench-day?embed=1",
+          previewUrl:
+            "http://localhost:3001/d/preview-abcd1234/bench-day?embed=1",
         }),
       ]),
     ]);

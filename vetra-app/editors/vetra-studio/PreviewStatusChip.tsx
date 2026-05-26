@@ -43,9 +43,11 @@ export function PreviewStatusChip({ preview }: { preview: ResolvedPreview }) {
 
 type Tone = "ready" | "starting" | "stopped" | "error";
 
-function describe(
-  preview: Exclude<ResolvedPreview, { kind: "no-target" }>,
-): { label: string; tone: Tone; project: string } {
+function describe(preview: Exclude<ResolvedPreview, { kind: "no-target" }>): {
+  label: string;
+  tone: Tone;
+  project: string;
+} {
   switch (preview.kind) {
     case "ready":
       return { label: "running", tone: "ready", project: preview.project };

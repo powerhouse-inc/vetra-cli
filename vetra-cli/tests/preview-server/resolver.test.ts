@@ -50,10 +50,9 @@ describe("preview-server resolver", () => {
       doc: "doc-1",
     });
     expect(result.kind).toBe("unknown-project");
-    if (result.kind === "unknown-project") {
-      expect(result.project).toBe("not-a-project");
-      expect(result.error).toMatch(/not found|not a Reactor package/i);
-    }
+    const unknown = result as Extract<typeof result, { kind: "unknown-project" }>;
+    expect(unknown.project).toBe("not-a-project");
+    expect(unknown.error).toMatch(/not found|not a Reactor package/i);
   });
 
   it("returns project-stopped when no ServiceManager instance matches the projectPath", async () => {
@@ -159,10 +158,9 @@ describe("preview-server resolver", () => {
       doc: "doc with spaces",
     });
     expect(result.kind).toBe("ready");
-    if (result.kind === "ready") {
-      expect(result.url).toBe(
-        `http://localhost:3001/d/${driveId}/doc%20with%20spaces?embed=1`,
-      );
-    }
+    const ready = result as Extract<typeof result, { kind: "ready" }>;
+    expect(ready.url).toBe(
+      `http://localhost:3001/d/${driveId}/doc%20with%20spaces?embed=1`,
+    );
   });
 });

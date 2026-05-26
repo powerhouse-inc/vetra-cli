@@ -42,6 +42,23 @@ export default tseslint.config(
     files: ["tests/**/*.ts"],
     ...jest.configs["flat/recommended"],
   },
+  {
+    // Tests construct partial mocks of framework types (TriggerContext, services,
+    // DocumentModelModule, jest.mock factories) where matching the full upstream
+    // type is impractical. The unsafe-* rules fire on those mocks; disable them
+    // here so the strictness still applies to production code.
+    files: ["tests/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-base-to-string": "off",
+      "@typescript-eslint/restrict-template-expressions": "off",
+    },
+  },
   prettier,
 );
 // @clint:end eslint

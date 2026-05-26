@@ -62,7 +62,11 @@ export async function startPreviewServer(
   const { services, subscribe, workdir, port, log } = deps;
   const broadcaster = createSseBroadcaster({ subscribe });
 
-  const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+  const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    void handleRequest(req, res);
+  });
+
+  async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     const url = req.url ?? "/";
     const method = req.method ?? "GET";
 
@@ -121,7 +125,7 @@ export async function startPreviewServer(
       );
       if (!res.headersSent) writeJson(res, 500, { error: "internal" });
     }
-  });
+  }
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
