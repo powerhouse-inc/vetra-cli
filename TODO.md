@@ -1,7 +1,24 @@
 # TODO
+- Stop `reactor-project` (and other vetra-cli services) when the CLI/agent
+  process exits. ph-clint spawns services `detached: true` by design
+  (`types.ts:544-545`: "Services are spawned as detached processes that
+  survive CLI exit"), so today they outlive vetra-cli and the user must
+  run `<svc>-stop` manually. Approach without patching ph-clint: capture
+  `ctx.context.services` from a tiny startup trigger into a module-level
+  handle, then add a lifecycle hook whose `shutdown` calls
+  `manager.stop(id, instanceId)` for every running instance. Only covers
+  clean exits — SIGKILL still orphans services (would need ph-clint to
+  drop `detached: true` or add `PR_SET_PDEATHSIG`-equivalent).
 - manage installed packages (vetra-studio-package-install)?
 - Make npm login reliable
 - Generalize spec commands to work on any document model
+- Block agent edits under `gen/` at the filesystem layer (ph-clint Mastra
+  integration). Today the rule lives only in the skill prompts; the agent
+  has hand-patched generated files in past sessions. Subclass
+  `LocalFilesystem` in `ph-clint/packages/ph-clint/src/integrations/mastra/index.ts`
+  to throw `PermissionError` on write/edit/delete when the resolved path
+  contains a `/gen/` segment, with a message pointing at `spec-update` +
+  `spec-generate` as the right fix path.
 
 ## Spec ownership migration
 Goal: vetra-cli owns the spec-document workflow; drop `@powerhousedao/vetra/codegen` coupling.
