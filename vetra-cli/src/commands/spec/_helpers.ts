@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -338,10 +339,62 @@ function getLatestOperations(
   return ops;
 }
 
+/* Pull the structured zod issues out of an `addActions` failure string. The
+ * upstream wraps them as `Input validation error: Invalid action input: [<json>]`;
+ * everything else (reducer errors like a bad operation name) has no embedded
+ * array and is returned as-is by the caller. */
+function parseZodIssues(
+  errStr: string,
+): { path: string; message: string }[] | null {
+  const start = errStr.indexOf("[");
+  const end = errStr.lastIndexOf("]");
+  if (start === -1 || end <= start) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(errStr.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  return parsed.map((i) => {
+    const issue = i as { path?: unknown; message?: unknown };
+    return {
+      path: Array.isArray(issue.path) ? issue.path.join(".") : "",
+      message:
+        typeof issue.message === "string"
+          ? issue.message.replace(/^Invalid input:\s*/, "")
+          : "invalid",
+    };
+  });
+}
+
+/* One compact line per failed action. `inputShape` is true when at least one
+ * error was a zod input-validation issue (vs a reducer error), so the caller
+ * knows whether attaching the input schema would help. */
+function compactFailure(f: ActionValidationFailure): {
+  line: string;
+  inputShape: boolean;
+} {
+  const parts: string[] = [];
+  let inputShape = false;
+  for (const e of f.errors) {
+    const issues = parseZodIssues(e);
+    if (issues) {
+      inputShape = true;
+      for (const i of issues) parts.push(i.path ? `${i.path}: ${i.message}` : i.message);
+    } else {
+      parts.push(e.trim());
+    }
+  }
+  return { line: `  [${f.index}] ${f.type}: ${parts.join("; ")}`, inputShape };
+}
+
 /**
- * Rethrow an `addActions` validation error with the relevant action input
- * schemas attached, so an agent caller can self-correct without a follow-up
- * `spec-schema` round-trip. For unknown action types, list the valid names.
+ * Rethrow an `addActions` validation error in a compact, agent-actionable
+ * form: one line per failed action with the offending fields, plus the input
+ * schema for shape errors (so the agent can self-correct without a follow-up
+ * `spec-schema` round-trip) and a did-you-mean list for unknown action types.
+ * Replaces the upstream message's multi-line zod JSON dump.
  */
 export function enrichActionValidationError(
   err: unknown,
@@ -357,13 +410,13 @@ export function enrichActionValidationError(
   const validNames = ops.map((o) => o.name);
   const shownSchemas = new Set<string>();
   const sections: string[] = [];
+  const headLines: string[] = [];
   let listedValidNames = false;
   for (const f of err.failures) {
     const op = ops.find((o) => o.name === f.type);
-    if (op?.schema && !shownSchemas.has(op.name)) {
-      shownSchemas.add(op.name);
-      sections.push(`Input schema for ${op.name}:\n${op.schema}`);
-    } else if (!op && !listedValidNames) {
+    const { line, inputShape } = compactFailure(f);
+    headLines.push(line);
+    if (!op && !listedValidNames) {
       listedValidNames = true;
       /* Lead with the closest matches per failed type so the agent can fix
        * the typo without scanning the whole list. */
@@ -380,12 +433,198 @@ export function enrichActionValidationError(
       sections.push(
         `${hint}Valid action types for ${documentType}:\n  ${validNames.join(", ")}`,
       );
+    } else if (op?.schema && inputShape && !shownSchemas.has(op.name)) {
+      /* Only attach the schema for shape errors — a reducer error already
+       * carries its own actionable message. */
+      shownSchemas.add(op.name);
+      sections.push(`Input schema for ${op.name}:\n${op.schema}`);
     }
   }
-  if (sections.length === 0) throw err;
-  const enriched = new Error(`${err.message}\n\n${sections.join("\n\n")}`);
+  const count = err.failures.length;
+  const head = `${count} action${count === 1 ? "" : "s"} failed validation:\n${headLines.join("\n")}`;
+  const message = sections.length ? `${head}\n\n${sections.join("\n\n")}` : head;
+  const enriched = new Error(message);
   (enriched as { failures?: ActionValidationFailure[] }).failures = err.failures;
   throw enriched;
+}
+
+const DOCUMENT_MODEL_TYPE = "powerhouse/document-model";
+
+/* Input fields that reference an existing module or operation by id. A bare
+ * `id` field means a different entity per operation (the module on
+ * SET_MODULE_*, the operation on SET_OPERATION_*, but an *error* on
+ * SET_OPERATION_ERROR_* — which must NOT be name-resolved), so the referent
+ * can't be inferred from the schema and is listed explicitly here. Ops absent
+ * from these maps are left untouched and fall through to reducer validation.
+ * Keep in sync with the document-model operation set. */
+const MODULE_REF_FIELDS: Record<string, string[]> = {
+  ADD_OPERATION: ["moduleId"],
+  MOVE_OPERATION: ["newModuleId"],
+  REORDER_MODULE_OPERATIONS: ["moduleId"],
+  SET_MODULE_NAME: ["id"],
+  SET_MODULE_DESCRIPTION: ["id"],
+  DELETE_MODULE: ["id"],
+};
+const OPERATION_REF_FIELDS: Record<string, string[]> = {
+  MOVE_OPERATION: ["operationId"],
+  ADD_OPERATION_ERROR: ["operationId"],
+  ADD_OPERATION_EXAMPLE: ["operationId"],
+  REORDER_OPERATION_ERRORS: ["operationId"],
+  REORDER_OPERATION_EXAMPLES: ["operationId"],
+  SET_OPERATION_NAME: ["id"],
+  SET_OPERATION_SCHEMA: ["id"],
+  SET_OPERATION_DESCRIPTION: ["id"],
+  SET_OPERATION_TEMPLATE: ["id"],
+  SET_OPERATION_REDUCER: ["id"],
+  SET_OPERATION_SCOPE: ["id"],
+  DELETE_OPERATION: ["id"],
+};
+
+/** Known ids plus a name→ids index for one entity kind (modules or operations). */
+type EntityIndex = { ids: Set<string>; byName: Map<string, string[]> };
+
+function strVal(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+function asRecord(input: unknown): Record<string, unknown> {
+  return typeof input === "object" && input !== null
+    ? { ...(input as Record<string, unknown>) }
+    : {};
+}
+
+function addEntity(index: EntityIndex, id: unknown, name: unknown): void {
+  const sid = strVal(id);
+  if (!sid) return;
+  index.ids.add(sid);
+  const sname = strVal(name);
+  if (!sname) return;
+  const bucket = index.byName.get(sname);
+  if (bucket) bucket.push(sid);
+  else index.byName.set(sname, [sid]);
+}
+
+/**
+ * Index modules and operations of a document-model doc by id and by name.
+ * Seeds from the latest spec's on-disk state and from ADD_MODULE /
+ * ADD_OPERATION actions earlier in the same batch, so a create-then-reference
+ * sequence in a single `spec-update` call resolves.
+ */
+function collectEntities(
+  doc: PHDocument,
+  actions: ActionInput[],
+): { modules: EntityIndex; operations: EntityIndex } {
+  const modules: EntityIndex = { ids: new Set(), byName: new Map() };
+  const operations: EntityIndex = { ids: new Set(), byName: new Map() };
+  const specs = (doc.state as { global?: { specifications?: unknown[] } }).global
+    ?.specifications;
+  const latest = Array.isArray(specs) ? specs.at(-1) : undefined;
+  const mods = (latest as { modules?: unknown[] } | undefined)?.modules ?? [];
+  for (const m of mods as Array<{ id?: unknown; name?: unknown; operations?: unknown[] }>) {
+    addEntity(modules, m?.id, m?.name);
+    for (const op of (m?.operations ?? []) as Array<{ id?: unknown; name?: unknown }>) {
+      addEntity(operations, op?.id, op?.name);
+    }
+  }
+  for (const a of actions) {
+    const input = asRecord(a.input);
+    if (a.type === "ADD_MODULE") addEntity(modules, input.id, input.name);
+    else if (a.type === "ADD_OPERATION") addEntity(operations, input.id, input.name);
+  }
+  return { modules, operations };
+}
+
+/* Default a required `scope` and mint a missing creation `id`, both keyed off
+ * the operation's own input schema so the rule extends to any op following the
+ * same `scope: String!` / `id: ID!` convention. */
+function fillScopeAndId(
+  action: ActionInput,
+  opsByName: Map<string, string | undefined>,
+): ActionInput {
+  const schema = opsByName.get(action.type);
+  if (!schema) return action;
+  const input = asRecord(action.input);
+  let changed = false;
+  if (/\bscope\s*:\s*String!/.test(schema) && !strVal(input.scope)) {
+    input.scope = strVal(action.scope) ?? "global";
+    changed = true;
+  }
+  if (
+    action.type.startsWith("ADD_") &&
+    /\bid\s*:\s*ID!/.test(schema) &&
+    !strVal(input.id)
+  ) {
+    input.id = randomUUID();
+    changed = true;
+  }
+  return changed ? { ...action, input } : action;
+}
+
+function resolveField(
+  input: Record<string, unknown>,
+  field: string,
+  index: EntityIndex,
+  opType: string,
+  kind: string,
+): boolean {
+  const value = strVal(input[field]);
+  if (!value || index.ids.has(value)) return false;
+  const matches = index.byName.get(value);
+  if (!matches || matches.length === 0) return false;
+  if (matches.length > 1) {
+    throw new Error(
+      `${opType}: ${kind} name "${value}" matches multiple ${kind}s (ids: ${matches.join(", ")}). Re-issue "${field}" with the specific id.`,
+    );
+  }
+  input[field] = matches[0];
+  return true;
+}
+
+function resolveReferences(
+  action: ActionInput,
+  index: { modules: EntityIndex; operations: EntityIndex },
+): ActionInput {
+  const moduleFields = MODULE_REF_FIELDS[action.type];
+  const operationFields = OPERATION_REF_FIELDS[action.type];
+  if (!moduleFields && !operationFields) return action;
+  const input = asRecord(action.input);
+  let changed = false;
+  for (const f of moduleFields ?? []) {
+    changed = resolveField(input, f, index.modules, action.type, "module") || changed;
+  }
+  for (const f of operationFields ?? []) {
+    changed =
+      resolveField(input, f, index.operations, action.type, "operation") || changed;
+  }
+  return changed ? { ...action, input } : action;
+}
+
+/**
+ * Smooth over the three recurring agent foot-guns on document-model specs,
+ * before the actions reach the reducer:
+ *   - a required payload `scope` left off SET_STATE_SCHEMA / SET_INITIAL_STATE
+ *     and the *_STATE_EXAMPLE family → defaulted to the action scope or "global";
+ *   - a missing creation `id` on an ADD_* op → minted as a UUID;
+ *   - a module/operation reference given as a name instead of an id → resolved
+ *     against current + in-batch entities, throwing if a name is ambiguous.
+ * Non-document-model docs pass through untouched.
+ */
+export function normalizeDocumentModelActions(
+  doc: PHDocument,
+  actions: ActionInput[],
+): ActionInput[] {
+  if (doc.header.documentType !== DOCUMENT_MODEL_TYPE) return actions;
+  let opsByName: Map<string, string | undefined>;
+  try {
+    opsByName = new Map(
+      getLatestOperations(DOCUMENT_MODEL_TYPE).map((o) => [o.name, o.schema]),
+    );
+  } catch {
+    return actions;
+  }
+  const filled = actions.map((a) => fillScopeAndId(a, opsByName));
+  const index = collectEntities(doc, filled);
+  return filled.map((a) => resolveReferences(a, index));
 }
 
 /** Load a spec by name and return the document — convenience wrapper. */

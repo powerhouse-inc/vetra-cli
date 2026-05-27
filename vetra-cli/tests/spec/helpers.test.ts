@@ -6,11 +6,139 @@ import { specCreate } from "../../src/commands/spec/create.js";
 import {
   findByName,
   formatColumns,
+  normalizeDocumentModelActions,
   resolveActionsInput,
   renderProjected,
   suggestNames,
 } from "../../src/commands/spec/_helpers.js";
+import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { makeCtx, makeWorkdir } from "./_fixtures.js";
+
+/** Minimal document-model doc carrying just the fields the normalizer reads. */
+function fakeDoc(
+  modules: Array<{
+    id: string;
+    name: string;
+    operations?: Array<{ id: string; name: string }>;
+  }>,
+  documentType = "powerhouse/document-model",
+): PHDocument {
+  return {
+    header: { documentType },
+    state: { global: { specifications: [{ modules }] } },
+  } as unknown as PHDocument;
+}
+
+describe("normalizeDocumentModelActions", () => {
+  it("defaults a missing required scope to global", () => {
+    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+      { type: "SET_STATE_SCHEMA", input: { schema: "type S { x: Int }" } },
+    ]);
+    expect((a.input as { scope?: string }).scope).toBe("global");
+  });
+
+  it("carries the action-level scope into the payload when set", () => {
+    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+      {
+        type: "SET_INITIAL_STATE",
+        input: { initialValue: "{}" },
+        scope: "local",
+      },
+    ]);
+    expect((a.input as { scope?: string }).scope).toBe("local");
+  });
+
+  it("leaves an explicit payload scope untouched", () => {
+    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+      { type: "SET_STATE_SCHEMA", input: { scope: "local", schema: "x" } },
+    ]);
+    expect((a.input as { scope?: string }).scope).toBe("local");
+  });
+
+  it("mints a UUID for a missing creation id on ADD_*", () => {
+    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+      { type: "ADD_MODULE", input: { name: "Workouts" } },
+    ]);
+    expect((a.input as { id?: string }).id).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it("keeps an explicit creation id", () => {
+    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+      { type: "ADD_MODULE", input: { id: "mod-1", name: "Workouts" } },
+    ]);
+    expect((a.input as { id?: string }).id).toBe("mod-1");
+  });
+
+  it("resolves a module reference given by name to its id", () => {
+    const doc = fakeDoc([{ id: "mod-1", name: "Workouts" }]);
+    const [a] = normalizeDocumentModelActions(doc, [
+      {
+        type: "ADD_OPERATION",
+        input: { moduleId: "Workouts", id: "op-1", name: "ADD_WORKOUT" },
+      },
+    ]);
+    expect((a.input as { moduleId?: string }).moduleId).toBe("mod-1");
+  });
+
+  it("resolves an in-batch module created earlier in the same call", () => {
+    const [, op] = normalizeDocumentModelActions(fakeDoc([]), [
+      { type: "ADD_MODULE", input: { id: "mod-1", name: "Workouts" } },
+      {
+        type: "ADD_OPERATION",
+        input: { moduleId: "Workouts", id: "op-1", name: "ADD_WORKOUT" },
+      },
+    ]);
+    expect((op.input as { moduleId?: string }).moduleId).toBe("mod-1");
+  });
+
+  it("resolves an operation reference by name on a SET_OPERATION_* op", () => {
+    const doc = fakeDoc([
+      {
+        id: "mod-1",
+        name: "Workouts",
+        operations: [{ id: "op-1", name: "ADD_WORKOUT" }],
+      },
+    ]);
+    const [a] = normalizeDocumentModelActions(doc, [
+      { type: "SET_OPERATION_SCHEMA", input: { id: "ADD_WORKOUT", schema: "x" } },
+    ]);
+    expect((a.input as { id?: string }).id).toBe("op-1");
+  });
+
+  it("leaves a reference already given as an id untouched", () => {
+    const doc = fakeDoc([
+      {
+        id: "mod-1",
+        name: "Workouts",
+        operations: [{ id: "op-1", name: "ADD_WORKOUT" }],
+      },
+    ]);
+    const [a] = normalizeDocumentModelActions(doc, [
+      { type: "SET_OPERATION_SCHEMA", input: { id: "op-1", schema: "x" } },
+    ]);
+    expect((a.input as { id?: string }).id).toBe("op-1");
+  });
+
+  it("throws naming both ids when a reference name is ambiguous", () => {
+    const doc = fakeDoc([
+      { id: "mod-1", name: "A", operations: [{ id: "op-1", name: "DO_X" }] },
+      { id: "mod-2", name: "B", operations: [{ id: "op-2", name: "DO_X" }] },
+    ]);
+    expect(() =>
+      normalizeDocumentModelActions(doc, [
+        { type: "SET_OPERATION_SCHEMA", input: { id: "DO_X", schema: "x" } },
+      ]),
+    ).toThrow(/op-1.*op-2|multiple operations/);
+  });
+
+  it("passes non-document-model docs through unchanged", () => {
+    const out = normalizeDocumentModelActions(
+      fakeDoc([], "powerhouse/document-editor"),
+      [{ type: "SET_STATE_SCHEMA", input: { schema: "x" } }],
+    );
+    expect((out[0].input as { scope?: string }).scope).toBeUndefined();
+  });
+});
 
 describe("formatColumns", () => {
   it("returns empty string for no rows", () => {

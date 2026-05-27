@@ -200,6 +200,24 @@ describe("spec-update", () => {
     ).rejects.toThrow(/input SetModelNameInput[\s\S]*name: String!/);
   });
 
+  it("trims the raw zod JSON dump out of input-shape errors", async () => {
+    /* The error must name the offending field and show the schema, without the
+     * multi-line `{ "code": "invalid_type", ... }` blob the reducer emits. */
+    const promise = specUpdate.execute(
+      {
+        name: "Target",
+        actions: [{ type: "SET_MODEL_NAME", input: { wrong: 1 } }],
+      },
+      makeCtx(workdir),
+    );
+    await expect(promise).rejects.toThrow(/SET_MODEL_NAME: [^\n]*name/);
+    await expect(promise).rejects.toThrow(
+      expect.objectContaining({
+        message: expect.not.stringContaining('"code": "invalid_type"'),
+      }) as Error,
+    );
+  });
+
   it("lists valid action types when the action is unknown", async () => {
     await expect(
       specUpdate.execute(
@@ -224,6 +242,62 @@ describe("spec-update", () => {
         makeCtx(workdir),
       ),
     ).rejects.toThrow(/Did you mean:[^\n]*SET_MODEL_NAME/);
+  });
+
+  it("applies SET_STATE_SCHEMA / SET_INITIAL_STATE without a payload scope", async () => {
+    /* The first-update foot-gun: agents omit the required payload `scope`
+     * because the action-level scope already defaults to global. The reducer
+     * must accept the normalized actions. */
+    const result = await specUpdate.execute(
+      {
+        name: "Target",
+        actions: [
+          { type: "SET_STATE_SCHEMA", input: { schema: "type S { x: Int }" } },
+          { type: "SET_INITIAL_STATE", input: { initialValue: "{}" } },
+        ],
+      },
+      makeCtx(workdir),
+    );
+    expect(result.text).toMatch(/Applied 2 action/);
+  });
+
+  it("mints an id for an ADD_MODULE that supplies only a name", async () => {
+    const result = await specUpdate.execute(
+      { name: "Target", actions: [{ type: "ADD_MODULE", input: { name: "Workouts" } }] },
+      makeCtx(workdir),
+    );
+    expect(result.text).toMatch(/Applied 1 action/);
+    const ids = await specGet.execute(
+      { name: "Target", latest: true, filter: "$.modules[*].id" },
+      makeCtx(workdir),
+    );
+    expect(ids.text).toMatch(/[0-9a-f-]{36}/i);
+  });
+
+  it("resolves a moduleId given as a name within the same batch", async () => {
+    const result = await specUpdate.execute(
+      {
+        name: "Target",
+        actions: [
+          { type: "ADD_MODULE", input: { id: "mod-1", name: "Workouts" } },
+          {
+            type: "ADD_OPERATION",
+            input: {
+              moduleId: "Workouts",
+              name: "ADD_WORKOUT",
+              schema: "input AddWorkoutInput { id: String! }",
+            },
+          },
+        ],
+      },
+      makeCtx(workdir),
+    );
+    expect(result.text).toMatch(/Applied 2 action/);
+    const ops = await specGet.execute(
+      { name: "Target", latest: true, filter: "$.modules[?(@.id=='mod-1')].operations[*].name" },
+      makeCtx(workdir),
+    );
+    expect(ops.text).toMatch(/ADD_WORKOUT/);
   });
 });
 

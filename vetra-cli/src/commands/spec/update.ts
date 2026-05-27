@@ -6,6 +6,7 @@ import {
   actionInputSchema,
   enrichActionValidationError,
   loadByName,
+  normalizeDocumentModelActions,
   resolveActionsInput,
 } from "./_helpers.js";
 
@@ -45,10 +46,13 @@ export const specUpdate = defineCommand({
   execute: async (input, { workdir }) => {
     const base = await resolveReactorProjectPath(workdir, input.project);
     const doc = await loadByName(base, input.name);
-    const actions = await resolveActionsInput({
-      actions: input.actions,
-      from: input.from,
-    });
+    const actions = normalizeDocumentModelActions(
+      doc,
+      await resolveActionsInput({
+        actions: input.actions,
+        from: input.from,
+      }),
+    );
     let next: ReturnType<typeof addActions>;
     try {
       next = addActions(doc, actions);
