@@ -15,10 +15,10 @@ const inputSchema = z.object({
       "Project directory name (relative to workdir). Only needed when the workdir is not already a Reactor package project.",
     ),
   scope: z
-    .enum(["all", "generated"])
+    .enum(["all", "module"])
     .optional()
     .describe(
-      "Which files to report on. 'all' (default) covers the whole project; 'generated' restricts to files under gen/ paths.",
+      "Which files to report on. 'all' (default) covers the whole project; 'module' covers the spec-authored trees (document-models/editors/apps/processors/subgraphs).",
     ),
   skipLint: z
     .boolean()
@@ -51,7 +51,7 @@ export const reactorProjectCheck = defineCommand({
 
     const header =
       diagnostics.length === 0
-        ? `**Check passed** — no diagnostics in ${resolvedScope === "generated" ? "generated files" : "project"}.`
+        ? `**Check passed** — no diagnostics in ${resolvedScope === "module" ? "module files" : "project"}.`
         : `**Check found ${summary.errors} error(s), ${summary.warnings} warning(s)** (tsc: ${summary.tsc}, eslint: ${summary.eslint}).`;
 
     const lines = [header];

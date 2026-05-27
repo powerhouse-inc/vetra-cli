@@ -271,7 +271,7 @@ describe("synthetic fixtures — assertions catch foot-guns", () => {
             ],
             summary: { errors: 1, warnings: 0, tsc: 1, eslint: 0 },
             notes: [],
-            scope: "generated",
+            scope: "module",
           },
         },
         "00:00:02",

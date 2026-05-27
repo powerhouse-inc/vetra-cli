@@ -17,7 +17,7 @@ export interface CheckOutcome {
   notes: string[];
 }
 
-export type CheckScope = "generated" | "all";
+export type CheckScope = "module" | "all";
 
 type RunProcess = (
   command: string,
@@ -26,8 +26,26 @@ type RunProcess = (
 
 const SEP = path.sep;
 
-export function isGeneratedPath(absPath: string): boolean {
-  return absPath.includes(`${SEP}gen${SEP}`);
+/** Top-level directories the codegen writes spec-authored code into (the kinds
+ * in `pruneManifestSection`). Each holds a per-artifact subtree — for document
+ * models that is `gen/` output plus the editable `src/` implementation; editors,
+ * apps, processors, and subgraphs have their own layouts. The check covers the
+ * whole subtree, not just `gen/`, so a malformed reducer in `src/` is caught. */
+const MODULE_DIRS = [
+  "document-models",
+  "editors",
+  "apps",
+  "processors",
+  "subgraphs",
+] as const;
+
+/** True for any file under one of the spec-authored module trees. */
+export function isModulePath(absPath: string): boolean {
+  return MODULE_DIRS.some((d) => absPath.includes(`${SEP}${d}${SEP}`));
+}
+
+function inScope(absPath: string, scope: CheckScope): boolean {
+  return scope === "all" || isModulePath(absPath);
 }
 
 function toRel(base: string, absPath: string): string {
@@ -58,7 +76,7 @@ function parseTscOutput(
     if (!m) continue;
     const [, file, line, col, severity, code, message] = m;
     const abs = path.isAbsolute(file) ? file : path.resolve(base, file);
-    if (scope === "generated" && !isGeneratedPath(abs)) continue;
+    if (!inScope(abs, scope)) continue;
     out.push({
       source: "tsc",
       file: toRel(base, abs),
@@ -116,6 +134,20 @@ function parseEslintOutput(
   return out;
 }
 
+/**
+ * Build the eslint path arguments for a scope. Returns `null` when a scoped run
+ * has nothing to lint (so the caller can skip rather than invoke eslint with a
+ * pattern that matches no files).
+ */
+function eslintTargets(base: string, scope: CheckScope): string | null {
+  if (scope === "all") return ".";
+  const present = MODULE_DIRS.filter((d) => fs.existsSync(path.join(base, d)));
+  if (present.length === 0) return null;
+  return present
+    .flatMap((d) => [`"${base}/${d}/**/*.ts"`, `"${base}/${d}/**/*.tsx"`])
+    .join(" ");
+}
+
 export async function runChecks(
   base: string,
   runProcess: RunProcess,
@@ -147,15 +179,16 @@ export async function runChecks(
     if (!eslint) {
       notes.push("lint skipped: eslint not found in project node_modules");
     } else {
-      const eslintArgs =
-        scope === "generated"
-          ? `"${base}/**/gen/**/*.ts" "${base}/**/gen/**/*.tsx"`
-          : `.`;
-      const { output } = await runProcess(
-        `"${eslint}" --format json ${eslintArgs}`,
-        { cwd: base, timeout: 120_000 },
-      );
-      diagnostics.push(...parseEslintOutput(output, base));
+      const eslintArgs = eslintTargets(base, scope);
+      if (eslintArgs === null) {
+        notes.push("lint skipped: no module directories present to lint");
+      } else {
+        const { output } = await runProcess(
+          `"${eslint}" --format json ${eslintArgs}`,
+          { cwd: base, timeout: 120_000 },
+        );
+        diagnostics.push(...parseEslintOutput(output, base));
+      }
     }
   }
 

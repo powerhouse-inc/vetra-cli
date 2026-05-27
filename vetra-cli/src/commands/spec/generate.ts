@@ -28,6 +28,19 @@ const DOC_TYPES = {
   subgraph: "powerhouse/subgraph",
 } as const;
 
+function trimGenerateError(message: string): string {
+  /* `@graphql-tools/load` inlines the full schema into `err.message` several
+   * times when codegen fails on the SDL. Pull out just the diagnostic line:
+   * the library wraps every schema failure (syntax + validation) in a
+   * "Failed to parse the GraphQL document. <GraphQLError>" line. */
+  const parse = message.match(/Failed to parse the GraphQL document\.[^\n]*/);
+  if (parse) {
+    return parse[0];
+  }
+  const firstLine = message.split("\n").find((l) => l.trim().length > 0);
+  return firstLine ?? message;
+}
+
 async function generateOne(doc: PHDocument, project: Project): Promise<void> {
   switch (doc.header.documentType) {
     case DOC_TYPES.documentModel:
@@ -93,10 +106,18 @@ export const specGenerate = defineCommand({
           type: doc.header.documentType,
         });
       } catch (err) {
+        const reason = trimGenerateError(
+          err instanceof Error ? err.message : String(err),
+        );
+        if (input.name) {
+          throw new Error(
+            `${doc.header.documentType} — ${doc.header.name}: ${reason}`,
+          );
+        }
         skipped.push({
           name: doc.header.name,
           type: doc.header.documentType,
-          reason: err instanceof Error ? err.message : String(err),
+          reason,
         });
       }
     }
@@ -106,11 +127,25 @@ export const specGenerate = defineCommand({
     let diagnostics: GenDiagnostic[] = [];
     const checkNotes: string[] = [];
     if (!input.skipChecks && generated.length > 0) {
-      const outcome = await runChecks(base, runProcess, { scope: "generated" });
+      const outcome = await runChecks(base, runProcess, { scope: "module" });
       diagnostics = outcome.diagnostics;
       checkNotes.push(...outcome.notes);
     }
     const summary = summarizeDiagnostics(diagnostics);
+
+    if (input.name && summary.errors > 0) {
+      const head = diagnostics
+        .filter((d) => d.severity === "error")
+        .slice(0, 5)
+        .map(
+          (d) =>
+            `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
+        )
+        .join("\n  ");
+      throw new Error(
+        `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
+      );
+    }
 
     const lines = [
       `Generated ${generated.length} module(s)` +
