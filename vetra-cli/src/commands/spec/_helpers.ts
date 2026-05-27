@@ -529,27 +529,45 @@ function collectEntities(
   return { modules, operations };
 }
 
-/* Default a required `scope` and mint a missing creation `id`, both keyed off
- * the operation's own input schema so the rule extends to any op following the
- * same `scope: String!` / `id: ID!` convention. */
-function fillScopeAndId(
+/** A creation id the normalizer generated, reported back so the agent can
+ * reference the entity in later actions. */
+export interface MintedId {
+  type: string;
+  id: string;
+  label?: string;
+}
+
+/* Mint a missing required creation `id` and (document-model only) default a
+ * required payload `scope`, both keyed off the operation's own input schema so
+ * the rule extends to any op following the `id: ID!`/`OID!` or `scope: String!`
+ * convention. A minted id is pushed onto `minted` so the caller can surface it. */
+function fillRequired(
   action: ActionInput,
   opsByName: Map<string, string | undefined>,
+  defaultScope: boolean,
+  minted: MintedId[],
 ): ActionInput {
   const schema = opsByName.get(action.type);
   if (!schema) return action;
   const input = asRecord(action.input);
   let changed = false;
-  if (/\bscope\s*:\s*String!/.test(schema) && !strVal(input.scope)) {
+  if (defaultScope && /\bscope\s*:\s*String!/.test(schema) && !strVal(input.scope)) {
     input.scope = strVal(action.scope) ?? "global";
     changed = true;
   }
   if (
     action.type.startsWith("ADD_") &&
-    /\bid\s*:\s*ID!/.test(schema) &&
+    /\bid\s*:\s*O?ID!/.test(schema) &&
     !strVal(input.id)
   ) {
-    input.id = randomUUID();
+    const id = randomUUID();
+    input.id = id;
+    minted.push({
+      type: action.type,
+      id,
+      label:
+        strVal(input.name) ?? strVal(input.errorName) ?? strVal(input.documentType),
+    });
     changed = true;
   }
   return changed ? { ...action, input } : action;
@@ -594,32 +612,44 @@ function resolveReferences(
   return changed ? { ...action, input } : action;
 }
 
+export interface NormalizedActions {
+  actions: ActionInput[];
+  minted: MintedId[];
+}
+
 /**
- * Smooth over the three recurring agent foot-guns on document-model specs,
- * before the actions reach the reducer:
- *   - a required payload `scope` left off SET_STATE_SCHEMA / SET_INITIAL_STATE
- *     and the *_STATE_EXAMPLE family → defaulted to the action scope or "global";
- *   - a missing creation `id` on an ADD_* op → minted as a UUID;
- *   - a module/operation reference given as a name instead of an id → resolved
- *     against current + in-batch entities, throwing if a name is ambiguous.
- * Non-document-model docs pass through untouched.
+ * Smooth over the recurring agent foot-guns on spec actions before they reach
+ * the reducer:
+ *   - a missing required creation `id` on an ADD_* op (`id: ID!` or `OID!`) →
+ *     minted as a UUID, for any document type, and reported in `minted` so the
+ *     agent can reference the entity later;
+ *   - (document-model only) a required payload `scope` left off
+ *     SET_STATE_SCHEMA / SET_INITIAL_STATE and the *_STATE_EXAMPLE family →
+ *     defaulted to the action scope or "global";
+ *   - (document-model only) a module/operation reference given as a name
+ *     instead of an id → resolved against current + in-batch entities, throwing
+ *     if a name is ambiguous.
+ * Doc types with no registered model pass through untouched.
  */
-export function normalizeDocumentModelActions(
+export function normalizeSpecActions(
   doc: PHDocument,
   actions: ActionInput[],
-): ActionInput[] {
-  if (doc.header.documentType !== DOCUMENT_MODEL_TYPE) return actions;
+): NormalizedActions {
+  const documentType = doc.header.documentType;
   let opsByName: Map<string, string | undefined>;
   try {
     opsByName = new Map(
-      getLatestOperations(DOCUMENT_MODEL_TYPE).map((o) => [o.name, o.schema]),
+      getLatestOperations(documentType).map((o) => [o.name, o.schema]),
     );
   } catch {
-    return actions;
+    return { actions, minted: [] };
   }
-  const filled = actions.map((a) => fillScopeAndId(a, opsByName));
+  const isDocModel = documentType === DOCUMENT_MODEL_TYPE;
+  const minted: MintedId[] = [];
+  const filled = actions.map((a) => fillRequired(a, opsByName, isDocModel, minted));
+  if (!isDocModel) return { actions: filled, minted };
   const index = collectEntities(doc, filled);
-  return filled.map((a) => resolveReferences(a, index));
+  return { actions: filled.map((a) => resolveReferences(a, index)), minted };
 }
 
 /** Load a spec by name and return the document — convenience wrapper. */

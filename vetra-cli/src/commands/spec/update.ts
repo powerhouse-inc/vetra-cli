@@ -6,7 +6,7 @@ import {
   actionInputSchema,
   enrichActionValidationError,
   loadByName,
-  normalizeDocumentModelActions,
+  normalizeSpecActions,
   resolveActionsInput,
 } from "./_helpers.js";
 
@@ -46,7 +46,7 @@ export const specUpdate = defineCommand({
   execute: async (input, { workdir }) => {
     const base = await resolveReactorProjectPath(workdir, input.project);
     const doc = await loadByName(base, input.name);
-    const actions = normalizeDocumentModelActions(
+    const { actions, minted } = normalizeSpecActions(
       doc,
       await resolveActionsInput({
         actions: input.actions,
@@ -62,8 +62,16 @@ export const specUpdate = defineCommand({
     const opsCount =
       next.operations.global.length + next.operations.local.length;
     const path = await saveSpec(next, base);
-    return {
-      text: `Applied ${actions.length} action(s) to ${next.header.documentType} "${next.header.name}" (now ${opsCount} op(s) total) → ${path}`,
-    };
+    let text = `Applied ${actions.length} action(s) to ${next.header.documentType} "${next.header.name}" (now ${opsCount} op(s) total) → ${path}`;
+    if (minted.length > 0) {
+      /* The agent omitted these creation ids, so it can't know them; list them
+       * so a follow-up action can target the entity. */
+      text +=
+        `\nMinted id(s) — reference these in later actions:\n` +
+        minted
+          .map((m) => `  ${m.type}${m.label ? ` "${m.label}"` : ""} → ${m.id}`)
+          .join("\n");
+    }
+    return { text };
   },
 });

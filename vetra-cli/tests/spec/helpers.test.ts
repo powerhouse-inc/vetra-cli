@@ -6,7 +6,7 @@ import { specCreate } from "../../src/commands/spec/create.js";
 import {
   findByName,
   formatColumns,
-  normalizeDocumentModelActions,
+  normalizeSpecActions,
   resolveActionsInput,
   renderProjected,
   suggestNames,
@@ -29,16 +29,20 @@ function fakeDoc(
   } as unknown as PHDocument;
 }
 
-describe("normalizeDocumentModelActions", () => {
+describe("normalizeSpecActions", () => {
   it("defaults a missing required scope to global", () => {
-    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+    const {
+      actions: [a],
+    } = normalizeSpecActions(fakeDoc([]), [
       { type: "SET_STATE_SCHEMA", input: { schema: "type S { x: Int }" } },
     ]);
     expect((a.input as { scope?: string }).scope).toBe("global");
   });
 
   it("carries the action-level scope into the payload when set", () => {
-    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+    const {
+      actions: [a],
+    } = normalizeSpecActions(fakeDoc([]), [
       {
         type: "SET_INITIAL_STATE",
         input: { initialValue: "{}" },
@@ -49,29 +53,63 @@ describe("normalizeDocumentModelActions", () => {
   });
 
   it("leaves an explicit payload scope untouched", () => {
-    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+    const {
+      actions: [a],
+    } = normalizeSpecActions(fakeDoc([]), [
       { type: "SET_STATE_SCHEMA", input: { scope: "local", schema: "x" } },
     ]);
     expect((a.input as { scope?: string }).scope).toBe("local");
   });
 
   it("mints a UUID for a missing creation id on ADD_*", () => {
-    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+    const {
+      actions: [a],
+    } = normalizeSpecActions(fakeDoc([]), [
       { type: "ADD_MODULE", input: { name: "Workouts" } },
     ]);
     expect((a.input as { id?: string }).id).toMatch(/^[0-9a-f-]{36}$/i);
   });
 
-  it("keeps an explicit creation id", () => {
-    const [a] = normalizeDocumentModelActions(fakeDoc([]), [
+  it("reports each minted id with its label", () => {
+    const { minted } = normalizeSpecActions(fakeDoc([]), [
+      { type: "ADD_MODULE", input: { name: "Workouts" } },
+    ]);
+    expect(minted).toHaveLength(1);
+    expect(minted[0].type).toBe("ADD_MODULE");
+    expect(minted[0].label).toBe("Workouts");
+    expect(minted[0].id).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it("keeps an explicit creation id and reports nothing minted", () => {
+    const {
+      actions: [a],
+      minted,
+    } = normalizeSpecActions(fakeDoc([]), [
       { type: "ADD_MODULE", input: { id: "mod-1", name: "Workouts" } },
     ]);
     expect((a.input as { id?: string }).id).toBe("mod-1");
+    expect(minted).toHaveLength(0);
+  });
+
+  it("mints a missing OID! id on a document-editor ADD_DOCUMENT_TYPE", () => {
+    const {
+      actions: [a],
+      minted,
+    } = normalizeSpecActions(fakeDoc([], "powerhouse/document-editor"), [
+      {
+        type: "ADD_DOCUMENT_TYPE",
+        input: { documentType: "powerhouse/workout-tracker" },
+      },
+    ]);
+    expect((a.input as { id?: string }).id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(minted[0].label).toBe("powerhouse/workout-tracker");
   });
 
   it("resolves a module reference given by name to its id", () => {
     const doc = fakeDoc([{ id: "mod-1", name: "Workouts" }]);
-    const [a] = normalizeDocumentModelActions(doc, [
+    const {
+      actions: [a],
+    } = normalizeSpecActions(doc, [
       {
         type: "ADD_OPERATION",
         input: { moduleId: "Workouts", id: "op-1", name: "ADD_WORKOUT" },
@@ -81,7 +119,9 @@ describe("normalizeDocumentModelActions", () => {
   });
 
   it("resolves an in-batch module created earlier in the same call", () => {
-    const [, op] = normalizeDocumentModelActions(fakeDoc([]), [
+    const {
+      actions: [, op],
+    } = normalizeSpecActions(fakeDoc([]), [
       { type: "ADD_MODULE", input: { id: "mod-1", name: "Workouts" } },
       {
         type: "ADD_OPERATION",
@@ -99,7 +139,9 @@ describe("normalizeDocumentModelActions", () => {
         operations: [{ id: "op-1", name: "ADD_WORKOUT" }],
       },
     ]);
-    const [a] = normalizeDocumentModelActions(doc, [
+    const {
+      actions: [a],
+    } = normalizeSpecActions(doc, [
       { type: "SET_OPERATION_SCHEMA", input: { id: "ADD_WORKOUT", schema: "x" } },
     ]);
     expect((a.input as { id?: string }).id).toBe("op-1");
@@ -113,7 +155,9 @@ describe("normalizeDocumentModelActions", () => {
         operations: [{ id: "op-1", name: "ADD_WORKOUT" }],
       },
     ]);
-    const [a] = normalizeDocumentModelActions(doc, [
+    const {
+      actions: [a],
+    } = normalizeSpecActions(doc, [
       { type: "SET_OPERATION_SCHEMA", input: { id: "op-1", schema: "x" } },
     ]);
     expect((a.input as { id?: string }).id).toBe("op-1");
@@ -125,18 +169,18 @@ describe("normalizeDocumentModelActions", () => {
       { id: "mod-2", name: "B", operations: [{ id: "op-2", name: "DO_X" }] },
     ]);
     expect(() =>
-      normalizeDocumentModelActions(doc, [
+      normalizeSpecActions(doc, [
         { type: "SET_OPERATION_SCHEMA", input: { id: "DO_X", schema: "x" } },
       ]),
     ).toThrow(/op-1.*op-2|multiple operations/);
   });
 
-  it("passes non-document-model docs through unchanged", () => {
-    const out = normalizeDocumentModelActions(
+  it("does not default scope or resolve names for non-document-model docs", () => {
+    const { actions } = normalizeSpecActions(
       fakeDoc([], "powerhouse/document-editor"),
-      [{ type: "SET_STATE_SCHEMA", input: { schema: "x" } }],
+      [{ type: "SET_EDITOR_NAME", input: { name: "X" } }],
     );
-    expect((out[0].input as { scope?: string }).scope).toBeUndefined();
+    expect((actions[0].input as { scope?: string }).scope).toBeUndefined();
   });
 });
 

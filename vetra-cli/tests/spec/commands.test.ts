@@ -265,6 +265,8 @@ describe("spec-update", () => {
       makeCtx(workdir),
     );
     expect(result.text).toMatch(/Applied 1 action/);
+    // The minted id must be surfaced so a later action can target the module.
+    expect(result.text).toMatch(/Minted id\(s\)[\s\S]*ADD_MODULE "Workouts" → [0-9a-f-]{36}/i);
     const ids = await specGet.execute(
       { name: "Target", latest: true, filter: "$.modules[*].id" },
       makeCtx(workdir),
