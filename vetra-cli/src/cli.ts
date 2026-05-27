@@ -71,7 +71,7 @@ export const cli = defineCli({
     agents: {
       'vetra-agent': {
         name: 'vetra-agent',
-        sections: ['base.md', 'tools.md'],
+        sections: ['base.md', 'tools.md', 'workflow.md'],
         skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation'],
       },
       'agent-document-model': {
