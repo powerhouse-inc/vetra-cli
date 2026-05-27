@@ -35,12 +35,6 @@ export const specPreviewDelete = defineCommand({
       text: success
         ? `Deleted "${row.name}" (${row.id}) from preview drive ${driveId}`
         : `Failed to delete "${row.name}" (${row.id}) from preview drive ${driveId}`,
-      data: {
-        success,
-        driveId,
-        name: row.name,
-        id: row.id,
-      },
     };
   },
 });

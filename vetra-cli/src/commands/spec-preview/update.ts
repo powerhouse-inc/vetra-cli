@@ -73,20 +73,6 @@ export const specPreviewUpdate = defineCommand({
     );
     return {
       text: `Applied ${actions.length} action(s) to ${next.documentType} "${next.name}" (now ${opsCount} op(s) total) in preview drive ${driveId}`,
-      data: {
-        driveId,
-        document: {
-          header: {
-            id: next.id,
-            slug: next.slug,
-            name: next.name,
-            documentType: next.documentType,
-            preferredEditor: next.preferredEditor,
-          },
-          state: next.state,
-          operationsCount: opsCount,
-        },
-      },
     };
   },
 });

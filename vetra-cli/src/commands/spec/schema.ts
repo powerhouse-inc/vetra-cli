@@ -160,6 +160,6 @@ export const specSchema = defineCommand({
       filter = "$.specifications[(@.length-1)].state.global.schema";
     }
 
-    return renderProjected(schema, filter, input.format, summary);
+    return { text: renderProjected(schema, filter, input.format) };
   },
 });

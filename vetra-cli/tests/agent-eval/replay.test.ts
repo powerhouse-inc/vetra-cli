@@ -205,23 +205,10 @@ describe("synthetic fixtures — assertions catch foot-guns", () => {
       toolResult(
         "spec-generate",
         {
-          text: "Generated 1 module(s). ...",
-          data: {
-            generated: [{ name: "Foo", type: "powerhouse/document-model" }],
-            skipped: [],
-            diagnostics: [
-              {
-                source: "tsc",
-                file: "document-models/foo/v1/gen/actions.ts",
-                line: 10,
-                column: 36,
-                severity: "error",
-                code: "TS1110",
-                message: "Type expected.",
-              },
-            ],
-            checkNotes: [],
-          },
+          text:
+            "Generated 1 module(s).\n" +
+            "Generated-file checks: 1 error(s), 0 warning(s) (tsc: 1, eslint: 0).\n" +
+            "  ✗ [tsc] document-models/foo/v1/gen/actions.ts:10:36 TS1110 — Type expected.",
         },
         "00:00:02",
       ) +
@@ -238,15 +225,10 @@ describe("synthetic fixtures — assertions catch foot-guns", () => {
       toolResult(
         "spec-generate",
         {
-          text: "...",
-          data: {
-            generated: [{ name: "Foo", type: "powerhouse/document-model" }],
-            skipped: [],
-            diagnostics: [
-              { source: "tsc", file: "x.ts", line: 1, column: 1, severity: "error", code: "TS1110", message: "Type expected." },
-            ],
-            checkNotes: [],
-          },
+          text:
+            "Generated 1 module(s).\n" +
+            "Generated-file checks: 1 error(s), 0 warning(s) (tsc: 1, eslint: 0).\n" +
+            "  ✗ [tsc] x.ts:1:1 TS1110 — Type expected.",
         },
         "00:00:02",
       ) +
@@ -264,15 +246,9 @@ describe("synthetic fixtures — assertions catch foot-guns", () => {
       toolResult(
         "reactor-project-check",
         {
-          text: "...",
-          data: {
-            diagnostics: [
-              { source: "tsc", file: "x.ts", line: 1, column: 1, severity: "error", code: "TS1110", message: "..." },
-            ],
-            summary: { errors: 1, warnings: 0, tsc: 1, eslint: 0 },
-            notes: [],
-            scope: "module",
-          },
+          text:
+            "**Check found 1 error(s), 0 warning(s)** (tsc: 1, eslint: 0).\n" +
+            "  ✗ [tsc] x.ts:1:1 TS1110 — Type expected.",
         },
         "00:00:02",
       );

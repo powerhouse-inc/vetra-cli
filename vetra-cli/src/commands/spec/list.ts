@@ -20,7 +20,7 @@ export const specList = defineCommand({
     const base = await resolveReactorProjectPath(workdir, input.project);
     const docs = await getDocuments(base, { documentType: input.type });
     if (docs.length === 0) {
-      return { text: "(no specs)", data: { documents: [] } };
+      return { text: "(no specs)" };
     }
     const rows = docs.map((d) => [
       d.header.name,
@@ -30,14 +30,6 @@ export const specList = defineCommand({
     ]);
     return {
       text: formatColumns(rows),
-      data: {
-        documents: docs.map((d) => ({
-          name: d.header.name,
-          slug: d.header.slug,
-          type: d.header.documentType,
-          id: d.header.id,
-        })),
-      },
     };
   },
 });

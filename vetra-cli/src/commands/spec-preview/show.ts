@@ -43,14 +43,6 @@ export const specPreviewShow = defineCommand({
     const previewUrl = `${base_}/d/${driveId}/${docPathSegment}?embed=1`;
     return {
       text: `Preview URL: ${previewUrl}`,
-      data: {
-        previewUrl,
-        projectPath: base,
-        driveId,
-        documentId: row.id,
-        documentSlug: row.slug,
-        documentName: row.name,
-      },
     };
   },
 });

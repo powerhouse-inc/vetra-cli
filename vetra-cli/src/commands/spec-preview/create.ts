@@ -48,19 +48,6 @@ export const specPreviewCreate = defineCommand({
     );
     return {
       text: `Created ${created.documentType} "${created.name}"  id: ${created.id}  (preview drive ${driveId})`,
-      data: {
-        driveId,
-        document: {
-          header: {
-            id: created.id,
-            slug: created.slug,
-            name: created.name,
-            documentType: created.documentType,
-            preferredEditor: created.preferredEditor,
-          },
-          state: created.state,
-        },
-      },
     };
   },
 });

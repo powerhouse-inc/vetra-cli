@@ -43,22 +43,17 @@ export const actionInputSchema = z.object({
 export type ActionInput = z.infer<typeof actionInputSchema>;
 
 /**
- * Project + encode a value for output. When neither --filter nor --format is
- * set, return a short human summary as `text` and the full value as `data`;
- * otherwise return only the rendered text (passing both defeats the savings).
- * Single-string projections come out raw — see encodeValue for why.
+ * Project + encode a value as text. Applies the JSONPath filter when given,
+ * then encodes; an absent filter renders the whole value. Single-string
+ * projections come out raw — see encodeValue for why.
  */
 export function renderProjected(
   value: unknown,
   filter: string | undefined,
   format: OutputFormat | undefined,
-  fallbackText: string,
-): { text: string; data?: { value: unknown } } {
-  if (!filter && !format) {
-    return { text: fallbackText, data: { value } };
-  }
+): string {
   const projected = filter ? applyJsonPath(value, filter) : value;
-  return { text: encodeValue(projected, format) };
+  return encodeValue(projected, format);
 }
 
 /**

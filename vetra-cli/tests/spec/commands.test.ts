@@ -28,7 +28,6 @@ describe("spec-list", () => {
   it("reports (no specs) on an empty workdir", async () => {
     const result = await specList.execute({}, makeCtx(workdir));
     expect(result.text).toBe("(no specs)");
-    expect(result.data?.documents).toEqual([]);
   });
 
   it("lists created specs with name/type/id columns", async () => {
@@ -44,7 +43,6 @@ describe("spec-list", () => {
     expect(result.text).toMatch(/Alpha/);
     expect(result.text).toMatch(/Beta/);
     expect(result.text).toMatch(new RegExp(DOC_TYPE));
-    expect(result.data?.documents).toHaveLength(2);
   });
 
   it("filters by --type", async () => {
@@ -72,7 +70,7 @@ describe("spec-create", () => {
       makeCtx(workdir),
     );
     expect(result.text).toMatch(/Created/);
-    expect(result.data?.path).toContain(workdir);
+    expect(result.text).toContain(workdir);
     const list = await specList.execute({}, makeCtx(workdir));
     expect(list.text).toMatch(/Persisted/);
   });
@@ -108,7 +106,7 @@ describe("spec-get", () => {
     expect(result.text).toMatch(/powerhouse\/document-model "Target"/);
     expect(result.text).toMatch(/Usage examples for "Target"/);
     // Default must NOT dump the full state payload.
-    expect(result.data).toBeUndefined();
+    expect(result.text).not.toContain('"global"');
   });
 
   it("returns the full state when --full is passed", async () => {
@@ -214,7 +212,7 @@ describe("spec-update", () => {
     await expect(promise).rejects.toThrow(
       expect.objectContaining({
         message: expect.not.stringContaining('"code": "invalid_type"'),
-      }) as Error,
+      }),
     );
   });
 
@@ -372,7 +370,7 @@ describe("spec-generate", () => {
     await expect(promise).rejects.toThrow(
       expect.objectContaining({
         message: expect.not.stringContaining("type TodoItem = {"),
-      }) as Error,
+      }),
     );
   });
 });
@@ -413,9 +411,7 @@ describe("spec-schema-list", () => {
   it("returns registered document model types", async () => {
     const result = await specSchemaList.execute({}, makeCtx(workdir));
     expect(result.text).toMatch(/powerhouse\/document-model/);
-    expect(
-      result.data?.schemas?.some((s: { type: string }) => s.type === DOC_TYPE),
-    ).toBe(true);
+    expect(result.text).toContain(DOC_TYPE);
   });
 });
 
@@ -434,7 +430,7 @@ describe("spec-schema", () => {
     expect(result.text).toMatch(/^Modules: /m);
     expect(result.text).toMatch(/^JSONPath examples/m);
     // Default must NOT dump the full schema payload.
-    expect(result.data).toBeUndefined();
+    expect(result.text).not.toContain('"specifications"');
   });
 
   it("returns the full schema when --full is passed", async () => {
@@ -442,7 +438,7 @@ describe("spec-schema", () => {
       { type: DOC_TYPE, state: false, full: true },
       makeCtx(workdir),
     );
-    expect(result.data?.value).toBeDefined();
+    expect(result.text).toContain("specifications");
   });
 
   it("--action returns the GraphQL input for one operation", async () => {

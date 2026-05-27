@@ -55,24 +55,10 @@ export const specPreviewGet = defineCommand({
     const summary = `${doc.documentType} "${doc.name}" — ${opsTotal} operation(s).`;
 
     if (!input.full && !input.filter) {
-      return {
-        text: summary,
-        data: {
-          driveId,
-          document: {
-            header: {
-              id: doc.id,
-              slug: doc.slug,
-              name: doc.name,
-              documentType: doc.documentType,
-              preferredEditor: doc.preferredEditor,
-            },
-          },
-        },
-      };
+      return { text: summary };
     }
 
     const filter = input.filter ?? (input.full ? "$" : "$.global");
-    return renderProjected(doc.state, filter, input.format, summary);
+    return { text: renderProjected(doc.state, filter, input.format) };
   },
 });

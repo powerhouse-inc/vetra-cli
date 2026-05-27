@@ -37,16 +37,11 @@ export const specCreate = defineCommand({
     if (input.dryRun) {
       return {
         text: `Created ${doc.header.documentType} "${doc.header.name}" (in-memory, not saved).`,
-        data: { document: { header: doc.header, state: doc.state } },
       };
     }
     const path = await saveSpec(doc, base);
     return {
       text: `Created ${doc.header.documentType} "${doc.header.name}"  id: ${doc.header.id}\n${path}`,
-      data: {
-        path,
-        document: { header: doc.header, state: doc.state },
-      },
     };
   },
 });

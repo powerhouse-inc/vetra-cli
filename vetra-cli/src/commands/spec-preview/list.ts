@@ -35,7 +35,7 @@ export const specPreviewList = defineCommand({
       ? items.filter((d) => d.documentType === input.type)
       : items;
     if (filtered.length === 0) {
-      return { text: "(no preview documents)", data: { driveId, documents: [] } };
+      return { text: "(no preview documents)" };
     }
     const rows = filtered.map((d) => {
       const ops = d.revisionsList.reduce((sum, r) => sum + r.revision, 0);
@@ -49,16 +49,6 @@ export const specPreviewList = defineCommand({
     });
     return {
       text: formatColumns(rows),
-      data: {
-        driveId,
-        documents: filtered.map((d) => ({
-          name: d.name,
-          slug: d.slug,
-          id: d.id,
-          type: d.documentType,
-          ops: d.revisionsList.reduce((sum, r) => sum + r.revision, 0),
-        })),
-      },
     };
   },
 });

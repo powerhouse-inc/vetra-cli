@@ -101,6 +101,6 @@ export const specGet = defineCommand({
     // or --latest (already narrowed to the latest spec entry).
     const filter =
       input.filter ?? (input.latest || input.full ? "$" : "$.global");
-    return renderProjected(value, filter, input.format, summary);
+    return { text: renderProjected(value, filter, input.format) };
   },
 });

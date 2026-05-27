@@ -75,10 +75,6 @@ export const specExtract = defineCommand({
         written.length === 0
           ? "(no specs extracted)"
           : `Wrote ${written.length} spec(s):\n${written.join("\n")}`,
-      data: {
-        count: written.length,
-        paths: written,
-      },
     };
   },
 });

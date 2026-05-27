@@ -177,7 +177,6 @@ export const specGenerate = defineCommand({
 
     return {
       text: lines.join("\n"),
-      data: { generated, skipped, diagnostics, checkNotes },
     };
   },
 });

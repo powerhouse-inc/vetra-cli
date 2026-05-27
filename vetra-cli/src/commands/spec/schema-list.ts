@@ -10,12 +10,11 @@ export const specSchemaList = defineCommand({
   execute: async () => {
     const models = getDocumentModels();
     if (models.length === 0) {
-      return { text: "(no schemas registered)", data: { schemas: [] } };
+      return { text: "(no schemas registered)" };
     }
     const rows = models.map((m) => [m.type, m.name, m.description]);
     return {
       text: formatColumns(rows),
-      data: { schemas: models },
     };
   },
 });

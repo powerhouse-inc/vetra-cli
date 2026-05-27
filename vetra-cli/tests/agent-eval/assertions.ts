@@ -246,9 +246,12 @@ function hasDiagnostics(ev: ToolResultEvent): boolean {
   return readDiagnostics(ev).length > 0;
 }
 
-function readDiagnostics(ev: ToolResultEvent): unknown[] {
-  const data = (ev.output as Record<string, unknown> | undefined)?.data;
-  if (!data || typeof data !== "object") return [];
-  const diags = (data as Record<string, unknown>).diagnostics;
-  return Array.isArray(diags) ? diags : [];
+function readDiagnostics(ev: ToolResultEvent): string[] {
+  const text = (ev.output as Record<string, unknown> | undefined)?.text;
+  if (typeof text !== "string") return [];
+  // spec-generate / reactor-project-check render each diagnostic as a line
+  // `  ✗ [source] file:line:col code — message` (✗ = error, ! = warning).
+  // Skipped/generated lines (`✗ <type> — …`, `✓ …`) lack the `[source]`
+  // bracket, so the bracket anchor keeps them out of the count.
+  return text.split("\n").filter((l) => /^\s*[✗!]\s+\[/.test(l));
 }

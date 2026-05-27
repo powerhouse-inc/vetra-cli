@@ -159,10 +159,9 @@ describe("formatColumns", () => {
 });
 
 describe("renderProjected", () => {
-  it("returns fallback summary when neither filter nor format set", () => {
-    const out = renderProjected({ a: 1 }, undefined, undefined, "fallback");
-    expect(out.text).toBe("fallback");
-    expect(out.data?.value).toEqual({ a: 1 });
+  it("encodes the whole value when neither filter nor format set", () => {
+    const out = renderProjected({ a: 1 }, undefined, undefined);
+    expect(out).toBe('{\n  "a": 1\n}');
   });
 
   it("prints single-string projection results raw, no wrapping", () => {
@@ -170,32 +169,20 @@ describe("renderProjected", () => {
       { greeting: "line1\nline2" },
       "$.greeting",
       undefined,
-      "fallback",
     );
-    expect(out.text).toBe("line1\nline2");
-    expect(out.data).toBeUndefined();
+    expect(out).toBe("line1\nline2");
   });
 
   it("encodes object projections as JSON by default", () => {
-    const out = renderProjected(
-      { nums: [1, 2, 3] },
-      "$.nums",
-      undefined,
-      "fallback",
-    );
-    expect(out.text).toBe("[\n  1,\n  2,\n  3\n]");
+    const out = renderProjected({ nums: [1, 2, 3] }, "$.nums", undefined);
+    expect(out).toBe("[\n  1,\n  2,\n  3\n]");
   });
 
   it("encodes object projections as toon when requested", () => {
-    const out = renderProjected(
-      { nums: [1, 2, 3] },
-      "$.nums",
-      "toon",
-      "fallback",
-    );
-    expect(out.text).toContain("1");
-    expect(out.text).toContain("2");
-    expect(out.text).toContain("3");
+    const out = renderProjected({ nums: [1, 2, 3] }, "$.nums", "toon");
+    expect(out).toContain("1");
+    expect(out).toContain("2");
+    expect(out).toContain("3");
   });
 });
 
@@ -291,8 +278,9 @@ describe("findByName", () => {
       { type: "powerhouse/document-model", name: "Slug Match", dryRun: false },
       makeCtx(workdir),
     );
+    const id = created.text.match(/id: (\S+)/)?.[1];
     const { doc } = await findByName(workdir, "slug-match");
-    expect(doc.header.id).toBe(created.data.document.header.id);
+    expect(doc.header.id).toBe(id);
   });
 
   it("resolves by id", async () => {
@@ -300,7 +288,8 @@ describe("findByName", () => {
       { type: "powerhouse/document-model", name: "ById", dryRun: false },
       makeCtx(workdir),
     );
-    const { doc } = await findByName(workdir, created.data.document.header.id);
+    const id = created.text.match(/id: (\S+)/)?.[1] ?? "";
+    const { doc } = await findByName(workdir, id);
     expect(doc.header.name).toBe("ById");
   });
 
@@ -337,15 +326,17 @@ describe("findByName", () => {
 
 describe("slugify", () => {
   /* `slugify` is not exported by name, but `spec-create` sets `header.slug =
-   * slugify(input.name)`. Exercise it via that public path. */
+   * slugify(input.name)`. Exercise it by loading the saved spec back and
+   * reading its slug. */
   it("kebab-cases the name into header.slug on create", async () => {
     const { workdir, cleanup } = makeWorkdir();
     try {
-      const result = await specCreate.execute(
-        { type: "powerhouse/document-model", name: "Hello World 42", dryRun: true },
+      await specCreate.execute(
+        { type: "powerhouse/document-model", name: "Hello World 42", dryRun: false },
         makeCtx(workdir),
       );
-      expect(result.data.document.header.slug).toBe("hello-world-42");
+      const { doc } = await findByName(workdir, "Hello World 42");
+      expect(doc.header.slug).toBe("hello-world-42");
     } finally {
       cleanup();
     }
@@ -354,11 +345,12 @@ describe("slugify", () => {
   it("strips diacritics and collapses non-alnum runs", async () => {
     const { workdir, cleanup } = makeWorkdir();
     try {
-      const result = await specCreate.execute(
-        { type: "powerhouse/document-model", name: "Café — Très Bien!", dryRun: true },
+      await specCreate.execute(
+        { type: "powerhouse/document-model", name: "Café — Très Bien!", dryRun: false },
         makeCtx(workdir),
       );
-      expect(result.data.document.header.slug).toBe("cafe-tres-bien");
+      const { doc } = await findByName(workdir, "Café — Très Bien!");
+      expect(doc.header.slug).toBe("cafe-tres-bien");
     } finally {
       cleanup();
     }

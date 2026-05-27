@@ -139,7 +139,6 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
     );
     expect(result.text).toMatch(/Alpha/);
     expect(result.text).toMatch(/Beta/);
-    expect(result.data?.documents).toHaveLength(2);
 
     mockGqlResponses(fetchSpy, [
       {
@@ -157,7 +156,6 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
     );
     expect(filtered.text).not.toMatch(/Alpha/);
     expect(filtered.text).toMatch(/Beta/);
-    expect(filtered.data?.documents).toHaveLength(1);
   });
 
   it("specPreviewList reports (no preview documents) for an empty drive", async () => {
@@ -167,7 +165,6 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
       withLiveReactorProject(workdir),
     );
     expect(result.text).toBe("(no preview documents)");
-    expect(result.data?.documents).toEqual([]);
   });
 
   it("specPreviewGet returns a header summary by default", async () => {
@@ -180,7 +177,6 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
       withLiveReactorProject(workdir),
     );
     expect(result.text).toMatch(/Alpha/);
-    expect(result.data?.document?.header?.id).toBe("doc-1");
   });
 
   it("specPreviewGet projects state with --filter", async () => {
@@ -208,8 +204,8 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
       withLiveReactorProject(workdir),
     );
     expect(result.text).toMatch(/Created/);
-    expect(result.data?.document?.header?.id).toBe("doc-1");
-    expect(result.data?.document?.header?.name).toBe("Alpha");
+    expect(result.text).toContain("doc-1");
+    expect(result.text).toMatch(/Alpha/);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const createBody = JSON.parse(
       String(fetchSpy.mock.calls[0]?.[1]?.body ?? "{}"),
@@ -243,7 +239,7 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
       withLiveReactorProject(workdir),
     );
     expect(result.text).toMatch(/Applied 1 action/);
-    expect(result.data?.document?.operationsCount).toBe(3);
+    expect(result.text).toMatch(/now 3 op/);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const mutateBody = JSON.parse(
       String(fetchSpy.mock.calls[1]?.[1]?.body ?? "{}"),
@@ -267,7 +263,6 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
       withLiveReactorProject(workdir),
     );
     expect(result.text).toMatch(/Deleted "Alpha"/);
-    expect(result.data?.success).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });

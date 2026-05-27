@@ -64,14 +64,6 @@ export const specUpdate = defineCommand({
     const path = await saveSpec(next, base);
     return {
       text: `Applied ${actions.length} action(s) to ${next.header.documentType} "${next.header.name}" (now ${opsCount} op(s) total) → ${path}`,
-      data: {
-        path,
-        document: {
-          header: next.header,
-          state: next.state,
-          operationsCount: opsCount,
-        },
-      },
     };
   },
 });

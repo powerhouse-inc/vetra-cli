@@ -69,7 +69,6 @@ export const reactorProjectCheck = defineCommand({
 
     return {
       text: lines.join("\n"),
-      data: { diagnostics, summary, notes, scope: resolvedScope },
     };
   },
 });

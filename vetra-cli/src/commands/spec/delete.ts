@@ -24,7 +24,6 @@ export const specDelete = defineCommand({
       text: result.success
         ? `Deleted "${doc.header.name}" (${doc.header.id})`
         : `Failed to delete "${doc.header.name}" at ${path}`,
-      data: { ...result, name: doc.header.name, id: doc.header.id, path },
     };
   },
 });
