@@ -11,6 +11,11 @@ import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import {
+  runChecks,
+  summarizeDiagnostics,
+  type GenDiagnostic,
+} from "../../helpers/project-checks.js";
 import { loadByName } from "./_helpers.js";
 
 type Project = Parameters<typeof generateDocumentModelFromDocument>[1];
@@ -22,6 +27,19 @@ const DOC_TYPES = {
   processor: "powerhouse/processor",
   subgraph: "powerhouse/subgraph",
 } as const;
+
+function trimGenerateError(message: string): string {
+  /* `@graphql-tools/load` inlines the full schema into `err.message` several
+   * times when codegen fails on the SDL. Pull out just the diagnostic line:
+   * the library wraps every schema failure (syntax + validation) in a
+   * "Failed to parse the GraphQL document. <GraphQLError>" line. */
+  const parse = message.match(/Failed to parse the GraphQL document\.[^\n]*/);
+  if (parse) {
+    return parse[0];
+  }
+  const firstLine = message.split("\n").find((l) => l.trim().length > 0);
+  return firstLine ?? message;
+}
 
 async function generateOne(doc: PHDocument, project: Project): Promise<void> {
   switch (doc.header.documentType) {
@@ -54,14 +72,20 @@ export const specGenerate = defineCommand({
       .describe(
         "Spec to generate — accepts display name, slug, or id (see spec-list). When omitted, generate code for every spec under specs/.",
       ),
+    skipChecks: z
+      .boolean()
+      .optional()
+      .describe(
+        "Skip the post-generation typecheck and lint over generated files. Defaults to false.",
+      ),
   }),
-  execute: async (input, { workdir }) => {
+  execute: async (input, { workdir, runProcess }) => {
     const base = await resolveReactorProjectPath(workdir, input.project);
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
      * gap; identical at runtime. */
-    const tsProject = buildTsMorphProject(base) as unknown as Project;
+    const tsProject = buildTsMorphProject(base);
 
     const docs = input.name
       ? [await loadByName(base, input.name)]
@@ -82,15 +106,46 @@ export const specGenerate = defineCommand({
           type: doc.header.documentType,
         });
       } catch (err) {
+        const reason = trimGenerateError(
+          err instanceof Error ? err.message : String(err),
+        );
+        if (input.name) {
+          throw new Error(
+            `${doc.header.documentType} — ${doc.header.name}: ${reason}`,
+          );
+        }
         skipped.push({
           name: doc.header.name,
           type: doc.header.documentType,
-          reason: err instanceof Error ? err.message : String(err),
+          reason,
         });
       }
     }
 
     await tsProject.save();
+
+    let diagnostics: GenDiagnostic[] = [];
+    const checkNotes: string[] = [];
+    if (!input.skipChecks && generated.length > 0) {
+      const outcome = await runChecks(base, runProcess, { scope: "module" });
+      diagnostics = outcome.diagnostics;
+      checkNotes.push(...outcome.notes);
+    }
+    const summary = summarizeDiagnostics(diagnostics);
+
+    if (input.name && summary.errors > 0) {
+      const head = diagnostics
+        .filter((d) => d.severity === "error")
+        .slice(0, 5)
+        .map(
+          (d) =>
+            `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
+        )
+        .join("\n  ");
+      throw new Error(
+        `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
+      );
+    }
 
     const lines = [
       `Generated ${generated.length} module(s)` +
@@ -103,10 +158,26 @@ export const specGenerate = defineCommand({
     for (const s of skipped) {
       lines.push(`  ✗ ${s.type} — ${s.name}: ${s.reason}`);
     }
+    if (diagnostics.length > 0) {
+      lines.push(
+        `Generated-file checks: ${summary.errors} error(s), ${summary.warnings} warning(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}).`,
+      );
+      for (const d of diagnostics.slice(0, 20)) {
+        lines.push(
+          `  ${d.severity === "error" ? "✗" : "!"} [${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
+        );
+      }
+      if (diagnostics.length > 20) {
+        lines.push(`  … ${diagnostics.length - 20} more`);
+      }
+    }
+    for (const note of checkNotes) {
+      lines.push(`  · ${note}`);
+    }
 
     return {
       text: lines.join("\n"),
-      data: { generated, skipped },
+      data: { generated, skipped, diagnostics, checkNotes },
     };
   },
 });

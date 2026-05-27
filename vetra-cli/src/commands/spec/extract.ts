@@ -14,8 +14,6 @@ import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
 import { slugify } from "./_helpers.js";
 
-type Project = Parameters<typeof extractAllDocuments>[0];
-
 const typeSchema = z
   .enum(["all", "document-model", "editor", "app", "processor", "subgraph"])
   .default("all")
@@ -36,7 +34,7 @@ export const specExtract = defineCommand({
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
      * gap; identical at runtime. */
-    const tsProject = buildTsMorphProject(base) as unknown as Project;
+    const tsProject = buildTsMorphProject(base);
     const docs: PHDocument[] = (() => {
       switch (input.type) {
         case "document-model":

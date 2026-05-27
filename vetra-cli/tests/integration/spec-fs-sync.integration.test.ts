@@ -24,7 +24,7 @@ import {
   type AppModuleDocument,
   setAppName,
 } from "@powerhousedao/vetra/document-models/app-module";
-import { saveSpec, specPath } from "@powerhousedao/vetra/codegen";
+import { saveSpec } from "@powerhousedao/vetra/codegen";
 import { baseLoadFromFile } from "document-model/node";
 import {
   applyFsChangesToReactor,
@@ -132,11 +132,11 @@ describe("spec-fs-sync FS → drive", () => {
     const draft = AppModuleV1.utils.createDocument();
     draft.header.name = name;
     draft.header.documentType = "powerhouse/app";
-    await module.client.create(draft as never);
-    return { id: draft.header.id, path: await persistDocToFs(draft.header.id, name) };
+    await module.client.create(draft);
+    return { id: draft.header.id, path: await persistDocToFs(draft.header.id) };
   }
 
-  async function persistDocToFs(id: string, _name: string): Promise<string> {
+  async function persistDocToFs(id: string): Promise<string> {
     const created = await module.client.get<AppModuleDocument>(id);
     const opsByScope = await module.reactor.getOperations(id);
     const operations: Record<string, unknown[]> = {};
@@ -165,7 +165,7 @@ describe("spec-fs-sync FS → drive", () => {
       const draft = AppModuleV1.utils.createDocument();
       draft.header.name = "fresh-app";
       draft.header.documentType = "powerhouse/app";
-      await producer.client.create(draft as never);
+      await producer.client.create(draft);
 
       const created = await producer.client.get(draft.header.id);
       const opsByScope = await producer.reactor.getOperations(draft.header.id);
@@ -184,7 +184,7 @@ describe("spec-fs-sync FS → drive", () => {
       const submitted = await applyFsChangesToReactor(
         [filePath],
         tmpDir,
-        module as never,
+        module,
         log,
       );
       expect(submitted).toBeGreaterThan(0);
@@ -221,7 +221,7 @@ describe("spec-fs-sync FS → drive", () => {
     );
     await saveSpec(mutated, tmpDir);
 
-    await applyFsChangesToReactor([filePath], tmpDir, module as never);
+    await applyFsChangesToReactor([filePath], tmpDir, module);
 
     await waitUntil(async () => {
       const inDrive = await module.client.get<AppModuleDocument>(id);
@@ -247,8 +247,8 @@ describe("spec-fs-sync FS → drive", () => {
     const countBefore = opsBefore.results.length;
     expect(countBefore).toBeGreaterThan(0);
 
-    await applyFsChangesToReactor([filePath], tmpDir, module as never);
-    await applyFsChangesToReactor([filePath], tmpDir, module as never);
+    await applyFsChangesToReactor([filePath], tmpDir, module);
+    await applyFsChangesToReactor([filePath], tmpDir, module);
 
     // Give the queue a tick; if dedup were broken the count would grow.
     await new Promise((r) => setTimeout(r, 100));
@@ -270,7 +270,7 @@ describe("spec-fs-sync FS → drive", () => {
     // It currently writes the snapshot-only form (no ops); the file on
     // disk from makeSpecFile already has the ops, so we re-use that.
     const inDrive = await module.client.get<AppModuleDocument>(id);
-    await syncSpecsToFs([inDrive as never], tmpDir);
+    await syncSpecsToFs([inDrive], tmpDir);
     await persistDocToFs(id, "round-trip"); // re-attach ops onto the file
 
     const opsBefore = (await module.client.getOperations(id)).results.length;
@@ -278,8 +278,8 @@ describe("spec-fs-sync FS → drive", () => {
     // FS → drive: the file's ops are all already in the store; this must
     // be a successful no-op (dedup by action.id).
     const { logs, api: log } = makeLog();
-    await applyFsChangesToReactor([filePath], tmpDir, module as never, log);
-    await applyFsChangesToReactor([filePath], tmpDir, module as never, log);
+    await applyFsChangesToReactor([filePath], tmpDir, module, log);
+    await applyFsChangesToReactor([filePath], tmpDir, module, log);
 
     await new Promise((r) => setTimeout(r, 100));
 

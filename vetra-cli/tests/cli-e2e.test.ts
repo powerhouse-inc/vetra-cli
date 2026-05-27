@@ -56,6 +56,7 @@ describe("vetra-cli spec-* (e2e)", () => {
         "spec-schema",
         "reactor-project-init",
         "reactor-project-build",
+        "reactor-project-check",
         "reactor-project-publish",
       ]) {
         expect(stdout).toContain(cmd);

@@ -16,6 +16,7 @@ import { documentModels as extModels } from '@powerhousedao/clint-common';
 import { createAgent } from './agents/agent.js';
 import { chatSessionWatchTrigger } from '@powerhousedao/clint-common/chat';
 import { observability } from '@powerhousedao/ph-clint-observability';
+import { agentRun } from './commands/agent-run.js';
 import { specCommands } from './commands/spec/index.js';
 import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
@@ -25,6 +26,9 @@ import { LOCAL_REGISTRY_ENABLED, LOCAL_REGISTRY_URL } from './constants.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
+import { previewServerTrigger } from './triggers/preview-server.js';
+import { connectRebuildOnSwitchboardReady } from './lifecycle/connect-rebuild.js';
+import { studioUrlTrigger } from './triggers/studio-url.js';
 // @clint:end imports
 
 export const cli = defineCli({
@@ -42,6 +46,7 @@ export const cli = defineCli({
     ...specCommands,
     ...specPreviewCommands,
     ...reactorProjectCommands,
+    agentRun,
   ],
   // @clint:end commands
 
@@ -54,6 +59,8 @@ export const cli = defineCli({
     chatSessionWatchTrigger,
     specSyncTrigger,
     specFsSyncTrigger,
+    previewServerTrigger,
+    studioUrlTrigger,
     ...(LOCAL_REGISTRY_ENABLED ? [publishReloadTrigger] : []),
   ],
   // @clint:end triggers
@@ -64,7 +71,7 @@ export const cli = defineCli({
     agents: {
       'vetra-agent': {
         name: 'vetra-agent',
-        sections: ['base.md'],
+        sections: ['base.md', 'tools.md', 'workflow.md'],
         skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation'],
       },
       'agent-document-model': {
@@ -171,7 +178,12 @@ export const cli = defineCli({
   // @clint:end proxy
 
   // @clint:begin lifecycle
-  lifecycle: [observability()],
+  lifecycle: [
+    observability(),
+    connectRebuildOnSwitchboardReady({
+      vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
+    }),
+  ],
   // @clint:end lifecycle
 
   configDefaults: {

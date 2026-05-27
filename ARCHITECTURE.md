@@ -27,8 +27,9 @@ of the open work.
                   │           │                      │             │
                   │  ┌────────▼─────────────────┐    │             │
                   │  │ vetra-cli local API      │    │             │
-                  │  │ HTTP + SSE on fixed port │    │             │
-                  │  │ projects, workflows      │    │             │
+                  │  │ HTTP + SSE on 127.0.0.1  │    │             │
+                  │  │ :5180 — resolve/start/   │    │             │
+                  │  │ events (+ future surface)│    │             │
                   │  └────────┬─────────────────┘    │             │
                   │           │                      │             │
                   │  ┌────────▼──────────────────────▼──────────┐  │
@@ -160,33 +161,63 @@ via the vetra-cli drive's `preferredEditor` field. The editor renders:
 
 ### vetra-cli local API
 
-New HTTP + SSE service hosted inside the vetra-cli node process on a
-fixed port (`VETRA_CLI_API_PORT`). Read-only for now. CORS allows
-`http://localhost:27370` (embedded Connect's origin) only.
+HTTP + SSE service hosted inside the vetra-cli node process on a fixed
+loopback port. Default `127.0.0.1:5180`; see
+`vetra-cli/src/preview-server/config.ts` for the constant. CORS is
+permissive (`Access-Control-Allow-Origin: *`) because the loopback
+bind already restricts the audience; the browser side runs on
+Connect's origin (a different port) and needs cross-origin access.
+Revisit if the server ever leaves loopback.
 
-Endpoints (planned shape):
+Implemented as a trigger (`vetra-cli/src/triggers/preview-server.ts`)
+so it gets the framework's `ServiceManager` + event-bus access via
+`TriggerContext`. Server module lives at `vetra-cli/src/preview-server/`.
 
-- `GET /projects` — one-shot list of reactor-project instances.
-- `GET /projects/subscribe` — SSE stream; emits `projects-changed`
-  on lifecycle events (start, stop, error).
-- `GET /chat-sessions/:id/workflows` — one-shot list of workflow
-  instances bound to a chat session.
-- `GET /chat-sessions/:id/workflows/subscribe` — SSE stream;
-  `workflows-changed` on registry mutations.
+**Endpoints (current):**
+
+- `GET /resolve?project=<label>&doc=<id-or-slug>` — read-only. Returns
+  the live preview URL or a state code (`no-target`,
+  `unknown-project`, `project-stopped`, `starting`, `ready`). The
+  editor calls this on every relevant state change.
+- `POST /start?project=<label>` — idempotent. If an instance for
+  the project's workdir is already `starting`/`ready`, returns
+  `already-running`; otherwise spawns one via
+  `services.start("reactor-project", ...)` and returns `started`.
+  The editor calls this automatically when `/resolve` returns
+  `project-stopped` — preview intent implies project should run.
+- `GET /events` — SSE stream of `service:*` events filtered to
+  `id === "reactor-project"`. The editor refetches `/resolve` on
+  any event. 15s heartbeat keeps the stream alive through quiet
+  periods.
+- `GET /healthz` — liveness check.
+
+**Endpoints (planned but not yet built):**
+
+- `GET /projects` / `GET /projects/subscribe` — broader projection
+  of the service manager's reactor-project state, beyond the
+  per-target resolution `/resolve` provides today.
+- `GET /chat-sessions/:id/workflows` /
+  `GET /chat-sessions/:id/workflows/subscribe` — workflow registry
+  projection. Depends on the workflow registry itself, which is
+  unbuilt.
 
 The API surfaces two kinds of state:
 
-- **Project runtime state** — projection of the service manager's
-  on-disk state files. Source of truth remains `<workdir>/.ph/<cli>/
-  services/reactor-project/<instance>.json`; the API is a fanout.
-- **Workflow registry state** — in-memory map of workflow instances
-  per chat session. Agent tools mutate it; SSE pushes changes. State
-  vanishes on vetra-cli restart (acceptable for MVP; persistence is a
-  later concern).
+- **Project runtime state** — projection of the service manager.
+  Source of truth remains `<workdir>/.ph/<cli>/services/
+  reactor-project/<instance>.json`; the API is a fanout. `/resolve`
+  is a per-target slice; the planned `/projects` endpoints would
+  expose the full list.
+- **Workflow registry state (planned)** — in-memory map of workflow
+  instances per chat session. Not implemented yet.
 
 The API exists for **cross-session, ephemeral runtime state** that the
 editor needs to see live but that doesn't belong in CRDT-replicated
 documents. The line is intentional (see "State transport" below).
+
+The writes (`POST /start`) are scoped: only thing the editor can
+trigger is starting a reactor-project that a session already pointed
+at. It can't enumerate, stop, or otherwise mutate the manager.
 
 ### State transport: chat-session document vs local API
 
@@ -286,6 +317,12 @@ Registered in `cli.ts`. Run as part of ph-clint's routine loop.
   documents for new user messages and forwards them to the agent.
 - `specSyncTrigger` — drive → filesystem mirror for spec documents.
 - `specFsSyncTrigger` — filesystem → drive (chokidar-based).
+- `previewServerTrigger` — runs the local API server. Triggers
+  receive `commandContext.services` + `commandContext.on`, which is
+  exactly what the http handlers need. `setup()` boots the server,
+  `teardown()` closes it on daemon shutdown, `poll()` returns null
+  (no work items — the trigger is purely a lifetime host for the
+  server).
 - `publishReloadTrigger` — **dormant**; gated by
   `LOCAL_REGISTRY_ENABLED = false` in `constants.ts`. Not registered
   at runtime. See footnote.
@@ -310,13 +347,35 @@ ph-clint's `startupSequence`:
 3. **Connect** — `services.start('vetra-studio')` spawns
    `connect-server.js` against `vetra-app/dist/connect/`. Listens on
    27370 by default.
-4. **vetra-cli local API** — HTTP + SSE server starts on the fixed
-   port. Subscribes to the service manager's events to project
-   reactor-project state, and exposes the workflow registry.
-5. **Routine** — trigger loop starts.
+4. **Routine** — trigger loop starts. `previewServerTrigger.setup()`
+   binds the local API HTTP + SSE server on `127.0.0.1:5180` and
+   subscribes to the framework event-bus for `service:*` events.
+   The other triggers (`chatSessionWatchTrigger`,
+   `specSyncTrigger`, `specFsSyncTrigger`) begin polling.
 
 `reactor-project` instances stay dormant until the agent starts one
 via the `reactor-project-start` tool.
+
+### Auto-start of reactor-project
+
+The editor pre-empts manual lifecycle calls for the BUILD pane. When
+`/resolve` returns `project-stopped` for a session's target, the
+browser-side `useResolvedPreview` hook fires `POST /start` once per
+target without any user click. SSE drives the resulting state
+transitions back into the pane: `service:starting` →
+`service:ready` → the pane refetches `/resolve` and lands on `ready`.
+
+Guards: the browser tracks "auto-started for project X" to avoid
+spinning on a persistent failure (e.g. port conflict surfaces as
+`service:failed`; the guard is only cleared when state reaches
+`ready`, so the next stop will auto-recover). The server side is
+idempotent independently: a `POST /start` for an already-running
+workdir returns `already-running` and never spawns a duplicate.
+
+The agent's existing `reactor-project-start` tool is still the
+chat-visible way to start a project; auto-start is the recovery
+path. Agent-driven starts produce visible chat history, which is
+preferable for normal flow.
 
 ## Preview flow
 
@@ -403,12 +462,13 @@ vetra-cli/
     │   ├── framework.ts       ← config + secrets schemas
     │   ├── constants.ts       ← LOCAL_REGISTRY_* (dormant), API port
     │   ├── agents/agent.ts    ← Mastra agent factory
-    │   ├── api/               ← vetra-cli local API server; planned
+    │   ├── preview-server/    ← vetra-cli local API (resolve/start/events)
     │   ├── commands/          ← spec-*, reactor-project-*, spec-preview-*
     │   ├── services/
     │   │   ├── local-registry.ts   ← dormant
     │   │   └── reactor-project.ts
     │   ├── triggers/
+    │   │   ├── preview-server.ts   ← hosts the local API
     │   │   ├── publish-reload.ts   ← dormant
     │   │   ├── spec-sync.ts
     │   │   └── spec-fs-sync.ts

@@ -11,8 +11,8 @@
  * running process owns the storage and concurrent file writes are unsafe.
  */
 import crypto from "node:crypto";
+import fs from "node:fs";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
-import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { unknownValueError } from "./cli-errors.js";
 
 const PREVIEW_DRIVE_PREFIX = "preview";
@@ -24,14 +24,33 @@ const PREVIEW_DRIVE_PREFIX = "preview";
  * `monorepo/clis/ph-cli/src/utils.ts`: short sha256 of the project root path.
  * Keep the two implementations in sync — diverging here silently sends
  * mutations to a non-existent drive.
+ *
+ * Resolve symlinks before hashing because the reactor side uses
+ * `process.cwd()`, which on macOS normalises `/var/...` to `/private/var/...`
+ * automatically. Without realpath here, a workdir under `mkdtemp(tmpdir())`
+ * hashes to a different id on each side and `createEmptyDocument` fails with
+ * "Document not found: preview-…".
  */
 export function getPreviewDriveId(projectPath: string): string {
+  const canonical = canonicalProjectPath(projectPath);
   const hash = crypto
     .createHash("sha256")
-    .update(projectPath)
+    .update(canonical)
     .digest("hex")
     .slice(0, 8);
   return `${PREVIEW_DRIVE_PREFIX}-${hash}`;
+}
+
+function canonicalProjectPath(projectPath: string): string {
+  try {
+    return fs.realpathSync(projectPath);
+  } catch {
+    /* If the path doesn't exist yet (rare — callers go through
+     * resolveReactorProjectPath which already validates), fall back to the
+     * raw string. Better to attempt the request and surface a clear GQL
+     * error than to throw something cryptic from here. */
+    return projectPath;
+  }
 }
 
 /**
@@ -45,7 +64,7 @@ export function resolvePreviewEndpoint(
   services: ServiceManager | undefined,
   projectPath: string,
   projectLabel: string,
-): { switchboardUrl: string; driveId: string } {
+): { switchboardUrl: string; connectUrl: string | undefined; driveId: string } {
   if (!services) {
     throw new Error(
       "Service manager not available in this context — cannot reach the reactor-project Switchboard.",
@@ -62,14 +81,15 @@ export function resolvePreviewEndpoint(
       `Reactor project "${projectLabel}" is not running. Start it with \`reactor-project-start ${projectLabel}\`.`,
     );
   }
-  const endpoint = live.endpoints?.["vetra-switchboard"];
-  if (!endpoint) {
+  const switchboardUrl = live.endpoints?.["vetra-switchboard"];
+  if (!switchboardUrl) {
     throw new Error(
       `Reactor project "${projectLabel}" is starting up — Switchboard endpoint not yet captured. Retry shortly.`,
     );
   }
   return {
-    switchboardUrl: endpoint,
+    switchboardUrl,
+    connectUrl: live.endpoints?.["vetra-studio"],
     driveId: getPreviewDriveId(projectPath),
   };
 }
@@ -154,9 +174,23 @@ const GET_DOCUMENT_QUERY = /* GraphQL */ `
   }
 `;
 
-const CREATE_DOCUMENT_MUTATION = /* GraphQL */ `
-  mutation CreatePreviewDocument($document: JSONObject!, $parentIdentifier: String) {
-    createDocument(document: $document, parentIdentifier: $parentIdentifier) {
+const CREATE_EMPTY_DOCUMENT_MUTATION = /* GraphQL */ `
+  mutation CreateEmptyPreviewDocument($documentType: String!, $parentIdentifier: String) {
+    createEmptyDocument(documentType: $documentType, parentIdentifier: $parentIdentifier) {
+      id
+      slug
+      name
+      documentType
+      preferredEditor
+      state
+      revisionsList { scope revision }
+    }
+  }
+`;
+
+const RENAME_DOCUMENT_MUTATION = /* GraphQL */ `
+  mutation RenamePreviewDocument($documentIdentifier: String!, $name: String!) {
+    renameDocument(documentIdentifier: $documentIdentifier, name: $name) {
       id
       slug
       name
@@ -212,30 +246,64 @@ export async function getPreviewDocument(
   return data.document?.document ?? null;
 }
 
-/** Create a new document in the preview drive. */
-export async function createPreviewDocument(
+/**
+ * Create a new document in the preview drive by delegating instantiation to the
+ * reactor. The reactor looks up `documentType` against its registered document
+ * model modules at runtime, so any type the running reactor knows about works
+ * — both framework spec types and document models from installed packages.
+ *
+ * Two round trips: `createEmptyDocument` (the schema-exposed mutation has no
+ * `name` arg) followed by `renameDocument` to set the display name.
+ */
+export async function createEmptyPreviewDocument(
   switchboardUrl: string,
   driveId: string,
-  document: PHDocument,
+  documentType: string,
+  name: string,
 ): Promise<PreviewDocumentFull> {
-  const data = await gqlRequest<{ createDocument: PreviewDocumentFull }>(
+  const created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
     switchboardUrl,
-    CREATE_DOCUMENT_MUTATION,
-    { document, parentIdentifier: driveId },
+    CREATE_EMPTY_DOCUMENT_MUTATION,
+    { documentType, parentIdentifier: driveId },
   );
-  return data.createDocument;
+  const renamed = await gqlRequest<{ renameDocument: PreviewDocumentFull }>(
+    switchboardUrl,
+    RENAME_DOCUMENT_MUTATION,
+    { documentIdentifier: created.createEmptyDocument.id, name },
+  );
+  return renamed.renameDocument;
 }
 
-/** Apply actions to an existing preview document via the document model reducer. */
+/**
+ * Apply actions to an existing preview document via the document model reducer.
+ *
+ * The reactor's reducer pipeline copies `action.timestampUtcMs` straight onto
+ * the operation without a fallback (see `operationFromAction` in
+ * `@powerhousedao/shared/document-model`); a missing timestamp lands in the
+ * Kysely store as `new Date(undefined)`, which throws "Invalid time value" when
+ * Kysely serialises it. Action `id` is similarly trusted to be present. We
+ * therefore stamp both fields here, where the action enters the GraphQL
+ * boundary, so callers can keep passing minimal `{type, input, scope?}` shapes.
+ */
 export async function mutatePreviewDocument(
   switchboardUrl: string,
   documentIdentifier: string,
-  actions: ReadonlyArray<unknown>,
+  actions: ReadonlyArray<Record<string, unknown>>,
 ): Promise<PreviewDocumentFull> {
+  const nowIso = new Date().toISOString();
+  const stamped = actions.map((a) => ({
+    ...a,
+    id: typeof a.id === "string" && a.id ? a.id : crypto.randomUUID(),
+    timestampUtcMs:
+      typeof a.timestampUtcMs === "string" && a.timestampUtcMs
+        ? a.timestampUtcMs
+        : nowIso,
+    scope: typeof a.scope === "string" && a.scope ? a.scope : "global",
+  }));
   const data = await gqlRequest<{ mutateDocument: PreviewDocumentFull }>(
     switchboardUrl,
     MUTATE_DOCUMENT_MUTATION,
-    { documentIdentifier, actions },
+    { documentIdentifier, actions: stamped },
   );
   return data.mutateDocument;
 }

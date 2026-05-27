@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { specCreate } from "../../src/commands/spec/create.js";
 import { specDelete } from "../../src/commands/spec/delete.js";
+import { specGenerate } from "../../src/commands/spec/generate.js";
 import { specGet } from "../../src/commands/spec/get.js";
 import { specList } from "../../src/commands/spec/list.js";
 import { specSchema } from "../../src/commands/spec/schema.js";
@@ -223,6 +224,82 @@ describe("spec-update", () => {
         makeCtx(workdir),
       ),
     ).rejects.toThrow(/Did you mean:[^\n]*SET_MODEL_NAME/);
+  });
+});
+
+describe("spec-generate", () => {
+  let workdir: string;
+  let cleanup: () => void;
+  beforeEach(async () => {
+    ({ workdir, cleanup } = makeWorkdir());
+    // buildTsMorphProject reads a tsconfig from the project root.
+    writeFileSync(
+      join(workdir, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          strict: true,
+        },
+      }),
+    );
+    await specCreate.execute(
+      { type: DOC_TYPE, name: "Target", dryRun: false },
+      makeCtx(workdir),
+    );
+    await specUpdate.execute(
+      {
+        name: "Target",
+        actions: [
+          { type: "SET_MODEL_ID", input: { id: "powerhouse/target" } },
+          { type: "SET_MODEL_NAME", input: { name: "Target" } },
+          { type: "SET_MODEL_EXTENSION", input: { extension: "tgt" } },
+        ],
+      },
+      makeCtx(workdir),
+    );
+  });
+  afterEach(() => cleanup());
+
+  it("throws a trimmed parse error when a single-target schema is TypeScript, not SDL", async () => {
+    /* The canonical agent footgun: a state schema written in TS syntax passes
+     * spec-update's JSON validation but fails codegen. A single-target generate
+     * must surface this as a tool error, not bury it in `data.skipped`. */
+    await specUpdate.execute(
+      {
+        name: "Target",
+        actions: [
+          {
+            type: "SET_STATE_SCHEMA",
+            input: {
+              scope: "global",
+              schema:
+                "type TodoItem = {\n  id: string;\n  text: string;\n};\n\ntype TargetState = {\n  items: TodoItem[];\n};",
+            },
+          },
+          {
+            type: "SET_INITIAL_STATE",
+            input: { scope: "global", initialValue: '{ "items": [] }' },
+          },
+        ],
+      },
+      makeCtx(workdir),
+    );
+
+    const promise = specGenerate.execute(
+      { project: undefined, name: "Target", skipChecks: true },
+      makeCtx(workdir),
+    );
+    await expect(promise).rejects.toThrow(
+      /Failed to parse the GraphQL document/,
+    );
+    // The thrown message must be trimmed, not the multi-kB schema dump.
+    await expect(promise).rejects.toThrow(
+      expect.objectContaining({
+        message: expect.not.stringContaining("type TodoItem = {"),
+      }) as Error,
+    );
   });
 });
 
