@@ -28,6 +28,7 @@ import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
 import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectRebuildOnSwitchboardReady } from './lifecycle/connect-rebuild.js';
+import { genGuard } from './lifecycle/gen-guard.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 // @clint:end imports
 
@@ -180,6 +181,7 @@ export const cli = defineCli({
   // @clint:begin lifecycle
   lifecycle: [
     observability(),
+    genGuard(),
     connectRebuildOnSwitchboardReady({
       vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
     }),
