@@ -17,3 +17,11 @@ export const LOCAL_REGISTRY_URL = `http://localhost:${LOCAL_REGISTRY_PORT}`;
  * reactor are all skipped. Flip to true to restore the integration.
  */
 export const LOCAL_REGISTRY_ENABLED = false;
+
+/**
+ * Powerhouse stack version new reactor projects are initialized with.
+ * Generated from the `catalog:` entry in pnpm-workspace.yaml at build time
+ * (see scripts/build-assets.ts) so it tracks the version vetra-cli's runtime
+ * is built against.
+ */
+export { DEFAULT_PH_VERSION } from './ph-version.gen.js';

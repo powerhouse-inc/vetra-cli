@@ -1,28 +1,9 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { defineCommand } from '../../framework.js';
 import { requireOption } from '../../helpers/cli-errors.js';
-
-function getPhVersion(): string {
-  try {
-    const output = execFileSync('ph', ['--version'], {
-      encoding: 'utf-8',
-      timeout: 5_000,
-    });
-    const match = output.match(/PH CMD version:\s*(\S+)/);
-    if (match?.[1]) return match[1];
-    throw new Error('Could not parse version from ph --version output');
-  } catch (err) {
-    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
-      throw new Error(
-        'ph CLI is not installed. Install it with: pnpm install -g ph-cmd@latest',
-      );
-    }
-    throw err;
-  }
-}
+import { DEFAULT_PH_VERSION } from '../../constants.js';
 
 const NAME_PATTERN = /^[a-zA-Z0-9-_]+$/;
 
@@ -57,7 +38,7 @@ export const reactorProjectInit = defineCommand({
       );
     }
     const projectPath = path.join(workdir, name);
-    const phVersion = version ?? config.phVersion ?? getPhVersion();
+    const phVersion = version ?? config.phVersion ?? DEFAULT_PH_VERSION;
 
     if (fs.existsSync(projectPath)) {
       const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
