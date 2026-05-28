@@ -648,8 +648,162 @@ export function normalizeSpecActions(
   const minted: MintedId[] = [];
   const filled = actions.map((a) => fillRequired(a, opsByName, isDocModel, minted));
   if (!isDocModel) return { actions: filled, minted };
+  const modelName = resolveModelName(doc, filled);
+  const modelSlug = modelName ? kebabCase(modelName) : "<model>";
+  for (const a of filled) {
+    if (a.type === "SET_STATE_SCHEMA") {
+      const schema = strVal(asRecord(a.input).schema);
+      if (schema) validateStateSchemaSdl(schema, modelName);
+    }
+    rejectInlineReducerBody(a, modelSlug);
+  }
   const index = collectEntities(doc, filled);
   return { actions: filled.map((a) => resolveReferences(a, index)), minted };
+}
+
+/* Latest SET_MODEL_NAME in the batch wins; otherwise the name already on the
+ * spec (`doc.state.global.name`, the field `spec-get --filter $.global.name`
+ * exposes). Returns undefined if the model has no name yet, in which case the
+ * caller falls back to a lenient antipattern check. */
+function resolveModelName(
+  doc: PHDocument,
+  batch: ActionInput[],
+): string | undefined {
+  for (let i = batch.length - 1; i >= 0; i--) {
+    if (batch[i].type === "SET_MODEL_NAME") {
+      const n = strVal(asRecord(batch[i].input).name);
+      if (n) return n;
+    }
+  }
+  const global = (doc.state as { global?: Record<string, unknown> }).global;
+  return strVal(global?.name);
+}
+
+/* The codegen derives the expected state type name from the model name by
+ * stripping non-alphanumerics, PascalCasing the remaining words, and
+ * appending "State". "Workout Tracker" → "WorkoutTrackerState",
+ * "Chat Session" → "ChatSessionState". */
+function expectedStateTypeName(modelName: string): string {
+  const parts = modelName
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "State";
+  const pascal = parts
+    .map((w) => w[0]!.toUpperCase() + w.slice(1).toLowerCase())
+    .join("");
+  return `${pascal}State`;
+}
+
+/* The state schema must declare a top-level `type <ModelName>State { ... }`.
+ * The codegen names this type from `state.global.name` and references it
+ * elsewhere; if the SDL declares the wrong name (or uses `extend type State`),
+ * the SDL still parses but the GraphQL supergraph composer cannot resolve the
+ * subgraph. Switchboard fails to register it and the Connect preview iframe
+ * stays blank with no visible error in the agent's tool feedback loop.
+ *
+ * When the model name is unknown (rare — SET_STATE_SCHEMA before any
+ * SET_MODEL_NAME), fall back to rejecting the `extend type State` antipattern. */
+function validateStateSchemaSdl(
+  schema: string,
+  modelName: string | undefined,
+): void {
+  // Strip line comments so `# we used to extend type State here` doesn't trip
+  // the check. Block comments (`""" ... """`) are stripped lazily.
+  const stripped = schema
+    .replace(/"""[\s\S]*?"""/g, "")
+    .replace(/(^|\n)\s*#[^\n]*/g, "$1");
+
+  if (!modelName) {
+    if (/\bextend\s+type\s+State\b/.test(stripped)) {
+      throw new Error(
+        "SET_STATE_SCHEMA: `extend type State { ... }` is not supported. " +
+          "Declare the state as a named top-level type instead: " +
+          "`type <ModelName>State { ... }` (named after the model). " +
+          "Run SET_MODEL_NAME first so the expected type name can be checked.",
+      );
+    }
+    return;
+  }
+
+  const expected = expectedStateTypeName(modelName);
+  const declared = new RegExp(`\\btype\\s+${expected}\\b`).test(stripped);
+  if (declared) return;
+
+  // Help the agent self-correct: tell it the exact name to use, and surface
+  // the alternative names it likely tried.
+  const otherStateTypes = Array.from(
+    stripped.matchAll(/\btype\s+(\w*State)\b/g),
+    (m) => m[1]!,
+  ).filter((n) => n !== expected);
+  const extending = /\bextend\s+type\s+State\b/.test(stripped);
+
+  const hints: string[] = [];
+  if (extending) {
+    hints.push(
+      "found `extend type State { ... }` — replace it with " +
+        `\`type ${expected} { ... }\``,
+    );
+  }
+  if (otherStateTypes.length > 0) {
+    hints.push(
+      `found \`type ${otherStateTypes.join("\`, \`type ")}\` — rename to ` +
+        `\`type ${expected}\` (the name must match the model)`,
+    );
+  }
+  if (hints.length === 0) {
+    hints.push(
+      `no \`type ${expected}\` declaration found — add one carrying the ` +
+        "document's top-level state fields",
+    );
+  }
+
+  throw new Error(
+    "SET_STATE_SCHEMA: state schema must declare " +
+      `\`type ${expected} { ... }\` (derived from the model name "${modelName}"). ` +
+      `${hints.join("; ")}. ` +
+      "Without this exact type name, the codegen emits a subgraph the GraphQL " +
+      "supergraph cannot compose and the Connect preview iframe renders empty.",
+  );
+}
+
+function kebabCase(s: string): string {
+  return s
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .toLowerCase()
+    .replace(/^-+|-+$/g, "");
+}
+
+/* Reducer bodies belong in TypeScript files, not in spec JSON. Embedded
+ * multiline TS in `SET_OPERATION_REDUCER` or `ADD_OPERATION.reducer` corrupts
+ * easily and the codegen inlines whatever lands into the generated method —
+ * including stray `export const reducer = ...` wrappers — which breaks the
+ * file and pushes the agent toward hand-editing `gen/`. Reject up front and
+ * point at the editable file the agent should target via the workspace edit
+ * tool. */
+function rejectInlineReducerBody(action: ActionInput, modelSlug: string): void {
+  if (action.type === "SET_OPERATION_REDUCER") {
+    throw new Error(
+      "SET_OPERATION_REDUCER is not supported. Reducer bodies are authored " +
+        `as TypeScript in \`<project>/document-models/${modelSlug}/v1/src/reducers/<module>.ts\` ` +
+        "after `spec-generate` lays down the method skeleton, and edited via " +
+        "`mastra_workspace_edit_file`. The spec must carry only the operation " +
+        "schema (input shape in GraphQL SDL).",
+    );
+  }
+  if (action.type === "ADD_OPERATION") {
+    const reducer = strVal(asRecord(action.input).reducer);
+    if (reducer) {
+      throw new Error(
+        "ADD_OPERATION: do not include a `reducer` body in the spec. Author " +
+          `it in \`<project>/document-models/${modelSlug}/v1/src/reducers/<module>.ts\` ` +
+          "after `spec-generate` lays down the method skeleton, using " +
+          "`mastra_workspace_edit_file`. Re-issue this ADD_OPERATION with " +
+          "only `moduleId`, `id`, `name`, and `schema`.",
+      );
+    }
+  }
 }
 
 /** Load a spec by name and return the document — convenience wrapper. */
