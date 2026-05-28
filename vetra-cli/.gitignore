@@ -8,3 +8,7 @@ coverage/
 *.db
 *.db-shm
 *.db-wal
+
+# Local benchmarking scratch — not part of the cli
+bench.sh
+bench-out/

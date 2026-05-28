@@ -90,11 +90,8 @@ output, what the runtime `skill` tool actually returns, and the preamble
 rules that decide whether the model drills into references.
 
 ## Ground rules (from `HANDOFF.md`, repeated here so they're loaded)
-
+- Use terse comments.
 - No historical narration in code comments ("was previously…", "used
   to…", "swap from X to Y…"). Comments describe the code now.
-- No marketing/buzzword phrasing in code or docs.
-- No emoji in code, comments, file content, or commit messages unless
-  explicitly asked.
 - Don't pre-emptively wrap up. End-of-turn summaries are 1–2 sentences.
 - Commits follow concern, not size. Don't lump cross-repo changes.
