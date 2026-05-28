@@ -41,8 +41,20 @@ export const specPreviewShow = defineCommand({
     const docPathSegment = row.slug ?? row.id;
     const base_ = connectUrl.replace(/\/+$/, "");
     const previewUrl = `${base_}/d/${driveId}/${docPathSegment}?embed=1`;
+    /* The structured `data` field is the contract Vetra Studio's
+     * `useSessionPreviewTarget` reads to drive the BUILD pane iframe
+     * (see `vetra-app/editors/vetra-studio/hooks/useSessionPreviewTarget.ts`).
+     * Returning only `text` was a silent failure — the agent saw success but
+     * Connect never received enough to swap the iframe target. */
     return {
       text: `Preview URL: ${previewUrl}`,
+      data: {
+        projectPath: base,
+        driveId,
+        documentId: row.id,
+        documentSlug: row.slug ?? null,
+        previewUrl,
+      },
     };
   },
 });
