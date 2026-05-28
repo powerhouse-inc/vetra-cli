@@ -38,6 +38,7 @@ export const reactorProjectInit = defineCommand({
       );
     }
     const projectPath = path.join(workdir, name);
+    const clonePath = config.reactorProjectClonePath;
     const phVersion = version ?? config.phVersion ?? DEFAULT_PH_VERSION;
 
     if (fs.existsSync(projectPath)) {
@@ -55,8 +56,14 @@ export const reactorProjectInit = defineCommand({
     const versionArgs = tags.includes(phVersion)
       ? [`--${phVersion}`]
       : ['--version', phVersion];
+    // ph-cmd uses the version flag to dlx the right ph-cli; the downstream
+    // ph-cli ignores the version when --template is set (template lockfile is
+    // authoritative) and just warns, which is the intended UX.
+    const initArgs = clonePath
+      ? `${versionArgs.join(' ')} --pnpm --template ${clonePath}`
+      : `${versionArgs.join(' ')} --pnpm`;
     const { success } = await runProcess(
-      `ph init ${name} ${versionArgs.join(' ')} --pnpm`,
+      `ph init ${name} ${initArgs}`,
       { label: 'ph-init', timeout: 300_000, cwd: workdir, env: { FORCE_COLOR: '1' } },
     );
 
