@@ -1,0 +1,131 @@
+# syntax=docker/dockerfile:1.7
+#
+# Prebuilt vetra-cli image. Derives from the generic clint-runtime base
+# and bakes `vetra-cli` (+ full dependency tree) globally at BUILD time
+# so container start is pull + exec, with no install-at-start.
+#
+# The entrypoint (tini + run.sh) is inherited from the base; run.sh
+# exec's whatever SERVICE_COMMAND is set at runtime. vetra-cli exposes
+# the `vetra` binary, so a typical command looks like:
+#   SERVICE_COMMAND="vetra <subcommand> ..."
+#
+# Build args:
+#   CLINT_VERSION       vetra-cli version or dist-tag, e.g. 0.0.1-dev.0
+#   CLINT_REGISTRY      registry for vetra-cli install
+#   PH_REGISTRY         registry for ph-cmd (defaults to host's local registry)
+#   PH_VERSION          ph-cli / ph-cmd version (or dist-tag). Empty by default —
+#                       the build reads DEFAULT_PH_VERSION from the installed
+#                       vetra-cli so the runtime config and template scaffolding
+#                       agree out of the box. Override to pin a different version
+#                       and it propagates to the runtime VETRA_PH_VERSION env.
+#   REACTOR_TEMPLATE_DIR  where `ph init` runs to bake the warm template
+#   BASE_IMAGE          published clint-runtime image
+#
+# Build (local smoke, against local registry on the host):
+#   docker build -t vetra-cli:local \
+#     --build-arg BASE_IMAGE=clint-runtime:dev-pnpm10 \
+#     --build-arg CLINT_VERSION=0.0.1-dev.0 \
+#     --build-arg CLINT_REGISTRY=https://registry.dev.vetra.io \
+#     --build-arg PH_REGISTRY=http://host.docker.internal:8181 \
+#     .
+
+ARG BASE_IMAGE=cr.vetra.io/powerhouse-inc-powerhouse/clint-runtime:dev
+FROM ${BASE_IMAGE}
+
+ARG CLINT_VERSION
+ARG CLINT_REGISTRY=http://localhost:8181
+ARG PH_REGISTRY=http://host.docker.internal:8181
+ARG PH_VERSION=
+ARG PNPM_VERSION=11.4.0
+ARG REACTOR_TEMPLATE_DIR=/home/clint/templates
+
+RUN test -n "${CLINT_VERSION}" || (echo "CLINT_VERSION build-arg is required" >&2; exit 1)
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends time \
+ && rm -rf /var/lib/apt/lists/* \
+ && corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+USER clint
+RUN corepack prepare "pnpm@${PNPM_VERSION}" --activate \
+ && pnpm --version
+
+# --config.blockExoticSubdeps=false: pnpm 11 blocks URL-resolved subdeps;
+#   vetra-cli's closure hits this via viem -> ox. Global install also skips
+#   postinstall scripts (no `allowBuilds`) — matches clint-agent behavior.
+# --config.minimumReleaseAge=0: pnpm 11 defaults to 1440min (24h). Local-registry
+#   packages are freshly published; disable the age check at build time.
+RUN pnpm add -g "vetra-cli@${CLINT_VERSION}" \
+      --registry "${CLINT_REGISTRY}" \
+      --config.blockExoticSubdeps=false \
+      --config.minimumReleaseAge=0
+
+# Install ph-cmd separately so the `ph init` template prewarm below has the
+# --template-capable binary on PATH, and bake a scaffolded reactor-project
+# that runtime inits clone via `ph init --template`. The cost of the install
+# + scaffold is paid here, once, so every runtime init is a directory copy.
+# Resolve the ph version: explicit PH_VERSION build-arg wins; otherwise read
+# DEFAULT_PH_VERSION from the just-installed vetra-cli so the runtime config
+# and template scaffold can't drift.
+RUN set -eu; \
+    RESOLVED="${PH_VERSION}"; \
+    if [ -z "$RESOLVED" ]; then \
+      VERSION_FILE=$(find -L "$(pnpm root -g)" -path "*/vetra-cli/dist/ph-version.gen.js" -print -quit 2>/dev/null); \
+      if [ -n "$VERSION_FILE" ] && [ -f "$VERSION_FILE" ]; then \
+        RESOLVED=$(node -e "import('file://${VERSION_FILE}').then(m => process.stdout.write(m.DEFAULT_PH_VERSION))" || true); \
+      fi; \
+    fi; \
+    if [ -z "$RESOLVED" ]; then RESOLVED="dev"; fi; \
+    echo "$RESOLVED" > /home/clint/.ph-version; \
+    echo "==> resolved PH_VERSION=$RESOLVED"
+
+RUN set -eu; \
+    PH_VERSION=$(cat /home/clint/.ph-version); \
+    case "$PH_VERSION" in \
+      dev|staging|latest) PH_INIT_FLAG="--${PH_VERSION}" ;; \
+      *) PH_INIT_FLAG="--version ${PH_VERSION}" ;; \
+    esac; \
+    pnpm add -g "ph-cmd@${PH_VERSION}" \
+      --registry "${PH_REGISTRY}" \
+      --config.blockExoticSubdeps=false \
+      --config.minimumReleaseAge=0 \
+ && mkdir -p "${REACTOR_TEMPLATE_DIR}" \
+ && cd "${REACTOR_TEMPLATE_DIR}" \
+ && ph init reactor-template --pnpm ${PH_INIT_FLAG} \
+ && cd reactor-template \
+ && printf '\nenableGlobalVirtualStore: true\nminimumReleaseAge: 0\n' >> pnpm-workspace.yaml \
+ && rm -rf node_modules \
+ && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0
+
+ENV VETRA_REACTOR_PROJECT_CLONE_PATH=/home/clint/templates/reactor-template
+
+LABEL io.vetra.clint.package="vetra-cli" \
+      io.vetra.clint.version="${CLINT_VERSION}"
+
+# Self-contained non-installing entrypoint. Inlined (instead of relying on
+# the base image's /home/clint/run.sh) so older clint-runtime tags whose
+# ENTRYPOINT is still the legacy install-at-start `entrypoint.sh` work too.
+USER root
+RUN printf '%s\n' \
+      '#!/bin/sh' \
+      'set -eu' \
+      'if [ -z "${SERVICE_COMMAND:-}" ]; then' \
+      '  echo "==> ERROR: required env SERVICE_COMMAND is unset" >&2' \
+      '  exit 1' \
+      'fi' \
+      '# Propagate the build-resolved ph version to vetra-cli (ph-clint config' \
+      '# layer reads UPPER_SNAKE env vars; VETRA_PH_VERSION -> config.phVersion).' \
+      'if [ -z "${VETRA_PH_VERSION:-}" ] && [ -f /home/clint/.ph-version ]; then' \
+      '  VETRA_PH_VERSION=$(cat /home/clint/.ph-version)' \
+      '  export VETRA_PH_VERSION' \
+      'fi' \
+      'if [ -n "${SERVICE_ANNOUNCE_URL:-}" ]; then' \
+      '  echo "==> vetra-cli: SERVICE_ANNOUNCE_URL is configured"' \
+      'fi' \
+      'echo "==> vetra-cli: starting prebuilt agent"' \
+      'echo "    \$ ${SERVICE_COMMAND}"' \
+      'exec sh -c "${SERVICE_COMMAND}"' \
+    > /usr/local/bin/vetra-run.sh \
+ && chmod +x /usr/local/bin/vetra-run.sh
+USER clint
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/vetra-run.sh"]

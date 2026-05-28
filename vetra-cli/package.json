@@ -10,7 +10,8 @@
     "vetra": "./dist/main.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "Dockerfile"
   ],
   "scripts": {
     "build:assets": "tsx scripts/build-assets.ts",
