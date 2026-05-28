@@ -26,7 +26,7 @@ function part(overrides: Partial<ContentPart>): ContentPart {
     isError: null,
     mediaType: null,
     url: null,
-    data: null,
+    attachment: null,
     filename: null,
     error: null,
     ...overrides,

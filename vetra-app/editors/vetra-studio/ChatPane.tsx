@@ -3,7 +3,13 @@ import type {
   ChatSessionDocument,
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
+  createRemoteAttachmentService,
+  type IAttachmentService,
+} from "@powerhousedao/reactor-attachments";
+import {
   addDocument,
+  DEFAULT_SWITCHBOARD_URL,
+  useDefaultDrivesUrl,
   useDocumentById,
   usePHToast,
   type DocumentDispatch,
@@ -14,7 +20,7 @@ import type {
   DocumentDriveDocument,
   FileNode,
 } from "@powerhousedao/shared/document-drive";
-import { lazy, Suspense, useState, useTransition } from "react";
+import { lazy, Suspense, useMemo, useState, useTransition } from "react";
 
 const ChatSession = lazy(() =>
   import("@powerhousedao/clint-common/editors").then((m) => ({
@@ -42,6 +48,22 @@ export function ChatPane({
       (node as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
   );
 
+  const driveRemoteUrl = (
+    document.state.local as { remoteUrl?: string } | undefined
+  )?.remoteUrl;
+  const defaultDrivesUrl = useDefaultDrivesUrl();
+  const attachments = useMemo(() => {
+    // Switchboard mounts /attachments/* at the host root (not under /graphql),
+    // so we need the origin. Prefer the drive's own remoteUrl, fall back to
+    // the Connect-configured default drives URL (handles dynamic switchboard
+    // ports), then DEFAULT_SWITCHBOARD_URL as a last resort.
+    const source =
+      driveRemoteUrl ?? defaultDrivesUrl ?? DEFAULT_SWITCHBOARD_URL;
+    return createRemoteAttachmentService({
+      remoteUrl: new URL(source).origin,
+    });
+  }, [driveRemoteUrl, defaultDrivesUrl]);
+
   if (selectedSessionId) {
     const knownSession = sessions.find((s) => s.id === selectedSessionId);
     return (
@@ -63,6 +85,7 @@ export function ChatPane({
             <SessionView
               sessionId={selectedSessionId}
               knownInDrive={Boolean(knownSession)}
+              attachments={attachments}
             />
           </Suspense>
         </div>
@@ -270,6 +293,7 @@ function ChevronRightIcon({ className }: { className?: string }) {
 function SessionView({
   sessionId,
   knownInDrive,
+  attachments,
 }: {
   sessionId: string;
   /** True when the parent has already located the session in the drive's
@@ -277,6 +301,7 @@ function SessionView({
    *  subscription lag, not a missing record. False when the id came from a
    *  stale URL / link, in which case "not found" is honest. */
   knownInDrive: boolean;
+  attachments: IAttachmentService;
 }) {
   const [chatDocument, dispatch] = useDocumentById(
     sessionId,
@@ -291,7 +316,13 @@ function SessionView({
     );
   }
 
-  return <ChatSession document={chatDocument} dispatch={dispatch} />;
+  return (
+    <ChatSession
+      document={chatDocument}
+      dispatch={dispatch}
+      attachments={attachments}
+    />
+  );
 }
 
 function SessionLoading() {
