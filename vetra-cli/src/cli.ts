@@ -77,12 +77,12 @@ export const cli = defineCli({
       },
       'agent-document-model': {
         name: 'agent-document-model',
-        sections: ['base.md'],
+        sections: ['base.md', 'tools.md'],
         skills: ['document-modeling'],
       },
       'agent-editor': {
         name: 'agent-editor',
-        sections: ['base.md'],
+        sections: ['base.md', 'tools.md'],
         skills: ['document-editor-creation'],
       },
     },

@@ -23,8 +23,13 @@ project is running, stop it first.
 
     spec-create   { project: "todo-list", type: "powerhouse/document-model", name: "Todo List" }
     spec-update   { project: "todo-list", name: "Todo List", actions: [ SET_MODEL_ID, SET_MODEL_NAME, SET_MODEL_EXTENSION, SET_MODEL_DESCRIPTION, SET_STATE_SCHEMA, SET_INITIAL_STATE ] }
-    spec-update   { project: "todo-list", name: "Todo List", actions: [ ADD_MODULE, ADD_OPERATION × N (reducer inline) ] }
+    spec-update   { project: "todo-list", name: "Todo List", actions: [ ADD_MODULE, ADD_OPERATION × N (schema only, no reducer) ] }
     spec-generate { project: "todo-list", name: "Todo List" }
+    # Reducer bodies are written next, into the generated
+    # `v1/src/reducers/<module>.ts` files using `mastra_workspace_edit_file`.
+    # `SET_OPERATION_REDUCER` is rejected by spec-update, and ADD_OPERATION
+    # is rejected if it carries a `reducer` field — reducer source is
+    # TypeScript only, never spec JSON.
 
 **Gate:** `spec-generate` reports no errors. If it fails, fix the spec via
 `spec-update` and re-run — never patch files under `document-models/`. The
@@ -38,10 +43,23 @@ without one renders a generic, non-interactive viewer in the BUILD pane.
     spec-create   { project: "todo-list", type: "powerhouse/document-editor", name: "Todo List Editor" }
     spec-update   { project: "todo-list", name: "Todo List Editor", actions: [ ADD_DOCUMENT_TYPE, SET_EDITOR_NAME, SET_EDITOR_STATUS ] }
     spec-generate { project: "todo-list", name: "Todo List Editor" }
+    # `spec-generate` lays down a boilerplate editor at
+    # <project>/editors/<editor>/editor.tsx that only renders the document
+    # name. Edit it with `mastra_workspace_edit_file` to surface the
+    # document's actual operations (use `actions` + `dispatch` from the
+    # generated `document-models/<model>` module), AND delete the
+    # boilerplate UI that doesn't apply (the default `handleSetName`
+    # handler, the document-name input, unused imports, the demo
+    # comments). The final file should contain only what the document
+    # type actually needs — leftover boilerplate ships to preview.
+    # Without this edit, Phase 3 will preview the boilerplate, not the
+    # intended UI.
 
-**Gate:** `spec-generate` is clean and `<project>/editors/<editor>/` exists.
-Do not restart the reactor — the watcher picks the editor up automatically
-(see the no-restart rule above).
+**Gate:** `spec-generate` is clean, `<project>/editors/<editor>/editor.tsx`
+contains the operation-driven UI (not just the default name field), and the
+watcher logs show the editor was re-bundled. Do not restart the reactor —
+the watcher picks the editor up automatically (see the no-restart rule
+above).
 
 ## Phase 3 — Preview
 
