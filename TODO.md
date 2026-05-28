@@ -12,13 +12,30 @@
 - manage installed packages (vetra-studio-package-install)?
 - Make npm login reliable
 - Generalize spec commands to work on any document model
-- Block agent edits under `gen/` at the filesystem layer (ph-clint Mastra
-  integration). Today the rule lives only in the skill prompts; the agent
-  has hand-patched generated files in past sessions. Subclass
-  `LocalFilesystem` in `ph-clint/packages/ph-clint/src/integrations/mastra/index.ts`
-  to throw `PermissionError` on write/edit/delete when the resolved path
-  contains a `/gen/` segment, with a message pointing at `spec-update` +
-  `spec-generate` as the right fix path.
+- Surface Apollo supergraph composition errors from `spec-generate` /
+  `spec-preview-show` so the agent stops declaring "Complete ✓" while the
+  Connect preview iframe is blank. The error is already caught + logged
+  inside reactor-api's `graphql-manager.ts` (line 441 for the supergraph,
+  line 626 for per-subgraph) but not stored or queryable, and no
+  Switchboard query exposes subgraph registration health.
+  Upstream addition in `monorepo/packages/reactor-api/`:
+  - `src/graphql/graphql-manager.ts` — add `subgraphErrors: Map<string,string>`
+    and `supergraphError?: string`, populate them in the two catch blocks
+    above (clear on success), expose a public `getSupergraphHealth()` that
+    returns `{ healthy, error?, subgraphs: [{ name, path, healthy, error? }] }`
+    using the existing `#getAllSubgraphs()` walk.
+  - `src/graphql/system/subgraph.ts` — add `SupergraphHealth` /
+    `SubgraphHealth` types and a `supergraphHealth: SupergraphHealth!` root
+    query that delegates to `this.graphqlManager.getSupergraphHealth()`
+    (the reference is already injected at `graphql-manager.ts:421`).
+  vetra-cli consumer: `spec-generate` polls `supergraphHealth` for ~3s
+  post-codegen (Vite re-bundle is the async piece); `spec-preview-show`
+  does a single read before returning the URL. Both filter by model
+  subgraph name and throw a tool error carrying the upstream error
+  string. Behind an interface (`checkSupergraphHealth(modelName)`) so the
+  A2 log-tail fallback can stand in until the upstream lands. ~40 LOC in
+  graphql-manager.ts, ~25 LOC in system/subgraph.ts, plus the vetra-cli
+  side.
 
 ## Spec ownership migration
 Goal: vetra-cli owns the spec-document workflow; drop `@powerhousedao/vetra/codegen` coupling.

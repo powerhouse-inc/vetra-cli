@@ -82,6 +82,13 @@ Treat it as a **read-only reference**:
   subpaths under `.claude/ph-clint/packages/...` rather than the symlink
   root.
 
+## Authoring vetra agent skills
+
+When editing anything under `prompts/skills-tpl/<skill>/`, use the
+`vetra-skill-authoring` Claude skill — it covers sources vs generated
+output, what the runtime `skill` tool actually returns, and the preamble
+rules that decide whether the model drills into references.
+
 ## Ground rules (from `HANDOFF.md`, repeated here so they're loaded)
 
 - No historical narration in code comments ("was previously…", "used
