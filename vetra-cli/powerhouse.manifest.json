@@ -27,5 +27,25 @@
   },
   "serviceCommand": "vetra",
   "proxyEnabled": false,
-  "supportedResources": []
+  "supportedResources": [],
+  "config": [
+    {
+      "name": "VETRA_ANTHROPIC_API_KEY",
+      "type": "secret",
+      "description": "Anthropic Claude API key.",
+      "required": true
+    },
+    {
+      "name": "VETRA_SENTRY_DSN",
+      "type": "secret",
+      "description": "Sentry DSN.",
+      "required": true
+    },
+    {
+      "name": "VETRA_OTEL_EXPORTER_OTLP_ENDPOINT",
+      "type": "secret",
+      "description": "OpenTelemetry exporter OTLP endpoint.",
+      "required": true
+    }
+  ]
 }
