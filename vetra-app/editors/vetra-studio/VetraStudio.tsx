@@ -12,8 +12,10 @@ import type {
   DocumentDriveDocument,
 } from "@powerhousedao/shared/document-drive";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BuildSection } from "./BuildSection.js";
 import { ChatPane } from "./ChatPane.js";
-import { WorkflowScaffold } from "./WorkflowScaffold.js";
+import { IdeationSection } from "./IdeationSection.js";
+import { PhaseCycle } from "./PhaseCycle.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
 
@@ -58,6 +60,8 @@ export type VetraStudioProps = {
   className?: string;
 };
 
+type Section = "home" | "ideate" | "build";
+
 export function VetraStudio({
   document,
   dispatch,
@@ -70,6 +74,10 @@ export function VetraStudio({
   const [selectedSessionId, setSelectedSessionId] = useState<
     string | undefined
   >(() => readSessionFromUrl());
+  const [section, setSection] = useState<Section>("home");
+
+  const productName =
+    document.state.global.name.trim() || document.header.name || "Home";
 
   // Keep the URL in sync when we mutate locally (clicks, programmatic).
   useEffect(() => {
@@ -155,7 +163,10 @@ export function VetraStudio({
   }, []);
 
   return (
-    <div ref={containerRef} className={className ?? "flex h-full w-full"}>
+    <div
+      ref={containerRef}
+      className={className ?? "flex h-full w-full overflow-hidden"}
+    >
       <aside
         className="flex shrink-0 flex-col bg-white"
         style={{ width: `${chatWidth}px` }}
@@ -181,11 +192,26 @@ export function VetraStudio({
           <div className="h-1 w-1 rounded-full bg-gray-400 group-hover:bg-gray-700" />
         </div>
       </div>
-      <main className="flex flex-1 flex-col overflow-hidden bg-gray-50">
-        <WorkflowScaffold
-          selectedSessionId={selectedSessionId}
-          preview={preview}
-        />
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gray-50">
+        {section === "build" ? (
+          <BuildSection
+            preview={preview}
+            productName={productName}
+            onExitToHome={() => setSection("home")}
+          />
+        ) : section === "ideate" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <IdeationSection
+              drive={document}
+              productName={productName}
+              onExitToHome={() => setSection("home")}
+            />
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <PhaseCycle onOpen={setSection} />
+          </div>
+        )}
       </main>
       {isDragging ? (
         /* Catches mouse events that would otherwise route into the BUILD
