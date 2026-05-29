@@ -12,6 +12,7 @@ import path from 'node:path';
 import { CLI_NAME, CLI_VERSION, CLI_ROOT } from './config.js';
 import { configSchema, secretsSchema } from './framework.js';
 import { documentModels } from 'vetra-app';
+import { documentModels as vetraModels } from '@powerhousedao/vetra';
 import { documentModels as extModels } from '@powerhousedao/clint-common';
 import { createAgent } from './agents/agent.js';
 import { chatSessionWatchTrigger } from '@powerhousedao/clint-common/chat';
@@ -30,6 +31,7 @@ import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectRebuildOnSwitchboardReady } from './lifecycle/connect-rebuild.js';
 import { genGuard } from './lifecycle/gen-guard.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
+import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 
 export const cli = defineCli({
@@ -209,7 +211,7 @@ export const cli = defineCli({
 cli.configureReactor({
   create: (ctx) =>
     buildDefaultReactor(ctx, {
-      documentModels: [...documentModels, ...extModels],
+      documentModels: [...documentModels, ...vetraModels, ...extModels] as DocumentModelModule<any>[],
       drive: { name: 'vetra-cli', preferredEditor: 'vetra-studio' },
       subscriptions: {},
     }),

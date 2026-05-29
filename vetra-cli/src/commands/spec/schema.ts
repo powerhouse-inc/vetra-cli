@@ -1,4 +1,3 @@
-import { getDocumentModelSchema } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
@@ -7,6 +6,7 @@ import {
   formatSchema,
   renderProjected,
 } from "./_helpers.js";
+import { getSpecSchema } from "./registry.js";
 
 /* `--action` and `--state` always read from `specifications.at(-1)` (the
  * version the reducer is currently against). `--filter` is applied to the
@@ -122,7 +122,7 @@ export const specSchema = defineCommand({
 
     requireOption(input.type, "type", "Run `spec-schema-list` to see valid types.");
     assertKnownDocumentType(input.type);
-    const schema = getDocumentModelSchema(input.type);
+    const schema = getSpecSchema(input.type);
     const latest = schema.specifications.at(-1);
     const summary = buildSummary(input.type, schema);
 

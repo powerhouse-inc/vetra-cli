@@ -1,9 +1,9 @@
-import { createDocument, saveSpec } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { requireOption } from "../../helpers/cli-errors.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
 import { assertKnownDocumentType, slugify } from "./_helpers.js";
+import { createSpecDocument, saveSpec } from "./registry.js";
 
 export const specCreate = defineCommand({
   id: "spec-create",
@@ -30,7 +30,7 @@ export const specCreate = defineCommand({
     const base = await resolveReactorProjectPath(workdir, input.project);
     requireOption(input.type, "type", "Run `spec-schema-list` to see valid types.");
     assertKnownDocumentType(input.type);
-    const doc = createDocument(input.type, { name: input.name });
+    const doc = createSpecDocument(input.type, { name: input.name });
     /* `createDocument` only seeds `name`; populate slug from it so the doc
      * has a stable short handle alongside its display name and id. */
     doc.header.slug = slugify(input.name);

@@ -1,8 +1,8 @@
-import { getDocuments } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
 import { formatColumns } from "./_helpers.js";
+import { getSpecDocuments } from "./registry.js";
 
 export const specList = defineCommand({
   id: "spec-list",
@@ -18,7 +18,7 @@ export const specList = defineCommand({
   }),
   execute: async (input, { workdir }) => {
     const base = await resolveReactorProjectPath(workdir, input.project);
-    const docs = await getDocuments(base, { documentType: input.type });
+    const docs = await getSpecDocuments(base, { documentType: input.type });
     if (docs.length === 0) {
       return { text: "(no specs)" };
     }

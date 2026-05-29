@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  getDocument,
-  getDocumentModelSchema,
-  listSpecDocumentTypes,
-  specDir,
-} from "@powerhousedao/vetra/codegen";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
 import { suggestNames } from "../../helpers/suggestions.js";
 import { applyJsonPath, encodeValue, type OutputFormat } from "./projection.js";
+import {
+  getSpecSchema,
+  listSpecTypes,
+  loadSpecDocument,
+  specDir,
+} from "./registry.js";
 
 export { suggestNames };
 
@@ -65,7 +65,7 @@ export function renderProjected(
 async function* iterateSpecFiles(
   workdir: string,
 ): AsyncGenerator<{ path: string; basename: string }> {
-  for (const documentType of listSpecDocumentTypes()) {
+  for (const documentType of listSpecTypes()) {
     const dir = specDir(workdir, documentType);
     const isDir = await stat(dir).then(
       (s) => s.isDirectory(),
@@ -98,7 +98,7 @@ async function getDocumentsWithPaths(
 ): Promise<{ doc: PHDocument; path: string }[]> {
   const out: { doc: PHDocument; path: string }[] = [];
   for await (const file of iterateSpecFiles(workdir)) {
-    out.push({ doc: await getDocument(file.path), path: file.path });
+    out.push({ doc: await loadSpecDocument(file.path), path: file.path });
   }
   return out;
 }
@@ -160,7 +160,7 @@ export async function findByName(
   const candidates: { doc: PHDocument; path: string }[] = [];
   for await (const file of iterateSpecFiles(workdir)) {
     if (file.basename === slug || file.basename === name) {
-      candidates.push({ doc: await getDocument(file.path), path: file.path });
+      candidates.push({ doc: await loadSpecDocument(file.path), path: file.path });
     }
   }
   for (const matches of MATCH_STRATEGIES.map((pred) =>
@@ -181,7 +181,7 @@ export async function findByName(
   const entries: { doc: PHDocument; path: string }[] = [...candidates];
   for await (const file of iterateSpecFiles(workdir)) {
     if (loadedPaths.has(file.path)) continue;
-    entries.push({ doc: await getDocument(file.path), path: file.path });
+    entries.push({ doc: await loadSpecDocument(file.path), path: file.path });
   }
   for (const matches of MATCH_STRATEGIES.map((pred) =>
     entries.filter((e) => pred(e.doc.header, name)),
@@ -291,7 +291,7 @@ export function formatColumns(rows: string[][]): string {
  * caller is responsible for the missing-value case via `requireOption`.
  */
 export function assertKnownDocumentType(documentType: string): void {
-  const valid = listSpecDocumentTypes();
+  const valid = listSpecTypes();
   if (valid.includes(documentType)) return;
   throw unknownValueError({
     subject: "document type",
@@ -323,7 +323,7 @@ function isActionValidationError(
 function getLatestOperations(
   documentType: string,
 ): { name: string; schema?: string }[] {
-  const schema = getDocumentModelSchema(documentType);
+  const schema = getSpecSchema(documentType);
   const latest = schema.specifications.at(-1);
   const ops: { name: string; schema?: string }[] = [];
   for (const mod of latest?.modules ?? []) {
@@ -812,5 +812,5 @@ export async function loadByName(
   name: string,
 ): Promise<PHDocument> {
   const { path } = await findByName(workdir, name);
-  return getDocument(path);
+  return loadSpecDocument(path);
 }

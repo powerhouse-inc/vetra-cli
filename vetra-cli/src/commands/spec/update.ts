@@ -1,4 +1,3 @@
-import { addActions, saveSpec } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
@@ -9,6 +8,7 @@ import {
   normalizeSpecActions,
   resolveActionsInput,
 } from "./_helpers.js";
+import { applyActions, saveSpec } from "./registry.js";
 
 export const specUpdate = defineCommand({
   id: "spec-update",
@@ -53,9 +53,9 @@ export const specUpdate = defineCommand({
         from: input.from,
       }),
     );
-    let next: ReturnType<typeof addActions>;
+    let next: ReturnType<typeof applyActions>;
     try {
-      next = addActions(doc, actions);
+      next = applyActions(doc, actions);
     } catch (err) {
       enrichActionValidationError(err, doc.header.documentType);
     }
