@@ -6,17 +6,30 @@
     "name": "",
     "url": ""
   },
-  "documentModels": [],
+  "documentModels": [
+    {
+      "id": "powerhouse/problem-sheet",
+      "name": "Problem Sheet"
+    }
+  ],
   "apps": [
     {
-      "name": "vetra-studio",
       "id": "vetra-studio",
+      "name": "vetra-studio",
       "documentTypes": [
         "powerhouse/document-drive"
       ]
     }
   ],
-  "editors": [],
+  "editors": [
+    {
+      "name": "Problem Sheet Editor",
+      "id": "problem-sheet-editor",
+      "documentTypes": [
+        "powerhouse/problem-sheet"
+      ]
+    }
+  ],
   "processors": [],
   "subgraphs": [],
   "config": []
