@@ -1,3 +1,4 @@
+import { AudienceSheet as AudienceSheetV1 } from "document-models/audience-sheet/v1";
 import { ProblemSheet as ProblemSheetV1 } from "document-models/problem-sheet/v1";
 
 /**
@@ -5,4 +6,4 @@ import { ProblemSheet as ProblemSheetV1 } from "document-models/problem-sheet/v1
  * This file is auto-generated and updated by codegen
  */
 
-export const documentModels = [ProblemSheetV1] as const;
+export const documentModels = [AudienceSheetV1, ProblemSheetV1] as const;
