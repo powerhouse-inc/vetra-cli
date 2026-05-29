@@ -10,6 +10,22 @@
     {
       "id": "powerhouse/problem-sheet",
       "name": "Problem Sheet"
+    },
+    {
+      "id": "powerhouse/audience-sheet",
+      "name": "Audience Sheet"
+    },
+    {
+      "id": "powerhouse/brand-sheet",
+      "name": "Brand Sheet"
+    },
+    {
+      "id": "powerhouse/feature",
+      "name": "Feature"
+    },
+    {
+      "id": "powerhouse/work-breakdown-structure",
+      "name": "Work Breakdown Structure"
     }
   ],
   "apps": [
@@ -23,10 +39,38 @@
   ],
   "editors": [
     {
-      "name": "Problem Sheet Editor",
       "id": "problem-sheet-editor",
+      "name": "Problem Sheet Editor",
       "documentTypes": [
         "powerhouse/problem-sheet"
+      ]
+    },
+    {
+      "id": "audience-sheet-editor",
+      "name": "Audience Sheet Editor",
+      "documentTypes": [
+        "powerhouse/audience-sheet"
+      ]
+    },
+    {
+      "id": "brand-sheet-editor",
+      "name": "Brand Sheet Editor",
+      "documentTypes": [
+        "powerhouse/brand-sheet"
+      ]
+    },
+    {
+      "id": "feature-editor",
+      "name": "Feature Editor",
+      "documentTypes": [
+        "powerhouse/feature"
+      ]
+    },
+    {
+      "name": "Work Breakdown Structure Editor",
+      "id": "work-breakdown-structure-editor",
+      "documentTypes": [
+        "powerhouse/work-breakdown-structure"
       ]
     }
   ],
