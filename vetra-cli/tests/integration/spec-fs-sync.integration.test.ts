@@ -19,6 +19,7 @@ import {
 } from "@powerhousedao/reactor";
 import { documentModels as vetraDocumentModels } from "@powerhousedao/vetra";
 import { documentModels as driveDocumentModels } from "@powerhousedao/clint-common";
+import { driveDocumentModelModule } from "@powerhousedao/shared/document-drive";
 import { AppModuleV1 } from "@powerhousedao/vetra/document-models";
 import {
   type AppModuleDocument,
@@ -29,6 +30,7 @@ import { baseLoadFromFile } from "document-model/node";
 import {
   applyFsChangesToReactor,
   buildLoadJobsForFile,
+  projectForPath,
   specForPath,
 } from "../../src/triggers/spec-fs-sync.js";
 import { syncSpecsToFs } from "../../src/triggers/spec-sync.js";
@@ -80,17 +82,29 @@ function makeLog(): { logs: CapturedLog[]; api: {
 describe("spec-fs-sync FS → drive", () => {
   let module: ReactorClientModule;
   let tmpDir: string;
+  let driveId: string;
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "spec-fs-sync-it-"));
     const builder = new ReactorBuilder().withDocumentModels([
+      driveDocumentModelModule,
       ...(driveDocumentModels as unknown as any[]),
       ...(vetraDocumentModels as unknown as any[]),
     ]);
     module = await new ReactorClientBuilder()
       .withReactorBuilder(builder)
       .buildModule();
+    const drive = await module.client.createEmpty("powerhouse/document-drive");
+    driveId = drive.header.id;
+    await module.client.rename(driveId, "vetra-cli");
   });
+
+  async function driveNodes(): Promise<
+    Array<{ id: string; name: string; kind: string; parentFolder?: string | null }>
+  > {
+    const d = (await module.client.get(driveId)) as any;
+    return d?.state?.global?.nodes ?? [];
+  }
 
   afterEach(async () => {
     await module.reactor.kill().completed;
@@ -102,17 +116,43 @@ describe("spec-fs-sync FS → drive", () => {
   describe("specForPath", () => {
     it("maps a known subdir to the spec registration", () => {
       const p = path.join(tmpDir, "specs", "apps", "foo.phdm.phd");
-      const spec = specForPath(p, tmpDir);
+      const spec = specForPath(p);
       expect(spec?.documentType).toBe("powerhouse/app");
     });
 
+    it("maps a workspace-layout path (<workdir>/<project>/specs/<subdir>/)", () => {
+      const p = path.join(tmpDir, "workout-tracker", "specs", "apps", "foo.phdm.phd");
+      expect(specForPath(p)?.documentType).toBe("powerhouse/app");
+    });
+
+    it("maps a vetra-app domain spec subdir (brand-sheet) from the merged registry", () => {
+      const p = path.join(tmpDir, "workout-tracker", "specs", "brand-sheet", "x.brs.phd");
+      expect(specForPath(p)?.documentType).toBe("powerhouse/brand-sheet");
+    });
+
     it("returns undefined for paths outside specs/", () => {
-      expect(specForPath(path.join(tmpDir, "foo.phd"), tmpDir)).toBeUndefined();
+      expect(specForPath(path.join(tmpDir, "foo.phd"))).toBeUndefined();
     });
 
     it("returns undefined for an unknown subdir", () => {
       const p = path.join(tmpDir, "specs", "unknown", "foo.phd");
-      expect(specForPath(p, tmpDir)).toBeUndefined();
+      expect(specForPath(p)).toBeUndefined();
+    });
+  });
+
+  describe("projectForPath", () => {
+    it("returns the project subdir in workspace layout", () => {
+      const p = path.join(tmpDir, "workout-tracker", "specs", "apps", "foo.phd");
+      expect(projectForPath(p, tmpDir)).toBe("workout-tracker");
+    });
+
+    it("returns undefined when specs/ is at the workdir root (single-project)", () => {
+      const p = path.join(tmpDir, "specs", "apps", "foo.phd");
+      expect(projectForPath(p, tmpDir)).toBeUndefined();
+    });
+
+    it("returns undefined for paths outside workdir", () => {
+      expect(projectForPath("/elsewhere/specs/apps/foo.phd", tmpDir)).toBeUndefined();
     });
   });
 
@@ -155,6 +195,7 @@ describe("spec-fs-sync FS → drive", () => {
     // session. Its operations land on disk; we then sync that file into
     // `module` (which has no prior knowledge of the doc).
     const producerBuilder = new ReactorBuilder().withDocumentModels([
+      driveDocumentModelModule,
       ...(driveDocumentModels as unknown as any[]),
       ...(vetraDocumentModels as unknown as any[]),
     ]);
@@ -185,6 +226,7 @@ describe("spec-fs-sync FS → drive", () => {
         [filePath],
         tmpDir,
         module,
+        driveId,
         log,
       );
       expect(submitted).toBeGreaterThan(0);
@@ -202,9 +244,51 @@ describe("spec-fs-sync FS → drive", () => {
       expect(inDrive.header.id).toBe(draft.header.id);
       expect(inDrive.header.documentType).toBe("powerhouse/app");
       expect(logs.some((l) => l.level === "error")).toBe(false);
+
+      // Single-project layout (saved at tmpDir/specs/) → file node at root.
+      const nodes = await driveNodes();
+      const fileNode = nodes.find((n) => n.kind === "file" && n.id === draft.header.id);
+      expect(fileNode).toBeDefined();
+      expect(fileNode?.parentFolder ?? null).toBeNull();
     } finally {
       await producer.reactor.kill().completed;
     }
+  }, 15_000);
+
+  // ── FS → drive: workspace layout files into a per-project folder ──
+
+  it("files a workspace-layout spec under a folder named after its project", async () => {
+    const project = "workout-tracker";
+    const projectDir = path.join(tmpDir, project);
+    const draft = AppModuleV1.utils.createDocument();
+    draft.header.name = "ws-app";
+    draft.header.documentType = "powerhouse/app";
+    await module.client.create(draft);
+    const created = await module.client.get(draft.header.id);
+    const opsByScope = await module.reactor.getOperations(draft.header.id);
+    const operations: Record<string, unknown[]> = {};
+    for (const [scope, paged] of Object.entries(opsByScope)) {
+      operations[scope] = (paged as { results: unknown[] }).results;
+    }
+    const enriched = { ...created, operations } as unknown as Parameters<typeof saveSpec>[0];
+    const filePath = await saveSpec(enriched, projectDir);
+    expect(filePath.startsWith(path.join(projectDir, "specs"))).toBe(true);
+
+    const { logs, api: log } = makeLog();
+    await applyFsChangesToReactor([filePath], tmpDir, module, driveId, log);
+
+    const nodes = await driveNodes();
+    const folder = nodes.find((n) => n.kind === "folder" && n.name === project);
+    expect(folder).toBeDefined();
+    const fileNode = nodes.find((n) => n.kind === "file" && n.id === draft.header.id);
+    expect(fileNode?.parentFolder).toBe(folder?.id);
+    expect(logs.some((l) => l.level === "error")).toBe(false);
+
+    // Re-sync: no duplicate folder/file nodes.
+    await applyFsChangesToReactor([filePath], tmpDir, module, driveId, log);
+    const after = await driveNodes();
+    expect(after.filter((n) => n.kind === "folder" && n.name === project)).toHaveLength(1);
+    expect(after.filter((n) => n.kind === "file" && n.id === draft.header.id)).toHaveLength(1);
   }, 15_000);
 
   // ── FS → drive: mutate offline, then sync ────────────────────────
@@ -221,7 +305,7 @@ describe("spec-fs-sync FS → drive", () => {
     );
     await saveSpec(mutated, tmpDir);
 
-    await applyFsChangesToReactor([filePath], tmpDir, module);
+    await applyFsChangesToReactor([filePath], tmpDir, module, driveId);
 
     await waitUntil(async () => {
       const inDrive = await module.client.get<AppModuleDocument>(id);
@@ -247,8 +331,8 @@ describe("spec-fs-sync FS → drive", () => {
     const countBefore = opsBefore.results.length;
     expect(countBefore).toBeGreaterThan(0);
 
-    await applyFsChangesToReactor([filePath], tmpDir, module);
-    await applyFsChangesToReactor([filePath], tmpDir, module);
+    await applyFsChangesToReactor([filePath], tmpDir, module, driveId);
+    await applyFsChangesToReactor([filePath], tmpDir, module, driveId);
 
     // Give the queue a tick; if dedup were broken the count would grow.
     await new Promise((r) => setTimeout(r, 100));
@@ -278,8 +362,8 @@ describe("spec-fs-sync FS → drive", () => {
     // FS → drive: the file's ops are all already in the store; this must
     // be a successful no-op (dedup by action.id).
     const { logs, api: log } = makeLog();
-    await applyFsChangesToReactor([filePath], tmpDir, module, log);
-    await applyFsChangesToReactor([filePath], tmpDir, module, log);
+    await applyFsChangesToReactor([filePath], tmpDir, module, driveId, log);
+    await applyFsChangesToReactor([filePath], tmpDir, module, driveId, log);
 
     await new Promise((r) => setTimeout(r, 100));
 

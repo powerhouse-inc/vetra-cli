@@ -18,6 +18,7 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import {
   ReactorBuilder,
   ReactorClientBuilder,
@@ -25,6 +26,11 @@ import {
 } from '@powerhousedao/reactor';
 import { documentModels as vetraDocumentModels } from '@powerhousedao/vetra';
 import { documentModels as driveDocumentModels } from '@powerhousedao/clint-common';
+import {
+  addFile,
+  addFolder,
+  driveDocumentModelModule,
+} from '@powerhousedao/shared/document-drive';
 import { specPath } from '@powerhousedao/vetra/codegen';
 import { syncSpecsToFs } from '../../src/triggers/spec-sync.js';
 
@@ -50,6 +56,7 @@ describe('spec-sync drive → FS integration', () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'spec-sync-it-'));
     // Drive model must be registered or reactor builder rejects.
     const builder = new ReactorBuilder().withDocumentModels([
+      driveDocumentModelModule,
       ...(driveDocumentModels as unknown as any[]),
       ...(vetraDocumentModels as unknown as any[]),
     ]);
@@ -83,7 +90,7 @@ describe('spec-sync drive → FS integration', () => {
         if (event.documents.length === 0) return;
         eventCount += 1;
         chain = chain.then(() =>
-          syncSpecsToFs(event.documents as never, tmpDir, log),
+          syncSpecsToFs(event.documents as never, tmpDir, { log }),
         );
       },
     );
@@ -121,6 +128,40 @@ describe('spec-sync drive → FS integration', () => {
     );
 
     unsubscribe();
+  }, 15_000);
+
+  it('routes a doc filed under a project folder to <workdir>/<project>/specs/', async () => {
+    const project = 'workout-tracker';
+    const drive = await module.client.createEmpty('powerhouse/document-drive');
+    const driveId = drive.header.id;
+    const folderId = randomUUID();
+    await module.client.execute(driveId, 'main', [
+      addFolder({ id: folderId, name: project, parentFolder: null }) as never,
+    ]);
+
+    const doc = AppModuleV1.utils.createDocument();
+    doc.header.name = 'filed-app';
+    doc.header.documentType = 'powerhouse/app';
+    await module.client.create(doc);
+    await module.client.execute(driveId, 'main', [
+      addFile({
+        id: doc.header.id,
+        name: 'filed-app',
+        documentType: 'powerhouse/app',
+        parentFolder: folderId,
+      }) as never,
+    ]);
+
+    const inDrive = await module.client.get<AppModuleDocument>(doc.header.id);
+    const nodes = (await module.client.get(driveId) as any).state.global.nodes;
+    await syncSpecsToFs([inDrive] as never, tmpDir, { nodes });
+
+    // Written under the project folder, not the workdir root.
+    const projectPath = specPath(path.join(tmpDir, project), 'powerhouse/app', 'filed-app');
+    expect((await fs.stat(projectPath)).isFile()).toBe(true);
+    await expect(
+      fs.stat(specPath(tmpDir, 'powerhouse/app', 'filed-app')),
+    ).rejects.toBeTruthy();
   }, 15_000);
 
   it('only forwards documents of the subscribed type', async () => {

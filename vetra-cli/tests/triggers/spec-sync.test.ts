@@ -2,8 +2,9 @@ import { describe, it, expect, jest } from '@jest/globals';
 
 const saveSpec = jest.fn<(doc: unknown, workdir: string) => Promise<string>>();
 
-jest.unstable_mockModule('@powerhousedao/vetra/codegen', () => ({
+jest.unstable_mockModule('../../src/commands/spec/registry.js', () => ({
   saveSpec,
+  listSpecTypes: () => ['powerhouse/app'],
 }));
 
 const { syncSpecsToFs } = await import('../../src/triggers/spec-sync.js');
@@ -23,10 +24,10 @@ describe('syncSpecsToFs', () => {
   it('forwards each doc to saveSpec with the given workdir', async () => {
     saveSpec.mockResolvedValue('/work/specs/foo.json');
     const docs = [
-      { header: { documentType: 'powerhouse/document-model', name: 'foo' } },
-      { header: { documentType: 'powerhouse/app', name: 'bar' } },
+      { header: { id: 'a', documentType: 'powerhouse/document-model', name: 'foo' } },
+      { header: { id: 'b', documentType: 'powerhouse/app', name: 'bar' } },
     ];
-    await syncSpecsToFs(docs, '/work', log);
+    await syncSpecsToFs(docs, '/work', { log });
 
     expect(saveSpec).toHaveBeenCalledTimes(2);
     expect(saveSpec).toHaveBeenNthCalledWith(1, docs[0], '/work');
@@ -40,10 +41,10 @@ describe('syncSpecsToFs', () => {
       .mockRejectedValueOnce(new Error('disk full'))
       .mockResolvedValueOnce('/work/specs/bar.json');
     const docs = [
-      { header: { documentType: 'powerhouse/document-model', name: 'foo' } },
-      { header: { documentType: 'powerhouse/app', name: 'bar' } },
+      { header: { id: 'a', documentType: 'powerhouse/document-model', name: 'foo' } },
+      { header: { id: 'b', documentType: 'powerhouse/app', name: 'bar' } },
     ];
-    await syncSpecsToFs(docs, '/work', log);
+    await syncSpecsToFs(docs, '/work', { log });
 
     expect(saveSpec).toHaveBeenCalledTimes(2);
     expect(log.warn).toHaveBeenCalledTimes(1);
@@ -53,14 +54,14 @@ describe('syncSpecsToFs', () => {
   });
 
   it('is a no-op for empty input', async () => {
-    await syncSpecsToFs([], '/work', log);
+    await syncSpecsToFs([], '/work', { log });
     expect(saveSpec).not.toHaveBeenCalled();
   });
 
   it('works without a logger', async () => {
     saveSpec.mockResolvedValue('/work/specs/x.json');
     await syncSpecsToFs(
-      [{ header: { documentType: 'powerhouse/app', name: 'x' } }],
+      [{ header: { id: 'x', documentType: 'powerhouse/app', name: 'x' } }],
       '/work',
     );
     expect(saveSpec).toHaveBeenCalledTimes(1);

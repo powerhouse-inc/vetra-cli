@@ -48,7 +48,7 @@ export async function resolveReactorProjectPath(
   return base;
 }
 
-async function pathExists(p: string): Promise<boolean> {
+export async function pathExists(p: string): Promise<boolean> {
   return stat(p).then(
     () => true,
     () => false,
@@ -60,7 +60,7 @@ async function pathExists(p: string): Promise<boolean> {
  * packages (have a `powerhouse.config.json`). Uses `withFileTypes` so a single
  * readdir replaces the per-entry stat that the prior version paid.
  */
-async function listReactorProjects(workdir: string): Promise<string[]> {
+export async function listReactorProjects(workdir: string): Promise<string[]> {
   let entries: Dirent[];
   try {
     entries = await readdir(workdir, { withFileTypes: true });
