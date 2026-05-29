@@ -5,10 +5,12 @@
 import type { UpgradeManifest } from "document-model";
 import { audienceSheetUpgradeManifest } from "document-models/audience-sheet/upgrades";
 import { brandSheetUpgradeManifest } from "document-models/brand-sheet/upgrades";
+import { featureUpgradeManifest } from "document-models/feature/upgrades";
 import { problemSheetUpgradeManifest } from "document-models/problem-sheet/upgrades";
 
 export const upgradeManifests: UpgradeManifest<readonly number[]>[] = [
   audienceSheetUpgradeManifest,
   brandSheetUpgradeManifest,
+  featureUpgradeManifest,
   problemSheetUpgradeManifest,
 ];
