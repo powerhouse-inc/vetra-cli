@@ -79,9 +79,9 @@ export async function syncSpecsToFs(
 
 export const specSyncTrigger = createDocumentChangeTrigger({
   id: "spec-sync",
-  // SPEC_DOC_TYPES aren't in the typed registry (which only knows ChatSession),
-  // so we widen here. The trigger uses the doc type only as an event filter.
-  documentType: SPEC_DOC_TYPES as unknown as string,
+  // Spec types aren't in the typed registry (which only knows ChatSession);
+  // the trigger uses the doc type only as an event filter.
+  documentType: SPEC_DOC_TYPES,
   initialReconcile: false,
   async onChange(docs, ctx) {
     const reactor = await ctx.reactor?.();

@@ -32,6 +32,7 @@ import {
   buildLoadJobsForFile,
   projectForPath,
   specForPath,
+  specFsSyncTrigger,
 } from "../../src/triggers/spec-fs-sync.js";
 import { syncSpecsToFs } from "../../src/triggers/spec-sync.js";
 
@@ -207,6 +208,12 @@ describe("spec-fs-sync FS → drive", () => {
       draft.header.name = "fresh-app";
       draft.header.documentType = "powerhouse/app";
       await producer.client.create(draft);
+      // A real spec carries content-scope (global) operations; add one so the
+      // sync has content to replay (document-scope create ops are ignored —
+      // the receiving reactor materializes its own).
+      await producer.client.execute(draft.header.id, "main", [
+        setAppName({ name: "fresh-app" }),
+      ]);
 
       const created = await producer.client.get(draft.header.id);
       const opsByScope = await producer.reactor.getOperations(draft.header.id);
@@ -253,6 +260,48 @@ describe("spec-fs-sync FS → drive", () => {
     } finally {
       await producer.reactor.kill().completed;
     }
+  }, 15_000);
+
+  // ── FS → drive: snapshot .phd with NO document-scope create op ───
+  //
+  // Regression for the brand-sheet bug: spec-* tools write snapshots that carry
+  // only content-scope ops (createDocument records no document-scope create).
+  // The receiving reactor has never seen the doc, so it must materialize one
+  // before the content ops can apply — replaying ops alone would stall.
+
+  it("materializes a snapshot .phd (no document-scope create) and syncs its state", async () => {
+    // Built via reducer, no reactor — mirrors createSpecDocument + saveSpec.
+    let doc = AppModuleV1.utils.createDocument();
+    doc.header.name = "snapshot-app";
+    doc.header.documentType = "powerhouse/app";
+    doc = AppModuleV1.reducer(doc, setAppName({ name: "snap-name" }));
+    const filePath = await saveSpec(doc, tmpDir);
+    await expect(module.client.get(doc.header.id)).rejects.toBeTruthy();
+
+    const { logs, api: log } = makeLog();
+    const submitted = await applyFsChangesToReactor([filePath], tmpDir, module, driveId, log);
+    expect(submitted).toBeGreaterThan(0);
+
+    await waitUntil(async () => {
+      try {
+        await module.client.get(doc.header.id);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    const inDrive = await module.client.get<AppModuleDocument>(doc.header.id);
+    expect((inDrive.state.global as { name: string }).name).toBe("snap-name");
+    const nodes = await driveNodes();
+    expect(nodes.some((n) => n.kind === "file" && n.id === doc.header.id)).toBe(true);
+    expect(logs.some((l) => l.level === "error")).toBe(false);
+
+    // Re-sync is idempotent: no duplicate ops, no duplicate nodes.
+    const before = (await module.client.getOperations(doc.header.id)).results.length;
+    await applyFsChangesToReactor([filePath], tmpDir, module, driveId, log);
+    await new Promise((r) => setTimeout(r, 100));
+    expect((await module.client.getOperations(doc.header.id)).results.length).toBe(before);
+    expect((await driveNodes()).filter((n) => n.kind === "file" && n.id === doc.header.id)).toHaveLength(1);
   }, 15_000);
 
   // ── FS → drive: workspace layout files into a per-project folder ──
@@ -382,4 +431,50 @@ describe("spec-fs-sync FS → drive", () => {
     expect(jobs).toEqual([]);
     expect(logs.filter((l) => l.level === "warn")).not.toEqual([]);
   });
+
+  // ── Live watcher: the path the unit tests don't cover ────────────
+  //
+  // Drives the real trigger (chokidar setup → poll) and writes a spec into a
+  // project subtree that did NOT exist at setup time — the exact scenario that
+  // silently failed in production (reactor-project-init runs after startup).
+
+  it("detects a spec written into a new project subtree after setup() and syncs it", async () => {
+    const { logs, api: log } = makeLog();
+    const ctx = {
+      state: specFsSyncTrigger.state!(),
+      context: { workdir: tmpDir, log },
+      reactor: async () => ({ client: module.client, driveId }),
+    } as never as Parameters<NonNullable<typeof specFsSyncTrigger.setup>>[0];
+
+    await specFsSyncTrigger.setup!(ctx);
+    try {
+      // Project dir + specs subtree created entirely AFTER the watcher started.
+      const projectDir = path.join(tmpDir, "late-project");
+      const draft = AppModuleV1.utils.createDocument();
+      draft.header.name = "late-app";
+      draft.header.documentType = "powerhouse/app";
+      await module.client.create(draft);
+      const created = await module.client.get(draft.header.id);
+      const opsByScope = await module.reactor.getOperations(draft.header.id);
+      const operations: Record<string, unknown[]> = {};
+      for (const [scope, paged] of Object.entries(opsByScope)) {
+        operations[scope] = (paged as { results: unknown[] }).results;
+      }
+      const enriched = { ...created, operations } as unknown as Parameters<typeof saveSpec>[0];
+      await saveSpec(enriched, projectDir);
+
+      // chokidar should observe the new nested file (awaitWriteFinish ~75ms).
+      await waitUntil(() => (ctx as { state: { changed: Set<string> } }).state.changed.size > 0, {
+        timeout: 5_000,
+      });
+      await specFsSyncTrigger.poll(ctx);
+
+      const nodes = await driveNodes();
+      expect(nodes.some((n) => n.kind === "folder" && n.name === "late-project")).toBe(true);
+      expect(nodes.some((n) => n.kind === "file" && n.id === draft.header.id)).toBe(true);
+      expect(logs.some((l) => l.level === "error")).toBe(false);
+    } finally {
+      await specFsSyncTrigger.teardown!(ctx);
+    }
+  }, 20_000);
 });

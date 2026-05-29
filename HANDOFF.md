@@ -75,7 +75,16 @@ against.
    there. Dev-mode Switchboard + Vite HMR pick up changes on save.
    The vetra-cli drive keeps a synced copy of spec docs (via the
    existing `specSyncTrigger` / `specFsSyncTrigger`) so the agent and
-   the drive UI can reason over them through the reactor.
+   the drive UI can reason over them through the reactor. Both triggers
+   are project-aware: the embedded `vetra-cli` drive holds one folder
+   per reactor project. `specFsSyncTrigger` watches every project's
+   `specs/` (reconciled in `poll()` for projects created after
+   startup), replays ops via `loadBatch`, and ADD_FOLDER/ADD_FILEs each
+   doc into its project folder; `specSyncTrigger` reads that folder back
+   to route drive→FS writes to `<workdir>/<project>/specs/`. (Before:
+   `specFsSyncTrigger` watched only `<workdir>/specs` and never attached
+   docs to the drive, so workspace-layout specs never reached the
+   embedded reactor.)
 
 3. **Project stays as a service for MVP.** Promoting `Project` to a
    document model in the vetra-cli drive is phase 2. Chat sessions

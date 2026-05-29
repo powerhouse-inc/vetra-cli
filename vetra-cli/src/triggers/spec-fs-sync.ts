@@ -37,7 +37,6 @@ import { randomUUID } from "node:crypto";
 import { baseLoadFromFile } from "document-model/node";
 import type { ReactorContext } from "@powerhousedao/ph-clint";
 import type { LoadJobPlan } from "@powerhousedao/reactor";
-import { listReactorProjects, pathExists } from "../helpers/project.js";
 import { listSpecTypes, resolveSpecEntry } from "../commands/spec/registry.js";
 import { defineTrigger } from "../framework.js";
 
@@ -112,25 +111,30 @@ export function projectForPath(
   return segments.slice(0, specsIdx).join(path.sep);
 }
 
+interface LoadedDoc {
+  header: { id: string; name: string; documentType: string; branch?: string };
+  operations: Record<string, unknown[]>;
+}
+
 interface LoadedSpec {
+  doc: LoadedDoc;
   jobs: LoadJobPlan[];
-  id: string;
-  name: string;
-  documentType: string;
 }
 
 /**
- * Load a `.phd`, build its per-scope `LoadJobPlan`s, and capture the document
- * identity for drive attachment. Returns undefined when the path isn't a known
- * spec or the file fails to load.
+ * Load a `.phd` and build content-scope `LoadJobPlan`s. Returns undefined when
+ * the path isn't a known spec or the file fails to load.
  *
- * Cross-scope ordering: every non-`document` scope job declares
- * `dependsOn: [document-scope job key]` so create/upgrade actions apply before
- * any state mutations.
+ * Spec `.phd` files written by the `spec-*` tools are snapshots: they carry
+ * content-scope (`global` / `local`) operations but NO `document`-scope create
+ * (`utils.createDocument()` records none). The reactor can't apply content ops
+ * to a document it has never created, so the document is materialized
+ * separately (see `materializeIfAbsent`) and only the content scopes are
+ * replayed here. Those ops keep their file `action.id`s, so re-loading the same
+ * file is a `loadBatch` no-op (dedup) and later edits ship only as deltas.
  */
 async function loadSpecForFile(
   filePath: string,
-  workdir: string,
   log?: FsSyncLogger,
 ): Promise<LoadedSpec | undefined> {
   const spec = specForPath(filePath);
@@ -141,9 +145,9 @@ async function loadSpecForFile(
     return undefined;
   }
 
-  let doc;
+  let doc: LoadedDoc;
   try {
-    doc = await baseLoadFromFile(filePath, spec.reducer as never);
+    doc = (await baseLoadFromFile(filePath, spec.reducer as never));
   } catch (err) {
     log?.warn?.(
       `[spec-fs-sync] load failed for ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
@@ -152,49 +156,64 @@ async function loadSpecForFile(
   }
 
   const branch = doc.header.branch || "main";
-  const documentKey = `${doc.header.id}:document`;
-  // Emit the `document` scope first so other scopes can declare a dependency
-  // on it. Scope iteration order is otherwise unspecified.
-  const entries = Object.entries(doc.operations).filter(
-    ([, ops]) => Array.isArray(ops) && ops.length > 0,
-  );
-  const hasDocumentJob = entries.some(([scope]) => scope === "document");
-  entries.sort(([a], [b]) => (a === "document" ? -1 : b === "document" ? 1 : 0));
   const jobs: LoadJobPlan[] = [];
-  for (const [scope, ops] of entries) {
+  for (const [scope, ops] of Object.entries(doc.operations)) {
+    // `document` scope is handled by materialization, not replay.
+    if (scope === "document" || !Array.isArray(ops) || ops.length === 0) continue;
     jobs.push({
       key: `${doc.header.id}:${scope}`,
       documentId: doc.header.id,
       scope,
       branch,
-      operations: ops,
-      // Only declare a dependency on the document-scope job when that job is
-      // actually part of this batch. Without the guard, loadBatch rejects with
-      // "depends on non-existent key" when we're only syncing state-scope
-      // mutations to a doc the drive already has.
-      dependsOn: scope !== "document" && hasDocumentJob ? [documentKey] : [],
+      operations: ops as LoadJobPlan["operations"],
+      dependsOn: [],
       externalDeps: [],
     });
   }
-  return {
-    jobs,
-    id: doc.header.id,
-    name: doc.header.name,
-    documentType: doc.header.documentType,
-  };
+  return { doc, jobs };
 }
 
 /**
- * Build the `LoadJobPlan`s for a `.phd` file. Returns an empty array when the
- * file has no operations to ship or isn't a known spec. Exported for tests.
+ * Build the content-scope `LoadJobPlan`s for a `.phd` file. Empty when the file
+ * has no content operations or isn't a known spec. Exported for tests.
  */
 export async function buildLoadJobsForFile(
   filePath: string,
   workdir: string,
   log?: FsSyncLogger,
 ): Promise<LoadJobPlan[]> {
-  const loaded = await loadSpecForFile(filePath, workdir, log);
+  void workdir;
+  const loaded = await loadSpecForFile(filePath, log);
   return loaded?.jobs ?? [];
+}
+
+/**
+ * Materialize a document in the reactor when it isn't there yet. Creates an
+ * empty document carrying the spec's id + type so subsequent content-scope
+ * `loadBatch` jobs have a typed document to apply to. Returns true when a doc
+ * was created. No-op (returns false) when the document already exists.
+ */
+async function materializeIfAbsent(
+  client: DriveClient,
+  doc: LoadedDoc,
+  log?: FsSyncLogger,
+): Promise<boolean> {
+  const exists = await client.get(doc.header.id).then(
+    () => true,
+    () => false,
+  );
+  if (exists) return false;
+  const fresh = resolveSpecEntry(doc.header.documentType).createDocument() as {
+    header: { id: string; name: string; documentType: string };
+  };
+  fresh.header.id = doc.header.id;
+  fresh.header.documentType = doc.header.documentType;
+  fresh.header.name = doc.header.name;
+  await client.create(fresh as never);
+  log?.debug?.(
+    `[spec-fs-sync] materialized ${doc.header.documentType} ${doc.header.id}`,
+  );
+  return true;
 }
 
 interface DriveActions {
@@ -306,10 +325,12 @@ async function ensureFileNode(
 }
 
 /**
- * Read each path, replay its operations into the reactor as a single
- * `loadBatch`, then attach each loaded doc to the `vetra-cli` drive under its
- * project folder. Returns the number of load jobs submitted. Exported for the
- * trigger's poll and for direct use in integration tests.
+ * Sync each `.phd` path into the embedded reactor and the `vetra-cli` drive:
+ *   1. materialize any document the reactor hasn't seen (empty doc, file id+type),
+ *   2. replay content-scope operations via a single `loadBatch` (idempotent),
+ *   3. attach each doc to the drive under a folder named after its project.
+ * Returns the number of content load jobs submitted. Exported for the trigger's
+ * poll and for direct use in integration tests.
  */
 export async function applyFsChangesToReactor(
   paths: ReadonlyArray<string>,
@@ -319,13 +340,28 @@ export async function applyFsChangesToReactor(
   log?: FsSyncLogger,
 ): Promise<number> {
   const loaded: Array<{ project: string | undefined; spec: LoadedSpec }> = [];
-  const allJobs: LoadJobPlan[] = [];
   for (const p of paths) {
-    const spec = await loadSpecForFile(p, workdir, log);
+    const spec = await loadSpecForFile(p, log);
     if (!spec) continue;
     loaded.push({ project: projectForPath(p, workdir), spec });
-    allJobs.push(...spec.jobs);
   }
+  if (loaded.length === 0) return 0;
+
+  // 1. Materialize docs the reactor has never created — content ops can't apply
+  //    to a non-existent document.
+  for (const { spec } of loaded) {
+    try {
+      await materializeIfAbsent(reactor.client, spec.doc, log);
+    } catch (err) {
+      log?.error?.(
+        `[spec-fs-sync] create failed for ${spec.doc.header.documentType} ${spec.doc.header.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  // 2. Replay content operations (dedup by action.id — a no-op for unchanged
+  //    files, delta-only for edits).
+  const allJobs = loaded.flatMap((l) => l.spec.jobs);
   if (allJobs.length > 0) {
     try {
       await reactor.client.loadBatch({ jobs: allJobs });
@@ -336,18 +372,16 @@ export async function applyFsChangesToReactor(
       log?.error?.(
         `[spec-fs-sync] loadBatch failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-      throw err;
     }
   }
 
-  if (loaded.length === 0) return allJobs.length;
+  // 3. Attach to the vetra-cli drive under per-project folders.
   if (!driveId) {
     log?.warn?.(
-      `[spec-fs-sync] no drive id — loaded ${loaded.length} doc(s) but skipped drive attachment`,
+      `[spec-fs-sync] no drive id — materialized ${loaded.length} doc(s) but skipped drive attachment`,
     );
     return allJobs.length;
   }
-
   // Sequential: ensureProjectFolder re-reads nodes, so concurrent attaches to
   // the same new project folder would each miss it and create duplicates.
   for (const { project, spec } of loaded) {
@@ -361,15 +395,15 @@ export async function applyFsChangesToReactor(
       await ensureFileNode(
         reactor.client,
         driveId,
-        spec.id,
-        spec.name,
-        spec.documentType,
+        spec.doc.header.id,
+        spec.doc.header.name,
+        spec.doc.header.documentType,
         folderId,
         log,
       );
     } catch (err) {
       log?.error?.(
-        `[spec-fs-sync] drive attach failed for ${spec.documentType} "${spec.name}": ${err instanceof Error ? err.message : String(err)}`,
+        `[spec-fs-sync] drive attach failed for ${spec.doc.header.documentType} "${spec.doc.header.name}": ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -379,12 +413,26 @@ export async function applyFsChangesToReactor(
 interface TriggerState {
   changed: Set<string>;
   watcher: ReturnType<typeof chokidar.watch> | undefined;
-  watched: Set<string>;
   driveId: string | undefined;
 }
 
-function projectSpecGlob(workdir: string, project: string): string {
-  return path.join(workdir, project, SPECS_DIRNAME, "**", "*.phd");
+// Directory names never worth descending into when scanning for specs. Keeping
+// these out keeps the recursive workdir watch cheap and avoids watching huge
+// trees like node_modules.
+const IGNORED_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".ph",
+  "dist",
+  "build",
+  ".next",
+  "coverage",
+  ".turbo",
+  ".cache",
+]);
+
+function isIgnoredPath(p: string): boolean {
+  return p.split(path.sep).some((seg) => IGNORED_DIRS.has(seg));
 }
 
 export const specFsSyncTrigger = defineTrigger<TriggerState>({
@@ -393,33 +441,41 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
   state: () => ({
     changed: new Set<string>(),
     watcher: undefined,
-    watched: new Set<string>(),
     driveId: undefined,
   }),
 
   async setup(ctx) {
     const workdir = ctx.context.workdir;
-    const globs: string[] = [];
-    // Single-project case: workdir is itself a reactor package.
-    if (await pathExists(path.join(workdir, "powerhouse.config.json"))) {
-      globs.push(path.join(workdir, SPECS_DIRNAME, "**", "*.phd"));
-    }
-    const projects = await listReactorProjects(workdir);
-    for (const project of projects) {
-      globs.push(projectSpecGlob(workdir, project));
-      ctx.state.watched.add(project);
-    }
-    // awaitWriteFinish guards against firing while an editor is mid-save.
-    const watcher = chokidar.watch(globs, {
-      ignoreInitial: true,
+    const log = ctx.context.log;
+    // Watch the workdir directory itself rather than per-project specs globs.
+    // The directory always exists, so chokidar reliably picks up `specs/`
+    // subtrees created later (reactor-project-init runs after startup) without
+    // a reconcile step or fragile not-yet-existent glob bases. `specForPath`
+    // filters events down to `specs/<known-subdir>/*.phd` for both the
+    // workdir-as-project and workspace (`<workdir>/<project>/specs/`) layouts.
+    // ignoreInitial:false so specs written before this daemon started are
+    // synced on boot too (loadBatch + node attach are idempotent).
+    const watcher = chokidar.watch(workdir, {
+      ignoreInitial: false,
+      ignored: (p: string) => isIgnoredPath(p),
       awaitWriteFinish: { stabilityThreshold: 75, pollInterval: 25 },
     });
-    watcher.on("add", (p) => ctx.state.changed.add(p));
-    watcher.on("change", (p) => ctx.state.changed.add(p));
-    ctx.state.watcher = watcher;
-    ctx.context.log?.debug?.(
-      `[spec-fs-sync] watching ${globs.length} spec root(s) under ${workdir}`,
+    const onFsEvent = (kind: string) => (p: string) => {
+      if (!p.endsWith(".phd") || !specForPath(p)) return;
+      ctx.state.changed.add(p);
+      log?.debug?.(`[spec-fs-sync] fs ${kind}: ${p}`);
+    };
+    watcher.on("add", onFsEvent("add"));
+    watcher.on("change", onFsEvent("change"));
+    watcher.on("error", (err) =>
+      log?.error?.(
+        `[spec-fs-sync] watcher error: ${err instanceof Error ? err.message : String(err)}`,
+      ),
     );
+    watcher.on("ready", () =>
+      log?.info?.(`[spec-fs-sync] watching ${workdir} for specs/**/*.phd`),
+    );
+    ctx.state.watcher = watcher;
   },
 
   async teardown(ctx) {
@@ -427,18 +483,6 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
   },
 
   async poll(ctx) {
-    // Reconcile newly-created projects (e.g. via reactor-project-init after
-    // startup). chokidar's add() scans the glob and emits `add` for files
-    // already on disk, so specs written before the project was watched get
-    // picked up on the next drain.
-    const projects = await listReactorProjects(ctx.context.workdir);
-    for (const project of projects) {
-      if (!ctx.state.watched.has(project)) {
-        ctx.state.watched.add(project);
-        ctx.state.watcher?.add(projectSpecGlob(ctx.context.workdir, project));
-      }
-    }
-
     if (ctx.state.changed.size === 0) return null;
     const reactor = await ctx.reactor();
     if (!reactor) return null;
@@ -448,6 +492,11 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
       (reactor as { driveId?: string }).driveId;
     const paths = [...ctx.state.changed];
     ctx.state.changed.clear();
+    ctx.context.log?.info?.(
+      `[spec-fs-sync] syncing ${paths.length} changed spec file(s): ${paths
+        .map((p) => path.basename(p))
+        .join(", ")}`,
+    );
     try {
       await applyFsChangesToReactor(
         paths,

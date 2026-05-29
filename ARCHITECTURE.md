@@ -316,7 +316,17 @@ Registered in `cli.ts`. Run as part of ph-clint's routine loop.
 - `chatSessionWatchTrigger` (clint-common) — watches chat-session
   documents for new user messages and forwards them to the agent.
 - `specSyncTrigger` — drive → filesystem mirror for spec documents.
-- `specFsSyncTrigger` — filesystem → drive (chokidar-based).
+  Routes each doc to `<workdir>/<project>/specs/` by reading the doc's
+  file node and its parent folder (the project) off the embedded
+  `vetra-cli` drive; falls back to `<workdir>/specs/` for root-level
+  docs (single-project layout).
+- `specFsSyncTrigger` — filesystem → drive (chokidar-based). Watches
+  every reactor project's `specs/` under the workdir (reconciled in
+  `poll()` so projects created after startup are picked up), replays
+  each `.phd`'s operations via `loadBatch`, and attaches the doc to the
+  embedded `vetra-cli` drive under an ADD_FOLDER node named after its
+  project (idempotent ensure-folder + ensure-file). This is the
+  project↔folder mapping `specSyncTrigger` reads back.
 - `previewServerTrigger` — runs the local API server. Triggers
   receive `commandContext.services` + `commandContext.on`, which is
   exactly what the http handlers need. `setup()` boots the server,
