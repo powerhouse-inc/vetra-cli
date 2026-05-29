@@ -4,7 +4,8 @@ import type {
   AudienceSheetAction,
   AudienceSheetDocument,
 } from "document-models/audience-sheet";
-import { DocumentSkeletonEditor } from "../vetra-studio/ideation/DocumentSkeletonEditor.js";
+import { AgentFeedbackSection } from "../shared/AgentFeedback.js";
+import { SegmentsSection } from "./components/sections.js";
 
 export function AudienceSheetEditor({
   document,
@@ -13,10 +14,27 @@ export function AudienceSheetEditor({
   document: AudienceSheetDocument;
   dispatch: DocumentDispatch<AudienceSheetAction>;
 }) {
+  const state = document.state.global;
   return (
-    <DocumentSkeletonEditor
-      document={document}
-      onRename={(name) => dispatch(actions.setName(name))}
-    />
+    <div className="flex flex-col gap-8 text-gray-800">
+      <SegmentsSection segments={state.segments} dispatch={dispatch} />
+      <AgentFeedbackSection
+        feedback={state.agentFeedback}
+        onToggleReady={(ready) =>
+          dispatch(actions.setReadyForFeedback({ ready }))
+        }
+        onResolve={(id, decision) =>
+          dispatch(
+            actions.resolveSuggestion({
+              id,
+              decision,
+              changeApplied: decision === "ACCEPTED",
+              resolvedAt: new Date().toISOString(),
+            }),
+          )
+        }
+        onRemove={(id) => dispatch(actions.removeSuggestion({ id }))}
+      />
+    </div>
   );
 }

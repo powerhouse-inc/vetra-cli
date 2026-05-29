@@ -1,10 +1,17 @@
 import type { DocumentDispatch } from "@powerhousedao/reactor-browser";
-import { actions } from "document-models/brand-sheet";
 import type {
   BrandSheetAction,
   BrandSheetDocument,
 } from "document-models/brand-sheet";
-import { DocumentSkeletonEditor } from "../vetra-studio/ideation/DocumentSkeletonEditor.js";
+import {
+  BrandHeader,
+  ColorPalette,
+  ConceptSection,
+  ImagerySection,
+  LogoConcept,
+  TypographySection,
+  VoiceSection,
+} from "./components/sections.js";
 
 export function BrandSheetEditor({
   document,
@@ -13,10 +20,16 @@ export function BrandSheetEditor({
   document: BrandSheetDocument;
   dispatch: DocumentDispatch<BrandSheetAction>;
 }) {
+  const state = document.state.global;
   return (
-    <DocumentSkeletonEditor
-      document={document}
-      onRename={(name) => dispatch(actions.setName(name))}
-    />
+    <div className="flex flex-col gap-8 text-gray-800">
+      <BrandHeader state={state} dispatch={dispatch} />
+      <ConceptSection state={state} dispatch={dispatch} />
+      <LogoConcept state={state} dispatch={dispatch} />
+      <ColorPalette state={state} dispatch={dispatch} />
+      <TypographySection state={state} dispatch={dispatch} />
+      <VoiceSection state={state} dispatch={dispatch} />
+      <ImagerySection state={state} dispatch={dispatch} />
+    </div>
   );
 }

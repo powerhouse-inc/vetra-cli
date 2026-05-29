@@ -1,10 +1,9 @@
 import type { DocumentDispatch } from "@powerhousedao/reactor-browser";
-import { actions } from "document-models/work-breakdown-structure";
 import type {
   WorkBreakdownStructureAction,
   WorkBreakdownStructureDocument,
 } from "document-models/work-breakdown-structure";
-import { DocumentSkeletonEditor } from "../vetra-studio/ideation/DocumentSkeletonEditor.js";
+import { WbsHeader, WorkSection } from "./components/sections.js";
 
 export function WorkBreakdownStructureEditor({
   document,
@@ -13,10 +12,11 @@ export function WorkBreakdownStructureEditor({
   document: WorkBreakdownStructureDocument;
   dispatch: DocumentDispatch<WorkBreakdownStructureAction>;
 }) {
+  const state = document.state.global;
   return (
-    <DocumentSkeletonEditor
-      document={document}
-      onRename={(name) => dispatch(actions.setName(name))}
-    />
+    <div className="flex flex-col gap-8 text-gray-800">
+      <WbsHeader state={state} dispatch={dispatch} />
+      <WorkSection state={state} dispatch={dispatch} />
+    </div>
   );
 }

@@ -28,8 +28,8 @@ export function VetraStudio({
     document.state.global.name.trim() || document.header.name || "Home";
 
   return (
-    <div className={className ?? "flex h-full w-full"}>
-      <aside className="flex w-1/3 min-w-[320px] shrink-0 flex-col border-r border-gray-200 bg-white">
+    <div className={className ?? "absolute inset-0 flex overflow-hidden"}>
+      <aside className="flex w-1/3 min-w-[320px] shrink-0 flex-col overflow-hidden border-r border-gray-200 bg-white">
         <ChatPane
           document={document}
           dispatch={dispatch}
@@ -37,7 +37,7 @@ export function VetraStudio({
           onSelectSession={setSelectedSessionId}
         />
       </aside>
-      <main className="flex-1 overflow-y-auto bg-gray-50">
+      <main className="min-h-0 flex-1 overflow-y-auto bg-gray-50">
         {section === "ideate" ? (
           <IdeationSection
             drive={document}
