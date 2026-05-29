@@ -5,7 +5,8 @@ import type {
 } from "@powerhousedao/shared/document-drive";
 import { useState } from "react";
 import { ChatPane } from "./ChatPane.js";
-import { WorkflowScaffold } from "./WorkflowScaffold.js";
+import { IdeationSection } from "./IdeationSection.js";
+import { PhaseCycle } from "./PhaseCycle.js";
 
 export type VetraStudioProps = {
   document: DocumentDriveDocument;
@@ -13,12 +14,18 @@ export type VetraStudioProps = {
   className?: string;
 };
 
+type Section = "home" | "ideate";
+
 export function VetraStudio({
   document,
   dispatch,
   className,
 }: VetraStudioProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string>();
+  const [section, setSection] = useState<Section>("home");
+
+  const productName =
+    document.state.global.name.trim() || document.header.name || "Home";
 
   return (
     <div className={className ?? "flex h-full w-full"}>
@@ -31,7 +38,15 @@ export function VetraStudio({
         />
       </aside>
       <main className="flex-1 overflow-y-auto bg-gray-50">
-        <WorkflowScaffold selectedSessionId={selectedSessionId} />
+        {section === "ideate" ? (
+          <IdeationSection
+            drive={document}
+            productName={productName}
+            onExitToHome={() => setSection("home")}
+          />
+        ) : (
+          <PhaseCycle onOpenIdeate={() => setSection("ideate")} />
+        )}
       </main>
     </div>
   );
