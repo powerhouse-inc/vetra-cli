@@ -39,13 +39,18 @@ them across every commit and every edit.
   `vetra-app/editors/*` or `vetra-app/powerhouse.manifest.json` requires
   *two* builds and a restart: `pnpm build` (refreshes `dist/{browser,
   node,types}` for vetra-cli's node imports) and `pnpm exec ph-cli
-  connect build --outDir dist/connect` (refreshes the SPA bundle that
-  `connect-server.js` serves). Then restart vetra-cli. The connect
-  bundle freezes the manifest at build time — skipping the connect
-  build leaves the SPA carrying the pre-edit manifest, so Connect
-  falls back to `GenericDriveExplorer` and the new drive editor never
-  appears. See ARCHITECTURE.md → "Embedded Connect (Vetra Studio) →
-  Build-output split".
+  connect build --outDir dist/connect --default-drives-url
+  http://__ph_drive_url__` (refreshes the SPA bundle that
+  `connect-server.js` serves). Always pass `--default-drives-url
+  http://__ph_drive_url__`: it bakes the placeholder the
+  `connect-drive-url` startup hook swaps for the live drive URL;
+  omit it and Connect won't open the vetra-cli drive. Then restart
+  vetra-cli. The connect bundle freezes the manifest at build time —
+  skipping the connect build leaves the SPA carrying the pre-edit
+  manifest, so Connect falls back to `GenericDriveExplorer` and the
+  new drive editor never appears. See ARCHITECTURE.md → "Embedded
+  Connect (Vetra Studio) → Build-output split" and "Default-drive URL
+  stamping".
 
 ## Overall goal
 

@@ -19,6 +19,16 @@ export const LOCAL_REGISTRY_URL = `http://localhost:${LOCAL_REGISTRY_PORT}`;
 export const LOCAL_REGISTRY_ENABLED = false;
 
 /**
+ * Placeholder baked into the prebuilt Connect bundle's
+ * `PH_CONNECT_DEFAULT_DRIVES_URL` at package-build time. The
+ * `connect-drive-url` lifecycle hook rewrites it to the live drive URL on
+ * startup, since Connect can only read the value from a build-time literal.
+ * The root `build` script must pass this exact string to
+ * `ph-cli connect build --default-drives-url`.
+ */
+export const CONNECT_DRIVE_URL_PLACEHOLDER = 'http://__ph_drive_url__';
+
+/**
  * Powerhouse stack version new reactor projects are initialized with.
  * Generated from the `catalog:` entry in pnpm-workspace.yaml at build time
  * (see scripts/build-assets.ts) so it tracks the version vetra-cli's runtime

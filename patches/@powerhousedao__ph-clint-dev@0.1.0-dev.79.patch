@@ -1,0 +1,23 @@
+diff --git a/dist/publish/deps.js b/dist/publish/deps.js
+index fc54759e824d39fef4a5fdb44e37a61e1fa2fe55..da1e187480d6532e45513228be2ab2c89ad75562 100644
+--- a/dist/publish/deps.js
++++ b/dist/publish/deps.js
+@@ -40,6 +40,18 @@ export function analyzeFileDeps(packageDir, packageJson, groupPackagePaths) {
+                     field,
+                 });
+             }
++            else if (specifier.startsWith('catalog:')) {
++                // pnpm catalog: deps are resolved by pnpm at install time but
++                // npm publish leaves them verbatim. Pin to the concrete version
++                // pnpm installed into node_modules, like an external dep.
++                deps.push({
++                    name,
++                    originalSpecifier: specifier,
++                    resolvedPath: path.resolve(packageDir, 'node_modules', name),
++                    intraGroup: false,
++                    field,
++                });
++            }
+         }
+     }
+     return deps;

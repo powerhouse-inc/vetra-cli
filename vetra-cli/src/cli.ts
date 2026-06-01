@@ -28,7 +28,7 @@ import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
 import { previewServerTrigger } from './triggers/preview-server.js';
-import { connectRebuildOnSwitchboardReady } from './lifecycle/connect-rebuild.js';
+import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url.js';
 import { genGuard } from './lifecycle/gen-guard.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
@@ -184,7 +184,7 @@ export const cli = defineCli({
   lifecycle: [
     observability(),
     genGuard(),
-    connectRebuildOnSwitchboardReady({
+    connectDriveUrlOnSwitchboardReady({
       vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
     }),
   ],

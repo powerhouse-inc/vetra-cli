@@ -59,3 +59,6 @@ allowBuilds:
   protobufjs: true
   sqlite3: true
   unrs-resolver: true
+
+patchedDependencies:
+  '@powerhousedao/ph-clint-dev@0.1.0-dev.79': patches/@powerhousedao__ph-clint-dev@0.1.0-dev.79.patch

@@ -75,6 +75,9 @@ overrides:
   zod: 4.3.6
   viem: 2.49.0
 
+patchedDependencies:
+  '@powerhousedao/ph-clint-dev@0.1.0-dev.79': ba27f58ad17b807e5f3c2c85e8096fa315adf3f1a635a501dad22c27390f35d0
+
 importers:
 
   .: {}
@@ -261,7 +264,7 @@ importers:
         version: 30.4.1
       '@powerhousedao/ph-clint-dev':
         specifier: 'catalog:'
-        version: 0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5)
+        version: 0.1.0-dev.79(patch_hash=ba27f58ad17b807e5f3c2c85e8096fa315adf3f1a635a501dad22c27390f35d0)(64f08f278ad5942529a6fc9114fb08a5)
       '@types/node':
         specifier: 'catalog:'
         version: 25.8.0
@@ -15903,7 +15906,7 @@ snapshots:
       - vue-tsc
       - yaml
 
-  '@powerhousedao/ph-clint-dev@0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5)':
+  '@powerhousedao/ph-clint-dev@0.1.0-dev.79(patch_hash=ba27f58ad17b807e5f3c2c85e8096fa315adf3f1a635a501dad22c27390f35d0)(64f08f278ad5942529a6fc9114fb08a5)':
     dependencies:
       '@powerhousedao/ph-clint': 0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5)
       handlebars: 4.7.9

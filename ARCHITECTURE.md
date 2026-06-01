@@ -132,10 +132,14 @@ two artifact families and they are built separately:
   the package's consumable exports. This is what the vetra-cli node
   process imports at startup (document models, editor module
   registrations, processor factory).
-- `pnpm exec ph-cli connect build --outDir dist/connect` emits the
-  SPA bundle the embedded `connect-server.js` serves. The bundle
-  freezes a snapshot of `powerhouse.manifest.json` and the local
-  editor modules at build time.
+- `pnpm exec ph-cli connect build --outDir dist/connect
+  --default-drives-url http://__ph_drive_url__` emits the SPA bundle
+  the embedded `connect-server.js` serves. The bundle freezes a
+  snapshot of `powerhouse.manifest.json` and the local editor modules
+  at build time. The `--default-drives-url` flag bakes the
+  `CONNECT_DRIVE_URL_PLACEHOLDER` sentinel in place of the real drive
+  URL (see "Default-drive URL stamping" below); always pass it, or the
+  runtime stamping hook has no token to replace.
 
 `pnpm build` does **not** rebuild `dist/connect/`. Editing
 `vetra-app/editors/*`, `vetra-app/powerhouse.manifest.json`, or
@@ -146,6 +150,23 @@ failure mode: the source manifest lists the new app under `apps[]`
 but the bundled SPA still carries the empty pre-edit manifest, so
 Connect falls back to `GenericDriveExplorer` and the new drive
 editor never shows up.
+
+**Default-drive URL stamping.** Connect reads
+`PH_CONNECT_DEFAULT_DRIVES_URL` from a build-time literal
+(Vite-inlined `import.meta.env`); it cannot take the value from a
+runtime source. But vetra-cli's drive id is a random UUID minted on
+first run, unknown at bundle-build time. So the connect build bakes
+the `http://__ph_drive_url__` placeholder, and the
+`connect-drive-url` lifecycle hook
+(`vetra-cli/src/lifecycle/connect-drive-url.ts`) swaps it for the live
+URL on startup: it listens for `powerhouse:switchboard:ready`,
+string-replaces the prior token across `dist/connect/assets/*.js`
+(the placeholder on first boot, the last-applied URL afterwards —
+tracked in a `dist/connect/.default-drive-url` cache), and leaves the
+bundle pointing at the live drive. A browser reload applies the
+change. The swap is a plain literal replacement — no rebuild, no
+toolchain, no install — so it works in a published, source-less
+install where `ph-cli connect build` cannot run.
 
 The user's landing experience — `Vetra Studio` — is a custom **drive
 editor** registered against `powerhouse/document-drive` and selected
