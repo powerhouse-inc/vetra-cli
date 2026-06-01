@@ -126,6 +126,11 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
       (reactor as { driveId?: string }).driveId;
     const log = ctx.context.log;
 
+    // Changes before removals: a rename/atomic-save emits unlink(old) +
+    // add(new) for the same doc id in one cycle. Syncing the new path first
+    // registers its docId, so the removal pass can recognize the old path as a
+    // move and skip it — re-materializing is a dedup no-op, but removing the
+    // doc's node only to re-add it would conflict with its persisted revision.
     if (ctx.state.changed.size > 0) {
       const paths = [...ctx.state.changed];
       ctx.state.changed.clear();
@@ -159,13 +164,22 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
           );
           continue;
         }
+        ctx.state.docIdByPath.delete(p);
+        // Same docId still tracked under another path → this was a move, not a
+        // delete. The destination already re-synced above; leave the node.
+        const movedTo = [...ctx.state.docIdByPath.values()].includes(docId);
+        if (movedTo) {
+          log?.debug?.(
+            `[spec-fs-sync] ${path.basename(p)} moved (doc ${docId} still on disk) — keeping drive node`,
+          );
+          continue;
+        }
         await removeSpecFromDrive(
           reactor as unknown as Pick<ReactorContext, "client">,
           ctx.state.driveId,
           docId,
           log,
         );
-        ctx.state.docIdByPath.delete(p);
       }
     }
     return null;
