@@ -2,6 +2,8 @@ import { deleteDocument } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
+import { removeSpecFromDrive } from "../../helpers/spec-drive-sync.js";
 import { findByName } from "./_helpers.js";
 
 export const specDelete = defineCommand({
@@ -16,14 +18,24 @@ export const specDelete = defineCommand({
         "Spec to delete — accepts display name, slug, or id (see spec-list).",
       ),
   }),
-  execute: async (input, { workdir }) => {
+  execute: async (input, context) => {
+    const { workdir } = context;
     const base = await resolveReactorProjectPath(workdir, input.project);
     const { doc, path } = await findByName(base, input.name);
     const result = await deleteDocument(path);
-    return {
-      text: result.success
-        ? `Deleted "${doc.header.name}" (${doc.header.id})`
-        : `Failed to delete "${doc.header.name}" at ${path}`,
-    };
+    if (!result.success) {
+      return { text: `Failed to delete "${doc.header.name}" at ${path}` };
+    }
+    // Mirror the FS removal into the embedded drive when a reactor is running.
+    const drive = await getEmbeddedDrive(context);
+    if (drive) {
+      await removeSpecFromDrive(
+        drive.reactor,
+        drive.driveId,
+        doc.header.id,
+        context.log,
+      );
+    }
+    return { text: `Deleted "${doc.header.name}" (${doc.header.id})` };
   },
 });

@@ -320,13 +320,30 @@ Registered in `cli.ts`. Run as part of ph-clint's routine loop.
   file node and its parent folder (the project) off the embedded
   `vetra-cli` drive; falls back to `<workdir>/specs/` for root-level
   docs (single-project layout).
-- `specFsSyncTrigger` — filesystem → drive (chokidar-based). Watches
-  every reactor project's `specs/` under the workdir (reconciled in
-  `poll()` so projects created after startup are picked up), replays
-  each `.phd`'s operations via `loadBatch`, and attaches the doc to the
-  embedded `vetra-cli` drive under an ADD_FOLDER node named after its
-  project (idempotent ensure-folder + ensure-file). This is the
-  project↔folder mapping `specSyncTrigger` reads back.
+- `specFsSyncTrigger` — filesystem → drive (chokidar-based), the
+  **external-change detector**: hand-edited `.phd`, `git pull`,
+  reactor-project writes. Watches every reactor project's `specs/`
+  under the workdir (reconciled in `poll()` so projects created after
+  startup are picked up), replays each `.phd`'s operations via
+  `loadBatch`, and attaches the doc to the embedded `vetra-cli` drive
+  under an ADD_FOLDER node named after its project (idempotent
+  ensure-folder + ensure-file). This is the project↔folder mapping
+  `specSyncTrigger` reads back. The shared push/remove logic lives in
+  `helpers/spec-drive-sync.ts` (`applyFsChangesToReactor`,
+  `removeSpecFromDrive`); the `spec-*` write commands call it directly
+  (see below), so for command-originated changes this watcher only
+  observes a convergent no-op (`loadBatch` dedups by `action.id`).
+
+The `spec-*` write commands (`spec-create`, `spec-update`,
+`spec-extract`, `spec-delete`) write the filesystem `specs/`
+unconditionally — codegen's source of truth — and, when a reactor is
+already running, **also push the change into the embedded drive
+synchronously** via the same `spec-drive-sync.ts` helpers. The
+running-reactor signal is `helpers/embedded-drive.ts` →
+`getEmbeddedDrive(ctx)`: it gates on `ctx.folders` (wired only by the
+daemon's startup, absent in one-shot CLI) so a standalone
+`vetra spec-create` never boots a reactor just to write a spec. When
+present, `ctx.reactor()` returns the already-cached instance.
 - `previewServerTrigger` — runs the local API server. Triggers
   receive `commandContext.services` + `commandContext.on`, which is
   exactly what the http handlers need. `setup()` boots the server,
@@ -395,9 +412,14 @@ What happens when the agent previews an in-progress document model.
   agent
     │
     ▼
-  spec-create / spec-update → vetra-cli drive
-                              ↓ (specFsSyncTrigger)
-                       reactor-project tree (project source)
+  spec-create / spec-update
+    ├─→ specs/*.phd  (filesystem, codegen source of truth)
+    │       │ also feeds reactor-project tree (project source)
+    │       ↓ (ph vetra dev mode, Vite HMR)
+    │   reactor-project picks up new document model (codegen)
+    └─→ vetra-cli drive  (direct, synchronous when reactor running;
+                          specFsSyncTrigger is the fallback for
+                          external edits)
                               ↓ (ph vetra dev mode, Vite HMR)
                        reactor-project picks up new document model
     │

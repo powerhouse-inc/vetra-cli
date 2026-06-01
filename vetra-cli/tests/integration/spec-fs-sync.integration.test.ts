@@ -32,8 +32,8 @@ import {
   buildLoadJobsForFile,
   projectForPath,
   specForPath,
-  specFsSyncTrigger,
-} from "../../src/triggers/spec-fs-sync.js";
+} from "../../src/helpers/spec-drive-sync.js";
+import { specFsSyncTrigger } from "../../src/triggers/spec-fs-sync.js";
 import { syncSpecsToFs } from "../../src/triggers/spec-sync.js";
 
 async function waitUntil(
@@ -472,6 +472,57 @@ describe("spec-fs-sync FS → drive", () => {
       const nodes = await driveNodes();
       expect(nodes.some((n) => n.kind === "folder" && n.name === "late-project")).toBe(true);
       expect(nodes.some((n) => n.kind === "file" && n.id === draft.header.id)).toBe(true);
+      expect(logs.some((l) => l.level === "error")).toBe(false);
+    } finally {
+      await specFsSyncTrigger.teardown!(ctx);
+    }
+  }, 20_000);
+
+  // ── Live watcher: external unlink removes the file node from the drive ──
+  //
+  // A `.phd` deleted externally (git pull, rm) while the daemon runs must drop
+  // its file node from the drive. At unlink time the file is gone, so the docId
+  // is resolved from the path→docId map populated when the file was synced.
+
+  it("removes a spec's file node from the drive when the .phd is deleted externally", async () => {
+    const { logs, api: log } = makeLog();
+    const ctx = {
+      state: specFsSyncTrigger.state!(),
+      context: { workdir: tmpDir, log },
+      reactor: async () => ({ client: module.client, driveId }),
+    } as never as Parameters<NonNullable<typeof specFsSyncTrigger.setup>>[0];
+    const state = (ctx as { state: { changed: Set<string>; removed: Set<string> } }).state;
+
+    await specFsSyncTrigger.setup!(ctx);
+    try {
+      const projectDir = path.join(tmpDir, "del-project");
+      const draft = AppModuleV1.utils.createDocument();
+      draft.header.name = "del-app";
+      draft.header.documentType = "powerhouse/app";
+      await module.client.create(draft);
+      const created = await module.client.get(draft.header.id);
+      const opsByScope = await module.reactor.getOperations(draft.header.id);
+      const operations: Record<string, unknown[]> = {};
+      for (const [scope, paged] of Object.entries(opsByScope)) {
+        operations[scope] = (paged as { results: unknown[] }).results;
+      }
+      const enriched = { ...created, operations } as unknown as Parameters<typeof saveSpec>[0];
+      const filePath = await saveSpec(enriched, projectDir);
+
+      await waitUntil(() => state.changed.size > 0, { timeout: 5_000 });
+      await specFsSyncTrigger.poll(ctx);
+
+      // File node present after the initial sync.
+      let nodes = await driveNodes();
+      expect(nodes.some((n) => n.kind === "file" && n.id === draft.header.id)).toBe(true);
+
+      // Delete the .phd from disk; the watcher's unlink handler fires.
+      await fs.rm(filePath);
+      await waitUntil(() => state.removed.size > 0, { timeout: 5_000 });
+      await specFsSyncTrigger.poll(ctx);
+
+      nodes = await driveNodes();
+      expect(nodes.some((n) => n.kind === "file" && n.id === draft.header.id)).toBe(false);
       expect(logs.some((l) => l.level === "error")).toBe(false);
     } finally {
       await specFsSyncTrigger.teardown!(ctx);

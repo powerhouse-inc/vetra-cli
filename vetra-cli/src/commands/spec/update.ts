@@ -8,6 +8,8 @@ import {
   normalizeSpecActions,
   resolveActionsInput,
 } from "./_helpers.js";
+import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
+import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
 import { applyActions, saveSpec } from "./registry.js";
 
 export const specUpdate = defineCommand({
@@ -43,7 +45,8 @@ export const specUpdate = defineCommand({
         "Path to a JSON file containing the actions array. Use for human CLI workflows.",
       ),
   }),
-  execute: async (input, { workdir }) => {
+  execute: async (input, context) => {
+    const { workdir } = context;
     const base = await resolveReactorProjectPath(workdir, input.project);
     const doc = await loadByName(base, input.name);
     const { actions, minted } = normalizeSpecActions(
@@ -62,6 +65,17 @@ export const specUpdate = defineCommand({
     const opsCount =
       next.operations.global.length + next.operations.local.length;
     const path = await saveSpec(next, base);
+    // Push the updated ops into the embedded drive when a reactor is running.
+    const drive = await getEmbeddedDrive(context);
+    if (drive) {
+      await applyFsChangesToReactor(
+        [path],
+        workdir,
+        drive.reactor,
+        drive.driveId,
+        context.log,
+      );
+    }
     let text = `Applied ${actions.length} action(s) to ${next.header.documentType} "${next.header.name}" (now ${opsCount} op(s) total) → ${path}`;
     if (minted.length > 0) {
       /* The agent omitted these creation ids, so it can't know them; list them
