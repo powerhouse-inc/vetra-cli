@@ -1,6 +1,6 @@
 {
   "name": "vetra-app",
-  "version": "0.0.1-dev.0",
+  "version": "0.0.1-dev.1",
   "license": "AGPL-3.0-only",
   "publishConfig": {
     "access": "public",
@@ -63,7 +63,6 @@
     "generate": "ph-cli generate",
     "connect": "ph-cli connect",
     "build": "pnpm typecheck && ph-cli build",
-    "prepublishOnly": "pnpm build",
     "reactor": "ph-cli reactor",
     "service": "ph-cli service",
     "vetra": "ph-cli vetra",
