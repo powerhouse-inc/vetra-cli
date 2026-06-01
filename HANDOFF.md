@@ -86,9 +86,10 @@ against.
    running; absent in one-shot CLI, so a standalone `vetra spec-create`
    never boots a reactor). `specFsSyncTrigger` is demoted to the
    **external-change detector** (hand-edited `.phd`, `git pull`,
-   reactor-project writes): it still watches every project's `specs/`
-   (reconciled in `poll()` for projects created after startup), replays
-   ops via `loadBatch`, and ADD_FOLDER/ADD_FILEs each doc into its
+   reactor-project writes): it watches the workdir root recursively, so
+   `specs/` subtrees for projects created after startup are picked up
+   automatically (no `poll()` reconcile step), replays ops via
+   `loadBatch`, and ADD_FOLDER/ADD_FILEs each doc into its
    project folder, but for command writes it now observes a convergent
    no-op (`loadBatch` dedups by `action.id`). `specSyncTrigger`
    (drive→FS) reads the project↔folder mapping back to route writes to

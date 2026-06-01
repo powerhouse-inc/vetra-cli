@@ -322,9 +322,10 @@ Registered in `cli.ts`. Run as part of ph-clint's routine loop.
   docs (single-project layout).
 - `specFsSyncTrigger` — filesystem → drive (chokidar-based), the
   **external-change detector**: hand-edited `.phd`, `git pull`,
-  reactor-project writes. Watches every reactor project's `specs/`
-  under the workdir (reconciled in `poll()` so projects created after
-  startup are picked up), replays each `.phd`'s operations via
+  reactor-project writes. Watches the workdir root recursively, so
+  `specs/` subtrees for projects created after startup are picked up
+  automatically (no `poll()` reconcile step), replays each `.phd`'s
+  operations via
   `loadBatch`, and attaches the doc to the embedded `vetra-cli` drive
   under an ADD_FOLDER node named after its project (idempotent
   ensure-folder + ensure-file). This is the project↔folder mapping
