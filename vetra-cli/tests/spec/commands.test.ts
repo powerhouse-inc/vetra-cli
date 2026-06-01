@@ -13,6 +13,7 @@ import { specUpdate } from "../../src/commands/spec/update.js";
 import { makeCtx, makeWorkdir } from "./_fixtures.js";
 
 const DOC_TYPE = "powerhouse/document-model";
+const PRODUCT_TYPE = "powerhouse/feature";
 
 describe("spec-list", () => {
   let workdir: string;
@@ -55,6 +56,35 @@ describe("spec-list", () => {
       makeCtx(workdir),
     );
     expect(result.text).toBe("(no specs)");
+  });
+
+  it("filters by --category", async () => {
+    await specCreate.execute(
+      { type: DOC_TYPE, name: "BuilderSpec", dryRun: false },
+      makeCtx(workdir),
+    );
+    await specCreate.execute(
+      { type: PRODUCT_TYPE, name: "ProductSpec", dryRun: false },
+      makeCtx(workdir),
+    );
+
+    const project = await specList.execute(
+      { category: "project" },
+      makeCtx(workdir),
+    );
+    expect(project.text).toMatch(/BuilderSpec/);
+    expect(project.text).not.toMatch(/ProductSpec/);
+
+    const product = await specList.execute(
+      { category: "product" },
+      makeCtx(workdir),
+    );
+    expect(product.text).toMatch(/ProductSpec/);
+    expect(product.text).not.toMatch(/BuilderSpec/);
+
+    const all = await specList.execute({}, makeCtx(workdir));
+    expect(all.text).toMatch(/BuilderSpec/);
+    expect(all.text).toMatch(/ProductSpec/);
   });
 });
 
