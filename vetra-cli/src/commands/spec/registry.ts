@@ -98,6 +98,17 @@ export function listSpecTypes(): string[] {
   return [...listBuiltinTypes(), ...vetraAppEntries.keys()];
 }
 
+export type SpecCategory = "product" | "project";
+
+/** Product specs: vetra-app ideation domain models (brand/problem/audience
+ * sheets, feature, work-breakdown-structure). Project specs: the Powerhouse
+ * builder set (document-model, editor, app, processor, subgraph). */
+export function listSpecTypesByCategory(category: SpecCategory): string[] {
+  return category === "product"
+    ? [...vetraAppEntries.keys()]
+    : [...listBuiltinTypes()];
+}
+
 /** Directory holding specs for a given type: `<projectDir>/specs/<subdir>`. */
 export function specDir(projectDir: string, documentType: string): string {
   return join(projectDir, SPECS_DIRNAME, resolveSpecEntry(documentType).subdir);
@@ -145,12 +156,17 @@ export async function loadSpecDocument(path: string): Promise<PHDocument> {
   );
 }
 
-/** Load every spec under the project's `specs/` tree, optionally one type. */
+/** Load every spec under the project's `specs/` tree. Narrow with
+ * `documentType` (one type) or `category` (product vs project family). */
 export async function getSpecDocuments(
   projectDir: string,
-  opts: { documentType?: string } = {},
+  opts: { documentType?: string; category?: SpecCategory } = {},
 ): Promise<PHDocument[]> {
-  const types = opts.documentType ? [opts.documentType] : listSpecTypes();
+  const types = opts.documentType
+    ? [opts.documentType]
+    : opts.category
+      ? listSpecTypesByCategory(opts.category)
+      : listSpecTypes();
   const out: PHDocument[] = [];
   for (const documentType of types) {
     const dir = specDir(projectDir, documentType);

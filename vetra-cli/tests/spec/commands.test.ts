@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { createSpecDocument, saveSpec } from "../../src/commands/spec/registry.js";
 import { specCreate } from "../../src/commands/spec/create.js";
 import { specDelete } from "../../src/commands/spec/delete.js";
 import { specGenerate } from "../../src/commands/spec/generate.js";
@@ -13,6 +15,7 @@ import { specUpdate } from "../../src/commands/spec/update.js";
 import { makeCtx, makeWorkdir } from "./_fixtures.js";
 
 const DOC_TYPE = "powerhouse/document-model";
+const PRODUCT_TYPE = "powerhouse/feature";
 
 describe("spec-list", () => {
   let workdir: string;
@@ -55,6 +58,59 @@ describe("spec-list", () => {
       makeCtx(workdir),
     );
     expect(result.text).toBe("(no specs)");
+  });
+
+  it("filters by --category", async () => {
+    await specCreate.execute(
+      { type: DOC_TYPE, name: "BuilderSpec", dryRun: false },
+      makeCtx(workdir),
+    );
+    await specCreate.execute(
+      { type: PRODUCT_TYPE, name: "ProductSpec", dryRun: false },
+      makeCtx(workdir),
+    );
+
+    const project = await specList.execute(
+      { category: "project" },
+      makeCtx(workdir),
+    );
+    expect(project.text).toMatch(/BuilderSpec/);
+    expect(project.text).not.toMatch(/ProductSpec/);
+
+    const product = await specList.execute(
+      { category: "product" },
+      makeCtx(workdir),
+    );
+    expect(product.text).toMatch(/ProductSpec/);
+    expect(product.text).not.toMatch(/BuilderSpec/);
+
+    const all = await specList.execute({}, makeCtx(workdir));
+    expect(all.text).toMatch(/BuilderSpec/);
+    expect(all.text).toMatch(/ProductSpec/);
+  });
+
+  it("falls back to workspace-level product specs on a non-reactor workdir", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    try {
+      // Seed a product spec at the workspace root — no powerhouse.config.json.
+      await saveSpec(createSpecDocument(PRODUCT_TYPE, { name: "RootProduct" }), dir);
+      const result = await specList.execute({}, makeCtx(dir));
+      expect(result.text).toMatch(/RootProduct/);
+      expect(result.text).toMatch(new RegExp(PRODUCT_TYPE));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still requires a reactor project for --category project", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    try {
+      await expect(
+        specList.execute({ category: "project" }, makeCtx(dir)),
+      ).rejects.toThrow(/not a Reactor package/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

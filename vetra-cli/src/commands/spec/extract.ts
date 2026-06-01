@@ -12,6 +12,8 @@ import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
+import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
 import { slugify } from "./_helpers.js";
 
 const typeSchema = z
@@ -28,7 +30,8 @@ export const specExtract = defineCommand({
     project: projectInputSchema,
     type: typeSchema,
   }),
-  execute: async (input, { workdir }) => {
+  execute: async (input, context) => {
+    const { workdir } = context;
     const base = await resolveReactorProjectPath(workdir, input.project);
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
@@ -68,6 +71,18 @@ export const specExtract = defineCommand({
         doc.header.slug = slugify(doc.header.name);
       }
       written.push(await saveSpec(doc, base));
+    }
+
+    // Push extracted specs into the embedded drive when a reactor is running.
+    const drive = await getEmbeddedDrive(context);
+    if (drive && written.length > 0) {
+      await applyFsChangesToReactor(
+        written,
+        workdir,
+        drive.reactor,
+        drive.driveId,
+        context.log,
+      );
     }
 
     return {

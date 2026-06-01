@@ -78,18 +78,29 @@ against.
 
 2. **Specs live in the reactor-project's source tree.** Codegen runs
    there. Dev-mode Switchboard + Vite HMR pick up changes on save.
-   The vetra-cli drive keeps a synced copy of spec docs (via the
-   existing `specSyncTrigger` / `specFsSyncTrigger`) so the agent and
-   the drive UI can reason over them through the reactor. Both triggers
-   are project-aware: the embedded `vetra-cli` drive holds one folder
-   per reactor project. `specFsSyncTrigger` watches every project's
-   `specs/` (reconciled in `poll()` for projects created after
-   startup), replays ops via `loadBatch`, and ADD_FOLDER/ADD_FILEs each
-   doc into its project folder; `specSyncTrigger` reads that folder back
-   to route drive→FS writes to `<workdir>/<project>/specs/`. (Before:
-   `specFsSyncTrigger` watched only `<workdir>/specs` and never attached
-   docs to the drive, so workspace-layout specs never reached the
-   embedded reactor.)
+   The vetra-cli drive keeps a synced copy of spec docs so the agent and
+   the drive UI can reason over them through the reactor.
+   **Command-originated spec writes push the drive directly and
+   synchronously.** The `spec-*` write commands (`spec-create`,
+   `spec-update`, `spec-extract`, `spec-delete`) always write the
+   filesystem `specs/` (codegen's source of truth) AND, when a reactor
+   is running, push the change into the embedded drive in the same call
+   — via `helpers/spec-drive-sync.ts` (`applyFsChangesToReactor` /
+   `removeSpecFromDrive`), gated on `helpers/embedded-drive.ts`
+   `getEmbeddedDrive(ctx)` (presence of `ctx.folders` = daemon reactor
+   running; absent in one-shot CLI, so a standalone `vetra spec-create`
+   never boots a reactor). `specFsSyncTrigger` is demoted to the
+   **external-change detector** (hand-edited `.phd`, `git pull`,
+   reactor-project writes): it watches the workdir root recursively, so
+   `specs/` subtrees for projects created after startup are picked up
+   automatically (no `poll()` reconcile step), replays ops via
+   `loadBatch`, and ADD_FOLDER/ADD_FILEs each doc into its
+   project folder, but for command writes it now observes a convergent
+   no-op (`loadBatch` dedups by `action.id`). `specSyncTrigger`
+   (drive→FS) reads the project↔folder mapping back to route writes to
+   `<workdir>/<project>/specs/`. The push/remove + path-inference logic
+   moved out of `triggers/spec-fs-sync.ts` into the shared
+   `helpers/spec-drive-sync.ts`; the trigger now imports it.
 
 3. **Project stays as a service for MVP.** Promoting `Project` to a
    document model in the vetra-cli drive is phase 2. Chat sessions

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { requireOption } from "../../helpers/cli-errors.js";
 import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
+import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
 import { assertKnownDocumentType, slugify } from "./_helpers.js";
 import { createSpecDocument, saveSpec } from "./registry.js";
 
@@ -26,7 +28,8 @@ export const specCreate = defineCommand({
         "If set, create the doc in-memory only — don't persist to specs/.",
       ),
   }),
-  execute: async (input, { workdir }) => {
+  execute: async (input, context) => {
+    const { workdir } = context;
     const base = await resolveReactorProjectPath(workdir, input.project);
     requireOption(input.type, "type", "Run `spec-schema-list` to see valid types.");
     assertKnownDocumentType(input.type);
@@ -40,6 +43,18 @@ export const specCreate = defineCommand({
       };
     }
     const path = await saveSpec(doc, base);
+    // When a reactor is already running (daemon), push the new spec straight
+    // into the embedded drive so Studio reflects it without the watcher.
+    const drive = await getEmbeddedDrive(context);
+    if (drive) {
+      await applyFsChangesToReactor(
+        [path],
+        workdir,
+        drive.reactor,
+        drive.driveId,
+        context.log,
+      );
+    }
     return {
       text: `Created ${doc.header.documentType} "${doc.header.name}"  id: ${doc.header.id}\n${path}`,
     };
