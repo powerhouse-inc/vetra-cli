@@ -98,6 +98,14 @@ RUN set -eu; \
 
 ENV VETRA_REACTOR_PROJECT_CLONE_PATH=/home/clint/templates/reactor-template
 
+# Pre-record observability consent. The consent gate defaults non-TTY runs to
+# denied, so without this the container never reports. Bake a decision; set
+# OBSERVABILITY_CONSENT=denied to ship an opted-out image.
+ARG OBSERVABILITY_CONSENT=granted
+RUN mkdir -p /home/clint/.ph/vetra \
+ && printf '{\n  "consent": "%s",\n  "promptedAt": null\n}\n' "${OBSERVABILITY_CONSENT}" \
+      > /home/clint/.ph/vetra/observability-consent.json
+
 LABEL io.vetra.clint.package="vetra-cli" \
       io.vetra.clint.version="${CLINT_VERSION}"
 

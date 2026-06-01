@@ -191,7 +191,8 @@ export const cli = defineCli({
   // @clint:end lifecycle
 
   configDefaults: {
-    sentryDsn: "https://a0195e4737951326d23f18b05df6e947@sentry.monitoring.vetra.io/4"
+    sentryDsn: "https://a0195e4737951326d23f18b05df6e947@sentry.monitoring.vetra.io/4",
+    otelExporterOtlpEndpoint: "http://otel-collector.monitoring.svc.cluster.local:4318"
   },
 
   // @clint:begin interactive
