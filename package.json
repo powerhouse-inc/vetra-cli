@@ -9,8 +9,8 @@
     "dev": "pnpm --filter vetra-cli dev",
     "start": "pnpm --filter vetra-cli start",
     "lint": "pnpm -r run lint",
-    "publish:dev": "pnpm --filter vetra-cli exec ph-publish dev -c ../publish.config.js --verify-connect",
-    "publish:staging": "pnpm --filter vetra-cli exec ph-publish staging -c ../publish.config.js --verify-connect",
-    "publish:production": "pnpm --filter vetra-cli exec ph-publish production -c ../publish.config.js --verify-connect"
+    "publish:dev": "PH_CONNECT_DEFAULT_DRIVES_URL=http://__ph_drive_url__ pnpm --filter vetra-cli exec ph-publish dev -c ../publish.config.js --verify-connect",
+    "publish:staging": "PH_CONNECT_DEFAULT_DRIVES_URL=http://__ph_drive_url__ pnpm --filter vetra-cli exec ph-publish staging -c ../publish.config.js --verify-connect",
+    "publish:production": "PH_CONNECT_DEFAULT_DRIVES_URL=http://__ph_drive_url__ pnpm --filter vetra-cli exec ph-publish production -c ../publish.config.js --verify-connect"
   }
 }
