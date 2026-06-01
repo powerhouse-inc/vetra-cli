@@ -26,7 +26,7 @@
     }
   },
   "serviceCommand": "vetra",
-  "proxyEnabled": false,
+  "proxyEnabled": true,
   "supportedResources": [
       "vetra-agent-xl",
       "vetra-agent-xxl"
