@@ -29,6 +29,7 @@ import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
 import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url.js';
+import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
@@ -180,6 +181,14 @@ export const cli = defineCli({
   // @clint:begin proxy
   proxyEnabled: true,
   // @clint:end proxy
+  proxyRoutes: [
+    // Browser-facing preview-server route — vetra-studio (served at the proxy
+    // root) reaches /resolve, /start, and the SSE /events stream same-origin.
+    {
+      prefix: '/preview',
+      upstream: `http://127.0.0.1:${DEFAULT_PREVIEW_SERVER_PORT}`,
+    },
+  ],
 
   // @clint:begin lifecycle
   lifecycle: [
@@ -193,7 +202,10 @@ export const cli = defineCli({
 
   configDefaults: {
     sentryDsn: "https://a0195e4737951326d23f18b05df6e947@sentry.monitoring.vetra.io/4",
-    otelExporterOtlpEndpoint: "http://otel-collector.monitoring.svc.cluster.local:4318"
+    otelExporterOtlpEndpoint: "http://otel-collector.monitoring.svc.cluster.local:4318",
+    // Pin the proxy port so browser-facing URLs (stamped drive URL, iframe
+    // paths) survive daemon restarts; 0 would auto-assign per session.
+    proxyPort: 8090,
   },
 
   // @clint:begin interactive

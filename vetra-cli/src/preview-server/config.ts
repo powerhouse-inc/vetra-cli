@@ -16,7 +16,17 @@ export type ResolveResult =
   | { kind: "unknown-project"; project: string; error: string }
   | { kind: "project-stopped"; project: string; projectPath: string }
   | { kind: "starting"; project: string; projectPath: string; driveId: string }
-  | { kind: "ready"; project: string; projectPath: string; driveId: string; documentId: string; url: string };
+  | {
+      kind: "ready";
+      project: string;
+      projectPath: string;
+      driveId: string;
+      documentId: string;
+      /** Direct Connect URL (includes the --base path). */
+      url: string;
+      /** Same document as a proxy-relative path — valid from any origin that the proxy serves. */
+      proxiedUrl: string;
+    };
 
 export type StartResult =
   | { kind: "started"; project: string; projectPath: string; instanceId: string; driveId: string }

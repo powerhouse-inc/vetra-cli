@@ -471,6 +471,58 @@ the document model from the project's own code, the dev-mode Connect
 imports the editor via Vite. No `npm publish`, no local registry, no
 dynamic bundle swap.
 
+## Embedded reverse proxy
+
+ph-clint's embedded proxy (`proxyEnabled: true`, port pinned to 8090 via
+`configDefaults.proxyPort`) exposes every browser-facing endpoint through
+a single public port — the requirement for deployed agents, where the
+user's browser can only reach that one port.
+
+Route sources:
+
+- **Switchboard built-ins** — `/switchboard/graphql`, `/switchboard/d/`,
+  `/switchboard/mcp`, registered before `powerhouse:switchboard:ready`
+  fires so event consumers can hand out proxied URLs immediately.
+- **Service readiness captures** — every typed capture routes at
+  `/{serviceId}/{captureName}` (e.g. `/reactor-project/vetra-switchboard`).
+  `website` captures route there too unless they claim the `/` catch-all
+  via `proxyRoot: true` (the embedded Connect does; single-website CLIs
+  fall back to root implicitly).
+- **Static `proxyRoutes`** — in-process servers the ServiceManager doesn't
+  know about; vetra-cli registers `/preview` → preview-server (`:5180`).
+
+Browser-facing URL policy, per consumer. The `connect-drive-url` hook
+stamps absolute URLs into the prebuilt vetra-app bundle on
+`powerhouse:switchboard:ready` (placeholder tokens on first run, the
+last-applied value afterwards; one cache file per token):
+
+- **vetra-studio (embedded Connect)** — served at proxy `/`; the hook
+  stamps the *proxied* drive URL
+  (`http://localhost:8090/switchboard/d/<id>`) from the extended
+  switchboard-ready event payload.
+- **preview-server** — the hook stamps `<proxy>/preview` over
+  `PREVIEW_SERVER_URL_PLACEHOLDER` (a literal in vetra-app's
+  `preview-server-client.ts`; direct loopback URL when the proxy is
+  off). Vite-dev of vetra-app falls back to direct `127.0.0.1:5180`
+  via `import.meta.env.DEV`.
+- **BUILD iframe (reactor-project Connect)** — the service passes
+  `ph vetra --base /reactor-project/vetra-studio/` (see
+  `REACTOR_PROJECT_CONNECT_PROXY_PATH`) so Vite emits self-contained
+  URLs under the proxy prefix; the readiness capture keeps the base path
+  in the endpoint URL so the proxy forwards verbatim. `/resolve` returns
+  both `url` (direct) and `proxiedUrl` (proxy-relative); the client
+  resolves `proxiedUrl` against the stamped proxy origin (detected by
+  the stamp's `/preview` pathname).
+
+Known gaps: `--base` only reaches Vite once monorepo PR #2676
+(builder-tools `base: env.PH_CONNECT_BASE_PATH`) is in the published
+stack; the drive URLs *inside* the project Connect
+(`PH_CONNECT_DEFAULT_DRIVES_URL`) still point directly at the project
+switchboard (`:4001`), which works locally but not deployed — `ph vetra`
+computes them internally and offers no override; and the stamped drive
+URL bakes the proxy's localhost origin, so deployed agents need either a
+public-origin config or relative drive-URL support in Connect.
+
 ## Workflow scaffolds
 
 A workflow scaffold is a React component in vetra-app that owns the

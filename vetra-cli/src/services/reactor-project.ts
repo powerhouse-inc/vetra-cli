@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { checkWorkdir, checkCommand, checkPort } from '@powerhousedao/ph-clint';
 import { defineService } from '../framework.js';
+import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from '../constants.js';
 
 const reactorProjectParams = z.object({
   watch: z.boolean().default(true).describe('Enable file watching'),
@@ -19,6 +20,9 @@ export const reactorProject = defineService({
     if (params?.watch !== false) parts.push('--watch');
     if (typeof params?.connectPort === 'number') parts.push('--connect-port', String(params.connectPort));
     if (typeof params?.switchboardPort === 'number') parts.push('--switchboard-port', String(params.switchboardPort));
+    // Serve Connect under the proxy prefix so the BUILD iframe loads it
+    // through the embedded proxy; Vite emits all asset URLs under this base.
+    parts.push('--base', `${REACTOR_PROJECT_CONNECT_PROXY_PATH}/`);
     return parts.join(' ');
   },
   paramsSchema: reactorProjectParams,
@@ -32,8 +36,10 @@ export const reactorProject = defineService({
   readiness: {
     patterns: [
       {
+        // Capture the full URL including the --base path: the proxy forwards
+        // the matched prefix verbatim, so the upstream must carry the base.
         name: 'vetra-studio',
-        pattern: /Local:\s*(http:\/\/localhost:\d+)/,
+        pattern: /Local:\s*(http:\/\/localhost:\d+[^\s]*)/,
         captures: { 'vetra-studio': { group: 1, type: 'website' } },
       },
       {

@@ -1,17 +1,46 @@
 /**
  * Client-side bindings for the vetra-cli preview-server.
  *
- * The server runs in the vetra-cli daemon (separate process from Connect)
- * on a fixed loopback port. We hardcode the URL — same convention as the
- * Switchboard / Connect endpoints that get baked into the bundle at build
- * time. If the port becomes configurable upstream, swap this for a value
- * read from `import.meta.env`.
+ * The server runs in the vetra-cli daemon (separate process from Connect),
+ * reached through the daemon's embedded proxy at `<proxy>/preview`. The
+ * proxy URL isn't known at build time, so the base below is a placeholder
+ * token (must match `PREVIEW_SERVER_URL_PLACEHOLDER` in vetra-cli's
+ * `constants.ts`) that the `connect-drive-url` lifecycle hook stamps with
+ * the absolute proxy URL on daemon startup — same mechanism as the default
+ * drive URL. An unstamped bundle (vite dev, or before the first stamp)
+ * falls back to the preview-server's direct loopback port.
  *
- * The EventSource is shared across all consumers of `usePreviewEvents` so
- * we keep exactly one open connection per browser tab regardless of how
+ * `ready` results carry a proxy-relative `proxiedUrl`; when the base is
+ * stamped we resolve it against the proxy origin so the BUILD iframe goes
+ * through the proxy too.
+ *
+ * The EventSource is shared across all consumers of `subscribePreviewEvents`
+ * so we keep exactly one open connection per browser tab regardless of how
  * many BUILD panes mount.
  */
-export const PREVIEW_SERVER_BASE_URL = "http://127.0.0.1:5180";
+const PREVIEW_SERVER_BASE_URL = "http://__ph_preview_server_url__";
+const DIRECT_BASE = "http://127.0.0.1:5180";
+
+/* Vite dev serves the editor from source, where the placeholder is never
+ * stamped — use the direct port there. Built bundles are stamped by the
+ * daemon before the browser loads them (proxy URL when enabled, direct URL
+ * otherwise). Safe access: package builds may lack import.meta.env. */
+const isDev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+const BASE = isDev ? DIRECT_BASE : PREVIEW_SERVER_BASE_URL;
+
+/**
+ * Proxy origin to resolve proxy-relative `proxiedUrl`s against. Only the
+ * proxied stamp has the `/preview` path — a direct stamp (or dev fallback)
+ * serves from the loopback root, where proxy paths don't exist.
+ */
+const PROXY_ORIGIN = (() => {
+  try {
+    const u = new URL(BASE);
+    return u.pathname === "/preview" ? u.origin : undefined;
+  } catch {
+    return undefined;
+  }
+})();
 
 export type ResolveResult =
   | { kind: "no-target" }
@@ -25,6 +54,7 @@ export type ResolveResult =
       driveId: string;
       documentId: string;
       url: string;
+      proxiedUrl?: string;
     };
 
 export type StartResult =
@@ -51,23 +81,24 @@ export async function fetchResolve(args: {
   doc: string;
   signal?: AbortSignal;
 }): Promise<ResolveResult> {
-  const u = new URL(`${PREVIEW_SERVER_BASE_URL}/resolve`);
-  u.searchParams.set("project", args.project);
-  u.searchParams.set("doc", args.doc);
-  const res = await fetch(u.toString(), { signal: args.signal });
+  const params = new URLSearchParams({ project: args.project, doc: args.doc });
+  const res = await fetch(`${BASE}/resolve?${params}`, { signal: args.signal });
   if (!res.ok) {
     throw new Error(`preview-server /resolve: ${res.status} ${res.statusText}`);
   }
-  return (await res.json()) as ResolveResult;
+  const result = (await res.json()) as ResolveResult;
+  if (result.kind === "ready" && PROXY_ORIGIN && result.proxiedUrl) {
+    return { ...result, url: `${PROXY_ORIGIN}${result.proxiedUrl}` };
+  }
+  return result;
 }
 
 export async function fetchStart(args: {
   project: string;
   signal?: AbortSignal;
 }): Promise<StartResult> {
-  const u = new URL(`${PREVIEW_SERVER_BASE_URL}/start`);
-  u.searchParams.set("project", args.project);
-  const res = await fetch(u.toString(), {
+  const params = new URLSearchParams({ project: args.project });
+  const res = await fetch(`${BASE}/start?${params}`, {
     method: "POST",
     signal: args.signal,
   });
@@ -85,7 +116,7 @@ function ensureSource(): EventSource | undefined {
     return undefined;
   if (sharedSource && sharedSource.readyState !== EventSource.CLOSED)
     return sharedSource;
-  const src = new EventSource(`${PREVIEW_SERVER_BASE_URL}/events`);
+  const src = new EventSource(`${BASE}/events`);
   for (const type of [
     "service:starting",
     "service:ready",

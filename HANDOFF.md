@@ -170,6 +170,19 @@ against.
     publish flow inert. Code stays as reference; do not extend it.
     See ARCHITECTURE.md footnote.
 
+14. **All browser-facing endpoints route through the embedded proxy**
+    (port pinned to 8090). Studio at `/` (explicit `proxyRoot` on the
+    embedded Connect capture), preview-server at `/preview` (static
+    `proxyRoutes`), project Connect at `/reactor-project/vetra-studio`
+    (service passes `ph vetra --base` so Vite emits self-contained
+    URLs). The `connect-drive-url` hook stamps absolute proxy URLs
+    into the prebuilt bundle for both the drive URL and the
+    preview-server base (`<proxy>/preview` over
+    `PREVIEW_SERVER_URL_PLACEHOLDER`); the client resolves the iframe
+    `proxiedUrl` against the stamped proxy origin. Vite-dev of
+    vetra-app falls back to the direct port via `import.meta.env.DEV`.
+    See ARCHITECTURE.md → "Embedded reverse proxy".
+
 ## Repositories touched
 
 Implementation is concentrated in **vetra-cli + vetra-app** (this
@@ -182,10 +195,18 @@ exercise them.
 - `/Users/acaldas/dev/powerhouse/vetra/vetra-cli/vetra-app/` — drive
   editor (Vetra Studio), default workflow scaffold component.
 
-ph-clint stays untouched in this round. If during implementation the
-local API ends up needing project-lifecycle hooks the service manager
-doesn't expose, that's an upstream change — flag it and weigh
-carefully before adding.
+The proxy round (June 2026) reopened both upstreams:
+
+- **ph-clint** (local checkout, `main`): `proxyRoutes` option,
+  `proxyRoot` capture flag + implicit single-website fallback,
+  `context.proxy`, proxied URLs on `powerhouse:switchboard:ready`,
+  duplicate-prefix warning. Linked into this workspace via a
+  `pnpm-workspace.yaml` override until published.
+- **monorepo**: PR #2676 (`connect-vite-base`) passes
+  `PH_CONNECT_BASE_PATH` to Vite `base` in builder-tools — required
+  for the iframe leg. Until it ships, local testing patches
+  kanban-board's installed builder-tools dist by hand (re-applied
+  after any `pnpm install` in vetra-test projects).
 
 ## Implementation plan
 
@@ -237,6 +258,20 @@ Suggested order. Each step is independently demoable.
    → set_step_content for BUILD. The iframe lights up.
 
 ## Things NOT done that could matter
+
+- **Project Connect's drive URLs still bypass the proxy.** The iframe
+  Connect syncs `PH_CONNECT_DEFAULT_DRIVES_URL` straight to the project
+  switchboard (`:4001`) — fine locally, broken deployed. `ph vetra`
+  computes those URLs internally; needs an upstream override or
+  relative-drive-URL support in Connect.
+
+- **Stamped drive URL bakes the proxy's localhost origin.** A deployed
+  agent needs a public-origin config (or relative drive URLs) before
+  the stamp is correct remotely.
+
+- **Monorepo PR #2676 not merged/published.** Until the stack ships it,
+  `--base` doesn't reach Vite in real projects; the kanban-board
+  node_modules patch is the only thing making the iframe leg work.
 
 - **Workflow persistence.** In-memory registry; vetra-cli restart =
   lost workflows. Editor reconnects to a fresh registry. Persistence

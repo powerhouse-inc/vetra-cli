@@ -7,6 +7,7 @@
  * sole mutator.
  */
 import type { ServiceManager } from "@powerhousedao/ph-clint";
+import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from "../constants.js";
 import { resolveReactorProjectPath } from "../helpers/project.js";
 import { getPreviewDriveId } from "../helpers/reactor-project-preview.js";
 import type { ResolveResult } from "./config.js";
@@ -52,13 +53,14 @@ export async function resolvePreview(args: {
   }
 
   const base = connectUrl.replace(/\/+$/, "");
-  const url = `${base}/d/${driveId}/${encodeURIComponent(args.doc)}?embed=1`;
+  const docPath = `/d/${driveId}/${encodeURIComponent(args.doc)}?embed=1`;
   return {
     kind: "ready",
     project: args.project,
     projectPath,
     driveId,
     documentId: args.doc,
-    url,
+    url: `${base}${docPath}`,
+    proxiedUrl: `${REACTOR_PROJECT_CONNECT_PROXY_PATH}${docPath}`,
   };
 }
