@@ -178,6 +178,7 @@ export const cli = defineCli({
   // @clint:end events
 
   // @clint:begin proxy
+  proxyEnabled: true,
   // @clint:end proxy
 
   // @clint:begin lifecycle

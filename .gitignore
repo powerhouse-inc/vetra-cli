@@ -38,5 +38,6 @@ yarn-error.log*
 /vetra-app/.npmrc
 /vetra-app/dist/connect.bak/
 .claude/ph-clint
+.claude/worktrees/
 vetra-cli/.npmrc
 .npmrc
