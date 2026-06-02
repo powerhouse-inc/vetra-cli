@@ -21,9 +21,6 @@ catalogs:
     '@powerhousedao/ph-cli':
       specifier: 6.1.0-dev.9
       version: 6.1.0-dev.9
-    '@powerhousedao/ph-clint':
-      specifier: 0.1.0-dev.79
-      version: 0.1.0-dev.79
     '@powerhousedao/ph-clint-dev':
       specifier: 0.1.0-dev.79
       version: 0.1.0-dev.79
@@ -74,6 +71,7 @@ overrides:
   mastra>@mastra/deployer: 1.22.0
   zod: 4.3.6
   viem: 2.49.0
+  '@powerhousedao/ph-clint': link:/Users/acaldas/dev/powerhouse/ph-clint/packages/ph-clint
 
 patchedDependencies:
   '@powerhousedao/ph-clint-dev@0.1.0-dev.79': ba27f58ad17b807e5f3c2c85e8096fa315adf3f1a635a501dad22c27390f35d0
@@ -212,16 +210,16 @@ importers:
         version: 1.18.2(@mastra/core@1.32.1(@grpc/grpc-js@1.14.3)(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(openapi-types@12.1.3)(zod@4.3.6))(@types/json-schema@7.0.15)(express@4.22.2)(openapi-types@12.1.3)(zod@4.3.6))(zod@4.3.6)
       '@powerhousedao/clint-common':
         specifier: 'catalog:'
-        version: 0.1.0-dev.79(@babel/runtime@7.29.2)(@electric-sql/pglite@0.3.15)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@fastify/websocket@11.2.0)(@openfeature/core@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(@parcel/watcher@2.5.6)(@powerhousedao/ph-clint@0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5))(@types/mdast@4.0.4)(@types/node@25.8.0)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(esbuild@0.28.0)(jiti@2.7.0)(micromark-util-types@2.0.2)(micromark@4.0.2)(terser@5.48.0)(tsx@4.22.1)(typescript@6.0.3)(unified@11.0.5)(vite@8.0.8(@types/node@25.8.0)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.1)(yaml@2.9.0))(yaml@2.9.0)
+        version: 0.1.0-dev.79(@babel/runtime@7.29.2)(@electric-sql/pglite@0.3.15)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@fastify/websocket@11.2.0)(@openfeature/core@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(@parcel/watcher@2.5.6)(@powerhousedao/ph-clint@..+ph-clint+packages+ph-clint)(@types/mdast@4.0.4)(@types/node@25.8.0)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(esbuild@0.28.0)(jiti@2.7.0)(micromark-util-types@2.0.2)(micromark@4.0.2)(terser@5.48.0)(tsx@4.22.1)(typescript@6.0.3)(unified@11.0.5)(vite@8.0.8(@types/node@25.8.0)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.1)(yaml@2.9.0))(yaml@2.9.0)
       '@powerhousedao/codegen':
         specifier: 'catalog:'
         version: 6.1.0-dev.9(@fastify/websocket@11.2.0)(@parcel/watcher@2.5.6)(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(graphql@16.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(typescript@6.0.3)
       '@powerhousedao/ph-clint':
-        specifier: 'catalog:'
-        version: 0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5)
+        specifier: link:/Users/acaldas/dev/powerhouse/ph-clint/packages/ph-clint
+        version: link:../../../ph-clint/packages/ph-clint
       '@powerhousedao/ph-clint-observability':
         specifier: 'catalog:'
-        version: 0.1.0-dev.79(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5))
+        version: 0.1.0-dev.79(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@..+ph-clint+packages+ph-clint)
       '@powerhousedao/reactor':
         specifier: 'catalog:'
         version: 6.1.0-dev.9(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))
@@ -264,7 +262,7 @@ importers:
         version: 30.4.1
       '@powerhousedao/ph-clint-dev':
         specifier: 'catalog:'
-        version: 0.1.0-dev.79(patch_hash=ba27f58ad17b807e5f3c2c85e8096fa315adf3f1a635a501dad22c27390f35d0)(64f08f278ad5942529a6fc9114fb08a5)
+        version: 0.1.0-dev.79(patch_hash=ba27f58ad17b807e5f3c2c85e8096fa315adf3f1a635a501dad22c27390f35d0)
       '@types/node':
         specifier: 'catalog:'
         version: 25.8.0
@@ -11616,6 +11614,7 @@ snapshots:
     dependencies:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
+    optional: true
 
   '@antfu/install-pkg@1.1.0':
     dependencies:
@@ -14865,7 +14864,7 @@ snapshots:
       - tsx
       - yaml
 
-  '@powerhousedao/clint-common@0.1.0-dev.79(@babel/runtime@7.29.2)(@electric-sql/pglite@0.3.15)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@fastify/websocket@11.2.0)(@openfeature/core@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(@parcel/watcher@2.5.6)(@powerhousedao/ph-clint@0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5))(@types/mdast@4.0.4)(@types/node@25.8.0)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(esbuild@0.28.0)(jiti@2.7.0)(micromark-util-types@2.0.2)(micromark@4.0.2)(terser@5.48.0)(tsx@4.22.1)(typescript@6.0.3)(unified@11.0.5)(vite@8.0.8(@types/node@25.8.0)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.1)(yaml@2.9.0))(yaml@2.9.0)':
+  '@powerhousedao/clint-common@0.1.0-dev.79(@babel/runtime@7.29.2)(@electric-sql/pglite@0.3.15)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@fastify/websocket@11.2.0)(@openfeature/core@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(@parcel/watcher@2.5.6)(@powerhousedao/ph-clint@..+ph-clint+packages+ph-clint)(@types/mdast@4.0.4)(@types/node@25.8.0)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(esbuild@0.28.0)(jiti@2.7.0)(micromark-util-types@2.0.2)(micromark@4.0.2)(terser@5.48.0)(tsx@4.22.1)(typescript@6.0.3)(unified@11.0.5)(vite@8.0.8(@types/node@25.8.0)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.1)(yaml@2.9.0))(yaml@2.9.0)':
     dependencies:
       '@powerhousedao/analytics-engine-core': 6.0.0-dev.257(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)
       '@powerhousedao/connect': 6.0.0-dev.257(@babel/runtime@7.29.2)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@fastify/websocket@11.2.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(@parcel/watcher@2.5.6)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(graphql-tag@2.12.6(graphql@16.12.0))(graphql@16.12.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@6.0.3)(zod@4.3.6)
@@ -14900,7 +14899,7 @@ snapshots:
       use-stick-to-bottom: 1.1.4(react@19.2.3)
       zod: 4.3.6
     optionalDependencies:
-      '@powerhousedao/ph-clint': 0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5)
+      '@powerhousedao/ph-clint': link:../../ph-clint/packages/ph-clint
     transitivePeerDependencies:
       - '@babel/runtime'
       - '@cfworker/json-schema'
@@ -15906,32 +15905,13 @@ snapshots:
       - vue-tsc
       - yaml
 
-  '@powerhousedao/ph-clint-dev@0.1.0-dev.79(patch_hash=ba27f58ad17b807e5f3c2c85e8096fa315adf3f1a635a501dad22c27390f35d0)(64f08f278ad5942529a6fc9114fb08a5)':
+  '@powerhousedao/ph-clint-dev@0.1.0-dev.79(patch_hash=ba27f58ad17b807e5f3c2c85e8096fa315adf3f1a635a501dad22c27390f35d0)':
     dependencies:
-      '@powerhousedao/ph-clint': 0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5)
+      '@powerhousedao/ph-clint': link:../../ph-clint/packages/ph-clint
       handlebars: 4.7.9
       zod: 4.3.6
-    transitivePeerDependencies:
-      - '@electric-sql/pglite'
-      - '@mastra/core'
-      - '@mastra/libsql'
-      - '@mastra/memory'
-      - '@powerhousedao/reactor'
-      - '@powerhousedao/reactor-api'
-      - '@powerhousedao/reactor-attachments'
-      - '@powerhousedao/reactor-mcp'
-      - '@powerhousedao/shared'
-      - '@powerhousedao/switchboard'
-      - '@types/react'
-      - bufferutil
-      - debug
-      - document-model
-      - kysely
-      - kysely-pglite-dialect
-      - react-devtools-core
-      - utf-8-validate
 
-  '@powerhousedao/ph-clint-observability@0.1.0-dev.79(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5))':
+  '@powerhousedao/ph-clint-observability@0.1.0-dev.79(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@..+ph-clint+packages+ph-clint)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/exporter-metrics-otlp-http': 0.205.0(@opentelemetry/api@1.9.1)
@@ -15941,7 +15921,7 @@ snapshots:
       '@opentelemetry/sdk-node': 0.205.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-base': 2.7.1(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.41.1
-      '@powerhousedao/ph-clint': 0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5)
+      '@powerhousedao/ph-clint': link:../../ph-clint/packages/ph-clint
       '@sentry/node': 8.55.2
       '@sentry/opentelemetry': 8.55.2(@opentelemetry/api@1.9.1)(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)
       zod: 4.3.6
@@ -15951,47 +15931,13 @@ snapshots:
       - '@opentelemetry/instrumentation'
       - supports-color
 
-  '@powerhousedao/ph-clint@0.1.0-dev.79(64f08f278ad5942529a6fc9114fb08a5)':
-    dependencies:
-      cli-highlight: 2.1.11
-      commander: 12.1.0
-      handlebars: 4.7.9
-      http-proxy: 1.18.1
-      ink: 6.8.0(@types/react@19.2.14)(react@19.2.6)
-      ink-spinner: 5.0.0(ink@6.8.0(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
-      ink-text-input: 6.0.0(ink@6.8.0(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
-      marked: 12.0.2
-      marked-terminal: 7.3.0(marked@12.0.2)
-      react: 19.2.6
-      zod: 4.3.6
-    optionalDependencies:
-      '@electric-sql/pglite': 0.3.15
-      '@mastra/core': 1.32.1(@grpc/grpc-js@1.14.3)(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(openapi-types@12.1.3)(zod@4.3.6))(@types/json-schema@7.0.15)(express@4.22.2)(openapi-types@12.1.3)(zod@4.3.6)
-      '@mastra/libsql': 1.10.1(@mastra/core@1.32.1(@grpc/grpc-js@1.14.3)(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(openapi-types@12.1.3)(zod@4.3.6))(@types/json-schema@7.0.15)(express@4.22.2)(openapi-types@12.1.3)(zod@4.3.6))
-      '@mastra/memory': 1.18.2(@mastra/core@1.32.1(@grpc/grpc-js@1.14.3)(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(openapi-types@12.1.3)(zod@4.3.6))(@types/json-schema@7.0.15)(express@4.22.2)(openapi-types@12.1.3)(zod@4.3.6))(zod@4.3.6)
-      '@powerhousedao/reactor': 6.1.0-dev.9(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))
-      '@powerhousedao/reactor-api': 6.1.0-dev.9(b483afa07506deaffe62fa8377d60cb6)
-      '@powerhousedao/reactor-attachments': 6.0.0-dev.257(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)
-      '@powerhousedao/reactor-mcp': 6.0.0-dev.257(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@openfeature/core@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(@types/node@25.8.0)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.1)(yaml@2.9.0)
-      '@powerhousedao/shared': 6.1.0-dev.9(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))
-      '@powerhousedao/switchboard': 6.1.0-dev.9(@babel/runtime@7.29.2)(@fastify/cors@11.2.0)(@fastify/formbody@8.0.2)(@fastify/middie@9.3.2)(@fastify/websocket@11.2.0)(@mercuriusjs/gateway@5.2.0(@fastify/websocket@11.2.0))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@parcel/watcher@2.5.6)(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(@types/node@25.8.0)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(esbuild@0.28.0)(fastify@5.8.5)(graphql-tag@2.12.6(graphql@16.12.0))(graphql@16.12.0)(jiti@2.7.0)(mercurius@16.9.0(graphql@16.12.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(terser@5.48.0)(tsx@4.22.1)(typescript@6.0.3)(yaml@2.9.0)
-      document-model: 6.1.0-dev.9(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))
-      kysely: 0.28.16
-      kysely-pglite-dialect: 1.2.0(@electric-sql/pglite@0.3.15)(kysely@0.28.16)
-    transitivePeerDependencies:
-      - '@types/react'
-      - bufferutil
-      - debug
-      - react-devtools-core
-      - utf-8-validate
-
   '@powerhousedao/ph-clint@0.1.0-dev.79(99873f8675562c8bb2e821212d9672c9)':
     dependencies:
       cli-highlight: 2.1.11
       commander: 12.1.0
       handlebars: 4.7.9
       http-proxy: 1.18.1
-      ink: 6.8.0(@types/react@19.2.14)(react@19.2.6)
+      ink: 6.8.0(@types/react@19.2.14)(react@19.2.3)
       ink-spinner: 5.0.0(ink@6.8.0(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
       ink-text-input: 6.0.0(ink@6.8.0(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
       marked: 12.0.2
@@ -20339,7 +20285,8 @@ snapshots:
 
   ansis@4.3.0: {}
 
-  any-promise@1.3.0: {}
+  any-promise@1.3.0:
+    optional: true
 
   anymatch@3.1.3:
     dependencies:
@@ -20463,7 +20410,8 @@ snapshots:
 
   auto-bind@4.0.0: {}
 
-  auto-bind@5.0.1: {}
+  auto-bind@5.0.1:
+    optional: true
 
   available-typed-arrays@1.0.7:
     dependencies:
@@ -20847,11 +20795,13 @@ snapshots:
 
   clean-stack@2.2.0: {}
 
-  cli-boxes@3.0.0: {}
+  cli-boxes@3.0.0:
+    optional: true
 
   cli-cursor@4.0.0:
     dependencies:
       restore-cursor: 4.0.0
+    optional: true
 
   cli-cursor@5.0.0:
     dependencies:
@@ -20865,14 +20815,17 @@ snapshots:
       parse5: 5.1.1
       parse5-htmlparser2-tree-adapter: 6.0.1
       yargs: 16.2.0
+    optional: true
 
-  cli-spinners@2.9.2: {}
+  cli-spinners@2.9.2:
+    optional: true
 
   cli-table3@0.6.5:
     dependencies:
       string-width: 4.2.3
     optionalDependencies:
       '@colors/colors': 1.5.0
+    optional: true
 
   cli-truncate@5.2.0:
     dependencies:
@@ -20890,6 +20843,7 @@ snapshots:
       string-width: 4.2.3
       strip-ansi: 6.0.1
       wrap-ansi: 7.0.0
+    optional: true
 
   cliui@8.0.1:
     dependencies:
@@ -20957,6 +20911,7 @@ snapshots:
   code-excerpt@4.0.0:
     dependencies:
       convert-to-spaces: 2.0.1
+    optional: true
 
   collect-v8-coverage@1.0.3: {}
 
@@ -20980,7 +20935,8 @@ snapshots:
 
   commander@10.0.1: {}
 
-  commander@12.1.0: {}
+  commander@12.1.0:
+    optional: true
 
   commander@2.20.3: {}
 
@@ -21032,7 +20988,8 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
-  convert-to-spaces@2.0.1: {}
+  convert-to-spaces@2.0.1:
+    optional: true
 
   cookie-signature@1.0.6: {}
 
@@ -21618,7 +21575,8 @@ snapshots:
 
   emoji-regex@9.2.2: {}
 
-  emojilib@2.4.0: {}
+  emojilib@2.4.0:
+    optional: true
 
   empathic@2.0.1: {}
 
@@ -22039,7 +21997,8 @@ snapshots:
 
   event-target-shim@5.0.1: {}
 
-  eventemitter3@4.0.7: {}
+  eventemitter3@4.0.7:
+    optional: true
 
   eventemitter3@5.0.1: {}
 
@@ -22438,7 +22397,8 @@ snapshots:
     dependencies:
       tabbable: 6.4.0
 
-  follow-redirects@1.16.0: {}
+  follow-redirects@1.16.0:
+    optional: true
 
   for-each@0.3.5:
     dependencies:
@@ -22944,7 +22904,8 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  highlight.js@10.7.3: {}
+  highlight.js@10.7.3:
+    optional: true
 
   hoist-non-react-statics@3.3.2:
     dependencies:
@@ -23023,6 +22984,7 @@ snapshots:
       requires-port: 1.0.0
     transitivePeerDependencies:
       - debug
+    optional: true
 
   http-signature@1.4.0:
     dependencies:
@@ -23123,7 +23085,8 @@ snapshots:
 
   indent-string@4.0.0: {}
 
-  indent-string@5.0.0: {}
+  indent-string@5.0.0:
+    optional: true
 
   index-to-position@1.2.0: {}
 
@@ -23137,17 +23100,19 @@ snapshots:
   ink-spinner@5.0.0(ink@6.8.0(@types/react@19.2.14)(react@19.2.6))(react@19.2.6):
     dependencies:
       cli-spinners: 2.9.2
-      ink: 6.8.0(@types/react@19.2.14)(react@19.2.6)
+      ink: 6.8.0(@types/react@19.2.14)(react@19.2.3)
       react: 19.2.6
+    optional: true
 
   ink-text-input@6.0.0(ink@6.8.0(@types/react@19.2.14)(react@19.2.6))(react@19.2.6):
     dependencies:
       chalk: 5.6.2
-      ink: 6.8.0(@types/react@19.2.14)(react@19.2.6)
+      ink: 6.8.0(@types/react@19.2.14)(react@19.2.3)
       react: 19.2.6
       type-fest: 4.41.0
+    optional: true
 
-  ink@6.8.0(@types/react@19.2.14)(react@19.2.6):
+  ink@6.8.0(@types/react@19.2.14)(react@19.2.3):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.2.5
       ansi-escapes: 7.3.0
@@ -23162,8 +23127,8 @@ snapshots:
       indent-string: 5.0.0
       is-in-ci: 2.0.0
       patch-console: 2.0.0
-      react: 19.2.6
-      react-reconciler: 0.33.0(react@19.2.6)
+      react: 19.2.3
+      react-reconciler: 0.33.0(react@19.2.3)
       scheduler: 0.27.0
       signal-exit: 3.0.7
       slice-ansi: 8.0.0
@@ -23180,6 +23145,7 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+    optional: true
 
   inline-style-parser@0.2.7: {}
 
@@ -23306,7 +23272,8 @@ snapshots:
 
   is-hexadecimal@2.0.1: {}
 
-  is-in-ci@2.0.0: {}
+  is-in-ci@2.0.0:
+    optional: true
 
   is-lower-case@2.0.2:
     dependencies:
@@ -24231,8 +24198,10 @@ snapshots:
       marked: 12.0.2
       node-emoji: 2.2.0
       supports-hyperlinks: 3.2.0
+    optional: true
 
-  marked@12.0.2: {}
+  marked@12.0.2:
+    optional: true
 
   marked@16.4.2: {}
 
@@ -24848,6 +24817,7 @@ snapshots:
       any-promise: 1.3.0
       object-assign: 4.1.1
       thenify-all: 1.6.0
+    optional: true
 
   nanoid@3.3.12: {}
 
@@ -24894,6 +24864,7 @@ snapshots:
       char-regex: 1.0.2
       emojilib: 2.4.0
       skin-tone: 2.0.0
+    optional: true
 
   node-exports-info@1.6.0:
     dependencies:
@@ -25189,10 +25160,13 @@ snapshots:
   parse5-htmlparser2-tree-adapter@6.0.1:
     dependencies:
       parse5: 6.0.1
+    optional: true
 
-  parse5@5.1.1: {}
+  parse5@5.1.1:
+    optional: true
 
-  parse5@6.0.1: {}
+  parse5@6.0.1:
+    optional: true
 
   parse5@7.3.0:
     dependencies:
@@ -25210,7 +25184,8 @@ snapshots:
       ansi-escapes: 4.3.2
       cross-spawn: 7.0.6
 
-  patch-console@2.0.0: {}
+  patch-console@2.0.0:
+    optional: true
 
   path-browserify@1.0.1: {}
 
@@ -25742,10 +25717,11 @@ snapshots:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
 
-  react-reconciler@0.33.0(react@19.2.6):
+  react-reconciler@0.33.0(react@19.2.3):
     dependencies:
-      react: 19.2.6
+      react: 19.2.3
       scheduler: 0.27.0
+    optional: true
 
   react-remove-scroll-bar@2.3.8(@types/react@19.2.14)(react@19.2.3):
     dependencies:
@@ -26149,7 +26125,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  requires-port@1.0.0: {}
+  requires-port@1.0.0:
+    optional: true
 
   resolve-alpn@1.2.1: {}
 
@@ -26187,6 +26164,7 @@ snapshots:
     dependencies:
       onetime: 5.1.2
       signal-exit: 3.0.7
+    optional: true
 
   restore-cursor@5.1.0:
     dependencies:
@@ -26565,6 +26543,7 @@ snapshots:
   skin-tone@2.0.0:
     dependencies:
       unicode-emoji-modifier-base: 1.0.0
+    optional: true
 
   slash@3.0.0: {}
 
@@ -26870,6 +26849,7 @@ snapshots:
     dependencies:
       has-flag: 4.0.0
       supports-color: 7.2.0
+    optional: true
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
@@ -26920,7 +26900,8 @@ snapshots:
 
   tarn@3.0.2: {}
 
-  terminal-size@4.0.1: {}
+  terminal-size@4.0.1:
+    optional: true
 
   terser@5.48.0:
     dependencies:
@@ -26944,10 +26925,12 @@ snapshots:
   thenify-all@1.6.0:
     dependencies:
       thenify: 3.3.1
+    optional: true
 
   thenify@3.3.1:
     dependencies:
       any-promise: 1.3.0
+    optional: true
 
   thread-stream@3.1.0:
     dependencies:
@@ -27223,7 +27206,8 @@ snapshots:
 
   undici@7.25.0: {}
 
-  unicode-emoji-modifier-base@1.0.0: {}
+  unicode-emoji-modifier-base@1.0.0:
+    optional: true
 
   unicorn-magic@0.1.0: {}
 
@@ -27693,6 +27677,7 @@ snapshots:
   widest-line@6.0.0:
     dependencies:
       string-width: 8.2.1
+    optional: true
 
   word-wrap@1.2.5: {}
 
@@ -27785,7 +27770,8 @@ snapshots:
 
   yaml@2.9.0: {}
 
-  yargs-parser@20.2.9: {}
+  yargs-parser@20.2.9:
+    optional: true
 
   yargs-parser@21.1.1: {}
 
@@ -27798,6 +27784,7 @@ snapshots:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 20.2.9
+    optional: true
 
   yargs@17.7.2:
     dependencies:
@@ -27817,7 +27804,8 @@ snapshots:
 
   yoctocolors@2.1.2: {}
 
-  yoga-layout@3.2.1: {}
+  yoga-layout@3.2.1:
+    optional: true
 
   zocker@3.0.0(zod@4.3.6):
     dependencies:

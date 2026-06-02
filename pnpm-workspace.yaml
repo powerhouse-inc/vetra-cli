@@ -45,6 +45,9 @@ overrides:
   'mastra>@mastra/deployer': '1.22.0'
   zod: '4.3.6'
   viem: '2.49.0'
+  # Local-link to the sibling ph-clint checkout (proxy work in progress).
+  # Remove once the proxyRoutes/proxyRoot/context.proxy changes are published.
+  '@powerhousedao/ph-clint': 'link:/Users/acaldas/dev/powerhouse/ph-clint/packages/ph-clint'
 
 allowBuilds:
   '@apollo/protobufjs': true
