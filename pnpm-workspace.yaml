@@ -60,6 +60,10 @@ allowBuilds:
   sqlite3: true
   unrs-resolver: true
 
+# The repo tracks freshly-published @powerhousedao dev releases; the lockfile
+# verifier ignores minimumReleaseAgeExclude (pnpm 11.5), so the age gate is off.
+minimumReleaseAge: 0
+
 minimumReleaseAgeExclude:
   - '@powerhousedao/analytics-engine-browser@6.1.0-dev.15'
   - '@powerhousedao/analytics-engine-core@6.1.0-dev.15'
