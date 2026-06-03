@@ -28,6 +28,7 @@
     "telemetry:dev": "ph-telemetry-dev --cli-name=vetra"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.80",
     "@mastra/core": "~1.32.0",
     "@mastra/libsql": "~1.10.1",
     "@mastra/mcp": "^1.4.1",
@@ -35,6 +36,7 @@
     "@powerhousedao/clint-common": "catalog:",
     "@powerhousedao/codegen": "catalog:",
     "@powerhousedao/ph-clint": "catalog:",
+    "@powerhousedao/ph-clint-claude-subscription": "0.1.0-dev.1",
     "@powerhousedao/ph-clint-observability": "catalog:",
     "@powerhousedao/reactor": "catalog:",
     "@powerhousedao/reactor-api": "catalog:",
@@ -46,7 +48,6 @@
     "chokidar": "^3.6.0",
     "document-model": "catalog:",
     "jsonpath-plus": "^10.4.0",
-    "@powerhousedao/ph-clint-claude-subscription": "0.1.0-dev.1",
     "vetra-app": "workspace:*",
     "zod": "catalog:"
   },

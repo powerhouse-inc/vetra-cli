@@ -1,27 +1,22 @@
 /**
  * Stamps live URLs into vetra-app's prebuilt Connect bundle.
  *
- * Connect bakes `import.meta.env.PH_CONNECT_DEFAULT_DRIVES_URL` (and our
- * preview-server base) into its JS at build time and can't read them from a
- * runtime source. vetra-cli's drive id is a random UUID minted on first run,
- * and the proxy URL depends on local config — both unknown when vetra-app
- * was built. The package build stamps placeholder tokens into the bundle;
- * this hook swaps them for the live values once the embedded Switchboard
- * resolves the drive:
+ * vetra-cli's drive id is a random UUID minted on first run, and the proxy
+ * URL depends on local config — both unknown when vetra-app was built. Once
+ * the embedded Switchboard resolves the drive (ph-clint emits
+ * `powerhouse:switchboard:ready` with the composed URLs — direct and, when
+ * the proxy is enabled, proxied), this hook writes the live values into the
+ * bundle:
  *
- *   1. ph-clint emits `powerhouse:switchboard:ready` with the composed URLs
- *      (direct and, when the proxy is enabled, proxied).
- *   2. For each token we compare the target value against a cache file
- *      inside the bundle.
- *   3. If it differs, we string-replace the prior token (the placeholder on
- *      first run, the last-applied value afterwards) across the bundle's JS
- *      and rewrite the cache.
- *
- * Stamped tokens:
  *   - drive URL — the proxied `<proxy>/switchboard/d/<id>` when available,
- *     else the direct switchboard drive URL.
+ *     else the direct switchboard drive URL. Written into the bundle's
+ *     runtime config (`powerhouse.config.json` →
+ *     `connect.drives.defaultDrives`), which Connect reads at load time.
  *   - preview-server URL — `<proxy>/preview` when available, else the
- *     direct loopback port.
+ *     direct loopback port. Baked as a literal placeholder into vetra-app's
+ *     `preview-server-client.ts`, so it's string-replaced across the
+ *     bundle's JS (a cache file tracks the last-applied value for later
+ *     replacements).
  *
  * No rebuild, no toolchain, no install — so it works in a published,
  * source-less install where `ph-cli connect build` cannot run. The browser
@@ -30,10 +25,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { LifecycleHook } from "@powerhousedao/ph-clint";
-import {
-  CONNECT_DRIVE_URL_PLACEHOLDER,
-  PREVIEW_SERVER_URL_PLACEHOLDER,
-} from "../constants.js";
+import { PREVIEW_SERVER_URL_PLACEHOLDER } from "../constants.js";
 import { DEFAULT_PREVIEW_SERVER_PORT } from "../preview-server/index.js";
 
 interface SwitchboardReadyEvent {
@@ -98,27 +90,26 @@ export function connectDriveUrlOnSwitchboardReady(
           : `http://127.0.0.1:${DEFAULT_PREVIEW_SERVER_PORT}`;
 
         const bundleDir = path.join(options.vetraAppDir, connectDir);
-        const stamps: TokenStamp[] = [
-          {
-            label: "drive URL",
-            cacheFile: ".default-drive-url",
-            placeholder: CONNECT_DRIVE_URL_PLACEHOLDER,
-            value: driveUrl,
-          },
-          {
-            label: "preview-server URL",
-            cacheFile: ".preview-server-url",
-            placeholder: PREVIEW_SERVER_URL_PLACEHOLDER,
-            value: previewServerUrl,
-          },
-        ];
-        for (const stamp of stamps) {
-          try {
-            patchToken(bundleDir, stamp, ctx.log);
-          } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : String(err);
-            ctx.log.error(`[connect-drive-url] ${message}`);
-          }
+        try {
+          patchDefaultDrive(bundleDir, driveUrl, ctx.log);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          ctx.log.error(`[connect-drive-url] ${message}`);
+        }
+        try {
+          patchToken(
+            bundleDir,
+            {
+              label: "preview-server URL",
+              cacheFile: ".preview-server-url",
+              placeholder: PREVIEW_SERVER_URL_PLACEHOLDER,
+              value: previewServerUrl,
+            },
+            ctx.log,
+          );
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          ctx.log.error(`[connect-drive-url] ${message}`);
         }
       };
 
@@ -131,6 +122,40 @@ export function connectDriveUrlOnSwitchboardReady(
       };
     },
   };
+}
+
+/** Points `connect.drives.defaultDrives` in the runtime config at the live drive. */
+function patchDefaultDrive(
+  bundleDir: string,
+  driveUrl: string,
+  log: Log,
+): void {
+  const configFile = path.join(bundleDir, "powerhouse.config.json");
+  if (!existsSync(configFile)) {
+    throw new Error(`Connect runtime config not found at ${configFile}`);
+  }
+
+  const config = JSON.parse(readFileSync(configFile, "utf8")) as {
+    connect?: {
+      drives?: { defaultDrives?: Array<{ url?: string | null }> };
+    };
+  };
+  const connect = (config.connect ??= {});
+  const drives = (connect.drives ??= {});
+  const current = drives.defaultDrives?.[0];
+
+  if (current?.url === driveUrl && drives.defaultDrives?.length === 1) {
+    log.debug(
+      `[connect-drive-url] Runtime config already points at ${driveUrl}; skipping drive URL.`,
+    );
+    return;
+  }
+
+  drives.defaultDrives = [{ ...current, url: driveUrl }];
+  writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
+  log.info(
+    `[connect-drive-url] Pointed drive URL at ${driveUrl}. Reload your browser to apply.`,
+  );
 }
 
 function patchToken(bundleDir: string, stamp: TokenStamp, log: Log): void {
