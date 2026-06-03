@@ -8,7 +8,7 @@ import {
   createClaudeSubscriptionModel,
   createUserTokenStore,
   resolveClaudeAgentModel,
-} from 'ph-clint-claude-subscription';
+} from '@powerhousedao/ph-clint-claude-subscription';
 import { CLI_NAME } from '../config.js';
 import type { Config } from '../framework.js';
 import { createDemoAgent } from './demo-agent.js';

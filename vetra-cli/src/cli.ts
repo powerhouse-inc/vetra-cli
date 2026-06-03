@@ -34,7 +34,7 @@ import { genGuard } from './lifecycle/gen-guard.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
-import { createClaudeAuthCommands } from 'ph-clint-claude-subscription';
+import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
 
 export const cli = defineCli({
   name: CLI_NAME,
@@ -206,7 +206,6 @@ export const cli = defineCli({
 
   configDefaults: {
     sentryDsn: "https://a0195e4737951326d23f18b05df6e947@sentry.monitoring.vetra.io/4",
-    otelExporterOtlpEndpoint: "http://otel-collector.monitoring.svc.cluster.local:4318",
     // Pin the proxy port so browser-facing URLs (stamped drive URL, iframe
     // paths) survive daemon restarts; 0 would auto-assign per session.
     proxyPort: 8090,

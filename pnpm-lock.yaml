@@ -214,6 +214,9 @@ importers:
       '@powerhousedao/ph-clint':
         specifier: 0.1.0-dev.81
         version: 0.1.0-dev.81(fc7b6dc59e728cfb96f4bdb700288db0)
+      '@powerhousedao/ph-clint-claude-subscription':
+        specifier: link:/Users/acaldas/dev/powerhouse/ph-clint-claude-subscription
+        version: link:../../../ph-clint-claude-subscription
       '@powerhousedao/ph-clint-observability':
         specifier: 'catalog:'
         version: 0.1.0-dev.80(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@0.1.0-dev.81(fc7b6dc59e728cfb96f4bdb700288db0))
@@ -247,9 +250,6 @@ importers:
       jsonpath-plus:
         specifier: ^10.4.0
         version: 10.4.0
-      ph-clint-claude-subscription:
-        specifier: link:/Users/acaldas/dev/powerhouse/ph-clint-claude-subscription
-        version: link:../../../ph-clint-claude-subscription
       vetra-app:
         specifier: workspace:*
         version: link:../vetra-app

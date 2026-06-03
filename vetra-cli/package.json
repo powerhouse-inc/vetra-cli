@@ -46,7 +46,7 @@
     "chokidar": "^3.6.0",
     "document-model": "catalog:",
     "jsonpath-plus": "^10.4.0",
-    "ph-clint-claude-subscription": "link:/Users/acaldas/dev/powerhouse/ph-clint-claude-subscription",
+    "@powerhousedao/ph-clint-claude-subscription": "link:/Users/acaldas/dev/powerhouse/ph-clint-claude-subscription",
     "vetra-app": "workspace:*",
     "zod": "catalog:"
   },
