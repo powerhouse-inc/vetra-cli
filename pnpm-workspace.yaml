@@ -44,9 +44,7 @@ overrides:
   'mastra>@mastra/deployer': '1.22.0'
   zod: '4.3.6'
   viem: '2.49.0'
-  # Local-link to the sibling ph-clint checkout (proxy work in progress).
-  # Remove once the proxyRoutes/proxyRoot/context.proxy changes are published.
-  '@powerhousedao/ph-clint': 'link:/Users/acaldas/dev/powerhouse/ph-clint/packages/ph-clint'
+  '@powerhousedao/ph-clint': '0.1.0-dev.81'
 
 allowBuilds:
   '@apollo/protobufjs': true
@@ -94,3 +92,4 @@ minimumReleaseAgeExclude:
   - '@powerhousedao/vetra@6.1.0-dev.15'
   - '@renown/sdk@6.1.0-dev.15'
   - document-model@6.1.0-dev.15
+  - '@powerhousedao/ph-clint@0.1.0-dev.81'
