@@ -6,7 +6,8 @@ schema — read that rather than guessing at options. For the input shape of a
 document-model action, call `spec-schema` with the doc type and action name;
 a failed `spec-update` also echoes the expected input schema in its error.
 
-Specs under `<project>/specs/` are the source of truth: read and edit them
+Specs under `specs/` — workspace root for product specs, `<project>/specs/`
+for project specs — are the source of truth: read and edit them
 only through the `spec-*` tools. The `gen/` subtree inside every regenerated
 module (`document-models/<m>/v1/gen/`, `editors/<e>/gen/`, …) is rewritten
 by `spec-generate` — never hand-edit it; fix the spec instead.

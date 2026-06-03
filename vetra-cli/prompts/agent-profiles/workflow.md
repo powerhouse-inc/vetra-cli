@@ -1,5 +1,9 @@
 # Workflow (happy path)
 
+This spine is for **project specs** — building a new document type. Product
+specs (identity sheets, feature, WBS) skip it entirely: they need no project,
+no Phase 0 — just `spec-create { type, name }` at the workspace root.
+
 Building a new document type is always **Bootstrap → Model → Editor →
 Preview**, with a gate between phases — don't advance past a gate until it's
 met; fix the cause and re-run the failing step. The skill prompts in
@@ -72,6 +76,9 @@ a generic viewer, Phase 2 didn't complete — fix the editor, don't restart.
 
 ## Common deviations
 
+- **Product spec request (brand/problem/audience sheet, feature, WBS)** — no
+  workflow at all: `spec-create` / `spec-update` at the workspace root, no
+  `project` argument, no `reactor-project-init`.
 - **Edits to an existing model** — skip Phase 0 (assume running), jump to the
   relevant Phase 1 step, regenerate. The watcher picks it up; no restart, no
   new preview unless the user asks.

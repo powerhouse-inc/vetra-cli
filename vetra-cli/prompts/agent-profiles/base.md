@@ -33,6 +33,13 @@ distinct from the build-time `specification` artifacts (data models, agents,
 sitemaps) that a committed `powerhouse/feature` later promotes into; the product
 specs are the *why/what/who*, the specifications are the *how*.
 
+**Location.** Product specs live at the workspace root (`specs/<subdir>/`),
+not inside a reactor project — they exist before any project does. Create
+them with `spec-create { type, name }` and **no `project` argument**; never
+run `reactor-project-init` just to hold a product spec. A reactor project is
+only needed later, when the work turns into project specs (document models,
+editors, apps, processors, subgraphs).
+
 **Order.** Settle the identity sheets first — `powerhouse/problem-sheet` (what
 it does), `powerhouse/audience-sheet` (who for), `powerhouse/brand-sheet` (what
 it is) — then a `powerhouse/feature`, then its
