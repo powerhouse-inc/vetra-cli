@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
-import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import { projectInputSchema, resolveSpecBasePath } from "../../helpers/project.js";
 import {
   actionInputSchema,
   enrichActionValidationError,
@@ -47,7 +47,8 @@ export const specUpdate = defineCommand({
   }),
   execute: async (input, context) => {
     const { workdir } = context;
-    const base = await resolveReactorProjectPath(workdir, input.project);
+    // Workspace-root product specs are reachable without a reactor project.
+    const { base } = await resolveSpecBasePath(workdir, input.project, true);
     const doc = await loadByName(base, input.name);
     const { actions, minted } = normalizeSpecActions(
       doc,

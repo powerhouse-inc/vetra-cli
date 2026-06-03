@@ -1,15 +1,16 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { requireOption } from "../../helpers/cli-errors.js";
-import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import { projectInputSchema, resolveSpecBasePath } from "../../helpers/project.js";
 import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
 import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
 import { assertKnownDocumentType, slugify } from "./_helpers.js";
-import { createSpecDocument, saveSpec } from "./registry.js";
+import { createSpecDocument, isProductSpecType, saveSpec } from "./registry.js";
 
 export const specCreate = defineCommand({
   id: "spec-create",
-  description: "Create a new spec document under specs/.",
+  description:
+    "Create a new spec document under specs/. Product specs need no reactor project — on a workdir that isn't a reactor package they land at the workspace root.",
   inputSchema: z.object({
     project: projectInputSchema,
     type: z
@@ -30,9 +31,14 @@ export const specCreate = defineCommand({
   }),
   execute: async (input, context) => {
     const { workdir } = context;
-    const base = await resolveReactorProjectPath(workdir, input.project);
     requireOption(input.type, "type", "Run `spec-schema-list` to see valid types.");
     assertKnownDocumentType(input.type);
+    // Product specs live at the workspace root when no project exists yet.
+    const { base } = await resolveSpecBasePath(
+      workdir,
+      input.project,
+      isProductSpecType(input.type),
+    );
     const doc = createSpecDocument(input.type, { name: input.name });
     /* `createDocument` only seeds `name`; populate slug from it so the doc
      * has a stable short handle alongside its display name and id. */

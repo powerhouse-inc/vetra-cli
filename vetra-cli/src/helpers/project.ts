@@ -48,6 +48,28 @@ export async function resolveReactorProjectPath(
   return base;
 }
 
+/**
+ * Resolve the base directory for a spec command. Product specs are
+ * workspace-level ideation artifacts that exist before any reactor project:
+ * when no project is named, the workdir isn't itself a reactor package, and
+ * the command allows it, resolve to the workdir root instead of erroring.
+ */
+export async function resolveSpecBasePath(
+  workdir: string,
+  project: string | undefined,
+  allowProductFallback: boolean,
+): Promise<{ base: string; productFallback: boolean }> {
+  const productFallback =
+    allowProductFallback &&
+    !project &&
+    !(await pathExists(path.join(workdir, "powerhouse.config.json")));
+  if (productFallback) return { base: workdir, productFallback };
+  return {
+    base: await resolveReactorProjectPath(workdir, project),
+    productFallback: false,
+  };
+}
+
 export async function pathExists(p: string): Promise<boolean> {
   return stat(p).then(
     () => true,

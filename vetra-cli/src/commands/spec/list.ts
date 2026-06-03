@@ -1,11 +1,6 @@
-import { join } from "node:path";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
-import {
-  pathExists,
-  projectInputSchema,
-  resolveReactorProjectPath,
-} from "../../helpers/project.js";
+import { projectInputSchema, resolveSpecBasePath } from "../../helpers/project.js";
 import { formatColumns } from "./_helpers.js";
 import { getSpecDocuments } from "./registry.js";
 
@@ -29,18 +24,13 @@ export const specList = defineCommand({
       ),
   }),
   execute: async (input, { workdir }) => {
-    // Product specs are workspace-level ideation artifacts that exist before any
-    // reactor project. When the workdir isn't itself a reactor package and the
-    // caller neither named a project nor asked specifically for project specs,
-    // list the product specs sitting at the workspace root instead of erroring.
-    const productFallback =
-      !input.project &&
-      input.category !== "project" &&
-      !(await pathExists(join(workdir, "powerhouse.config.json")));
-
-    const base = productFallback
-      ? workdir
-      : await resolveReactorProjectPath(workdir, input.project);
+    // Project specs only exist inside a reactor project; product specs may sit
+    // at the workspace root.
+    const { base, productFallback } = await resolveSpecBasePath(
+      workdir,
+      input.project,
+      input.category !== "project",
+    );
     const docs = await getSpecDocuments(base, {
       documentType: input.type,
       category: productFallback ? "product" : input.category,

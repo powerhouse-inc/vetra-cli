@@ -109,6 +109,11 @@ export function listSpecTypesByCategory(category: SpecCategory): string[] {
     : [...listBuiltinTypes()];
 }
 
+/** True for vetra-app ideation types (product specs). */
+export function isProductSpecType(documentType: string): boolean {
+  return vetraAppEntries.has(documentType);
+}
+
 /** Directory holding specs for a given type: `<projectDir>/specs/<subdir>`. */
 export function specDir(projectDir: string, documentType: string): string {
   return join(projectDir, SPECS_DIRNAME, resolveSpecEntry(documentType).subdir);

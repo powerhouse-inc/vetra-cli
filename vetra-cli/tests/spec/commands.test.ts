@@ -140,6 +140,36 @@ describe("spec-create", () => {
     const list = await specList.execute({}, makeCtx(workdir));
     expect(list.text).toBe("(no specs)");
   });
+
+  it("creates a product spec at the workspace root on a non-reactor workdir", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    try {
+      const result = await specCreate.execute(
+        { type: PRODUCT_TYPE, name: "RootFeature", dryRun: false },
+        makeCtx(dir),
+      );
+      expect(result.text).toMatch(/Created/);
+      expect(result.text).toContain(join(dir, "specs"));
+      const list = await specList.execute({}, makeCtx(dir));
+      expect(list.text).toMatch(/RootFeature/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still requires a reactor project for a project spec type", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    try {
+      await expect(
+        specCreate.execute(
+          { type: DOC_TYPE, name: "NeedsProject", dryRun: false },
+          makeCtx(dir),
+        ),
+      ).rejects.toThrow(/not a Reactor package/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("spec-get", () => {
@@ -557,5 +587,32 @@ describe("spec-schema", () => {
     // Latest-spec correctness is verified end-to-end in the multi-spec
     // simulation; here we just confirm the action shortcut still resolves.
     expect(result.text).toMatch(/SetModelNameInput/);
+  });
+});
+
+describe("workspace-level product specs (non-reactor workdir)", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("spec-get and spec-delete reach a root product spec", async () => {
+    await specCreate.execute(
+      { type: PRODUCT_TYPE, name: "RootFeature", dryRun: false },
+      makeCtx(dir),
+    );
+    const got = await specGet.execute(
+      { name: "RootFeature", full: false, latest: false },
+      makeCtx(dir),
+    );
+    expect(got.text).toMatch(/RootFeature/);
+    const deleted = await specDelete.execute(
+      { name: "RootFeature" },
+      makeCtx(dir),
+    );
+    expect(deleted.text).toMatch(/Deleted "RootFeature"/);
+    const list = await specList.execute({}, makeCtx(dir));
+    expect(list.text).toBe("(no specs)");
   });
 });
