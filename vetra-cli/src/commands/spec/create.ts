@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { requireOption } from "../../helpers/cli-errors.js";
-import { projectInputSchema, resolveSpecBasePath } from "../../helpers/project.js";
+import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
 import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
 import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
 import { assertKnownDocumentType, slugify } from "./_helpers.js";
@@ -10,7 +10,7 @@ import { createSpecDocument, isProductSpecType, saveSpec } from "./registry.js";
 export const specCreate = defineCommand({
   id: "spec-create",
   description:
-    "Create a new spec document under specs/. Product specs need no reactor project — on a workdir that isn't a reactor package they land at the workspace root.",
+    "Create a new spec document under specs/. Product specs always go to the workspace root and need no reactor project; project specs require one.",
   inputSchema: z.object({
     project: projectInputSchema,
     type: z
@@ -33,12 +33,19 @@ export const specCreate = defineCommand({
     const { workdir } = context;
     requireOption(input.type, "type", "Run `spec-schema-list` to see valid types.");
     assertKnownDocumentType(input.type);
-    // Product specs live at the workspace root when no project exists yet.
-    const { base } = await resolveSpecBasePath(
-      workdir,
-      input.project,
-      isProductSpecType(input.type),
-    );
+    // Product specs are workspace-level: always saved at the workdir root,
+    // never inside a project. Project specs require a reactor project.
+    let base: string;
+    if (isProductSpecType(input.type)) {
+      if (input.project) {
+        throw new Error(
+          `Product specs live at the workspace root — omit --project for ${input.type}.`,
+        );
+      }
+      base = workdir;
+    } else {
+      base = await resolveReactorProjectPath(workdir, input.project);
+    }
     const doc = createSpecDocument(input.type, { name: input.name });
     /* `createDocument` only seeds `name`; populate slug from it so the doc
      * has a stable short handle alongside its display name and id. */

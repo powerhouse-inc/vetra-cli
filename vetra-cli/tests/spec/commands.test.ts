@@ -157,6 +157,15 @@ describe("spec-create", () => {
     }
   });
 
+  it("rejects --project for a product spec type", async () => {
+    await expect(
+      specCreate.execute(
+        { project: "some-project", type: PRODUCT_TYPE, name: "Misplaced", dryRun: false },
+        makeCtx(workdir),
+      ),
+    ).rejects.toThrow(/workspace root/);
+  });
+
   it("still requires a reactor project for a project spec type", async () => {
     const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
     try {
