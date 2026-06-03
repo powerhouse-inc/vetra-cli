@@ -34,6 +34,7 @@ import { genGuard } from './lifecycle/gen-guard.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
+import { createClaudeAuthCommands } from 'ph-clint-claude-subscription';
 
 export const cli = defineCli({
   name: CLI_NAME,
@@ -51,6 +52,9 @@ export const cli = defineCli({
     ...specPreviewCommands,
     ...reactorProjectCommands,
     agentRun,
+    // claude-login / claude-logout / claude-status — Claude.ai subscription
+    // auth (user scope: one login shared across workdirs).
+    ...createClaudeAuthCommands({ cliName: CLI_NAME }),
   ],
   // @clint:end commands
 

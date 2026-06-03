@@ -4,19 +4,44 @@ import { createMastraHelpers } from '@powerhousedao/ph-clint/mastra';
 import { createWorkdirStore } from '@powerhousedao/ph-clint';
 import type { AgentSetupContext, AgentProvider } from '@powerhousedao/ph-clint';
 import type { WrapAgentOptions } from '@powerhousedao/ph-clint/mastra';
+import {
+  createClaudeSubscriptionModel,
+  createUserTokenStore,
+  resolveClaudeAgentModel,
+} from 'ph-clint-claude-subscription';
 import { CLI_NAME } from '../config.js';
 import type { Config } from '../framework.js';
 import { createDemoAgent } from './demo-agent.js';
+
+const SUB_AGENT_MODEL_ID = 'anthropic/claude-sonnet-4-5';
 
 /**
  * Agent factory for the CLI.
  *
  * Builds one Mastra Agent per sub-agent, then a main Agent that exposes them
  * via the `agents: { … }` field (Mastra surfaces each as a tool named
- * `agent-<key>`). Returns a demo agent when no API key is configured.
+ * `agent-<key>`). Auth precedence: API key, then Claude.ai subscription
+ * session (`claude-login`, user scope), then the demo agent.
  */
 export async function createAgent(ctx: AgentSetupContext<Config>): Promise<AgentProvider> {
-  if (!ctx.config.anthropicApiKey) return createDemoAgent();
+  const resolved = await resolveClaudeAgentModel({
+    store: createUserTokenStore({ cliName: CLI_NAME }),
+    modelId: ctx.config.model,
+    anthropicApiKey: ctx.config.anthropicApiKey,
+  });
+  if (resolved.kind === 'none') {
+    ctx.context.log?.info(
+      '[agent] No API key and no Claude subscription session — run `claude-login` to authenticate.',
+    );
+    return createDemoAgent();
+  }
+  const subAgentModel =
+    resolved.kind === 'subscription'
+      ? await createClaudeSubscriptionModel({
+          session: resolved.session,
+          modelId: SUB_AGENT_MODEL_ID,
+        })
+      : { id: SUB_AGENT_MODEL_ID, apiKey: ctx.config.anthropicApiKey! } as const;
 
   const m = createMastraHelpers(ctx);
   const memory = await m.createMemory();
@@ -26,9 +51,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     name: "Agent Document Model",
     description: "Assist in developing document model specifications",
     instructions: m.getAgentInstructions('agent-document-model'),
-    model: ctx.config.anthropicApiKey
-      ? { id: "anthropic/claude-sonnet-4-5", apiKey: ctx.config.anthropicApiKey }
-      : ("anthropic/claude-sonnet-4-5"),
+    model: subAgentModel,
     tools: async () => {
       ctx.context.log?.debug(`[agent agent-document-model] resolving tools`);
       return m.getTools({ MCPClient, include: [] });
@@ -41,9 +64,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     name: "Agent Editor",
     description: "Assists in developing document model editors",
     instructions: m.getAgentInstructions('agent-editor'),
-    model: ctx.config.anthropicApiKey
-      ? { id: "anthropic/claude-sonnet-4-5", apiKey: ctx.config.anthropicApiKey }
-      : ("anthropic/claude-sonnet-4-5"),
+    model: subAgentModel,
     tools: async () => {
       ctx.context.log?.debug(`[agent agent-editor] resolving tools`);
       return m.getTools({ MCPClient, include: [] });
@@ -57,9 +78,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     id: 'vetra-agent',
     name: "Vetra Agent",
     instructions: m.getAgentInstructions('vetra-agent'),
-    model: ctx.config.anthropicApiKey
-      ? { id: ctx.config.model as `${string}/${string}`, apiKey: ctx.config.anthropicApiKey }
-      : (ctx.config.model as `${string}/${string}`),
+    model: resolved.model,
     tools: async () => {
       ctx.context.log?.debug('[agent main] resolving tools');
       return m.getTools({ MCPClient });
