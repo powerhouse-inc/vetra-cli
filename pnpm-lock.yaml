@@ -215,8 +215,8 @@ importers:
         specifier: 0.1.0-dev.81
         version: 0.1.0-dev.81(fc7b6dc59e728cfb96f4bdb700288db0)
       '@powerhousedao/ph-clint-claude-subscription':
-        specifier: link:/Users/acaldas/dev/powerhouse/ph-clint-claude-subscription
-        version: link:../../../ph-clint-claude-subscription
+        specifier: 0.1.0-dev.1
+        version: 0.1.0-dev.1(@ai-sdk/provider@2.0.1)(@powerhousedao/ph-clint@0.1.0-dev.81(fc7b6dc59e728cfb96f4bdb700288db0))(zod@4.3.6)
       '@powerhousedao/ph-clint-observability':
         specifier: 'catalog:'
         version: 0.1.0-dev.80(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@0.1.0-dev.81(fc7b6dc59e728cfb96f4bdb700288db0))
@@ -2797,6 +2797,20 @@ packages:
     resolution: {integrity: sha512-x86wWRB8DICecaUiLEsfWKiuo08DwIWGRulZiEWTOOrwgYwyf6cZzoz08ZgK+SR66jmkFdU1sEpK11hX416lxQ==}
     engines: {node: '>=24.0.0'}
     hasBin: true
+
+  '@powerhousedao/ph-clint-claude-subscription@0.1.0-dev.1':
+    resolution: {integrity: sha512-UPNJi2QYJYh1KlK9e78Ii0AZDDEnz7hDrd7NpxlUGf3fbHanzDEvvj0HdCmk0B1Th608LftVeJUmCo4zatcGGA==}
+    engines: {node: '>=22.13.0'}
+    peerDependencies:
+      '@ai-sdk/anthropic': ^2
+      '@ai-sdk/provider': ^2
+      '@powerhousedao/ph-clint': 0.1.0-dev.81
+      zod: 4.3.6
+    peerDependenciesMeta:
+      '@ai-sdk/anthropic':
+        optional: true
+      '@ai-sdk/provider':
+        optional: true
 
   '@powerhousedao/ph-clint-dev@0.1.0-dev.80':
     resolution: {integrity: sha512-hkbYvLs/YgAanbt6TL7mV2o3NE//wNS6WOHTKuLsUNYoZ5InhD00VrS7plOqBt0YfQkBP/UEVIPWi/4ePN78hw==}
@@ -15922,6 +15936,13 @@ snapshots:
       - vue-tsc
       - yaml
       - zod
+
+  '@powerhousedao/ph-clint-claude-subscription@0.1.0-dev.1(@ai-sdk/provider@2.0.1)(@powerhousedao/ph-clint@0.1.0-dev.81(fc7b6dc59e728cfb96f4bdb700288db0))(zod@4.3.6)':
+    dependencies:
+      '@powerhousedao/ph-clint': 0.1.0-dev.81(fc7b6dc59e728cfb96f4bdb700288db0)
+      zod: 4.3.6
+    optionalDependencies:
+      '@ai-sdk/provider': 2.0.1
 
   '@powerhousedao/ph-clint-dev@0.1.0-dev.80(fc7b6dc59e728cfb96f4bdb700288db0)':
     dependencies:
