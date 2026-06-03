@@ -33,7 +33,19 @@
   ],
   "config": [
     {
+      "name": "ANTHROPIC_API_KEY",
+      "type": "secret",
+      "description": "Anthropic Claude API key.",
+      "required": true
+    },
+    {
       "name": "VETRA_ANTHROPIC_API_KEY",
+      "type": "secret",
+      "description": "Anthropic Claude API key.",
+      "required": true
+    },
+    {
+      "name": "VETRA_CLI_ANTHROPIC_API_KEY",
       "type": "secret",
       "description": "Anthropic Claude API key.",
       "required": true
