@@ -247,6 +247,9 @@ importers:
       jsonpath-plus:
         specifier: ^10.4.0
         version: 10.4.0
+      ph-clint-claude-subscription:
+        specifier: link:/Users/acaldas/dev/powerhouse/ph-clint-claude-subscription
+        version: link:../../../ph-clint-claude-subscription
       vetra-app:
         specifier: workspace:*
         version: link:../vetra-app
