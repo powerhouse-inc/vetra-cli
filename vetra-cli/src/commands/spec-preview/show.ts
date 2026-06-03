@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from "../../constants.js";
 import { defineCommand } from "../../framework.js";
 import {
   projectInputSchema,
   resolveReactorProjectPath,
 } from "../../helpers/project.js";
 import {
+  buildPreviewDocPath,
   findPreviewByName,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
@@ -38,9 +40,12 @@ export const specPreviewShow = defineCommand({
       );
     }
     const row = await findPreviewByName(switchboardUrl, driveId, input.name);
-    const docPathSegment = row.slug ?? row.id;
-    const base_ = connectUrl.replace(/\/+$/, "");
-    const previewUrl = `${base_}/d/${driveId}/${docPathSegment}?embed=1`;
+    const docPath = buildPreviewDocPath(driveId, row.slug ?? row.id);
+    // The URL is for the user's browser — prefer the proxy origin (the only
+    // reachable one on deployed agents) over the direct Connect port.
+    const previewUrl = context.proxy
+      ? `${context.proxy.url}${REACTOR_PROJECT_CONNECT_PROXY_PATH}${docPath}`
+      : `${connectUrl.replace(/\/+$/, "")}${docPath}`;
     /* The structured `data` field is the contract Vetra Studio's
      * `useSessionPreviewTarget` reads to drive the BUILD pane iframe
      * (see `vetra-app/editors/vetra-studio/hooks/useSessionPreviewTarget.ts`).

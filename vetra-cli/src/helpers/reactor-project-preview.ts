@@ -94,6 +94,15 @@ export function resolvePreviewEndpoint(
   };
 }
 
+/**
+ * Path to a preview document inside a reactor-project's Connect. `?embed=1`
+ * strips Connect's outer chrome. Single source for the URL shape — used by
+ * the preview-server resolver and the spec-preview-show command.
+ */
+export function buildPreviewDocPath(driveId: string, doc: string): string {
+  return `/d/${driveId}/${encodeURIComponent(doc)}?embed=1`;
+}
+
 interface GraphQLResponse<T> {
   data?: T;
   errors?: Array<{ message: string; path?: ReadonlyArray<string | number> }>;

@@ -9,7 +9,10 @@
 import type { ServiceManager } from "@powerhousedao/ph-clint";
 import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from "../constants.js";
 import { resolveReactorProjectPath } from "../helpers/project.js";
-import { getPreviewDriveId } from "../helpers/reactor-project-preview.js";
+import {
+  buildPreviewDocPath,
+  getPreviewDriveId,
+} from "../helpers/reactor-project-preview.js";
 import type { ResolveResult } from "./config.js";
 
 export async function resolvePreview(args: {
@@ -53,7 +56,7 @@ export async function resolvePreview(args: {
   }
 
   const base = connectUrl.replace(/\/+$/, "");
-  const docPath = `/d/${driveId}/${encodeURIComponent(args.doc)}?embed=1`;
+  const docPath = buildPreviewDocPath(driveId, args.doc);
   return {
     kind: "ready",
     project: args.project,
