@@ -1,11 +1,12 @@
 /**
- * Prints `Vetra Studio: <connectUrl>/d/<driveId>` once on startup, so the
+ * Prints `Vetra Studio: <url>/d/<driveId>` once on startup, so the
  * full noisy ph-clint banner ends with a single line a user can click.
  *
  * The drive id comes from `ctx.reactor()` (always populated by the
- * framework). The Connect URL comes from the live ServiceManager — the
- * runtime computes it locally but doesn't write it back to ReactorContext,
- * so reading it off the service instance is the only reliable source.
+ * framework). The URL prefers the embedded proxy (Connect owns its `/`
+ * catch-all, and the proxied origin is the one all browser-facing URLs are
+ * stamped with), falling back to the direct Connect endpoint from the live
+ * ServiceManager when the proxy is disabled.
  */
 import { defineTrigger } from "../framework.js";
 
@@ -28,10 +29,11 @@ export const studioUrlTrigger = defineTrigger({
           instance.name === STUDIO_SERVICE_NAME &&
           instance.status === "ready",
       )?.endpoints?.["connect-studio"];
-    if (!connectUrl) return;
+    const studioUrl = ctx.commandContext.proxy?.url ?? connectUrl;
+    if (!studioUrl) return;
 
-    const base = connectUrl.replace(/\/+$/, "");
-     
+    const base = studioUrl.replace(/\/+$/, "");
+
     console.log(`Vetra Studio: ${base}/d/${driveId}`);
   },
 
