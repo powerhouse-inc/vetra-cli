@@ -18,6 +18,7 @@ export const configSchema = z.object({
   // @clint:begin framework-config
   model: z.string().default('anthropic/claude-sonnet-4-5').describe('LLM model for the main agent (sub-agent models come from the spec)'),
   agentLogging: z.boolean().default(false).describe('Enable agent conversation logging'),
+  memoryModel: z.string().default('anthropic/claude-haiku-4-5').describe('Model for observational memory (background compression of long chat histories)'),
   phVersion: z.string().optional().describe(`Powerhouse version for new reactor projects (defaults to ${DEFAULT_PH_VERSION})`),
   reactorProjectClonePath: z.string().optional().describe('Path to a pre-scaffolded reactor-project. When set, reactor-project-init clones it via `ph init --template` (fast path). Typically baked into container images.'),
   registryUrl: z.string().default(LOCAL_REGISTRY_URL).describe('Registry URL to use when publishing packages (defaults to the local-registry service)'),

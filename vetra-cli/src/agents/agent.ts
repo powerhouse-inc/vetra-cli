@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { TokenLimiterProcessor } from '@mastra/core/processors';
 import { MCPClient } from '@mastra/mcp';
 import { createMastraHelpers } from '@powerhousedao/ph-clint/mastra';
 import { createWorkdirStore } from '@powerhousedao/ph-clint';
@@ -14,6 +15,14 @@ import type { Config } from '../framework.js';
 import { createDemoAgent } from './demo-agent.js';
 
 const SUB_AGENT_MODEL_ID = 'anthropic/claude-sonnet-4-5';
+
+/**
+ * Hard input-token ceiling enforced at every step of the agentic loop.
+ * Backstop under the 200k Anthropic window (leaves headroom for tool
+ * schemas and output); oldest messages are trimmed when exceeded so a
+ * long run degrades instead of failing with "prompt is too long".
+ */
+const INPUT_TOKEN_LIMIT = 160_000;
 
 /**
  * Agent factory for the CLI.
@@ -43,8 +52,20 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
         })
       : { id: SUB_AGENT_MODEL_ID, apiKey: ctx.config.anthropicApiKey! } as const;
 
+  // Observer/Reflector model for observational memory — compresses long chat
+  // histories into observation logs so sessions never hit the context limit.
+  const memoryModel =
+    resolved.kind === 'subscription'
+      ? await createClaudeSubscriptionModel({
+          session: resolved.session,
+          modelId: ctx.config.memoryModel,
+        })
+      : { id: ctx.config.memoryModel, apiKey: ctx.config.anthropicApiKey! } as const;
+
   const m = createMastraHelpers(ctx);
-  const memory = await m.createMemory();
+  const memory = await m.createMemory({
+    observationalMemory: { model: memoryModel },
+  });
 
   const agentDocumentModel = new Agent({
     id: 'agent-document-model',
@@ -57,6 +78,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
       return m.getTools({ MCPClient, include: [] });
     },
     memory,
+    inputProcessors: [new TokenLimiterProcessor({ limit: INPUT_TOKEN_LIMIT })],
   });
 
   const agentEditor = new Agent({
@@ -70,6 +92,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
       return m.getTools({ MCPClient, include: [] });
     },
     memory,
+    inputProcessors: [new TokenLimiterProcessor({ limit: INPUT_TOKEN_LIMIT })],
   });
 
   const subAgents: Record<string, Agent> = { agentDocumentModel, agentEditor };
@@ -86,6 +109,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     workspace: await m.createWorkspace(),
     memory,
     agents: subAgents,
+    inputProcessors: [new TokenLimiterProcessor({ limit: INPUT_TOKEN_LIMIT })],
   });
 
   const store = createWorkdirStore(ctx.workdir, CLI_NAME);
