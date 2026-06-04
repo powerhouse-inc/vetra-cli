@@ -35,6 +35,7 @@ import { studioUrlTrigger } from './triggers/studio-url.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
+import { attachmentCommands } from './commands/attachment/index.js';
 
 export const cli = defineCli({
   name: CLI_NAME,
@@ -51,6 +52,7 @@ export const cli = defineCli({
     ...specCommands,
     ...specPreviewCommands,
     ...reactorProjectCommands,
+    ...attachmentCommands,
     agentRun,
     // claude-login / claude-logout / claude-status — Claude.ai subscription
     // auth (user scope: one login shared across workdirs).
