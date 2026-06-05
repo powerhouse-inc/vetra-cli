@@ -1,5 +1,4 @@
 import type { DocumentDriveDocument } from "@powerhousedao/shared/document-drive";
-import { useState } from "react";
 import { Breadcrumb, type Crumb } from "./Breadcrumb.js";
 import { DocumentHost } from "./ideation/DocumentHost.js";
 import { FeatureList } from "./ideation/FeatureList.js";
@@ -9,21 +8,29 @@ import type { OpenTarget } from "./ideation/types.js";
 /**
  * Home > Ideate. Lists the product-identity sheets and features in the drive
  * and opens each document's editor inline. Owns the sub-navigation breadcrumb.
+ *
+ * Selection is **controlled** by `VetraStudio` (lifted so auto-nav can drive
+ * it). `onOpen` here always means a user click — VetraStudio pins it so
+ * auto-nav won't yank the user away.
  */
 export function IdeationSection({
   drive,
   productName,
+  open,
+  onOpen,
+  onClear,
   onExitToHome,
 }: {
   drive: DocumentDriveDocument;
   productName: string;
+  open: OpenTarget | null;
+  onOpen: (target: OpenTarget) => void;
+  onClear: () => void;
   onExitToHome: () => void;
 }) {
-  const [open, setOpen] = useState<OpenTarget | null>(null);
-
   const crumbs: Crumb[] = [
     { label: productName, onClick: onExitToHome },
-    { label: "Ideate", onClick: open ? () => setOpen(null) : undefined },
+    { label: "Ideate", onClick: open ? onClear : undefined },
     ...(open ? [{ label: open.name }] : []),
   ];
 
@@ -34,8 +41,8 @@ export function IdeationSection({
         <DocumentHost id={open.id} documentType={open.documentType} />
       ) : (
         <div className="flex flex-col gap-10">
-          <ProductIdentityCards drive={drive} onOpen={setOpen} />
-          <FeatureList drive={drive} onOpen={setOpen} />
+          <ProductIdentityCards drive={drive} onOpen={onOpen} />
+          <FeatureList drive={drive} onOpen={onOpen} />
         </div>
       )}
     </div>
