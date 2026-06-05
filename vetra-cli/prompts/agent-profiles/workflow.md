@@ -6,8 +6,10 @@ no Phase 0 — just `spec-create { type, name }` at the workspace root.
 
 Building a new document type is always **Bootstrap → Model → Editor →
 Preview**, with a gate between phases — don't advance past a gate until it's
-met; fix the cause and re-run the failing step. The skill prompts in
-`skills-tpl/` go deeper on each phase; this is the deterministic spine.
+met; fix the cause and re-run the failing step. When the user asks for an
+**app** (dashboard, kanban board, custom drive view), add **Phase 4 — App**
+after Phase 3. The skill prompts in `skills-tpl/` go deeper on each phase;
+this is the deterministic spine.
 
 Below is a concrete run for a todo list. Each step is a tool call written as
 `tool-name { key inputs }`; `…` stands in for the action list (exact input
@@ -88,3 +90,35 @@ a generic viewer, Phase 2 didn't complete — fix the editor, don't restart.
 - **Generate fails on a schema error** — fix the spec, not the generated
   files; it is almost always a `SET_STATE_SCHEMA` / `ADD_OPERATION.schema`
   field written in TypeScript instead of GraphQL SDL.
+
+## Phase 4 — App (when the user asks for a drive app)
+
+An app is a drive-level editor — a React component that renders a custom UI
+at the root of a drive (dashboard, kanban board, etc.). Apps require at least
+one document model and editor to exist first (Phase 1 + 2).
+
+    spec-create   { project: "todo-list", type: "powerhouse/app", name: "Todo Dashboard" }
+    spec-update   { project: "todo-list", name: "Todo Dashboard", actions: [ SET_APP_NAME, ADD_DOCUMENT_TYPE, SET_DRAG_AND_DROP_ENABLED, SET_APP_STATUS ] }
+    spec-generate { project: "todo-list", name: "Todo Dashboard" }
+    # Customize editor.tsx with real UI (replace DriveExplorer boilerplate).
+    # Add new component files alongside — don't edit regenerated components/*.
+
+**Gate:** `spec-generate` is clean, `<project>/editors/<appId>/editor.tsx`
+contains real UI, `powerhouse.manifest.json` `apps[]` lists the app.
+
+### App preview (drive, not document)
+
+    spec-preview-create-drive { project: "todo-list", app: "Todo Dashboard" }
+    # Populate the new drive with sample documents:
+    spec-preview-create { project: "todo-list", drive: <driveId>, type: "powerhouse/todo-list", name: "My Todos" }
+    spec-preview-show   { project: "todo-list", drive: <driveId> }
+
+**Gate:** the BUILD pane renders the running app with sample content inside
+the drive. If it shows the generic explorer, the `preferredEditor` id doesn't
+match — re-check the manifest.
+
+## Common deviations (continued)
+
+- **App-only request against existing models** — Phase 4 only.
+- **User asks for "an app" or "a dashboard"** — route to the
+  `drive-app-creation` skill (or delegate to `agent-app`).

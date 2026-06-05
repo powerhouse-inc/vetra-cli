@@ -1,4 +1,5 @@
 import { specPreviewCreate } from "./create.js";
+import { specPreviewCreateDrive } from "./create-drive.js";
 import { specPreviewDelete } from "./delete.js";
 import { specPreviewGet } from "./get.js";
 import { specPreviewList } from "./list.js";
@@ -9,6 +10,7 @@ export const specPreviewCommands = [
   specPreviewList,
   specPreviewGet,
   specPreviewCreate,
+  specPreviewCreateDrive,
   specPreviewUpdate,
   specPreviewDelete,
   specPreviewShow,

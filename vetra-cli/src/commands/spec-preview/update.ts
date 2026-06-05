@@ -27,6 +27,12 @@ export const specPreviewUpdate = defineCommand({
       .describe(
         "Preview document to update — accepts display name, slug, or id (see spec-preview-list).",
       ),
+    drive: z
+      .string()
+      .optional()
+      .describe(
+        "Target drive id. When omitted, uses the project's default preview drive.",
+      ),
     actions: z
       .preprocess((v) => {
         /* Tool/MCP callers pass a real array; shell users pass `--actions
@@ -51,11 +57,12 @@ export const specPreviewUpdate = defineCommand({
   }),
   execute: async (input, context) => {
     const base = await resolveReactorProjectPath(context.workdir, input.project);
-    const { switchboardUrl, driveId } = resolvePreviewEndpoint(
+    const { switchboardUrl, driveId: defaultDriveId } = resolvePreviewEndpoint(
       context.services,
       base,
       input.project ?? ".",
     );
+    const driveId = input.drive ?? defaultDriveId;
     const row = await findPreviewByName(switchboardUrl, driveId, input.name);
     const actions = await resolveActionsInput({
       actions: input.actions,

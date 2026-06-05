@@ -91,6 +91,7 @@ export async function startPreviewServer(
           workdir,
           project: q.get("project") ?? "",
           doc: q.get("doc") ?? "",
+          drive: q.get("drive") ?? undefined,
         });
         writeJson(res, 200, result);
         return;

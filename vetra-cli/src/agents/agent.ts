@@ -95,7 +95,20 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     inputProcessors: [new TokenLimiterProcessor({ limit: INPUT_TOKEN_LIMIT })],
   });
 
-  const subAgents: Record<string, Agent> = { agentDocumentModel, agentEditor };
+  const agentApp = new Agent({
+    id: 'agent-app',
+    name: "Agent App",
+    description: "Assists in developing drive-level apps (dashboards, kanban boards, custom drive views)",
+    instructions: m.getAgentInstructions('agent-app'),
+    model: subAgentModel,
+    tools: async () => {
+      ctx.context.log?.debug(`[agent agent-app] resolving tools`);
+      return m.getTools({ MCPClient, include: [] });
+    },
+    memory,
+  });
+
+  const subAgents: Record<string, Agent> = { agentDocumentModel, agentEditor, agentApp };
 
   const main = new Agent({
     id: 'vetra-agent',
