@@ -47,33 +47,42 @@ export const specPreviewShow = defineCommand({
       input.project,
     );
 
-    // Gate: the app/editor code must type-check before we surface a preview.
-    // A non-compiling editor.tsx renders "Something went wrong" in the BUILD
-    // pane with no other diagnostic, so block here and hand the errors back —
-    // the agent fixes them and re-runs show. Scope "module" covers the
-    // hand-written editors/ + apps/ trees (see helpers/project-checks.ts).
+    // Gate: the app/editor code must type-check AND be `any`-free before we
+    // surface a preview. A non-compiling editor.tsx renders "Something went
+    // wrong"; worse, an `as any` cast can silence a real type error and ship a
+    // compiling-but-broken app (e.g. reading doc state off a nonexistent field
+    // → an empty board). So we block on tsc errors plus the type-safety lint
+    // rules that flag `any` escapes — but NOT on advisory formatting/style lint
+    // (prettier, unused-vars), which shouldn't gate a preview. Scope "module"
+    // covers the hand-written editors/ + apps/ trees (helpers/project-checks.ts).
     const { diagnostics } = await runChecks(base, context.runProcess, {
       scope: "module",
-      skipLint: true,
     });
-    const typeErrors = diagnostics.filter((d) => d.severity === "error");
-    if (typeErrors.length > 0) {
-      const head = typeErrors
+    const UNSAFE_ANY_RULE =
+      /no-unsafe|no-explicit-any|no-unnecessary-type-assertion/;
+    const blocking = diagnostics.filter(
+      (d) =>
+        d.severity === "error" &&
+        (d.source === "tsc" || UNSAFE_ANY_RULE.test(d.code)),
+    );
+    if (blocking.length > 0) {
+      const head = blocking
         .slice(0, 15)
         .map(
           (d) =>
-            `  ✗ ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
+            `  ✗ [${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
         )
         .join("\n");
       return {
         text:
-          `Preview blocked — the project has ${typeErrors.length} TypeScript error(s). ` +
-          `These would render "Something went wrong" in the BUILD pane, so fix them and re-run ${"`spec-preview-show`"}:\n` +
-          `${head}${typeErrors.length > 15 ? `\n  … ${typeErrors.length - 15} more` : ""}`,
+          `Preview blocked — the project has ${blocking.length} type/safety error(s). ` +
+          `These would render "Something went wrong" or a broken/empty view in the BUILD pane. ` +
+          `Fix them with the real typed hooks — **do NOT use \`any\` / \`as any\` to silence them** — then re-run ${"`spec-preview-show`"}:\n` +
+          `${head}${blocking.length > 15 ? `\n  … ${blocking.length - 15} more` : ""}`,
         data: {
           projectPath: base,
           blocked: true as const,
-          errorCount: typeErrors.length,
+          errorCount: blocking.length,
         },
       };
     }
