@@ -31,6 +31,7 @@ import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url.js';
 import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
+import { tsCheck } from './lifecycle/ts-check.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
@@ -200,6 +201,7 @@ export const cli = defineCli({
   lifecycle: [
     observability(),
     genGuard(),
+    tsCheck(),
     connectDriveUrlOnSwitchboardReady({
       vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
     }),
