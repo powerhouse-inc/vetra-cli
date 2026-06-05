@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './version-banner.js';
 import { cli } from './cli.js';
 
 cli.run(process.argv).catch((err: unknown) => {
