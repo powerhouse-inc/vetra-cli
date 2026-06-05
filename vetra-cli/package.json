@@ -40,7 +40,7 @@
     "@powerhousedao/ph-clint-observability": "catalog:",
     "@powerhousedao/reactor": "catalog:",
     "@powerhousedao/reactor-api": "catalog:",
-    "@powerhousedao/reactor-attachments": "catalog:",
+    "@powerhousedao/reactor-attachments": "6.1.0-dev.21",
     "@powerhousedao/shared": "catalog:",
     "@powerhousedao/switchboard": "catalog:",
     "@powerhousedao/vetra": "catalog:",

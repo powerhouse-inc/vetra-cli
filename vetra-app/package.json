@@ -88,7 +88,7 @@
     "@powerhousedao/document-engineering": "1.40.5",
     "@powerhousedao/ph-cli": "catalog:",
     "@powerhousedao/reactor": "catalog:",
-    "@powerhousedao/reactor-attachments": "catalog:",
+    "@powerhousedao/reactor-attachments": "6.1.0-dev.21",
     "@powerhousedao/reactor-browser": "catalog:",
     "@powerhousedao/shared": "catalog:",
     "@tailwindcss/cli": "^4.1.18",
