@@ -5,6 +5,7 @@ import {
   projectInputSchema,
   resolveReactorProjectPath,
 } from "../../helpers/project.js";
+import { runChecks } from "../../helpers/project-checks.js";
 import {
   buildPreviewDocPath,
   buildPreviewDriveRootPath,
@@ -45,6 +46,38 @@ export const specPreviewShow = defineCommand({
       context.workdir,
       input.project,
     );
+
+    // Gate: the app/editor code must type-check before we surface a preview.
+    // A non-compiling editor.tsx renders "Something went wrong" in the BUILD
+    // pane with no other diagnostic, so block here and hand the errors back —
+    // the agent fixes them and re-runs show. Scope "module" covers the
+    // hand-written editors/ + apps/ trees (see helpers/project-checks.ts).
+    const { diagnostics } = await runChecks(base, context.runProcess, {
+      scope: "module",
+      skipLint: true,
+    });
+    const typeErrors = diagnostics.filter((d) => d.severity === "error");
+    if (typeErrors.length > 0) {
+      const head = typeErrors
+        .slice(0, 15)
+        .map(
+          (d) =>
+            `  ✗ ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
+        )
+        .join("\n");
+      return {
+        text:
+          `Preview blocked — the project has ${typeErrors.length} TypeScript error(s). ` +
+          `These would render "Something went wrong" in the BUILD pane, so fix them and re-run ${"`spec-preview-show`"}:\n` +
+          `${head}${typeErrors.length > 15 ? `\n  … ${typeErrors.length - 15} more` : ""}`,
+        data: {
+          projectPath: base,
+          blocked: true as const,
+          errorCount: typeErrors.length,
+        },
+      };
+    }
+
     const { switchboardUrl, connectUrl, driveId: defaultDriveId } = resolvePreviewEndpoint(
       context.services,
       base,
