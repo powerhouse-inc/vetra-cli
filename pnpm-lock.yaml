@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@powerhousedao/clint-common':
-      specifier: 0.1.0-dev.82
-      version: 0.1.0-dev.82
+      specifier: 0.1.0-dev.83
+      version: 0.1.0-dev.83
     '@powerhousedao/codegen':
       specifier: 6.1.0-dev.19
       version: 6.1.0-dev.19
@@ -22,14 +22,14 @@ catalogs:
       specifier: 6.1.0-dev.19
       version: 6.1.0-dev.19
     '@powerhousedao/ph-clint':
-      specifier: 0.1.0-dev.82
-      version: 0.1.0-dev.82
+      specifier: 0.1.0-dev.83
+      version: 0.1.0-dev.83
     '@powerhousedao/ph-clint-dev':
-      specifier: 0.1.0-dev.82
-      version: 0.1.0-dev.82
+      specifier: 0.1.0-dev.83
+      version: 0.1.0-dev.83
     '@powerhousedao/ph-clint-observability':
-      specifier: 0.1.0-dev.82
-      version: 0.1.0-dev.82
+      specifier: 0.1.0-dev.83
+      version: 0.1.0-dev.83
     '@powerhousedao/reactor':
       specifier: 6.1.0-dev.19
       version: 6.1.0-dev.19
@@ -87,7 +87,7 @@ importers:
         version: 9.39.4
       '@powerhousedao/clint-common':
         specifier: 'catalog:'
-        version: 0.1.0-dev.82(4600a7b82489f2c833e15810772b4cb0)
+        version: 0.1.0-dev.83(5f3649f6d5265df340594a63ea1a576b)
       '@powerhousedao/connect':
         specifier: 'catalog:'
         version: 6.1.0-dev.19(@babel/runtime@7.29.2)(@fastify/websocket@11.2.0)(@parcel/watcher@2.5.6)(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(graphql-tag@2.12.6(graphql@16.12.0))(graphql@16.12.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(typescript@6.0.3)
@@ -207,19 +207,19 @@ importers:
         version: 1.18.2(@mastra/core@1.32.1(@grpc/grpc-js@1.14.3)(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@1.0.0)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(openapi-types@12.1.3)(zod@4.3.6))(@types/json-schema@7.0.15)(express@4.22.2)(openapi-types@12.1.3)(zod@4.3.6))(zod@4.3.6)
       '@powerhousedao/clint-common':
         specifier: 'catalog:'
-        version: 0.1.0-dev.82(5791f5eb88c70798fce78dc5a26099bc)
+        version: 0.1.0-dev.83(0e13fc0f735bc07243bb4b616c6243ff)
       '@powerhousedao/codegen':
         specifier: 'catalog:'
         version: 6.1.0-dev.19(@fastify/websocket@11.2.0)(@parcel/watcher@2.5.6)(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(graphql@16.12.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(typescript@6.0.3)
       '@powerhousedao/ph-clint':
         specifier: 'catalog:'
-        version: 0.1.0-dev.82(306616da24c589b170eaacb40ede791f)
+        version: 0.1.0-dev.83(306616da24c589b170eaacb40ede791f)
       '@powerhousedao/ph-clint-claude-subscription':
         specifier: 0.1.0-dev.1
-        version: 0.1.0-dev.1(@ai-sdk/anthropic@2.0.80(zod@4.3.6))(@ai-sdk/provider@2.0.3)(@powerhousedao/ph-clint@0.1.0-dev.82(306616da24c589b170eaacb40ede791f))(zod@4.3.6)
+        version: 0.1.0-dev.1(@ai-sdk/anthropic@2.0.80(zod@4.3.6))(@ai-sdk/provider@2.0.3)(@powerhousedao/ph-clint@0.1.0-dev.83(306616da24c589b170eaacb40ede791f))(zod@4.3.6)
       '@powerhousedao/ph-clint-observability':
         specifier: 'catalog:'
-        version: 0.1.0-dev.82(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@0.1.0-dev.82(306616da24c589b170eaacb40ede791f))
+        version: 0.1.0-dev.83(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@0.1.0-dev.83(306616da24c589b170eaacb40ede791f))
       '@powerhousedao/reactor':
         specifier: 'catalog:'
         version: 6.1.0-dev.19(@sentry/node-core@10.54.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(rolldown@1.0.0-rc.8(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))
@@ -257,15 +257,12 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: 0.3.15
-        version: 0.3.15
       '@jest/globals':
         specifier: ^30.2.0
         version: 30.4.1
       '@powerhousedao/ph-clint-dev':
         specifier: 'catalog:'
-        version: 0.1.0-dev.82(306616da24c589b170eaacb40ede791f)
+        version: 0.1.0-dev.83(306616da24c589b170eaacb40ede791f)
       '@types/node':
         specifier: 'catalog:'
         version: 25.8.0
@@ -278,12 +275,6 @@ importers:
       jest:
         specifier: ^30.2.0
         version: 30.4.2(@types/node@25.8.0)(babel-plugin-macros@3.1.0)
-      kysely:
-        specifier: 0.28.16
-        version: 0.28.16
-      kysely-pglite-dialect:
-        specifier: 1.2.0
-        version: 1.2.0(@electric-sql/pglite@0.3.15)(kysely@0.28.16)
       ts-jest:
         specifier: ^29.4.6
         version: 29.4.9(@babel/core@7.29.0)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.0))(esbuild@0.28.0)(jest-util@30.4.1)(jest@30.4.2(@types/node@25.8.0)(babel-plugin-macros@3.1.0))(typescript@6.0.3)
@@ -2725,10 +2716,10 @@ packages:
       '@sentry/vite-plugin':
         optional: true
 
-  '@powerhousedao/clint-common@0.1.0-dev.82':
-    resolution: {integrity: sha512-O0dLBUaagU0wHrimBNAB0KDnMoTC7I4bhqxbkG7Gk0VbLp2po//PSP+A+cVRfIXTudiG+wR3v8Hwf6QgO7kBmw==}
+  '@powerhousedao/clint-common@0.1.0-dev.83':
+    resolution: {integrity: sha512-jbXlv9DKFXKkOXpkDY3fuMH8G5si7pyXqM/JeltTpLcHoA3cG9WVy7PH7RSq6rZZaM5jRURmZyMUrOgqPFvnKw==}
     peerDependencies:
-      '@powerhousedao/ph-clint': ^0.1.0-dev.82
+      '@powerhousedao/ph-clint': ^0.1.0-dev.83
     peerDependenciesMeta:
       '@powerhousedao/ph-clint':
         optional: true
@@ -2829,20 +2820,20 @@ packages:
       '@ai-sdk/provider':
         optional: true
 
-  '@powerhousedao/ph-clint-dev@0.1.0-dev.82':
-    resolution: {integrity: sha512-UORnFg5MmzxC9trZo5HSWY2ZXbvfLSeKO+1ucTheyTw0yjHDHrHCUZ9aIF89C3XFH+a3dFY4VnVrprvZXONURw==}
+  '@powerhousedao/ph-clint-dev@0.1.0-dev.83':
+    resolution: {integrity: sha512-1NF8sentxVtKqaD+TG6Xt5KFhjpF8TUgSBUt5PtrHP3tVxjbKCaR0PEPWqttUS6PlqS0oiqZPrEHBp8Eq6fAQQ==}
     engines: {node: '>=22.13.0'}
     hasBin: true
 
-  '@powerhousedao/ph-clint-observability@0.1.0-dev.82':
-    resolution: {integrity: sha512-6lZPuu0aG7U/wKNW9/6Ijx+7YlXMmo1/W+Qgk7Mm9r1KeG7e8+sEabW/s0ALQXxaFflmtIYcr2iQy4Zjx1rQoA==}
+  '@powerhousedao/ph-clint-observability@0.1.0-dev.83':
+    resolution: {integrity: sha512-0HV80xkEqkx0icM5cBPIHTtE7d0GK+rb5hIi0r8v+dKAqNgd/4DZyE1mzVGNWIBsE5YRCTfyas7qKVvI0U7kiQ==}
     engines: {node: '>=22.13.0'}
     hasBin: true
     peerDependencies:
-      '@powerhousedao/ph-clint': ^0.1.0-dev.82
+      '@powerhousedao/ph-clint': ^0.1.0-dev.83
 
-  '@powerhousedao/ph-clint@0.1.0-dev.82':
-    resolution: {integrity: sha512-HzpYj4FXMrCY38oBPmJ4qy5e7zHOmKphknklIjFcwQ+9ZiGk78DXg+XOE/tpIfKfnpUBSpMHnX0cMaLANri2Lw==}
+  '@powerhousedao/ph-clint@0.1.0-dev.83':
+    resolution: {integrity: sha512-iSAboetlneuH6uM5fAPPODZoNzj8U116peY19HN+I7JQrTLze8O+hewY5H9vMeRiTfY/c0cgnJsuVHp9DQFe5g==}
     engines: {node: '>=22.13.0'}
     peerDependencies:
       '@electric-sql/pglite': '>=0.2.0'
@@ -14258,7 +14249,7 @@ snapshots:
       - tsx
       - yaml
 
-  '@powerhousedao/clint-common@0.1.0-dev.82(4600a7b82489f2c833e15810772b4cb0)':
+  '@powerhousedao/clint-common@0.1.0-dev.83(0e13fc0f735bc07243bb4b616c6243ff)':
     dependencies:
       '@powerhousedao/analytics-engine-core': 6.0.0-dev.257(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)
       '@powerhousedao/connect': 6.0.0-dev.257(@babel/runtime@7.29.2)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@fastify/websocket@11.2.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(@parcel/watcher@2.5.6)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(graphql-tag@2.12.6(graphql@16.12.0))(graphql@16.12.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@6.0.3)(zod@4.3.6)
@@ -14293,7 +14284,7 @@ snapshots:
       use-stick-to-bottom: 1.1.4(react@19.2.3)
       zod: 4.3.6
     optionalDependencies:
-      '@powerhousedao/ph-clint': 0.1.0-dev.82(22d297c1988f22d10174d303ad31c590)
+      '@powerhousedao/ph-clint': 0.1.0-dev.83(306616da24c589b170eaacb40ede791f)
     transitivePeerDependencies:
       - '@babel/runtime'
       - '@cfworker/json-schema'
@@ -14349,7 +14340,7 @@ snapshots:
       - vite
       - yaml
 
-  '@powerhousedao/clint-common@0.1.0-dev.82(5791f5eb88c70798fce78dc5a26099bc)':
+  '@powerhousedao/clint-common@0.1.0-dev.83(5f3649f6d5265df340594a63ea1a576b)':
     dependencies:
       '@powerhousedao/analytics-engine-core': 6.0.0-dev.257(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)
       '@powerhousedao/connect': 6.0.0-dev.257(@babel/runtime@7.29.2)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@fastify/websocket@11.2.0)(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)(@parcel/watcher@2.5.6)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(graphql-tag@2.12.6(graphql@16.12.0))(graphql@16.12.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@6.0.3)(zod@4.3.6)
@@ -14384,7 +14375,7 @@ snapshots:
       use-stick-to-bottom: 1.1.4(react@19.2.3)
       zod: 4.3.6
     optionalDependencies:
-      '@powerhousedao/ph-clint': 0.1.0-dev.82(306616da24c589b170eaacb40ede791f)
+      '@powerhousedao/ph-clint': 0.1.0-dev.83(22d297c1988f22d10174d303ad31c590)
     transitivePeerDependencies:
       - '@babel/runtime'
       - '@cfworker/json-schema'
@@ -15325,17 +15316,17 @@ snapshots:
       - yaml
       - zod
 
-  '@powerhousedao/ph-clint-claude-subscription@0.1.0-dev.1(@ai-sdk/anthropic@2.0.80(zod@4.3.6))(@ai-sdk/provider@2.0.3)(@powerhousedao/ph-clint@0.1.0-dev.82(306616da24c589b170eaacb40ede791f))(zod@4.3.6)':
+  '@powerhousedao/ph-clint-claude-subscription@0.1.0-dev.1(@ai-sdk/anthropic@2.0.80(zod@4.3.6))(@ai-sdk/provider@2.0.3)(@powerhousedao/ph-clint@0.1.0-dev.83(306616da24c589b170eaacb40ede791f))(zod@4.3.6)':
     dependencies:
-      '@powerhousedao/ph-clint': 0.1.0-dev.82(306616da24c589b170eaacb40ede791f)
+      '@powerhousedao/ph-clint': 0.1.0-dev.83(306616da24c589b170eaacb40ede791f)
       zod: 4.3.6
     optionalDependencies:
       '@ai-sdk/anthropic': 2.0.80(zod@4.3.6)
       '@ai-sdk/provider': 2.0.3
 
-  '@powerhousedao/ph-clint-dev@0.1.0-dev.82(306616da24c589b170eaacb40ede791f)':
+  '@powerhousedao/ph-clint-dev@0.1.0-dev.83(306616da24c589b170eaacb40ede791f)':
     dependencies:
-      '@powerhousedao/ph-clint': 0.1.0-dev.82(306616da24c589b170eaacb40ede791f)
+      '@powerhousedao/ph-clint': 0.1.0-dev.83(306616da24c589b170eaacb40ede791f)
       handlebars: 4.7.9
       zod: 4.3.6
     transitivePeerDependencies:
@@ -15358,7 +15349,7 @@ snapshots:
       - react-devtools-core
       - utf-8-validate
 
-  '@powerhousedao/ph-clint-observability@0.1.0-dev.82(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@0.1.0-dev.82(306616da24c589b170eaacb40ede791f))':
+  '@powerhousedao/ph-clint-observability@0.1.0-dev.83(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@powerhousedao/ph-clint@0.1.0-dev.83(306616da24c589b170eaacb40ede791f))':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/exporter-metrics-otlp-http': 0.205.0(@opentelemetry/api@1.9.1)
@@ -15368,7 +15359,7 @@ snapshots:
       '@opentelemetry/sdk-node': 0.205.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-base': 2.7.1(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.41.1
-      '@powerhousedao/ph-clint': 0.1.0-dev.82(306616da24c589b170eaacb40ede791f)
+      '@powerhousedao/ph-clint': 0.1.0-dev.83(306616da24c589b170eaacb40ede791f)
       '@sentry/node': 8.55.2
       '@sentry/opentelemetry': 8.55.2(@opentelemetry/api@1.9.1)(@opentelemetry/context-async-hooks@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.218.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1)
       zod: 4.3.6
@@ -15378,7 +15369,7 @@ snapshots:
       - '@opentelemetry/instrumentation'
       - supports-color
 
-  '@powerhousedao/ph-clint@0.1.0-dev.82(22d297c1988f22d10174d303ad31c590)':
+  '@powerhousedao/ph-clint@0.1.0-dev.83(22d297c1988f22d10174d303ad31c590)':
     dependencies:
       cli-highlight: 2.1.11
       commander: 12.1.0
@@ -15412,7 +15403,7 @@ snapshots:
       - utf-8-validate
     optional: true
 
-  '@powerhousedao/ph-clint@0.1.0-dev.82(306616da24c589b170eaacb40ede791f)':
+  '@powerhousedao/ph-clint@0.1.0-dev.83(306616da24c589b170eaacb40ede791f)':
     dependencies:
       cli-highlight: 2.1.11
       commander: 12.1.0

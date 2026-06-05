@@ -52,15 +52,12 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.3.15",
     "@jest/globals": "^30.2.0",
     "@powerhousedao/ph-clint-dev": "catalog:",
     "@types/node": "catalog:",
     "eslint-config-prettier": "catalog:",
     "eslint-plugin-jest": "^29.15.2",
     "jest": "^30.2.0",
-    "kysely": "0.28.16",
-    "kysely-pglite-dialect": "1.2.0",
     "ts-jest": "^29.4.6",
     "tsdown": "^0.21.1",
     "tsx": "^4.19.0",
