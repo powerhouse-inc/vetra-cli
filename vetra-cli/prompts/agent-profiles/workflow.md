@@ -111,11 +111,13 @@ contains real UI, `powerhouse.manifest.json` `apps[]` lists the app.
     spec-preview-create-drive { project: "todo-list", app: "Todo Dashboard" }
     # Populate the new drive with sample documents:
     spec-preview-create { project: "todo-list", drive: <driveId>, type: "powerhouse/todo-list", name: "My Todos" }
-    spec-preview-show   { project: "todo-list", drive: <driveId> }
+    spec-preview-show   { project: "todo-list", drive: <driveId>, app: "Todo Dashboard" }
 
 **Gate:** the BUILD pane renders the running app with sample content inside
-the drive. If it shows the generic explorer, the `preferredEditor` id doesn't
-match — re-check the manifest.
+the drive. Pass `app` to `spec-preview-show` — populating the drive wipes its
+`preferredEditor` binding, so `app` re-asserts it. If it shows the generic
+explorer, the binding wasn't re-asserted (missing `app`) or the app id doesn't
+match the manifest.
 
 ## Common deviations (continued)
 

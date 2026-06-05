@@ -106,6 +106,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
       return m.getTools({ MCPClient, include: [] });
     },
     memory,
+    inputProcessors: [new TokenLimiterProcessor({ limit: INPUT_TOKEN_LIMIT })],
   });
 
   const subAgents: Record<string, Agent> = { agentDocumentModel, agentEditor, agentApp };

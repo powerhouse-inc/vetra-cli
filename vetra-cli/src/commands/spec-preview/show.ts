@@ -55,9 +55,27 @@ export const specPreviewShow = defineCommand({
     // rules that flag `any` escapes — but NOT on advisory formatting/style lint
     // (prettier, unused-vars), which shouldn't gate a preview. Scope "module"
     // covers the hand-written editors/ + apps/ trees (helpers/project-checks.ts).
-    const { diagnostics } = await runChecks(base, context.runProcess, {
+    const { diagnostics, notes } = await runChecks(base, context.runProcess, {
       scope: "module",
     });
+    // Fail closed: if the checks couldn't actually run (e.g. tsc/eslint missing
+    // from the project's node_modules), `diagnostics` would be empty and the
+    // gate would silently pass a possibly-broken app. Block and surface why.
+    const skipped = notes.filter((n) => /skip/i.test(n));
+    if (skipped.length > 0) {
+      return {
+        text:
+          `Preview blocked — the safety checks could not run, so the app's ` +
+          `correctness can't be verified:\n  ${skipped.join("\n  ")}\n` +
+          `Resolve this (ensure the project's dependencies are installed) and ` +
+          `re-run ${"`spec-preview-show`"}.`,
+        data: {
+          projectPath: base,
+          blocked: true as const,
+          errorCount: 0,
+        },
+      };
+    }
     const UNSAFE_ANY_RULE =
       /no-unsafe|no-explicit-any|no-unnecessary-type-assertion/;
     const blocking = diagnostics.filter(
