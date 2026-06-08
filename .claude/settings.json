@@ -21,11 +21,25 @@
       "Read(//Users/teunhabraken/ph-clint/**)",
       "Bash(pnpm build *)",
       "Bash(pnpm build:assets)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli diff vetra-app/style.css)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli diff HEAD vetra-app/style.css)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli status --short)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli diff origin/main -- vetra-app/style.css)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli diff main -- vetra-app/style.css)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli diff main -- pnpm-workspace.yaml)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.get\\('dependencies',{}\\).items\\(\\) if 'clint' in k}, indent=2\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k,'->',v\\) for k,v in d.get\\('exports',{}\\).items\\(\\)]\")",
+      "Bash(pnpm add *)",
+      "Bash(npx tsc *)",
+      "Bash(pnpm start *)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli diff HEAD -- vetra-app/style.css)"
     ],
     "additionalDirectories": [
       "/Users/teunhabraken/vetra-cli-main/vetra-app",
-      "/Users/teunhabraken/vetra-cli-main"
+      "/Users/teunhabraken/vetra-cli-main",
+      "/Users/teunhabraken/ph-clint/packages/clint-common/editors/chat-session-editor/components",
+      "/Users/teunhabraken/ph-clint/packages/clint-common/editors/chat-session-editor"
     ]
   }
 }

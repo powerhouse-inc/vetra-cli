@@ -45,6 +45,7 @@ overrides:
   zod: '4.3.6'
   viem: '2.49.0'
   '@powerhousedao/ph-clint': 'link:/Users/teunhabraken/ph-clint/packages/ph-clint'
+  '@powerhousedao/clint-common': 'link:/Users/teunhabraken/ph-clint/packages/clint-common'
 
 allowBuilds:
   '@apollo/protobufjs': true

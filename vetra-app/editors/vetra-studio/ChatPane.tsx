@@ -21,6 +21,12 @@ import type {
   FileNode,
 } from "@powerhousedao/shared/document-drive";
 import { lazy, Suspense, useMemo, useState, useTransition } from "react";
+import VetraMitosis from "./VetraMitosis.js";
+
+const AGENT_ICON = <VetraMitosis size={20} active={false} />;
+function MessageIcon({ active }: { active: boolean }) {
+  return <VetraMitosis size={20} active={active} />;
+}
 
 const ChatSession = lazy(() =>
   import("@powerhousedao/clint-common/editors").then((m) => ({
@@ -228,9 +234,7 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-vetra-primary/10 text-vetra-primary">
-        <ChatBubbleIcon className="h-5 w-5" />
-      </div>
+      <VetraMitosis size={48} active={false} />
       <div>
         <div className="text-sm font-medium text-vetra-fg">
           What will you build today?
@@ -323,6 +327,8 @@ function SessionView({
       document={chatDocument}
       dispatch={dispatch}
       attachments={attachments}
+      agentIcon={AGENT_ICON}
+      messageIcon={MessageIcon}
     />
   );
 }
@@ -330,13 +336,7 @@ function SessionView({
 function SessionLoading() {
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="flex items-center gap-2 text-sm text-vetra-muted-fg">
-        <span
-          aria-hidden
-          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-vetra-muted-fg"
-        />
-        Loading session…
-      </div>
+      <VetraMitosis size={48} active={true} />
     </div>
   );
 }
