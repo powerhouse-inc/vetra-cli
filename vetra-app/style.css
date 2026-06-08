@@ -19,3 +19,19 @@
   --color-vetra-info:        #329dff;
   --color-vetra-success:     #4fc86f;
 }
+
+/* Keep brand backgrounds on <button>. Connect/clint bundle Tailwind preflight in
+   @layer base, which resets `button { background-color: transparent }`. The vetra
+   bg-* utilities live in @layer utilities, but the merged cross-bundle layer order
+   lets the reset win on <button> (it's why the "New" button rendered colorless).
+   Unlayered rules beat any layer — re-assert the cases the studio uses. */
+button[class~="bg-vetra-primary"] {
+  background-color: var(--color-vetra-primary);
+}
+button[class~="bg-vetra-primary/5"] {
+  background-color: color-mix(in oklab, var(--color-vetra-primary) 5%, transparent);
+}
+button[class~="hover:bg-vetra-accent"]:hover,
+button[class~="focus-visible:bg-vetra-accent"]:focus-visible {
+  background-color: var(--color-vetra-accent);
+}
