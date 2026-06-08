@@ -83,7 +83,7 @@ export const cli = defineCli({
       'vetra-agent': {
         name: 'vetra-agent',
         sections: ['base.md', 'tools.md', 'workflow.md'],
-        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation'],
+        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation'],
       },
       'agent-document-model': {
         name: 'agent-document-model',
@@ -94,6 +94,11 @@ export const cli = defineCli({
         name: 'agent-editor',
         sections: ['base.md', 'tools.md'],
         skills: ['document-editor-creation'],
+      },
+      'agent-app': {
+        name: 'agent-app',
+        sections: ['base.md', 'tools.md'],
+        skills: ['drive-app-creation'],
       },
     },
     skills: {
@@ -125,6 +130,19 @@ export const cli = defineCli({
       },
       'document-editor-creation': {
         description: 'Build React editor components for Powerhouse document types',
+        inputSchema: z.object({
+          mode: z
+            .enum(['expert', 'discovery', 'one-shot'])
+            .default('expert')
+            .describe(
+              'Expert: align technical design decisions between fellow experts. Discovery: explain the process and guide non-expert users to decisions. One-shot: make all design decisions autonomously and execute without asking',
+            ),
+        }),
+        instructionTemplate:
+          'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
+      },
+      'drive-app-creation': {
+        description: 'Build drive-level app components (dashboards, kanban boards, custom drive views) for Powerhouse drives',
         inputSchema: z.object({
           mode: z
             .enum(['expert', 'discovery', 'one-shot'])

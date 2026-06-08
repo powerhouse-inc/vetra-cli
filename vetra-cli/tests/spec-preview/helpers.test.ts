@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals
 import crypto from "node:crypto";
 
 import {
+  buildPreviewDriveRootPath,
+  createPreviewDrive,
+  driveRemoteUrl,
   findPreviewByName,
+  findPreviewDriveByPreferredEditor,
   getPreviewDriveId,
   resolvePreviewEndpoint,
 } from "../../src/helpers/reactor-project-preview.js";
@@ -184,5 +188,108 @@ describe("gqlRequest error paths (via findPreviewByName)", () => {
     await expect(
       findPreviewByName(SWITCHBOARD_URL, driveId, "anything"),
     ).rejects.toThrow(/502/);
+  });
+});
+
+describe("findPreviewDriveByPreferredEditor", () => {
+  const drives = [
+    { id: "drive-1", slug: "a", name: "Alpha Preview", documentType: "powerhouse/document-drive", preferredEditor: "alpha-app", revisionsList: [] },
+    { id: "drive-2", slug: "b", name: "Beta Preview", documentType: "powerhouse/document-drive", preferredEditor: "beta-app", revisionsList: [] },
+  ];
+
+  let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
+
+  beforeEach(() => {
+    fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ data: { findDocuments: { items: drives } } }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  /* Regression guard: SearchFilterInput's field is `type`, not `documentType`.
+   * Sending `documentType` makes the reactor reject the variable, which broke
+   * spec-preview-create-drive (it always calls this first for idempotency). */
+  it("filters drives by SearchFilterInput.type, never documentType", async () => {
+    await findPreviewDriveByPreferredEditor(SWITCHBOARD_URL, "beta-app");
+    const body = JSON.parse(
+      (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
+    ) as { variables: { search: Record<string, unknown> } };
+    expect(body.variables.search).toEqual({ type: "powerhouse/document-drive" });
+    expect(body.variables.search).not.toHaveProperty("documentType");
+  });
+
+  it("matches by preferredEditor (not by name)", async () => {
+    const row = await findPreviewDriveByPreferredEditor(SWITCHBOARD_URL, "beta-app");
+    expect(row?.id).toBe("drive-2");
+  });
+
+  it("returns null when no drive is bound to that editor", async () => {
+    const row = await findPreviewDriveByPreferredEditor(SWITCHBOARD_URL, "missing-app");
+    expect(row).toBeNull();
+  });
+});
+
+describe("createPreviewDrive (mutation ordering)", () => {
+  let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
+  let ops: string[];
+
+  beforeEach(() => {
+    ops = [];
+    fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      const q = JSON.parse((init as RequestInit).body as string).query as string;
+      let data: Record<string, unknown>;
+      if (q.includes("createEmptyDocument")) {
+        ops.push("create");
+        data = { createEmptyDocument: { id: "drv-1", slug: "drv-1", name: "", documentType: "powerhouse/document-drive", preferredEditor: null, state: {}, revisionsList: [] } };
+      } else if (q.includes("renameDocument")) {
+        ops.push("rename");
+        data = { renameDocument: { id: "drv-1", slug: "drv-1", name: "My App Preview", documentType: "powerhouse/document-drive", preferredEditor: null, state: {}, revisionsList: [] } };
+      } else {
+        ops.push("setPreferredEditor");
+        data = { setPreferredEditor: { id: "drv-1", slug: "drv-1", name: "My App Preview", documentType: "powerhouse/document-drive", preferredEditor: "my-app" } };
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ data }), { status: 200, headers: { "Content-Type": "application/json" } }),
+      );
+    });
+  });
+  afterEach(() => fetchSpy.mockRestore());
+
+  /* Regression guard: renameDocument resets header.meta, so setPreferredEditor
+   * MUST run last or the binding is wiped (drive opens with the generic
+   * explorer instead of the app). */
+  it("renames BEFORE setting preferredEditor", async () => {
+    const r = await createPreviewDrive(SWITCHBOARD_URL, "My App Preview", "my-app");
+    expect(ops).toEqual(["create", "rename", "setPreferredEditor"]);
+    expect(r).toEqual({ id: "drv-1", name: "My App Preview", preferredEditor: "my-app" });
+  });
+
+  it("skips setPreferredEditor when none is given", async () => {
+    const r = await createPreviewDrive(SWITCHBOARD_URL, "X");
+    expect(ops).toEqual(["create", "rename"]);
+    expect(r.preferredEditor).toBeNull();
+  });
+});
+
+describe("preview drive URL builders", () => {
+  it("driveRemoteUrl swaps /graphql for /d/<id>", () => {
+    expect(driveRemoteUrl("http://localhost:4001/graphql", "abc")).toBe("http://localhost:4001/d/abc");
+    expect(driveRemoteUrl("http://localhost:4001/graphql/", "abc")).toBe("http://localhost:4001/d/abc");
+  });
+
+  it("buildPreviewDriveRootPath appends an encoded driveUrl param when given", () => {
+    expect(buildPreviewDriveRootPath("abc")).toBe("/d/abc?embed=1");
+    const remote = "http://localhost:4001/d/abc";
+    expect(buildPreviewDriveRootPath("abc", remote)).toBe(
+      `/d/abc?embed=1&driveUrl=${encodeURIComponent(remote)}`,
+    );
   });
 });

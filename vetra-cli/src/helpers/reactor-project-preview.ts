@@ -12,6 +12,7 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
 import { unknownValueError } from "./cli-errors.js";
 
@@ -231,6 +232,33 @@ const DELETE_DOCUMENT_MUTATION = /* GraphQL */ `
   }
 `;
 
+const SET_PREFERRED_EDITOR_MUTATION = /* GraphQL */ `
+  mutation SetPreferredEditor($documentIdentifier: String!, $preferredEditor: String) {
+    setPreferredEditor(documentIdentifier: $documentIdentifier, preferredEditor: $preferredEditor) {
+      id
+      slug
+      name
+      documentType
+      preferredEditor
+    }
+  }
+`;
+
+const FIND_DRIVES_QUERY = /* GraphQL */ `
+  query FindDrives($search: SearchFilterInput) {
+    findDocuments(search: $search) {
+      items {
+        id
+        slug
+        name
+        documentType
+        preferredEditor
+        revisionsList { scope revision }
+      }
+    }
+  }
+`;
+
 /** List all documents in the preview drive (one level deep). */
 export async function listPreviewDocuments(
   switchboardUrl: string,
@@ -370,3 +398,151 @@ export type {
   PreviewDocumentRow,
   PreviewDocumentFull,
 };
+
+/**
+ * Drive-root preview path (no document). Used when the preview target is a
+ * drive (e.g. an app) rather than a single document.
+ *
+ * `driveRemoteUrl` (a `<switchboard>/d/<driveId>` URL) is appended as a
+ * `driveUrl` query param so Connect registers the drive on load via
+ * `addRemoteDrive` (see `apps/connect/.../store/reactor.ts` `getDriveUrl`).
+ * Without it, a drive Connect doesn't already know about isn't openable and the
+ * URL bounces to the drive picker.
+ */
+export function buildPreviewDriveRootPath(
+  driveId: string,
+  driveRemoteUrl?: string,
+): string {
+  const base = `/d/${driveId}?embed=1`;
+  return driveRemoteUrl
+    ? `${base}&driveUrl=${encodeURIComponent(driveRemoteUrl)}`
+    : base;
+}
+
+/**
+ * Build the remote drive URL Connect's `addRemoteDrive` expects
+ * (`<switchboard-origin>/d/<driveId>`) from a Switchboard GraphQL URL.
+ */
+export function driveRemoteUrl(switchboardUrl: string, driveId: string): string {
+  return `${switchboardUrl.replace(/\/graphql\/?$/, "")}/d/${driveId}`;
+}
+
+type PreviewDriveRow = {
+  id: string;
+  slug: string | null;
+  name: string;
+  documentType: string;
+  preferredEditor: string | null;
+  revisionsList: { scope: string; revision: number }[];
+};
+
+/**
+ * Set a drive's preferredEditor (the app editor's config.id Connect uses to
+ * render the drive). Returns the persisted value.
+ *
+ * NOTE: this binding lives in `header.meta` and is **wiped by a subsequent
+ * `addFile`** (adding a document to the drive re-materializes the drive header
+ * without meta — confirmed empirically). So after populating an app's preview
+ * drive you must call this AGAIN (see `spec-preview-show --app`).
+ */
+export async function setDrivePreferredEditor(
+  switchboardUrl: string,
+  driveId: string,
+  preferredEditor: string,
+): Promise<string | null> {
+  const data = await gqlRequest<{
+    setPreferredEditor: { preferredEditor: string | null };
+  }>(switchboardUrl, SET_PREFERRED_EDITOR_MUTATION, {
+    documentIdentifier: driveId,
+    preferredEditor,
+  });
+  return data.setPreferredEditor.preferredEditor ?? null;
+}
+
+/**
+ * Resolve an app's editor `config.id` (the value Connect renders a drive with)
+ * from `<projectPath>/powerhouse.manifest.json` `apps[]`, by id or display name.
+ * Throws with the available app ids if not found.
+ */
+export function resolveAppEditorId(
+  projectPath: string,
+  appNameOrId: string,
+): string {
+  const manifestPath = path.join(projectPath, "powerhouse.manifest.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(
+      `powerhouse.manifest.json not found at ${manifestPath}. Run spec-generate on the app spec first.`,
+    );
+  }
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as {
+    apps?: Array<{ id: string; name?: string }>;
+  };
+  const apps = manifest.apps ?? [];
+  const byId = apps.find((a) => a.id === appNameOrId);
+  if (byId) return byId.id;
+  const byName = apps.find(
+    (a) => a.name?.toLowerCase() === appNameOrId.toLowerCase(),
+  );
+  if (byName) return byName.id;
+  const candidates = apps.map((a) => a.id);
+  throw new Error(
+    `App "${appNameOrId}" not found in powerhouse.manifest.json apps[]. Available: ${candidates.join(", ") || "(none)"}`,
+  );
+}
+
+/**
+ * Create a top-level drive bound to an app (preferredEditor = app editor
+ * config.id). createEmptyDocument → renameDocument → setPreferredEditor (last).
+ * The binding is set last because renameDocument resets header.meta. Note it is
+ * still wiped by later addFile calls when the drive is populated — re-assert it
+ * at show time via `spec-preview-show --app` (see setDrivePreferredEditor).
+ */
+export async function createPreviewDrive(
+  switchboardUrl: string,
+  name: string,
+  preferredEditor?: string,
+): Promise<{ id: string; name: string; preferredEditor: string | null }> {
+  const created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
+    switchboardUrl,
+    CREATE_EMPTY_DOCUMENT_MUTATION,
+    { documentType: "powerhouse/document-drive", parentIdentifier: null },
+  );
+  const driveId = created.createEmptyDocument.id;
+  const renamed = await gqlRequest<{ renameDocument: PreviewDocumentFull }>(
+    switchboardUrl,
+    RENAME_DOCUMENT_MUTATION,
+    { documentIdentifier: driveId, name },
+  );
+  const resolvedEditor = preferredEditor
+    ? await setDrivePreferredEditor(switchboardUrl, driveId, preferredEditor)
+    : null;
+  return {
+    id: driveId,
+    name: renamed.renameDocument.name,
+    preferredEditor: resolvedEditor,
+  };
+}
+
+/**
+ * Find an existing top-level drive whose `preferredEditor` matches. Returns null
+ * if none. Keys idempotent preview-drive reuse on the app's editor id (one drive
+ * per app) rather than the display name, so re-running with a different
+ * `--name`/`--app` spelling still reuses the same drive.
+ *
+ * Filters by `SearchFilterInput.type` — the field is `type`, not `documentType`
+ * (see reactor-api `schema.graphql`). This is the same predicate `reactor-mcp`'s
+ * `getDrives` uses to enumerate drives (`client.find({ type: DRIVE_TYPE })`).
+ */
+export async function findPreviewDriveByPreferredEditor(
+  switchboardUrl: string,
+  preferredEditor: string,
+): Promise<PreviewDriveRow | null> {
+  const data = await gqlRequest<{ findDocuments: { items: PreviewDriveRow[] } }>(
+    switchboardUrl,
+    FIND_DRIVES_QUERY,
+    { search: { type: "powerhouse/document-drive" } },
+  );
+  const drives = data.findDocuments.items;
+  const match = drives.find((d) => d.preferredEditor === preferredEditor);
+  return match ?? null;
+}

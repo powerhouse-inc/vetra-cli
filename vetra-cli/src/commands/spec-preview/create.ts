@@ -13,19 +13,25 @@ import {
 export const specPreviewCreate = defineCommand({
   id: "spec-preview-create",
   description:
-    "Create a document in the running reactor-project's preview drive. Any document type registered by the running reactor is accepted — framework spec types and document models from installed packages alike.",
+    "Create a document in the running reactor-project's preview drive. Any document type registered by the running reactor is accepted — framework spec types and document models from installed packages alike. Use --drive to target a specific drive (e.g. an app preview drive).",
   inputSchema: z.object({
     project: projectInputSchema,
     type: z
       .string()
       .default("")
       .describe(
-        'Type of a ocument model spec in the project, e.g. "brand/todo-list".',
+        'Type of a document model spec in the project, e.g. "brand/todo-list".',
       ),
     name: z
       .string()
       .describe(
         "Human-readable display name. Used as the doc's header.name; the reactor populates the slug.",
+      ),
+    drive: z
+      .string()
+      .optional()
+      .describe(
+        "Target drive id. When omitted, uses the project's default preview drive. Pass a drive id from spec-preview-create-drive to create documents inside an app preview drive.",
       ),
   }),
   execute: async (input, context) => {
@@ -35,11 +41,12 @@ export const specPreviewCreate = defineCommand({
       "type",
       "Pass any document type the running reactor knows about.",
     );
-    const { switchboardUrl, driveId } = resolvePreviewEndpoint(
+    const { switchboardUrl, driveId: defaultDriveId } = resolvePreviewEndpoint(
       context.services,
       base,
       input.project ?? ".",
     );
+    const driveId = input.drive ?? defaultDriveId;
     const created = await createEmptyPreviewDocument(
       switchboardUrl,
       driveId,
@@ -47,7 +54,7 @@ export const specPreviewCreate = defineCommand({
       input.name,
     );
     return {
-      text: `Created ${created.documentType} "${created.name}"  id: ${created.id}  (preview drive ${driveId})`,
+      text: `Created ${created.documentType} "${created.name}"  id: ${created.id}  (drive ${driveId})`,
     };
   },
 });

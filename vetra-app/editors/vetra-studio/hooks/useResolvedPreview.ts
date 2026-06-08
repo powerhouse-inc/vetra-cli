@@ -64,7 +64,8 @@ export function useResolvedPreview(
       try {
         const r: ResolveResult = await fetchResolve({
           project: target.project,
-          doc: target.doc,
+          doc: target.doc ?? "",
+          drive: target.drive,
           signal: ac.signal,
         });
         if (cancelled) return;
@@ -91,7 +92,7 @@ export function useResolvedPreview(
       ac.abort();
       unsubscribe();
     };
-  }, [target?.project, target?.doc]);
+  }, [target?.project, target?.doc, target?.drive]);
 
   /* Auto-start: when we land on `project-stopped` for a target we haven't
    * started yet, fire POST /start. The server is idempotent and the SSE

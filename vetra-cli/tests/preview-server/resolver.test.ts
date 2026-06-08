@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 
 import { resolvePreview } from "../../src/preview-server/resolver.js";
 import { getPreviewDriveId } from "../../src/helpers/reactor-project-preview.js";
+import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from "../../src/constants.js";
 import { makeWorkdir } from "../spec/_fixtures.js";
 
 interface FakeInstance {
@@ -139,6 +140,7 @@ describe("preview-server resolver", () => {
       driveId,
       documentId: "doc-1",
       url: `http://localhost:3001/d/${driveId}/doc-1?embed=1`,
+      proxiedUrl: `${REACTOR_PROJECT_CONNECT_PROXY_PATH}/d/${driveId}/doc-1?embed=1`,
     });
   });
 
@@ -162,5 +164,39 @@ describe("preview-server resolver", () => {
     expect(ready.url).toBe(
       `http://localhost:3001/d/${driveId}/doc%20with%20spaces?embed=1`,
     );
+  });
+
+  it("returns a drive-root URL when drive param is set", async () => {
+    const services = makeServices([
+      {
+        workdir: projectPath,
+        status: "ready",
+        endpoints: { "vetra-studio": "http://localhost:3001" },
+      },
+    ]);
+    const appDriveId = "app-drive-123";
+    const result = await resolvePreview({
+      services,
+      workdir,
+      project: PROJECT,
+      doc: "",
+      drive: appDriveId,
+    });
+    expect(result).toEqual({
+      kind: "ready",
+      project: PROJECT,
+      projectPath,
+      driveId: appDriveId,
+      documentId: appDriveId,
+      url: `http://localhost:3001/d/${appDriveId}?embed=1`,
+      proxiedUrl: `${REACTOR_PROJECT_CONNECT_PROXY_PATH}/d/${appDriveId}?embed=1`,
+    });
+  });
+
+  it("returns no-target when both doc and drive are empty", async () => {
+    const services = makeServices([]);
+    expect(
+      await resolvePreview({ services, workdir, project: "x", doc: "", drive: undefined }),
+    ).toEqual({ kind: "no-target" });
   });
 });

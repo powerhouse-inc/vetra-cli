@@ -79,9 +79,11 @@ export type StartResult =
 export async function fetchResolve(args: {
   project: string;
   doc: string;
+  drive?: string;
   signal?: AbortSignal;
 }): Promise<ResolveResult> {
   const params = new URLSearchParams({ project: args.project, doc: args.doc });
+  if (args.drive) params.set("drive", args.drive);
   const res = await fetch(`${BASE}/resolve?${params}`, { signal: args.signal });
   if (!res.ok) {
     throw new Error(`preview-server /resolve: ${res.status} ${res.statusText}`);

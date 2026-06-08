@@ -11,6 +11,8 @@ import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from "../constants.js";
 import { resolveReactorProjectPath } from "../helpers/project.js";
 import {
   buildPreviewDocPath,
+  buildPreviewDriveRootPath,
+  driveRemoteUrl,
   getPreviewDriveId,
 } from "../helpers/reactor-project-preview.js";
 import type { ResolveResult } from "./config.js";
@@ -20,8 +22,10 @@ export async function resolvePreview(args: {
   workdir: string;
   project: string;
   doc: string;
+  drive?: string;
 }): Promise<ResolveResult> {
-  if (!args.project || !args.doc) return { kind: "no-target" };
+  if (!args.project) return { kind: "no-target" };
+  if (!args.drive && !args.doc) return { kind: "no-target" };
 
   let projectPath: string;
   try {
@@ -34,7 +38,8 @@ export async function resolvePreview(args: {
     };
   }
 
-  const driveId = getPreviewDriveId(projectPath);
+  const defaultDriveId = getPreviewDriveId(projectPath);
+  const targetDriveId = args.drive ?? defaultDriveId;
   const instance = args.services
     .list("reactor-project")
     .find((i) => i.workdir === projectPath);
@@ -43,7 +48,7 @@ export async function resolvePreview(args: {
     return { kind: "project-stopped", project: args.project, projectPath };
   }
   if (instance.status === "starting") {
-    return { kind: "starting", project: args.project, projectPath, driveId };
+    return { kind: "starting", project: args.project, projectPath, driveId: targetDriveId };
   }
   if (instance.status !== "ready") {
     return { kind: "project-stopped", project: args.project, projectPath };
@@ -51,17 +56,36 @@ export async function resolvePreview(args: {
 
   const connectUrl = instance.endpoints?.["vetra-studio"];
   if (!connectUrl) {
-    // Connect endpoint hasn't been captured yet — treat as still starting.
-    return { kind: "starting", project: args.project, projectPath, driveId };
+    return { kind: "starting", project: args.project, projectPath, driveId: targetDriveId };
   }
 
   const base = connectUrl.replace(/\/+$/, "");
-  const docPath = buildPreviewDocPath(driveId, args.doc);
+
+  if (args.drive) {
+    // Append the drive's remote URL so Connect registers the ad-hoc app drive
+    // via addRemoteDrive on load; otherwise it bounces to the drive picker.
+    const switchboardUrl = instance.endpoints?.["vetra-switchboard"];
+    const docPath = buildPreviewDriveRootPath(
+      args.drive,
+      switchboardUrl ? driveRemoteUrl(switchboardUrl, args.drive) : undefined,
+    );
+    return {
+      kind: "ready",
+      project: args.project,
+      projectPath,
+      driveId: args.drive,
+      documentId: args.drive,
+      url: `${base}${docPath}`,
+      proxiedUrl: `${REACTOR_PROJECT_CONNECT_PROXY_PATH}${docPath}`,
+    };
+  }
+
+  const docPath = buildPreviewDocPath(defaultDriveId, args.doc);
   return {
     kind: "ready",
     project: args.project,
     projectPath,
-    driveId,
+    driveId: defaultDriveId,
     documentId: args.doc,
     url: `${base}${docPath}`,
     proxiedUrl: `${REACTOR_PROJECT_CONNECT_PROXY_PATH}${docPath}`,
