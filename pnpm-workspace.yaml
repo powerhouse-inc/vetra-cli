@@ -44,8 +44,7 @@ overrides:
   'mastra>@mastra/deployer': '1.22.0'
   zod: '4.3.6'
   viem: '2.49.0'
-  '@powerhousedao/ph-clint': 'link:/Users/teunhabraken/ph-clint/packages/ph-clint'
-  '@powerhousedao/clint-common': 'link:/Users/teunhabraken/ph-clint/packages/clint-common'
+  '@powerhousedao/ph-clint': 'link:../ph-clint/packages/ph-clint'
 
 allowBuilds:
   '@apollo/protobufjs': true

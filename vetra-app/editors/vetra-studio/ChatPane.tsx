@@ -23,11 +23,6 @@ import type {
 import { lazy, Suspense, useMemo, useState, useTransition } from "react";
 import VetraMitosis from "./VetraMitosis.js";
 
-const AGENT_ICON = <VetraMitosis size={20} active={false} />;
-function MessageIcon({ active }: { active: boolean }) {
-  return <VetraMitosis size={20} active={active} />;
-}
-
 const ChatSession = lazy(() =>
   import("@powerhousedao/clint-common/editors").then((m) => ({
     default: m.ChatSession,
@@ -327,8 +322,6 @@ function SessionView({
       document={chatDocument}
       dispatch={dispatch}
       attachments={attachments}
-      agentIcon={AGENT_ICON}
-      messageIcon={MessageIcon}
     />
   );
 }
