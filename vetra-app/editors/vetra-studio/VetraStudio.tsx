@@ -4,18 +4,22 @@ import type {
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
   useDocumentById,
+  useDocumentsInSelectedDrive,
   type DocumentDispatch,
   type UseDispatchResult,
 } from "@powerhousedao/reactor-browser";
 import type {
   DocumentDriveAction,
   DocumentDriveDocument,
+  FileNode,
 } from "@powerhousedao/shared/document-drive";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BuildSection } from "./BuildSection.js";
 import { ChatPane } from "./ChatPane.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
+import { latestTouchedNavigable } from "./auto-nav.js";
+import type { OpenTarget } from "./ideation/types.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
 
@@ -26,6 +30,12 @@ const CHAT_WIDTH_STORAGE_KEY = "vetra-studio:chat-pane-width";
  * and tabs, and gives back/forward navigation for free.
  */
 const SESSION_QUERY_PARAM = "session";
+/** URL query param holding the open ideation document id. Mirrors the session
+ * param so a refresh / shared link restores the open sheet. */
+const DOC_QUERY_PARAM = "doc";
+/** localStorage key for the auto-follow toggle. A per-user preference (not
+ * link-shareable), so localStorage rather than the URL — mirrors chat width. */
+const AUTO_NAV_STORAGE_KEY = "vetra-studio:auto-nav";
 const CHAT_WIDTH_DEFAULT = 360;
 const CHAT_WIDTH_MIN = 240;
 /** Minimum width the right pane keeps regardless of how far the divider is pushed. */
@@ -54,6 +64,38 @@ function writeSessionToUrl(sessionId: string | undefined) {
   );
 }
 
+function readDocIdFromUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (
+    new URLSearchParams(window.location.search).get(DOC_QUERY_PARAM) ??
+    undefined
+  );
+}
+
+function writeDocToUrl(docId: string | undefined) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (docId) url.searchParams.set(DOC_QUERY_PARAM, docId);
+  else url.searchParams.delete(DOC_QUERY_PARAM);
+  window.history.replaceState(
+    window.history.state,
+    "",
+    url.pathname + url.search + url.hash,
+  );
+}
+
+/** Resolve `?doc=<id>` against the drive's nodes into an OpenTarget. Returns
+ * null if the param is absent or the node isn't (yet) in the drive. */
+function resolveDocFromUrl(drive: DocumentDriveDocument): OpenTarget | null {
+  const id = readDocIdFromUrl();
+  if (!id) return null;
+  const node = drive.state.global.nodes.find(
+    (n): n is FileNode => n.kind === "file" && n.id === id,
+  );
+  if (!node) return null;
+  return { id: node.id, documentType: node.documentType, name: node.name };
+}
+
 export type VetraStudioProps = {
   document: DocumentDriveDocument;
   dispatch: DocumentDispatch<DocumentDriveAction>;
@@ -74,7 +116,27 @@ export function VetraStudio({
   const [selectedSessionId, setSelectedSessionId] = useState<
     string | undefined
   >(() => readSessionFromUrl());
-  const [section, setSection] = useState<Section>("home");
+  // Open ideation doc (lifted from IdeationSection so auto-nav can drive it),
+  // restored from ?doc= on load. section follows it.
+  const [openDoc, setOpenDoc] = useState<OpenTarget | null>(() =>
+    resolveDocFromUrl(document),
+  );
+  const [section, setSection] = useState<Section>(() =>
+    resolveDocFromUrl(document) ? "ideate" : "home",
+  );
+  // userPinned: a manual open pins the view so auto-nav won't yank it away.
+  // A doc restored from the URL counts as pinned (the user was looking at it).
+  const [userPinned, setUserPinned] = useState<boolean>(
+    () => resolveDocFromUrl(document) !== null,
+  );
+  const [autoNavEnabled, setAutoNavEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(AUTO_NAV_STORAGE_KEY) !== "0";
+  });
+
+  // Latest drive, readable from event handlers (popstate) without re-binding.
+  const documentRef = useRef(document);
+  documentRef.current = document;
 
   const productName =
     document.state.global.name.trim() || document.header.name || "Home";
@@ -84,16 +146,81 @@ export function VetraStudio({
     writeSessionToUrl(selectedSessionId);
   }, [selectedSessionId]);
 
+  useEffect(() => {
+    writeDocToUrl(openDoc?.id);
+  }, [openDoc]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      AUTO_NAV_STORAGE_KEY,
+      autoNavEnabled ? "1" : "0",
+    );
+  }, [autoNavEnabled]);
+
   // Keep local state in sync when the URL changes externally (back/forward,
   // someone editing the address bar, shared link arrives via in-page nav).
   useEffect(() => {
     if (typeof window === "undefined") return;
     function onPopState() {
       setSelectedSessionId(readSessionFromUrl());
+      const target = resolveDocFromUrl(documentRef.current);
+      setOpenDoc(target);
+      setUserPinned(target !== null);
+      if (target) setSection("ideate");
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  // ── Auto-navigation: follow the ideation doc the agent is working on ──
+  // useDocumentsInSelectedDrive is reactive: it re-renders when the agent
+  // creates OR edits a doc (lastModifiedAtUtcIso bumps). We track the newest
+  // touch we've followed (high-water mark) and open the doc whenever a *more
+  // recent* touch lands on a *different* doc — so a fast burst of creations
+  // followed by spaced-out edits walks the view through each sheet as it fills
+  // in. Seed on first observation so we never jump to a pre-existing doc on
+  // mount; re-editing the already-open doc doesn't re-trigger.
+  const documents = useDocumentsInSelectedDrive();
+  const lastTouchedRef = useRef<{ id: string; ts: number } | null>(null);
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (documents === undefined) return; // drive not loaded yet
+    const latest = latestTouchedNavigable(documents);
+    // Seed once the drive has loaded — even when empty — so a doc that existed
+    // at mount isn't auto-opened, but the first doc created afterwards is.
+    if (!seededRef.current) {
+      lastTouchedRef.current = latest ? { id: latest.id, ts: latest.ts } : null;
+      seededRef.current = true;
+      return;
+    }
+    if (!latest) return;
+    const prev = lastTouchedRef.current;
+    if (latest.ts <= (prev?.ts ?? -1)) return; // nothing newer happened
+    lastTouchedRef.current = { id: latest.id, ts: latest.ts };
+    if (latest.id === prev?.id) return; // same doc edited again — already shown
+    if (!autoNavEnabled || userPinned) return; // respect toggle + pin
+    setSection("ideate");
+    setOpenDoc({
+      id: latest.id,
+      documentType: latest.documentType,
+      name: latest.name,
+    });
+  }, [documents, autoNavEnabled, userPinned]);
+
+  // Restore `?doc=` once the drive hydrates: the initializer resolves against
+  // the node list, which may be empty on first render (nodes arrive after
+  // reactor sync). Re-attempt while openDoc is still null and the URL still
+  // carries an id — a closed doc clears the param, so this never re-opens a
+  // dismissed sheet or fights a manual close.
+  useEffect(() => {
+    if (openDoc) return;
+    const target = resolveDocFromUrl(documentRef.current);
+    if (!target) return;
+    setOpenDoc(target);
+    setUserPinned(true);
+    setSection("ideate");
+  }, [documents, openDoc]);
 
   /* The session doc is the source of truth for the BUILD preview: its tool
    * history names the project and document the agent last surfaced via
@@ -104,6 +231,32 @@ export function VetraStudio({
   ) as UseDispatchResult<ChatSessionDocument | undefined, ChatSessionAction>;
   const previewTarget = useSessionPreviewTarget(sessionDocument ?? undefined);
   const preview = useResolvedPreview(previewTarget);
+
+  // Manual open (a user click) — pins the view against auto-nav.
+  const handleUserOpen = useCallback((target: OpenTarget) => {
+    setOpenDoc(target);
+    setSection("ideate");
+    setUserPinned(true);
+  }, []);
+
+  // Breadcrumb "Ideate" → back to the list; re-arms auto-follow.
+  const handleClearOpen = useCallback(() => {
+    setOpenDoc(null);
+    setUserPinned(false);
+  }, []);
+
+  // Breadcrumb product name → home; re-arms auto-follow.
+  const handleExitToHome = useCallback(() => {
+    setOpenDoc(null);
+    setUserPinned(false);
+    setSection("home");
+  }, []);
+
+  // Toggle handler — turning auto-follow back ON re-arms it (clears the pin).
+  const handleToggleAutoNav = useCallback((next: boolean) => {
+    setAutoNavEnabled(next);
+    if (next) setUserPinned(false);
+  }, []);
 
   const [chatWidth, setChatWidth] = useState<number>(() => {
     if (typeof window === "undefined") return CHAT_WIDTH_DEFAULT;
@@ -193,6 +346,10 @@ export function VetraStudio({
         </div>
       </div>
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gray-50">
+        <AutoNavToggle
+          enabled={autoNavEnabled}
+          onChange={handleToggleAutoNav}
+        />
         {section === "build" ? (
           <BuildSection
             preview={preview}
@@ -204,7 +361,10 @@ export function VetraStudio({
             <IdeationSection
               drive={document}
               productName={productName}
-              onExitToHome={() => setSection("home")}
+              open={openDoc}
+              onOpen={handleUserOpen}
+              onClear={handleClearOpen}
+              onExitToHome={handleExitToHome}
             />
           </div>
         ) : (
@@ -223,6 +383,29 @@ export function VetraStudio({
           style={{ background: "transparent" }}
         />
       ) : null}
+    </div>
+  );
+}
+
+/** The auto-follow toggle in the main-pane chrome. */
+function AutoNavToggle({
+  enabled,
+  onChange,
+}: {
+  enabled: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center justify-end border-b border-gray-200 bg-white px-4 py-1.5">
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-600">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="h-3.5 w-3.5"
+        />
+        Auto-follow agent
+      </label>
     </div>
   );
 }
