@@ -208,6 +208,20 @@ export function VetraStudio({
     });
   }, [documents, autoNavEnabled, userPinned]);
 
+  // Restore `?doc=` once the drive hydrates: the initializer resolves against
+  // the node list, which may be empty on first render (nodes arrive after
+  // reactor sync). Re-attempt while openDoc is still null and the URL still
+  // carries an id — a closed doc clears the param, so this never re-opens a
+  // dismissed sheet or fights a manual close.
+  useEffect(() => {
+    if (openDoc) return;
+    const target = resolveDocFromUrl(documentRef.current);
+    if (!target) return;
+    setOpenDoc(target);
+    setUserPinned(true);
+    setSection("ideate");
+  }, [documents, openDoc]);
+
   /* The session doc is the source of truth for the BUILD preview: its tool
    * history names the project and document the agent last surfaced via
    * `spec-preview-show`. We re-resolve the URL each render from the live
