@@ -4,6 +4,7 @@ import type {
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
   useDocumentById,
+  useDocumentsInSelectedDrive,
   type DocumentDispatch,
   type UseDispatchResult,
 } from "@powerhousedao/reactor-browser";
@@ -17,7 +18,7 @@ import { BuildSection } from "./BuildSection.js";
 import { ChatPane } from "./ChatPane.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
-import { navigableIds, pickNewlyCreatedTarget } from "./auto-nav.js";
+import { latestTouchedNavigable } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
@@ -172,26 +173,40 @@ export function VetraStudio({
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  // ── Auto-navigation: follow newly-created ideation docs in the drive ──
-  // The drive prop is reactive (re-renders when the agent adds a node). We diff
-  // the navigable file-node id set across renders; a new id → open it. Seed on
-  // first render so we never jump to a pre-existing doc on mount.
-  const prevNavIdsRef = useRef<Set<string>>(new Set());
+  // ── Auto-navigation: follow the ideation doc the agent is working on ──
+  // useDocumentsInSelectedDrive is reactive: it re-renders when the agent
+  // creates OR edits a doc (lastModifiedAtUtcIso bumps). We track the newest
+  // touch we've followed (high-water mark) and open the doc whenever a *more
+  // recent* touch lands on a *different* doc — so a fast burst of creations
+  // followed by spaced-out edits walks the view through each sheet as it fills
+  // in. Seed on first observation so we never jump to a pre-existing doc on
+  // mount; re-editing the already-open doc doesn't re-trigger.
+  const documents = useDocumentsInSelectedDrive();
+  const lastTouchedRef = useRef<{ id: string; ts: number } | null>(null);
   const seededRef = useRef(false);
   useEffect(() => {
-    const nodes = document.state.global.nodes;
+    if (documents === undefined) return; // drive not loaded yet
+    const latest = latestTouchedNavigable(documents);
+    // Seed once the drive has loaded — even when empty — so a doc that existed
+    // at mount isn't auto-opened, but the first doc created afterwards is.
     if (!seededRef.current) {
-      prevNavIdsRef.current = navigableIds(nodes);
+      lastTouchedRef.current = latest ? { id: latest.id, ts: latest.ts } : null;
       seededRef.current = true;
       return;
     }
-    const target = pickNewlyCreatedTarget(prevNavIdsRef.current, nodes);
-    prevNavIdsRef.current = navigableIds(nodes);
-    if (target && autoNavEnabled && !userPinned) {
-      setSection("ideate");
-      setOpenDoc(target);
-    }
-  }, [document, autoNavEnabled, userPinned]);
+    if (!latest) return;
+    const prev = lastTouchedRef.current;
+    if (latest.ts <= (prev?.ts ?? -1)) return; // nothing newer happened
+    lastTouchedRef.current = { id: latest.id, ts: latest.ts };
+    if (latest.id === prev?.id) return; // same doc edited again — already shown
+    if (!autoNavEnabled || userPinned) return; // respect toggle + pin
+    setSection("ideate");
+    setOpenDoc({
+      id: latest.id,
+      documentType: latest.documentType,
+      name: latest.name,
+    });
+  }, [documents, autoNavEnabled, userPinned]);
 
   /* The session doc is the source of truth for the BUILD preview: its tool
    * history names the project and document the agent last surfaced via

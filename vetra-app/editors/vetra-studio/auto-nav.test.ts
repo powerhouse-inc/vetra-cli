@@ -1,94 +1,90 @@
 import { describe, expect, it } from "vitest";
 import {
-  isNavigableFile,
-  navigableIds,
-  pickNewlyCreatedTarget,
-  type DriveNodeLike,
+  AUTO_NAV_TYPES,
+  latestTouchedNavigable,
+  type DocLike,
 } from "./auto-nav.js";
 
-function file(id: string, documentType: string, name = id): DriveNodeLike {
-  return { id, kind: "file", documentType, name };
+function doc(
+  id: string,
+  documentType: string,
+  lastModifiedAtUtcIso: string | Date,
+  name = id,
+): DocLike {
+  return { header: { id, name, documentType, lastModifiedAtUtcIso } };
 }
 
-const folder: DriveNodeLike = { id: "fold", kind: "folder", name: "Folder" };
-
-describe("isNavigableFile", () => {
-  it("accepts the five ideation sheet types", () => {
-    expect(isNavigableFile(file("a", "powerhouse/brand-sheet"))).toBe(true);
-    expect(isNavigableFile(file("a", "powerhouse/problem-sheet"))).toBe(true);
-    expect(isNavigableFile(file("a", "powerhouse/audience-sheet"))).toBe(true);
-    expect(isNavigableFile(file("a", "powerhouse/feature"))).toBe(true);
-    expect(
-      isNavigableFile(file("a", "powerhouse/work-breakdown-structure")),
-    ).toBe(true);
-  });
-
-  it("rejects folders, non-ideation types, and missing documentType", () => {
-    expect(isNavigableFile(folder)).toBe(false);
-    expect(isNavigableFile(file("a", "powerhouse/document-model"))).toBe(false);
-    expect(isNavigableFile(file("a", "powerhouse/app"))).toBe(false);
-    expect(isNavigableFile({ id: "x", kind: "file", name: "x" })).toBe(false);
+describe("AUTO_NAV_TYPES", () => {
+  it("is exactly the five ideation sheet types", () => {
+    expect([...AUTO_NAV_TYPES].sort()).toEqual(
+      [
+        "powerhouse/audience-sheet",
+        "powerhouse/brand-sheet",
+        "powerhouse/feature",
+        "powerhouse/problem-sheet",
+        "powerhouse/work-breakdown-structure",
+      ].sort(),
+    );
   });
 });
 
-describe("navigableIds", () => {
-  it("collects only navigable file ids", () => {
-    const ids = navigableIds([
-      file("a", "powerhouse/brand-sheet"),
-      file("b", "powerhouse/document-model"), // not navigable
-      folder,
-      file("c", "powerhouse/feature"),
-    ]);
-    expect([...ids].sort()).toEqual(["a", "c"]);
-  });
-});
-
-describe("pickNewlyCreatedTarget", () => {
-  it("returns null when nothing navigable was added", () => {
-    const nodes = [file("a", "powerhouse/brand-sheet")];
-    expect(pickNewlyCreatedTarget(new Set(["a"]), nodes)).toBeNull();
+describe("latestTouchedNavigable", () => {
+  it("returns null for an empty drive", () => {
+    expect(latestTouchedNavigable([])).toBeNull();
   });
 
-  it("returns the new navigable node as an OpenTarget", () => {
-    const nodes = [
-      file("a", "powerhouse/brand-sheet"),
-      file("b", "powerhouse/problem-sheet", "Problem"),
+  it("returns null when no navigable docs exist", () => {
+    const docs = [
+      doc("a", "powerhouse/document-model", "2026-06-04T10:00:00.000Z"),
+      doc("b", "powerhouse/chat-session", "2026-06-04T11:00:00.000Z"),
     ];
-    expect(pickNewlyCreatedTarget(new Set(["a"]), nodes)).toEqual({
+    expect(latestTouchedNavigable(docs)).toBeNull();
+  });
+
+  it("picks the most recently modified navigable doc", () => {
+    const docs = [
+      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
+      doc("b", "powerhouse/problem-sheet", "2026-06-04T12:00:00.000Z", "Prob"),
+      doc("c", "powerhouse/audience-sheet", "2026-06-04T11:00:00.000Z", "Aud"),
+    ];
+    expect(latestTouchedNavigable(docs)).toEqual({
       id: "b",
       documentType: "powerhouse/problem-sheet",
-      name: "Problem",
+      name: "Prob",
+      ts: new Date("2026-06-04T12:00:00.000Z").getTime(),
     });
   });
 
-  it("ignores newly added non-navigable types", () => {
-    const nodes = [
-      file("a", "powerhouse/brand-sheet"),
-      file("b", "powerhouse/document-model"), // new but not navigable
-      folder,
+  it("ignores non-navigable docs even if newer", () => {
+    const docs = [
+      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
+      doc("z", "powerhouse/document-model", "2026-06-04T23:00:00.000Z"), // newest but not navigable
     ];
-    expect(pickNewlyCreatedTarget(new Set(["a"]), nodes)).toBeNull();
+    expect(latestTouchedNavigable(docs)?.id).toBe("a");
   });
 
-  it("returns the newest (last) when multiple are added", () => {
-    const nodes = [
-      file("a", "powerhouse/brand-sheet"),
-      file("b", "powerhouse/problem-sheet"),
-      file("c", "powerhouse/audience-sheet", "Audience"),
+  it("accepts Date instances as well as ISO strings", () => {
+    const docs = [
+      doc("a", "powerhouse/feature", new Date("2026-06-04T10:00:00.000Z")),
+      doc("b", "powerhouse/feature", new Date("2026-06-04T13:00:00.000Z"), "B"),
     ];
-    // a is known; b and c are new → c (last) wins
-    expect(pickNewlyCreatedTarget(new Set(["a"]), nodes)).toEqual({
-      id: "c",
-      documentType: "powerhouse/audience-sheet",
-      name: "Audience",
-    });
+    expect(latestTouchedNavigable(docs)?.id).toBe("b");
   });
 
-  it("seed case (everything already known) yields null", () => {
-    const nodes = [
-      file("a", "powerhouse/brand-sheet"),
-      file("b", "powerhouse/feature"),
+  it("on equal timestamps prefers the later entry (newest appended)", () => {
+    const t = "2026-06-04T10:00:00.000Z";
+    const docs = [
+      doc("a", "powerhouse/brand-sheet", t),
+      doc("b", "powerhouse/problem-sheet", t),
     ];
-    expect(pickNewlyCreatedTarget(navigableIds(nodes), nodes)).toBeNull();
+    expect(latestTouchedNavigable(docs)?.id).toBe("b");
+  });
+
+  it("skips docs with an unparseable timestamp", () => {
+    const docs = [
+      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
+      doc("bad", "powerhouse/feature", "not-a-date"),
+    ];
+    expect(latestTouchedNavigable(docs)?.id).toBe("a");
   });
 });
