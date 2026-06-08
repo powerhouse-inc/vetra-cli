@@ -12,6 +12,7 @@ import type {
 } from "document-models/work-breakdown-structure";
 import { useState } from "react";
 import {
+  ClearButton,
   EditableText,
   EmptyHint,
   EnumChips,
@@ -128,9 +129,9 @@ function FeatureLink({
         <span className="text-gray-700">
           {state.feature.name || state.feature.documentId}
         </span>
-        <LinkButton onClick={() => dispatch(actions.clearFeature({}))}>
+        <ClearButton onClick={() => dispatch(actions.clearFeature({}))}>
           Unlink
-        </LinkButton>
+        </ClearButton>
       </div>
     );
   }

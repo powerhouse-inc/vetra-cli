@@ -15,6 +15,7 @@ import type {
 import { useState } from "react";
 import {
   Card,
+  ClearButton,
   EditableNumber,
   EditableText,
   EmptyHint,
@@ -193,9 +194,9 @@ export function EstimatesSection({
       title="Estimates"
       action={
         state.confidence || state.effort || state.impact ? (
-          <LinkButton onClick={() => dispatch(actions.clearEstimates({}))}>
+          <ClearButton onClick={() => dispatch(actions.clearEstimates({}))}>
             Clear
-          </LinkButton>
+          </ClearButton>
         ) : undefined
       }
     >

@@ -11,6 +11,7 @@ import type {
 } from "document-models/audience-sheet";
 import { useState } from "react";
 import {
+  AddButton,
   Card,
   EditableNumber,
   EditableText,
@@ -40,7 +41,7 @@ export function SegmentsSection({
   return (
     <Section
       title="Segments"
-      action={<LinkButton onClick={add}>Add segment</LinkButton>}
+      action={<AddButton onClick={add}>Add segment</AddButton>}
     >
       {segments.length === 0 ? (
         <EmptyHint>No segments yet.</EmptyHint>
@@ -212,34 +213,41 @@ function OutcomePriorities({
         />
       }
     >
-      {segment.outcomePriorities.length === 0 ? (
-        <EmptyHint>No outcome priorities scored.</EmptyHint>
-      ) : (
-        <div className="overflow-hidden rounded border border-gray-200">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-400">
+      <div className="overflow-hidden rounded border border-gray-200">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-400">
+            <tr>
+              <th className="px-3 py-1.5 font-medium">Outcome</th>
+              <th className="px-2 py-1.5 font-medium">Imp.</th>
+              <th className="px-2 py-1.5 font-medium">Sat.</th>
+              <th className="px-2 py-1.5 font-medium">Opp.</th>
+              <th className="px-2 py-1.5 font-medium">Source</th>
+              <th className="px-2 py-1.5" />
+            </tr>
+          </thead>
+          <tbody>
+            {segment.outcomePriorities.length === 0 ? (
               <tr>
-                <th className="px-3 py-1.5 font-medium">Outcome</th>
-                <th className="px-2 py-1.5 font-medium">Imp.</th>
-                <th className="px-2 py-1.5 font-medium">Sat.</th>
-                <th className="px-2 py-1.5 font-medium">Opp.</th>
-                <th className="px-2 py-1.5 font-medium">Source</th>
-                <th className="px-2 py-1.5" />
+                <td
+                  colSpan={6}
+                  className="px-3 py-3 text-sm text-gray-400"
+                >
+                  No outcome priorities scored.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {segment.outcomePriorities.map((p) => (
+            ) : (
+              segment.outcomePriorities.map((p) => (
                 <PriorityRow
                   key={p.id}
                   priority={p}
                   segmentId={segment.id}
                   dispatch={dispatch}
                 />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </SubBlock>
   );
 }
@@ -254,7 +262,7 @@ function PriorityRow({
   dispatch: Dispatch;
 }) {
   return (
-    <tr className="border-t border-gray-100">
+    <tr className="border-t border-gray-100 align-middle">
       <td className="px-3 py-1.5 text-gray-700">
         {priority.outcome.statement || priority.outcome.objectId}
       </td>
@@ -292,7 +300,7 @@ function PriorityRow({
           className="w-12"
         />
       </td>
-      <td className="px-2 py-1.5 font-mono text-xs text-gray-500">
+      <td className="px-2 py-1.5 text-xs text-gray-500">
         {priority.opportunity.toFixed(1)}
       </td>
       <td className="px-2 py-1.5">
@@ -463,7 +471,7 @@ function RefAdder({
 
   if (!open)
     return (
-      <LinkButton onClick={() => setOpen(true)}>{`Add ${label}`}</LinkButton>
+      <AddButton onClick={() => setOpen(true)}>{`Add ${label}`}</AddButton>
     );
 
   const commit = () => {
@@ -494,13 +502,13 @@ function RefAdder({
         value={documentId}
         placeholder="document id"
         onChange={(e) => setDocumentId(e.target.value)}
-        className="w-40 rounded border border-gray-200 px-1.5 py-0.5 font-mono outline-none focus:border-gray-400"
+        className="w-40 rounded border border-gray-200 px-1.5 py-0.5 outline-none focus:border-gray-400"
       />
       <input
         value={objectId}
         placeholder="object id"
         onChange={(e) => setObjectId(e.target.value)}
-        className="w-28 rounded border border-gray-200 px-1.5 py-0.5 font-mono outline-none focus:border-gray-400"
+        className="w-28 rounded border border-gray-200 px-1.5 py-0.5 outline-none focus:border-gray-400"
       />
       <LinkButton onClick={commit}>Add</LinkButton>
       <LinkButton onClick={() => setOpen(false)}>Cancel</LinkButton>
@@ -529,7 +537,7 @@ function PriorityAdder({
   const [source, setSource] = useState<EvidenceSource>("BUILDER");
 
   if (!open)
-    return <LinkButton onClick={() => setOpen(true)}>Add priority</LinkButton>;
+    return <AddButton onClick={() => setOpen(true)}>Add priority</AddButton>;
 
   const commit = () => {
     if (!documentId.trim() || !objectId.trim()) return;
@@ -559,13 +567,13 @@ function PriorityAdder({
         value={documentId}
         placeholder="document id"
         onChange={(e) => setDocumentId(e.target.value)}
-        className="w-36 rounded border border-gray-200 px-1.5 py-0.5 font-mono outline-none focus:border-gray-400"
+        className="w-36 rounded border border-gray-200 px-1.5 py-0.5 outline-none focus:border-gray-400"
       />
       <input
         value={objectId}
         placeholder="object id"
         onChange={(e) => setObjectId(e.target.value)}
-        className="w-24 rounded border border-gray-200 px-1.5 py-0.5 font-mono outline-none focus:border-gray-400"
+        className="w-24 rounded border border-gray-200 px-1.5 py-0.5 outline-none focus:border-gray-400"
       />
       <label className="flex items-center gap-1 text-gray-500">
         imp
@@ -606,7 +614,7 @@ function EvidenceAdder({
   const [source, setSource] = useState<EvidenceSource>("BUILDER");
 
   if (!open)
-    return <LinkButton onClick={() => setOpen(true)}>Add evidence</LinkButton>;
+    return <AddButton onClick={() => setOpen(true)}>Add evidence</AddButton>;
 
   const commit = () => {
     if (!content.trim()) return;

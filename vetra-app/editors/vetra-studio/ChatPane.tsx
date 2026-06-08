@@ -68,15 +68,15 @@ export function ChatPane({
     const knownSession = sessions.find((s) => s.id === selectedSessionId);
     return (
       <div className="flex h-full flex-col">
-        <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2">
+        <header className="flex items-center gap-2 border-b border-vetra-border bg-vetra-card px-3 py-2">
           <button
             type="button"
             onClick={() => onSelectSession(undefined)}
-            className="rounded-md px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+            className="rounded-lg px-2 py-1 text-xs font-medium text-vetra-muted-fg hover:bg-vetra-accent"
           >
             ← Sessions
           </button>
-          <span className="ml-1 truncate text-sm font-medium text-gray-800">
+          <span className="ml-1 truncate text-sm font-medium text-vetra-fg">
             {knownSession?.name ?? ""}
           </span>
         </header>
@@ -142,14 +142,14 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-white">
-      <header className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
+    <div className="flex h-full flex-col bg-vetra-card">
+      <header className="flex items-center justify-between gap-3 border-b border-vetra-border bg-vetra-card px-4 py-3">
         <div className="flex min-w-0 items-baseline gap-2">
-          <h2 className="text-sm font-semibold tracking-tight text-gray-900">
+          <h2 className="text-sm font-semibold tracking-tight text-vetra-fg">
             Chat sessions
           </h2>
           {sessions.length > 0 ? (
-            <span className="text-xs font-medium text-gray-400 tabular-nums">
+            <span className="text-xs font-medium text-vetra-muted-fg tabular-nums">
               {sessions.length}
             </span>
           ) : null}
@@ -158,7 +158,7 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
           type="button"
           onClick={() => void handleNewSession()}
           disabled={creating}
-          className="inline-flex items-center gap-1 rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-lg bg-vetra-primary px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {creating ? (
             <span aria-hidden>…</span>
@@ -176,7 +176,7 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
           creating={creating}
         />
       ) : (
-        <ul className="flex-1 divide-y divide-gray-100 overflow-y-auto">
+        <ul className="flex-1 divide-y divide-vetra-border/40 overflow-y-auto">
           {sessions.map((session) => {
             const isPending = pendingSessionId === session.id;
             return (
@@ -186,16 +186,16 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
                   onClick={() => selectSession(session.id)}
                   aria-busy={isPending || undefined}
                   className={
-                    "group flex w-full items-center gap-3 border-l-2 px-4 py-2.5 text-left text-sm text-gray-800 transition-colors hover:border-gray-900 hover:bg-gray-50 focus:outline-none focus-visible:border-gray-900 focus-visible:bg-gray-50 " +
+                    "group flex w-full items-center gap-3 border-l-2 px-4 py-2.5 text-left text-sm text-vetra-fg transition-colors hover:border-vetra-primary hover:bg-vetra-accent focus:outline-none focus-visible:border-vetra-primary focus-visible:bg-vetra-accent " +
                     (isPending
-                      ? "border-gray-900 bg-gray-50"
+                      ? "border-vetra-primary bg-vetra-primary/5"
                       : "border-transparent")
                   }
                 >
                   <ChatBubbleIcon
                     className={
-                      "h-4 w-4 shrink-0 group-hover:text-gray-700 " +
-                      (isPending ? "text-gray-700" : "text-gray-400")
+                      "h-4 w-4 shrink-0 transition-colors group-hover:text-vetra-primary " +
+                      (isPending ? "text-vetra-primary" : "text-vetra-muted-fg")
                     }
                   />
                   <span className="min-w-0 flex-1 truncate font-medium">
@@ -204,10 +204,10 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
                   {isPending ? (
                     <span
                       aria-hidden
-                      className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-gray-500"
+                      className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-vetra-primary"
                     />
                   ) : (
-                    <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-gray-500" />
+                    <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-vetra-border transition-colors group-hover:text-vetra-muted-fg" />
                   )}
                 </button>
               </li>
@@ -228,12 +228,14 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-      <ChatBubbleIcon className="h-8 w-8 text-gray-300" />
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-vetra-primary/10 text-vetra-primary">
+        <ChatBubbleIcon className="h-5 w-5" />
+      </div>
       <div>
-        <div className="text-sm font-medium text-gray-700">
+        <div className="text-sm font-medium text-vetra-fg">
           What will you build today?
         </div>
-        <div className="mt-1 text-xs text-gray-500">
+        <div className="mt-1 text-xs text-vetra-muted-fg">
           Start a session to talk to the agent.
         </div>
       </div>
@@ -241,7 +243,7 @@ function EmptyState({
         type="button"
         onClick={onNewSession}
         disabled={creating}
-        className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-vetra-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <PlusIcon />
         <span>{creating ? "Creating…" : "New session"}</span>
@@ -310,7 +312,7 @@ function SessionView({
   if (!chatDocument) {
     if (knownInDrive) return <SessionLoading />;
     return (
-      <div className="flex h-full items-center justify-center text-sm text-red-500">
+      <div className="flex h-full items-center justify-center text-sm text-vetra-destructive">
         Session not found
       </div>
     );
@@ -328,10 +330,10 @@ function SessionView({
 function SessionLoading() {
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="flex items-center gap-2 text-sm text-gray-400">
+      <div className="flex items-center gap-2 text-sm text-vetra-muted-fg">
         <span
           aria-hidden
-          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400"
+          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-vetra-muted-fg"
         />
         Loading session…
       </div>

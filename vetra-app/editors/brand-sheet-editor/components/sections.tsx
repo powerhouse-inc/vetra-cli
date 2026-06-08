@@ -16,9 +16,9 @@ import type {
 import { useRef, useState } from "react";
 import { BrandMark, readableText } from "./BrandMark.js";
 import {
+  AddButton,
   ChipList,
   EditableText,
-  LinkButton,
   Section,
 } from "../../shared/fields.js";
 
@@ -82,7 +82,8 @@ export function BrandHeader({
   );
   const symbolSrc = symbol ? logoSrc(symbol) : null;
   return (
-    <div className="flex items-center gap-5 rounded-lg border border-gray-200 bg-gray-50 p-5">
+    <div className="relative flex items-center gap-5 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-5">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-vetra-primary to-transparent opacity-60" />
       <div className="flex h-11 w-11 flex-none items-center justify-center text-gray-700">
         {symbolSrc ? (
           <img
@@ -155,7 +156,7 @@ export function LogoConcept({
   return (
     <Section
       title="Logo Concept"
-      action={<LinkButton onClick={addLogo}>Add logo</LinkButton>}
+      action={<AddButton onClick={addLogo}>Add logo</AddButton>}
     >
       {state.logos.length === 0 ? (
         <Empty>No logos yet.</Empty>
@@ -442,7 +443,7 @@ export function TypographySection({
   return (
     <Section
       title="Typography"
-      action={<LinkButton onClick={addTypeface}>Add typeface</LinkButton>}
+      action={<AddButton onClick={addTypeface}>Add typeface</AddButton>}
     >
       {state.typography.length === 0 ? (
         <Empty>No typefaces yet.</Empty>
@@ -534,13 +535,13 @@ export function VoiceSection({
   if (!voice) {
     return (
       <Section title="Voice & Tone">
-        <LinkButton
+        <AddButton
           onClick={() =>
             dispatch(actions.setVoice({ qualities: [], guidance: "" }))
           }
         >
           Add voice
-        </LinkButton>
+        </AddButton>
       </Section>
     );
   }

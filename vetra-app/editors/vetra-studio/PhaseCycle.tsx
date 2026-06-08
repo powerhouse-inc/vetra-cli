@@ -31,16 +31,28 @@ export function PhaseCycle({
               ? () => onOpen(phase.id as "ideate" | "build")
               : undefined
           }
-          className={`flex items-center justify-between rounded-lg border px-6 py-6 text-left transition ${
+          className={`group relative flex items-center justify-between overflow-hidden rounded-xl border px-6 py-6 text-left transition ${
             phase.enabled
-              ? "border-gray-300 bg-white hover:border-gray-400 hover:shadow-sm"
-              : "cursor-default border-gray-200 bg-gray-100"
+              ? "border-vetra-border bg-vetra-card hover:border-vetra-primary hover:shadow-sm"
+              : "cursor-default border-vetra-border/50 bg-vetra-muted"
           }`}
         >
-          <span className="text-xs font-semibold tracking-widest text-gray-500">
+          {phase.enabled ? (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-vetra-primary to-transparent opacity-0 transition-opacity group-hover:opacity-60"
+            />
+          ) : null}
+          <span className="text-xs font-semibold tracking-widest text-vetra-muted-fg">
             {phase.label}
           </span>
-          <span className="rounded-md bg-yellow-100 px-3 py-1 text-sm text-gray-700 shadow-sm">
+          <span
+            className={`rounded-lg px-3 py-1 text-sm font-medium ${
+              phase.enabled
+                ? "bg-vetra-primary/10 text-vetra-primary"
+                : "bg-vetra-muted/80 text-vetra-muted-fg"
+            }`}
+          >
             {phase.note}
           </span>
         </button>

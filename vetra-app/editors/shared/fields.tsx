@@ -16,16 +16,20 @@ export type FieldVariant = "field" | "plain";
 export function Section({
   title,
   action,
+  accent = false,
   children,
 }: {
   title: string;
   action?: React.ReactNode;
+  accent?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <section>
       <div className="mb-2 flex items-center justify-between">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+        <h4
+          className={`text-xs font-semibold uppercase tracking-wide ${accent ? "text-vetra-primary" : "text-gray-600"}`}
+        >
           {title}
         </h4>
         {action}
@@ -35,7 +39,7 @@ export function Section({
   );
 }
 
-/** A subtle text-link button, used for "Add …" affordances. */
+/** A subtle text-link button, used for cancel/clear/commit affordances. */
 export function LinkButton({
   children,
   onClick,
@@ -50,8 +54,60 @@ export function LinkButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="text-sm text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline disabled:opacity-40"
+      className="text-sm text-gray-700 underline-offset-2 hover:text-gray-900 hover:underline disabled:opacity-40"
     >
+      {children}
+    </button>
+  );
+}
+
+/** Ghost button for "Clear / Unlink …" section actions. */
+export function ClearButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-gray-700 hover:border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M15 9l-6 6M9 9l6 6" />
+      </svg>
+      {children}
+    </button>
+  );
+}
+
+/** Ghost button for "Add …" section actions. */
+export function AddButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-gray-700 hover:border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M12 8v8M8 12h8" />
+      </svg>
       {children}
     </button>
   );

@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout *)",
+      "Bash(grep -E \"\\\\.css$|colors|typography\")",
+      "Bash(git worktree *)",
+      "Bash(cat ../vetra-cli-main/vetra-app/powerhouse.config.json)",
+      "Read(//Users/teunhabraken/vetra-cli-main/vetra-app/**)",
+      "Bash(ls /Users/teunhabraken/vetra-cli-main/node_modules/.pnpm/ | grep ph-clint | head -10 && ls /Users/teunhabraken/vetra-cli-main/node_modules/@powerhousedao/ | grep ph-clint)",
+      "Read(//Users/teunhabraken/vetra-cli-main/node_modules/.pnpm/**)",
+      "Read(//Users/teunhabraken/vetra-cli-main/node_modules/**)",
+      "Bash(ls /Users/teunhabraken/vetra-cli-main/vetra-cli/node_modules/@powerhousedao/ | grep ph-clint && ls -la /Users/teunhabraken/vetra-cli-main/vetra-cli/node_modules/@powerhousedao/ph-clint 2>&1 | head -5)",
+      "Read(//Users/teunhabraken/vetra-cli-main/vetra-cli/node_modules/@powerhousedao/**)",
+      "Bash(ls /Users/teunhabraken/ph-clint/packages/ | grep ph-clint)",
+      "Read(//Users/teunhabraken/ph-clint/packages/**)",
+      "Read(//Users/teunhabraken/vetra-cli-main/**)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm --filter vetra-cli dev -i)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',{}\\), indent=2\\)\\)\")",
+      "Bash(cd /Users/teunhabraken/ph-clint && pnpm install 2>&1 | tail -5)",
+      "Read(//Users/teunhabraken/ph-clint/**)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm build:assets)",
+      "Bash(git push *)"
+    ],
+    "additionalDirectories": [
+      "/Users/teunhabraken/vetra-cli-main/vetra-app",
+      "/Users/teunhabraken/vetra-cli-main"
+    ]
+  }
+}

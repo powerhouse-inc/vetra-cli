@@ -18,7 +18,9 @@ import type {
 } from "document-models/problem-sheet";
 import { useState } from "react";
 import {
+  AddButton,
   Card,
+  ClearButton,
   EditableText,
   EmptyHint,
   LinkButton,
@@ -94,9 +96,9 @@ export function CoreJobSection({
       title="Core Job"
       action={
         job ? (
-          <LinkButton onClick={() => dispatch(actions.clearCoreJob({}))}>
+          <ClearButton onClick={() => dispatch(actions.clearCoreJob({}))}>
             Clear
-          </LinkButton>
+          </ClearButton>
         ) : undefined
       }
     >
@@ -127,7 +129,8 @@ function DefinedJob({
   dispatch: Dispatch;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+    <div className="relative flex flex-col gap-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-vetra-primary to-transparent opacity-60" />
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Select
           value={job.motivation}
@@ -229,7 +232,7 @@ export function JobStepsSection({
   return (
     <Section
       title="Job Steps"
-      action={<LinkButton onClick={add}>Add step</LinkButton>}
+      action={<AddButton onClick={add}>Add step</AddButton>}
     >
       {state.coreJobSteps.length === 0 ? (
         <EmptyHint>No job steps yet.</EmptyHint>
@@ -255,7 +258,7 @@ function JobStepRow({ step, dispatch }: { step: JobStep; dispatch: Dispatch }) {
         }
         className="mt-0.5"
       />
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <EditableText
           value={step.name}
           placeholder="Step name"
@@ -263,7 +266,7 @@ function JobStepRow({ step, dispatch }: { step: JobStep; dispatch: Dispatch }) {
           onCommit={(name) =>
             dispatch(actions.updateJobStep({ id: step.id, name }))
           }
-          className="font-medium text-gray-800"
+          className="text-sm font-medium text-gray-800"
         />
         <EditableText
           value={step.description}
@@ -294,7 +297,7 @@ export function RolesSection({
   return (
     <Section
       title="Roles"
-      action={<LinkButton onClick={add}>Add role</LinkButton>}
+      action={<AddButton onClick={add}>Add role</AddButton>}
     >
       {state.roles.length === 0 ? (
         <EmptyHint>No roles yet.</EmptyHint>
@@ -324,30 +327,34 @@ function RoleCard({ role, dispatch }: { role: Role; dispatch: Dispatch }) {
           onClick={() => dispatch(actions.removeRole({ id: role.id }))}
         />
       </div>
-      <EditableText
-        value={role.name}
-        placeholder="Role name"
-        required
-        onCommit={(name) => dispatch(actions.updateRole({ id: role.id, name }))}
-        className="font-medium text-gray-800"
-      />
-      <EditableText
-        value={role.description}
-        placeholder="Description (optional)"
-        multiline
-        onCommit={(description) =>
-          dispatch(actions.updateRole({ id: role.id, description }))
-        }
-        className="text-sm text-gray-600"
-      />
-      <EditableText
-        value={role.context}
-        placeholder="Context (optional)"
-        onCommit={(context) =>
-          dispatch(actions.updateRole({ id: role.id, context }))
-        }
-        className="text-sm text-gray-500"
-      />
+      <div className="flex flex-col gap-1">
+        <EditableText
+          value={role.name}
+          placeholder="Role name"
+          required
+          onCommit={(name) =>
+            dispatch(actions.updateRole({ id: role.id, name }))
+          }
+          className="text-sm font-medium text-gray-800"
+        />
+        <EditableText
+          value={role.description}
+          placeholder="Description (optional)"
+          multiline
+          onCommit={(description) =>
+            dispatch(actions.updateRole({ id: role.id, description }))
+          }
+          className="text-sm text-gray-600"
+        />
+        <EditableText
+          value={role.context}
+          placeholder="Context (optional)"
+          onCommit={(context) =>
+            dispatch(actions.updateRole({ id: role.id, context }))
+          }
+          className="text-sm text-gray-500"
+        />
+      </div>
     </Card>
   );
 }
@@ -372,7 +379,7 @@ export function OutcomesSection({
   return (
     <Section
       title="Outcomes"
-      action={<LinkButton onClick={add}>Add outcome</LinkButton>}
+      action={<AddButton onClick={add}>Add outcome</AddButton>}
     >
       {state.outcomes.length === 0 ? (
         <EmptyHint>No outcomes yet.</EmptyHint>
@@ -443,7 +450,7 @@ function OutcomeCard({
               onCommit={(object) =>
                 dispatch(actions.updateOutcome({ id: outcome.id, object }))
               }
-              className="font-medium text-gray-800"
+              className="text-sm font-medium text-gray-800"
             />
             <EditableText
               value={outcome.clarifier}
@@ -554,7 +561,7 @@ export function ConstraintsSection({
   return (
     <Section
       title="Constraints"
-      action={<LinkButton onClick={add}>Add constraint</LinkButton>}
+      action={<AddButton onClick={add}>Add constraint</AddButton>}
     >
       {state.constraints.length === 0 ? (
         <EmptyHint>No constraints yet.</EmptyHint>
@@ -590,7 +597,7 @@ function ConstraintRow({
         }
         className="mt-0.5"
       />
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <EditableText
           value={constraint.description}
           placeholder="Constraint"
@@ -601,7 +608,7 @@ function ConstraintRow({
               actions.updateConstraint({ id: constraint.id, description }),
             )
           }
-          className="text-gray-800"
+          className="text-sm text-gray-800"
         />
         <EditableText
           value={constraint.notes}
