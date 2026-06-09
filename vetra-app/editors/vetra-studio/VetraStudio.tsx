@@ -18,7 +18,8 @@ import { BuildSection } from "./BuildSection.js";
 import { ChatPane } from "./ChatPane.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
-import { latestTouchedNavigable } from "./auto-nav.js";
+import { SpecifySection } from "./specify/SpecifySection.js";
+import { latestTouchedNavigable, sectionForDocumentType } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
@@ -102,7 +103,13 @@ export type VetraStudioProps = {
   className?: string;
 };
 
-type Section = "home" | "ideate" | "build";
+type Section = "home" | "ideate" | "specify" | "build";
+
+/** The section an open document shows in; unknown types keep the legacy
+ * IDEATE fallback at restore/user-open sites. */
+function sectionForOpenDoc(target: OpenTarget): Section {
+  return sectionForDocumentType(target.documentType) ?? "ideate";
+}
 
 export function VetraStudio({
   document,
@@ -121,9 +128,10 @@ export function VetraStudio({
   const [openDoc, setOpenDoc] = useState<OpenTarget | null>(() =>
     resolveDocFromUrl(document),
   );
-  const [section, setSection] = useState<Section>(() =>
-    resolveDocFromUrl(document) ? "ideate" : "home",
-  );
+  const [section, setSection] = useState<Section>(() => {
+    const target = resolveDocFromUrl(document);
+    return target ? sectionForOpenDoc(target) : "home";
+  });
   // userPinned: a manual open pins the view so auto-nav won't yank it away.
   // A doc restored from the URL counts as pinned (the user was looking at it).
   const [userPinned, setUserPinned] = useState<boolean>(
@@ -167,7 +175,7 @@ export function VetraStudio({
       const target = resolveDocFromUrl(documentRef.current);
       setOpenDoc(target);
       setUserPinned(target !== null);
-      if (target) setSection("ideate");
+      if (target) setSection(sectionForOpenDoc(target));
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -200,7 +208,7 @@ export function VetraStudio({
     lastTouchedRef.current = { id: latest.id, ts: latest.ts };
     if (latest.id === prev?.id) return; // same doc edited again — already shown
     if (!autoNavEnabled || userPinned) return; // respect toggle + pin
-    setSection("ideate");
+    setSection(latest.section);
     setOpenDoc({
       id: latest.id,
       documentType: latest.documentType,
@@ -219,7 +227,7 @@ export function VetraStudio({
     if (!target) return;
     setOpenDoc(target);
     setUserPinned(true);
-    setSection("ideate");
+    setSection(sectionForOpenDoc(target));
   }, [documents, openDoc]);
 
   /* The session doc is the source of truth for the BUILD preview: its tool
@@ -235,7 +243,7 @@ export function VetraStudio({
   // Manual open (a user click) — pins the view against auto-nav.
   const handleUserOpen = useCallback((target: OpenTarget) => {
     setOpenDoc(target);
-    setSection("ideate");
+    setSection(sectionForOpenDoc(target));
     setUserPinned(true);
   }, []);
 
@@ -360,6 +368,16 @@ export function VetraStudio({
           <div className="min-h-0 flex-1 overflow-y-auto">
             <IdeationSection
               drive={document}
+              productName={productName}
+              open={openDoc}
+              onOpen={handleUserOpen}
+              onClear={handleClearOpen}
+              onExitToHome={handleExitToHome}
+            />
+          </div>
+        ) : section === "specify" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <SpecifySection
               productName={productName}
               open={openDoc}
               onOpen={handleUserOpen}
