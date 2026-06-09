@@ -1,25 +1,22 @@
 type PhaseId = "ideate" | "specify" | "build" | "deploy";
-type Phase = { id: PhaseId; label: string; note: string; enabled: boolean };
+type Phase = { id: PhaseId; label: string; note: string };
 
 const PHASES: Phase[] = [
-  { id: "ideate", label: "IDEATE", note: "Problem Definition", enabled: true },
-  { id: "specify", label: "SPECIFY", note: "Solution Design", enabled: true },
-  {
-    id: "build",
-    label: "BUILD",
-    note: "Implementation & Testing",
-    enabled: true,
-  },
-  { id: "deploy", label: "DEPLOY", note: "Delivery", enabled: false },
+  { id: "ideate", label: "IDEATE", note: "Problem Definition" },
+  { id: "specify", label: "SPECIFY", note: "Solution Design" },
+  { id: "build", label: "BUILD", note: "Implementation & Testing" },
+  { id: "deploy", label: "DEPLOY", note: "Delivery" },
 ];
 
 type OpenablePhase = "ideate" | "specify" | "build";
 
+/** Single source of phase availability: a tile is enabled exactly when the
+ * studio has a section for it. */
 function isOpenablePhase(id: PhaseId): id is OpenablePhase {
   return id === "ideate" || id === "specify" || id === "build";
 }
 
-/** The product "home" overview: the four-phase cycle. IDEATE, SPECIFY and BUILD are wired. */
+/** The product "home" overview: the four-phase cycle. */
 export function PhaseCycle({
   onOpen,
 }: {
@@ -29,14 +26,15 @@ export function PhaseCycle({
     <div className="mx-auto flex max-w-3xl flex-col gap-4 px-8 py-12">
       {PHASES.map((phase) => {
         const id = phase.id;
+        const open = isOpenablePhase(id) ? () => onOpen(id) : undefined;
         return (
           <button
             key={id}
             type="button"
-            disabled={!phase.enabled}
-            onClick={isOpenablePhase(id) ? () => onOpen(id) : undefined}
+            disabled={!open}
+            onClick={open}
             className={`flex items-center justify-between rounded-lg border px-6 py-6 text-left transition ${
-              phase.enabled
+              open
                 ? "border-gray-300 bg-white hover:border-gray-400 hover:shadow-sm"
                 : "cursor-default border-gray-200 bg-gray-100"
             }`}

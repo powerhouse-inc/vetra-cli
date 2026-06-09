@@ -1,9 +1,6 @@
-import {
-  useFileNodesInSelectedDrive,
-  useFolderNodesInSelectedDrive,
-} from "@powerhousedao/reactor-browser";
 import type { OpenTarget } from "../ideation/types.js";
-import { DOCUMENT_MODEL_TYPE, deriveProjects } from "./projects.js";
+import { DOCUMENT_MODEL_TYPE } from "./projects.js";
+import { useProjects } from "./useProjects.js";
 
 /** Home > Specify > <project>: the project's document-model files. */
 export function ProjectModels({
@@ -13,9 +10,7 @@ export function ProjectModels({
   projectId: string;
   onOpen: (target: OpenTarget) => void;
 }) {
-  const files = useFileNodesInSelectedDrive();
-  const folders = useFolderNodesInSelectedDrive();
-  const projects = deriveProjects(files ?? [], folders ?? []);
+  const projects = useProjects();
   const project = projects.find((p) => p.id === projectId);
 
   return (

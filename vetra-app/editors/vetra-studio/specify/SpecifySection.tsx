@@ -1,14 +1,10 @@
-import {
-  useFileNodesInSelectedDrive,
-  useFolderNodesInSelectedDrive,
-} from "@powerhousedao/reactor-browser";
 import { useState } from "react";
 import { Breadcrumb, type Crumb } from "../Breadcrumb.js";
 import type { OpenTarget } from "../ideation/types.js";
 import { DocumentModelHost } from "./DocumentModelHost.js";
 import { ProjectList } from "./ProjectList.js";
 import { ProjectModels } from "./ProjectModels.js";
-import { UNGROUPED_PROJECT_ID, UNGROUPED_PROJECT_NAME } from "./projects.js";
+import { useProjects } from "./useProjects.js";
 
 /**
  * Home > Specify. Browses projects (drive folders holding document-models),
@@ -31,27 +27,22 @@ export function SpecifySection({
   onExitToHome: () => void;
 }) {
   const [projectId, setProjectId] = useState<string | null>(null);
-  const files = useFileNodesInSelectedDrive();
-  const folders = useFolderNodesInSelectedDrive();
+  const projects = useProjects();
 
-  // The project the open model belongs to — used when auto-follow opened a
-  // model directly without the user drilling through a project first.
-  const openParent = open
-    ? files?.find((f) => f.id === open.id)?.parentFolder
+  // The project of the open model, resolved from the derived projects. While
+  // the drive is hydrating (or the model's file node hasn't synced yet) this
+  // is undefined and the project crumb is omitted — never mislabeled.
+  const openProject = open
+    ? projects.find((p) => p.models.some((m) => m.id === open.id))
     : undefined;
-  const openProjectId = open ? (openParent ?? UNGROUPED_PROJECT_ID) : undefined;
-  const projectForCrumb = open ? openProjectId : projectId;
-  const projectName =
-    projectForCrumb === UNGROUPED_PROJECT_ID
-      ? UNGROUPED_PROJECT_NAME
-      : folders?.find((f) => f.id === projectForCrumb)?.name;
+  const project = open ? openProject : projects.find((p) => p.id === projectId);
 
   const handleBackToProjects = () => {
     onClear();
     setProjectId(null);
   };
   const handleBackToModels = () => {
-    if (openProjectId) setProjectId(openProjectId);
+    if (openProject) setProjectId(openProject.id);
     onClear();
   };
 
@@ -61,8 +52,13 @@ export function SpecifySection({
       label: "Specify",
       onClick: open || projectId ? handleBackToProjects : undefined,
     },
-    ...(projectForCrumb && projectName
-      ? [{ label: projectName, onClick: open ? handleBackToModels : undefined }]
+    ...(project
+      ? [
+          {
+            label: project.name,
+            onClick: open ? handleBackToModels : undefined,
+          },
+        ]
       : []),
     ...(open ? [{ label: open.name }] : []),
   ];
@@ -71,7 +67,7 @@ export function SpecifySection({
     <div className="mx-auto max-w-5xl px-8 py-8">
       <Breadcrumb items={crumbs} />
       {open ? (
-        <DocumentModelHost id={open.id} />
+        <DocumentModelHost id={open.id} onClose={onClear} />
       ) : projectId ? (
         <ProjectModels projectId={projectId} onOpen={onOpen} />
       ) : (

@@ -1,8 +1,4 @@
-import {
-  useFileNodesInSelectedDrive,
-  useFolderNodesInSelectedDrive,
-} from "@powerhousedao/reactor-browser";
-import { deriveProjects } from "./projects.js";
+import { useProjects } from "./useProjects.js";
 
 /** Home > Specify: the projects (drive folders) holding document-models. */
 export function ProjectList({
@@ -10,9 +6,7 @@ export function ProjectList({
 }: {
   onSelectProject: (projectId: string) => void;
 }) {
-  const files = useFileNodesInSelectedDrive();
-  const folders = useFolderNodesInSelectedDrive();
-  const projects = deriveProjects(files ?? [], folders ?? []);
+  const projects = useProjects();
 
   return (
     <section>
