@@ -6,7 +6,7 @@
  * Everything outside the markers is user-editable and preserved.
  */
 // @clint:begin imports
-import { defineCli, buildDefaultReactor } from '@powerhousedao/ph-clint';
+import { defineCli, buildDefaultReactor, deterministicId } from '@powerhousedao/ph-clint';
 import { z } from 'zod';
 import path from 'node:path';
 import { CLI_NAME, CLI_VERSION, CLI_ROOT } from './config.js';
@@ -251,7 +251,13 @@ cli.configureReactor({
   create: (ctx) =>
     buildDefaultReactor(ctx, {
       documentModels: [...documentModels, ...vetraModels, ...extModels] as DocumentModelModule<any>[],
-      drive: { name: 'vetra-cli', preferredEditor: 'vetra-studio' },
+      drive: {
+        name: 'vetra-cli',
+        // Salt with the absolute workdir so each workdir is its own drive
+        // (stable across restarts, distinct across workdirs).
+        id: deterministicId(CLI_NAME, path.resolve(ctx.workdir)),
+        preferredEditor: 'vetra-studio',
+      },
       subscriptions: {},
     }),
   switchboard: {
