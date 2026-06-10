@@ -53,15 +53,22 @@ export function ChatPane({
   )?.remoteUrl;
   const defaultDrivesUrl = useDefaultDrivesUrl();
   const attachments = useMemo(() => {
-    // Switchboard mounts /attachments/* at the host root (not under /graphql),
-    // so we need the origin. Prefer the drive's own remoteUrl, fall back to
-    // the Connect-configured default drives URL (handles dynamic switchboard
-    // ports), then DEFAULT_SWITCHBOARD_URL as a last resort.
+    // The transport appends `/attachments/<hash>` to remoteUrl verbatim.
+    // `source` is the proxied switchboard drive URL `…/switchboard/d/<id>`;
+    // keep everything up to and including `/switchboard` so attachment
+    // requests stay under the proxy base (`…/switchboard/attachments/<hash>`,
+    // which the proxy maps to switchboard `/attachments/<hash>`). Without a
+    // `/switchboard` segment (non-proxied switchboard), fall back to origin.
     const source =
       driveRemoteUrl ?? defaultDrivesUrl ?? DEFAULT_SWITCHBOARD_URL;
-    return createRemoteAttachmentService({
-      remoteUrl: new URL(source).origin,
-    });
+    const url = new URL(source);
+    const sbEnd = url.pathname.indexOf("/switchboard");
+    const remoteUrl =
+      sbEnd === -1
+        ? url.origin
+        : url.origin +
+          url.pathname.slice(0, sbEnd + "/switchboard".length);
+    return createRemoteAttachmentService({ remoteUrl });
   }, [driveRemoteUrl, defaultDrivesUrl]);
 
   if (selectedSessionId) {
