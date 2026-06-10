@@ -41,7 +41,7 @@ catalog:
   zod: '4.3.6'
 
 overrides:
-  'mastra>@mastra/deployer': '1.22.0'
+  'mastra>@mastra/deployer': '1.41.0'
   zod: '4.3.6'
   viem: '2.49.0'
   # Dedupe reactor-attachments to one copy (hash-first instanceof needs a single class identity).
