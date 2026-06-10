@@ -29,14 +29,19 @@ const isDev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 const BASE = isDev ? DIRECT_BASE : PREVIEW_SERVER_BASE_URL;
 
 /**
- * Proxy origin to resolve proxy-relative `proxiedUrl`s against. Only the
- * proxied stamp has the `/preview` path — a direct stamp (or dev fallback)
- * serves from the loopback root, where proxy paths don't exist.
+ * Origin+prefix to resolve proxy-relative `proxiedUrl`s against. The proxied
+ * stamp mounts the preview-server at a `/preview` SUFFIX, optionally under a
+ * subpath (`https://host/myagent/preview` → `https://host/myagent`). A direct
+ * stamp (or dev fallback) has no `/preview` suffix and serves from the loopback
+ * root, where proxy paths don't exist — leave it undefined so the direct url
+ * stands.
  */
-const PROXY_ORIGIN = (() => {
+const PROXY_BASE = (() => {
   try {
     const u = new URL(BASE);
-    return u.pathname === "/preview" ? u.origin : undefined;
+    if (!u.pathname.endsWith("/preview")) return undefined;
+    const prefix = u.pathname.slice(0, -"/preview".length);
+    return u.origin + prefix;
   } catch {
     return undefined;
   }
@@ -89,8 +94,8 @@ export async function fetchResolve(args: {
     throw new Error(`preview-server /resolve: ${res.status} ${res.statusText}`);
   }
   const result = (await res.json()) as ResolveResult;
-  if (result.kind === "ready" && PROXY_ORIGIN && result.proxiedUrl) {
-    return { ...result, url: `${PROXY_ORIGIN}${result.proxiedUrl}` };
+  if (result.kind === "ready" && PROXY_BASE && result.proxiedUrl) {
+    return { ...result, url: `${PROXY_BASE}${result.proxiedUrl}` };
   }
   return result;
 }

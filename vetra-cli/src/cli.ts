@@ -21,7 +21,7 @@ import { agentRun } from './commands/agent-run.js';
 import { specCommands } from './commands/spec/index.js';
 import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
-import { reactorProject } from './services/reactor-project.js';
+import { reactorProject, proxyBasePathHook } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
 import { LOCAL_REGISTRY_ENABLED, LOCAL_REGISTRY_URL } from './constants.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
@@ -34,6 +34,7 @@ import { genGuard } from './lifecycle/gen-guard.js';
 import { tsCheck } from './lifecycle/ts-check.js';
 import { ensurePh } from './lifecycle/ensure-ph.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
+import { studioRedirectTrigger } from './triggers/studio-redirect.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
@@ -73,6 +74,7 @@ export const cli = defineCli({
     specFsSyncTrigger,
     previewServerTrigger,
     studioUrlTrigger,
+    studioRedirectTrigger,
     ...(LOCAL_REGISTRY_ENABLED ? [publishReloadTrigger] : []),
   ],
   // @clint:end triggers
@@ -219,6 +221,8 @@ export const cli = defineCli({
   // @clint:begin lifecycle
   lifecycle: [
     ensurePh(),
+    // Captures the resolved proxyPublicUrl for the reactor-project --base.
+    proxyBasePathHook(),
     observability(),
     genGuard(),
     tsCheck(),
