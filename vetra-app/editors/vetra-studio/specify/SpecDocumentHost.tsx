@@ -73,7 +73,7 @@ export function SpecDocumentHost({
 
   // Selection moved off our node after having been on it (e.g. the editor
   // toolbar's "Close document" selects the parent folder) — report up.
-  // Armed per-id so switching hosted models doesn't misfire.
+  // Armed per-id so switching hosted documents doesn't misfire.
   const armedForRef = useRef<string | null>(null);
   const selectedId = selected?.id;
   useEffect(() => {

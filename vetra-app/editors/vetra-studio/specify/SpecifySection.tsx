@@ -3,12 +3,12 @@ import { Breadcrumb, type Crumb } from "../Breadcrumb.js";
 import type { OpenTarget } from "../ideation/types.js";
 import { SpecDocumentHost } from "./SpecDocumentHost.js";
 import { ProjectList } from "./ProjectList.js";
-import { ProjectModels } from "./ProjectModels.js";
+import { ProjectDocuments } from "./ProjectDocuments.js";
 import { useProjects } from "./useProjects.js";
 
 /**
- * Home > Specify. Browses projects (drive folders holding document-models),
- * a project's models, and opens a model in the document-model editor inline.
+ * Home > Specify. Browses projects (drive folders holding spec documents),
+ * a project's documents, and opens one in the appropriate editor inline.
  *
  * The open document is **controlled** by `VetraStudio` (lifted so auto-nav
  * can drive it); which project is browsed is local sub-navigation state.
@@ -29,8 +29,8 @@ export function SpecifySection({
   const [projectId, setProjectId] = useState<string | null>(null);
   const projects = useProjects();
 
-  // The project of the open model, resolved from the derived projects. While
-  // the drive is hydrating (or the model's file node hasn't synced yet) this
+  // The project of the open document, resolved from the derived projects. While
+  // the drive is hydrating (or the document's file node hasn't synced yet) this
   // is undefined and the project crumb is omitted — never mislabeled.
   const openProject = open
     ? projects.find((p) => p.documents.some((doc) => doc.id === open.id))
@@ -41,7 +41,7 @@ export function SpecifySection({
     onClear();
     setProjectId(null);
   };
-  const handleBackToModels = () => {
+  const handleBackToDocuments = () => {
     if (openProject) setProjectId(openProject.id);
     onClear();
   };
@@ -56,7 +56,7 @@ export function SpecifySection({
       ? [
           {
             label: project.name,
-            onClick: open ? handleBackToModels : undefined,
+            onClick: open ? handleBackToDocuments : undefined,
           },
         ]
       : []),
@@ -73,7 +73,7 @@ export function SpecifySection({
           onClose={onClear}
         />
       ) : projectId ? (
-        <ProjectModels projectId={projectId} onOpen={onOpen} />
+        <ProjectDocuments projectId={projectId} onOpen={onOpen} />
       ) : (
         <ProjectList onSelectProject={setProjectId} />
       )}

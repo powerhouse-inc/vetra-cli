@@ -1,6 +1,6 @@
 import { useProjects } from "./useProjects.js";
 
-/** Home > Specify: the projects (drive folders) holding document-models. */
+/** Home > Specify: the projects (drive folders) holding spec documents. */
 export function ProjectList({
   onSelectProject,
 }: {
@@ -13,7 +13,7 @@ export function ProjectList({
       <h3 className="mb-3 text-base font-semibold text-gray-800">Projects</h3>
       {projects.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-400">
-          No document models yet. Ask the agent to specify one.
+          No specification documents yet. Ask the agent to specify one.
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-4">
@@ -29,7 +29,7 @@ export function ProjectList({
               </span>
               <span className="text-xs text-gray-500">
                 {project.documents.length}{" "}
-                {project.documents.length === 1 ? "model" : "models"}
+                {project.documents.length === 1 ? "document" : "documents"}
               </span>
             </button>
           ))}
