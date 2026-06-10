@@ -514,12 +514,24 @@ last-applied value afterwards; one cache file per token):
   resolves `proxiedUrl` against the stamped proxy origin (detected by
   the stamp's `/preview` pathname).
 
+- **Project switchboard (drive sync for the BUILD iframe)** — when a
+  public proxy URL is configured, the service passes
+  `ph vetra --drives-public-base <publicUrl>/reactor-project/switchboard`
+  so the nested studio's defaultDrives carry the proxy origin
+  (`<publicUrl>/reactor-project/switchboard/d/<slug>`) instead of the
+  unreachable `http://localhost:<sbPort>`; `reactor-project-start`
+  registers the matching proxy routes
+  (`/reactor-project/switchboard/{d/,graphql,attachments/,mcp}` →
+  project switchboard, source `service:reactor-project`), whose
+  `/d/`-aligned shape yields the X-Forwarded-Prefix the switchboard
+  needs to announce proxied follow-up endpoints. Without a publicUrl the
+  drive URLs stay local (current dev behavior).
+
 Known gaps: `--base` only reaches Vite once monorepo PR #2676
 (builder-tools `base: env.PH_CONNECT_BASE_PATH`) is in the published
-stack; the drive URLs *inside* the project Connect
-(`PH_CONNECT_DEFAULT_DRIVES_URL`) still point directly at the project
-switchboard (`:4001`), which works locally but not deployed — `ph vetra`
-computes them internally and offers no override; and the stamped drive
+stack; `--drives-public-base` requires a published ph-cli that knows the
+flag (an older project-local ph-cli rejects it and the service fails to
+start — only when a publicUrl is configured); and the stamped drive
 URL bakes the proxy's localhost origin, so deployed agents need either a
 public-origin config or relative drive-URL support in Connect.
 

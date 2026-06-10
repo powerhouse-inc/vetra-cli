@@ -1,7 +1,44 @@
 import path from "node:path";
 import { z } from "zod";
 import { formatStatus } from "@powerhousedao/ph-clint";
+import type { ServiceInstanceStatus, CommandContext } from "@powerhousedao/ph-clint";
 import { defineCommand } from "../../framework.js";
+import { REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH } from "../../constants.js";
+
+/**
+ * Mirror the embedded `/switchboard/*` proxy scheme for the project's
+ * switchboard, under /reactor-project/switchboard. The `/d/`-aligned route
+ * shape makes the proxy send the X-Forwarded-Prefix the switchboard needs to
+ * announce proxied follow-up endpoints, so the drive URLs ph vetra rebases
+ * via --drives-public-base resolve through the proxy.
+ */
+function registerSwitchboardRoutes(
+  proxy: NonNullable<CommandContext["proxy"]>,
+  status: ServiceInstanceStatus,
+): void {
+  const sbUrl = status.endpoints?.["vetra-switchboard"];
+  const mcpUrl = status.endpoints?.["mcp-server"];
+  if (!sbUrl) return;
+
+  const base = REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH;
+  const routes = [
+    { prefix: `${base}/d/`, upstream: new URL("/d/", sbUrl), ws: false },
+    { prefix: `${base}/graphql`, upstream: new URL("/graphql", sbUrl), ws: false },
+    {
+      prefix: `${base}/attachments/`,
+      upstream: new URL("/attachments/", sbUrl),
+      ws: false,
+    },
+    ...(mcpUrl
+      ? [{ prefix: `${base}/mcp`, upstream: new URL("/mcp", mcpUrl), ws: true }]
+      : []),
+  ];
+  const existing = new Set(proxy.routes().map((r) => r.prefix));
+  for (const route of routes) {
+    if (existing.has(route.prefix)) continue;
+    proxy.addRoute({ ...route, source: "service:reactor-project" });
+  }
+}
 
 /**
  * Idempotent `reactor-project-start`. Overrides the ph-clint auto-injected
@@ -48,6 +85,9 @@ export const reactorProjectStart = defineCommand({
           (s.status === "ready" || s.status === "starting"),
       );
     if (existing) {
+      if (context.proxy && existing.status === "ready") {
+        registerSwitchboardRoutes(context.proxy, existing);
+      }
       return { text: formatStatus(existing) };
     }
 
@@ -66,6 +106,9 @@ export const reactorProjectStart = defineCommand({
       const status = services
         .list("reactor-project")
         .find((s) => s.instanceId === instanceId);
+      if (status && context.proxy) {
+        registerSwitchboardRoutes(context.proxy, status);
+      }
       return { text: status ? formatStatus(status) : "" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

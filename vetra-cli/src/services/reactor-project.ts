@@ -3,7 +3,10 @@ import path from 'node:path';
 import { z } from 'zod';
 import { checkWorkdir, checkCommand, checkPort, type LifecycleHook } from '@powerhousedao/ph-clint';
 import { defineService } from '../framework.js';
-import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from '../constants.js';
+import {
+  REACTOR_PROJECT_CONNECT_PROXY_PATH,
+  REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH,
+} from '../constants.js';
 
 // Normalize a proxy publicUrl into the mount base path: '' for an
 // unset/invalid/root URL, else a leading-slash no-trailing-slash form
@@ -27,10 +30,25 @@ export function deployBasePath(publicUrl: string | undefined): string {
 // is captured here rather than read from context at command-build time.
 let resolvedDeployBasePath = '';
 
+// Full public proxy URL (origin + base path, no trailing slash), '' when no
+// publicUrl is configured. Gates the --drives-public-base flag: local dev
+// without a publicUrl keeps localhost drive URLs.
+let resolvedProxyPublicUrl = '';
+
 export function proxyBasePathHook(): LifecycleHook {
   return {
     name: 'reactor-project-proxy-base',
     onInit(ctx) {
+      const raw = (ctx.config.proxyPublicUrl as string | undefined)?.trim();
+      resolvedProxyPublicUrl = '';
+      if (raw) {
+        try {
+          new URL(raw);
+          resolvedProxyPublicUrl = raw.replace(/\/+$/, '');
+        } catch {
+          // invalid publicUrl — treat as unset, same as deployBasePath
+        }
+      }
       resolvedDeployBasePath = deployBasePath(
         ctx.config.proxyPublicUrl as string | undefined,
       );
@@ -65,6 +83,17 @@ export const reactorProject = defineService({
     // 127.0.0.1 where nothing then listens -> ECONNREFUSED. env.HOST is not
     // applied to the dev server, so the --host flag is the only lever.
     parts.push('--host', '127.0.0.1');
+    // Deployed behind the proxy: the nested studio's drive URLs must carry
+    // the public proxy origin (the switchboard's localhost origin is
+    // unreachable from a remote browser). ph vetra rebases its advertised
+    // drive URLs onto <publicUrl>/reactor-project/switchboard/d/<slug>;
+    // reactor-project-start registers the matching proxy routes.
+    if (resolvedProxyPublicUrl) {
+      parts.push(
+        '--drives-public-base',
+        `${resolvedProxyPublicUrl}${REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH}`,
+      );
+    }
     return parts.join(' ');
   },
   paramsSchema: reactorProjectParams,
