@@ -118,7 +118,7 @@ export const reactorProject = defineService({
       'Run reactor-project-start --workdir <project>, or create one with /reactor-project-init',
     ),
     checkCommand('ph', {
-      hint: 'Install the Powerhouse CLI: npm install -g ph-cli',
+      hint: 'Install the Powerhouse CLI: npm install -g ph-cmd',
     }),
     checkPort((ctx) => (ctx.params?.connectPort as number) ?? 3000, 'Connect Studio'),
     checkPort((ctx) => (ctx.params?.switchboardPort as number) ?? 4001, 'Switchboard'),
