@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.6",
+  "version": "0.0.1-dev.10",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -29,10 +29,10 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.80",
-    "@mastra/core": "~1.32.0",
-    "@mastra/libsql": "~1.10.1",
-    "@mastra/mcp": "~1.7.0",
-    "@mastra/memory": "~1.18.2",
+    "@mastra/core": "^1.41.0",
+    "@mastra/libsql": "^1.12.1",
+    "@mastra/mcp": "^1.9.1",
+    "@mastra/memory": "^1.20.2",
     "@powerhousedao/clint-common": "catalog:",
     "@powerhousedao/codegen": "catalog:",
     "@powerhousedao/ph-clint": "catalog:",
@@ -40,6 +40,7 @@
     "@powerhousedao/ph-clint-observability": "catalog:",
     "@powerhousedao/reactor": "catalog:",
     "@powerhousedao/reactor-api": "catalog:",
+    "@powerhousedao/reactor-attachments": "6.2.0-dev.6",
     "@powerhousedao/shared": "catalog:",
     "@powerhousedao/switchboard": "catalog:",
     "@powerhousedao/vetra": "catalog:",

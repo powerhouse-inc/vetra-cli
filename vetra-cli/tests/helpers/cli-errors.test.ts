@@ -1,6 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 import {
   formatLines,
+  formatProcessFailure,
   requireOption,
   unknownValueError,
 } from "../../src/helpers/cli-errors.js";
@@ -16,6 +17,34 @@ describe("formatLines", () => {
 
   it("returns the bare message when hint is empty", () => {
     expect(formatLines("main", "")).toBe("main");
+  });
+});
+
+describe("formatProcessFailure", () => {
+  it("carries the message, command, cwd, and captured output", () => {
+    const msg = formatProcessFailure(
+      "ph init failed",
+      "ph init foo --pnpm",
+      "/work",
+      "sh: 1: ph: not found\n",
+    );
+    expect(msg).toMatch(/^ph init failed/);
+    expect(msg).toMatch(/command: ph init foo --pnpm/);
+    expect(msg).toMatch(/cwd: \/work/);
+    expect(msg).toMatch(/output:\nsh: 1: ph: not found/);
+  });
+
+  it("notes when no output was captured", () => {
+    const msg = formatProcessFailure("x", "cmd", "/c", "   \n  ");
+    expect(msg).toMatch(/output: \(none captured\)/);
+  });
+
+  it("tails output that exceeds the limit", () => {
+    const big = "HEAD_MARKER" + "x".repeat(100) + "TAIL_MARKER";
+    const msg = formatProcessFailure("x", "cmd", "/c", big, 30);
+    expect(msg).toContain("…");
+    expect(msg).toContain("TAIL_MARKER");
+    expect(msg).not.toContain("HEAD_MARKER");
   });
 });
 

@@ -38,10 +38,20 @@ export function isCodegenPath(p: string): boolean {
   return GEN_PATH_RE.test(p.replace(/\\/g, "/"));
 }
 
-function extractPath(args: unknown): string | undefined {
+/**
+ * Pull the target path from a workspace tool's first execute argument.
+ * Mastra invokes `execute(args, toolContext)` with flat args (`{ path, ... }`);
+ * createTool-style invocations nest them under `context`.
+ */
+export function extractPath(args: unknown): string | undefined {
   if (typeof args !== "object" || args === null) return undefined;
-  const path = (args as { path?: unknown }).path;
-  return typeof path === "string" && path.length > 0 ? path : undefined;
+  const o = args as { path?: unknown; context?: unknown };
+  if (typeof o.path === "string" && o.path.length > 0) return o.path;
+  if (typeof o.context === "object" && o.context !== null) {
+    const p = (o.context as { path?: unknown }).path;
+    if (typeof p === "string" && p.length > 0) return p;
+  }
+  return undefined;
 }
 
 export function genGuard(): LifecycleHook {
@@ -55,8 +65,9 @@ export function genGuard(): LifecycleHook {
             const innerExecute = tool.execute.bind(tool);
             return {
               ...tool,
-              execute: (args: unknown) => {
-                const path = extractPath(args);
+              // Mastra calls execute(args, toolContext) — forward every arg.
+              execute: (...args: unknown[]) => {
+                const path = extractPath(args[0]);
                 if (path && isCodegenPath(path)) {
                   throw new Error(
                     `${name}: refusing to write under a document-model codegen ` +
@@ -69,7 +80,7 @@ export function genGuard(): LifecycleHook {
                       "`gen/` and is the right target for `mastra_workspace_edit_file`.",
                   );
                 }
-                return innerExecute(args);
+                return innerExecute(...args);
               },
             };
           },

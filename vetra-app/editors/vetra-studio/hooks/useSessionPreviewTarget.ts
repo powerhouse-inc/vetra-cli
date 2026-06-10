@@ -20,16 +20,18 @@ const SHOW_TOOL_NAME = "spec-preview-show";
 
 export interface PreviewTarget {
   project: string;
-  doc: string;
+  doc?: string;
+  drive?: string;
 }
 
 interface ShowToolResultData {
   data?: {
     projectPath?: string;
     driveId?: string;
-    documentId?: string;
+    documentId?: string | null;
     documentSlug?: string | null;
     previewUrl?: string;
+    kind?: string;
   };
 }
 
@@ -68,6 +70,14 @@ export function extractPreviewTarget(
       if (!part.toolCallId || !part.result) continue;
 
       const data = safeParse<ShowToolResultData>(part.result);
+
+      if (data?.data?.kind === "drive" && data?.data?.driveId) {
+        const call = findToolCall(messages, part.toolCallId);
+        const project = call?.project;
+        if (!project) continue;
+        return { project, drive: data.data.driveId };
+      }
+
       const doc = data?.data?.documentSlug ?? data?.data?.documentId;
       if (!doc) continue;
 

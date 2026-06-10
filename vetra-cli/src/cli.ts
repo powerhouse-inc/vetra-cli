@@ -6,7 +6,7 @@
  * Everything outside the markers is user-editable and preserved.
  */
 // @clint:begin imports
-import { defineCli, buildDefaultReactor } from '@powerhousedao/ph-clint';
+import { defineCli, buildDefaultReactor, deterministicId } from '@powerhousedao/ph-clint';
 import { z } from 'zod';
 import path from 'node:path';
 import { CLI_NAME, CLI_VERSION, CLI_ROOT } from './config.js';
@@ -21,7 +21,7 @@ import { agentRun } from './commands/agent-run.js';
 import { specCommands } from './commands/spec/index.js';
 import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
-import { reactorProject } from './services/reactor-project.js';
+import { reactorProject, proxyBasePathHook } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
 import { LOCAL_REGISTRY_ENABLED, LOCAL_REGISTRY_URL } from './constants.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
@@ -31,10 +31,14 @@ import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url.js';
 import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
+import { tsCheck } from './lifecycle/ts-check.js';
+import { ensurePh } from './lifecycle/ensure-ph.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
+import { studioRedirectTrigger } from './triggers/studio-redirect.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
+import { createAttachmentCommands } from '@powerhousedao/ph-clint/powerhouse';
 
 export const cli = defineCli({
   name: CLI_NAME,
@@ -51,6 +55,7 @@ export const cli = defineCli({
     ...specCommands,
     ...specPreviewCommands,
     ...reactorProjectCommands,
+    ...createAttachmentCommands(),
     agentRun,
     // claude-login / claude-logout / claude-status — Claude.ai subscription
     // auth (user scope: one login shared across workdirs).
@@ -69,6 +74,7 @@ export const cli = defineCli({
     specFsSyncTrigger,
     previewServerTrigger,
     studioUrlTrigger,
+    studioRedirectTrigger,
     ...(LOCAL_REGISTRY_ENABLED ? [publishReloadTrigger] : []),
   ],
   // @clint:end triggers
@@ -80,7 +86,7 @@ export const cli = defineCli({
       'vetra-agent': {
         name: 'vetra-agent',
         sections: ['base.md', 'tools.md', 'workflow.md'],
-        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation'],
+        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation'],
       },
       'agent-document-model': {
         name: 'agent-document-model',
@@ -91,6 +97,11 @@ export const cli = defineCli({
         name: 'agent-editor',
         sections: ['base.md', 'tools.md'],
         skills: ['document-editor-creation'],
+      },
+      'agent-app': {
+        name: 'agent-app',
+        sections: ['base.md', 'tools.md'],
+        skills: ['drive-app-creation'],
       },
     },
     skills: {
@@ -122,6 +133,19 @@ export const cli = defineCli({
       },
       'document-editor-creation': {
         description: 'Build React editor components for Powerhouse document types',
+        inputSchema: z.object({
+          mode: z
+            .enum(['expert', 'discovery', 'one-shot'])
+            .default('expert')
+            .describe(
+              'Expert: align technical design decisions between fellow experts. Discovery: explain the process and guide non-expert users to decisions. One-shot: make all design decisions autonomously and execute without asking',
+            ),
+        }),
+        instructionTemplate:
+          'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
+      },
+      'drive-app-creation': {
+        description: 'Build drive-level app components (dashboards, kanban boards, custom drive views) for Powerhouse drives',
         inputSchema: z.object({
           mode: z
             .enum(['expert', 'discovery', 'one-shot'])
@@ -196,8 +220,12 @@ export const cli = defineCli({
 
   // @clint:begin lifecycle
   lifecycle: [
+    ensurePh(),
+    // Captures the resolved proxyPublicUrl for the reactor-project --base.
+    proxyBasePathHook(),
     observability(),
     genGuard(),
+    tsCheck(),
     connectDriveUrlOnSwitchboardReady({
       vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
     }),
@@ -229,7 +257,13 @@ cli.configureReactor({
   create: (ctx) =>
     buildDefaultReactor(ctx, {
       documentModels: [...documentModels, ...vetraModels, ...extModels] as DocumentModelModule<any>[],
-      drive: { name: 'vetra-cli', preferredEditor: 'vetra-studio' },
+      drive: {
+        name: 'vetra-cli',
+        // Salt with the absolute workdir so each workdir is its own drive
+        // (stable across restarts, distinct across workdirs).
+        id: deterministicId(CLI_NAME, path.resolve(ctx.workdir)),
+        preferredEditor: 'vetra-studio',
+      },
       subscriptions: {},
     }),
   switchboard: {

@@ -3,8 +3,9 @@
   "version": "0.0.1-dev.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.5.0",
   "scripts": {
-    "build": "pnpm --filter vetra-app build && pnpm --filter vetra-app connect build --outDir dist/connect && pnpm --filter vetra-cli build",
+    "build": "pnpm --filter vetra-app build && pnpm --filter vetra-app build:connect && pnpm --filter vetra-cli build",
     "test": "pnpm -r run test",
     "dev": "pnpm --filter vetra-cli dev",
     "start": "pnpm --filter vetra-cli start",

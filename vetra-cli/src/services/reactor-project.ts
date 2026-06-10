@@ -1,9 +1,43 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { checkWorkdir, checkCommand, checkPort } from '@powerhousedao/ph-clint';
+import { checkWorkdir, checkCommand, checkPort, type LifecycleHook } from '@powerhousedao/ph-clint';
 import { defineService } from '../framework.js';
 import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from '../constants.js';
+
+// Normalize a proxy publicUrl into the mount base path: '' for an
+// unset/invalid/root URL, else a leading-slash no-trailing-slash form
+// ('/myagent'). Mirrors ph-clint's proxy deriveBasePath so the dev-server
+// --base lines up with the prefix stripBase removes before route matching.
+export function deployBasePath(publicUrl: string | undefined): string {
+  const raw = publicUrl?.trim();
+  if (!raw) return '';
+  try {
+    return new URL(raw).pathname.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+// Resolved mount base for the embedded proxy. Set at boot by
+// proxyBasePathHook from the layered-config proxyPublicUrl (flag > config
+// file > VETRA_PROXY_PUBLIC_URL env) — the same value ph-clint mounts the
+// proxy under — so a config-file-supplied publicUrl reaches the dev-server
+// --base too. ServiceDefinition.command only receives params, so the value
+// is captured here rather than read from context at command-build time.
+let resolvedDeployBasePath = '';
+
+export function proxyBasePathHook(): LifecycleHook {
+  return {
+    name: 'reactor-project-proxy-base',
+    onInit(ctx) {
+      resolvedDeployBasePath = deployBasePath(
+        ctx.config.proxyPublicUrl as string | undefined,
+      );
+      return {};
+    },
+  };
+}
 
 const reactorProjectParams = z.object({
   watch: z.boolean().default(true).describe('Enable file watching'),
@@ -20,9 +54,17 @@ export const reactorProject = defineService({
     if (params?.watch !== false) parts.push('--watch');
     if (typeof params?.connectPort === 'number') parts.push('--connect-port', String(params.connectPort));
     if (typeof params?.switchboardPort === 'number') parts.push('--switchboard-port', String(params.switchboardPort));
-    // Serve Connect under the proxy prefix so the BUILD iframe loads it
-    // through the embedded proxy; Vite emits all asset URLs under this base.
-    parts.push('--base', `${REACTOR_PROJECT_CONNECT_PROXY_PATH}/`);
+    // Serve Connect under the deploy base + proxy prefix so the BUILD iframe
+    // loads it through the embedded proxy; Vite emits all asset URLs under
+    // this base. Under a proxy subpath the base carries that prefix too, so
+    // the captured upstream matches the path stripBase forwards.
+    parts.push('--base', `${resolvedDeployBasePath}${REACTOR_PROJECT_CONNECT_PROXY_PATH}/`);
+    // Bind the Vite Connect dev server to IPv4 loopback. Without this it binds
+    // [::1] only; ph-clint builds the proxy upstream from the captured Local:
+    // URL via new URL(), whose `localhost` host resolves IPv4-first to
+    // 127.0.0.1 where nothing then listens -> ECONNREFUSED. env.HOST is not
+    // applied to the dev server, so the --host flag is the only lever.
+    parts.push('--host', '127.0.0.1');
     return parts.join(' ');
   },
   paramsSchema: reactorProjectParams,
@@ -38,8 +80,10 @@ export const reactorProject = defineService({
       {
         // Capture the full URL including the --base path: the proxy forwards
         // the matched prefix verbatim, so the upstream must carry the base.
+        // With --host 127.0.0.1 Vite prints the bound IP rather than
+        // `localhost`, so accept either host.
         name: 'vetra-studio',
-        pattern: /Local:\s*(http:\/\/localhost:\d+[^\s]*)/,
+        pattern: /Local:\s*(http:\/\/(?:localhost|127\.0\.0\.1):\d+[^\s]*)/,
         captures: { 'vetra-studio': { group: 1, type: 'website' } },
       },
       {
@@ -74,7 +118,7 @@ export const reactorProject = defineService({
       'Run reactor-project-start --workdir <project>, or create one with /reactor-project-init',
     ),
     checkCommand('ph', {
-      hint: 'Install the Powerhouse CLI: npm install -g ph-cli',
+      hint: 'Install the Powerhouse CLI: npm install -g ph-cmd',
     }),
     checkPort((ctx) => (ctx.params?.connectPort as number) ?? 3000, 'Connect Studio'),
     checkPort((ctx) => (ctx.params?.switchboardPort as number) ?? 4001, 'Switchboard'),
