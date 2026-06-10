@@ -12,6 +12,7 @@
  * mirroring `hooks/useSessionPreviewTarget.ts`.
  */
 import type { OpenTarget } from "./ideation/types.js";
+import { SPECIFY_TYPES } from "./specify/projects.js";
 
 /** The five ideation sheet types (the set `DocumentHost` can render inline). */
 export const IDEATION_TYPES: ReadonlySet<string> = new Set([
@@ -24,15 +25,15 @@ export const IDEATION_TYPES: ReadonlySet<string> = new Set([
 
 /**
  * The section a document opens in, by type: ideation sheets → IDEATE,
- * document-models → SPECIFY. `null` = no inline editor for it (folders,
- * other spec types, custom models) — not followable/openable. Single source
- * of truth for navigability: auto-nav follows exactly the non-null types.
+ * builder spec types → SPECIFY. `null` = no inline editor for it (folders,
+ * custom models) — not followable/openable. Single source of truth for
+ * navigability: auto-nav follows exactly the non-null types.
  */
 export function sectionForDocumentType(
   documentType: string,
 ): "ideate" | "specify" | null {
   if (IDEATION_TYPES.has(documentType)) return "ideate";
-  if (documentType === "powerhouse/document-model") return "specify";
+  if (SPECIFY_TYPES.has(documentType)) return "specify";
   return null;
 }
 
