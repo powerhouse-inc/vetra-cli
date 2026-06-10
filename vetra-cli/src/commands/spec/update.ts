@@ -63,8 +63,12 @@ export const specUpdate = defineCommand({
     } catch (err) {
       enrichActionValidationError(err, doc.header.documentType);
     }
+    // Docs loaded from disk may omit empty operation scopes entirely.
+    const opScopes = next.operations as Partial<
+      Record<"global" | "local", unknown[]>
+    >;
     const opsCount =
-      next.operations.global.length + next.operations.local.length;
+      (opScopes.global?.length ?? 0) + (opScopes.local?.length ?? 0);
     const path = await saveSpec(next, base);
     // Push the updated ops into the embedded drive when a reactor is running.
     const drive = await getEmbeddedDrive(context);
