@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { defineCommand } from '../../framework.js';
-import { requireOption } from '../../helpers/cli-errors.js';
+import { requireOption, formatProcessFailure } from '../../helpers/cli-errors.js';
 import { DEFAULT_PH_VERSION } from '../../constants.js';
 
 const NAME_PATTERN = /^[a-zA-Z0-9-_]+$/;
@@ -62,13 +62,16 @@ export const reactorProjectInit = defineCommand({
     const initArgs = clonePath
       ? `${versionArgs.join(' ')} --pnpm --template ${clonePath}`
       : `${versionArgs.join(' ')} --pnpm`;
-    const { success } = await runProcess(
-      `ph init ${name} ${initArgs}`,
-      { label: 'ph-init', timeout: 300_000, cwd: workdir, env: { FORCE_COLOR: '1' } },
-    );
+    const command = `ph init ${name} ${initArgs}`;
+    const { success, output } = await runProcess(command, {
+      label: 'ph-init',
+      timeout: 300_000,
+      cwd: workdir,
+      env: { FORCE_COLOR: '1' },
+    });
 
     if (!success) {
-      return { text: `Failed to initialize project` };
+      throw new Error(formatProcessFailure('ph init failed', command, workdir, output));
     }
 
     const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));

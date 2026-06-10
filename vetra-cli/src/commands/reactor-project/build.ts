@@ -4,9 +4,12 @@ import { z } from 'zod';
 import { createProcessManager } from '@powerhousedao/ph-clint';
 import { defineCommand } from '../../framework.js';
 import { resolveReactorProjectPath } from '../../helpers/project.js';
+import { formatProcessFailure } from '../../helpers/cli-errors.js';
 
 export interface BuildResult {
   success: boolean;
+  /** Combined stdout/stderr captured from `ph build`. */
+  output: string;
 }
 
 /**
@@ -18,14 +21,14 @@ export async function runBuild(
   onData?: (chunk: string) => void,
 ): Promise<BuildResult> {
   const pm = createProcessManager();
-  const { success } = await pm.run('ph build', {
+  const { success, output } = await pm.run('ph build', {
     label: 'ph-build',
     timeout: 120_000,
     cwd: projectPath,
     env: { FORCE_COLOR: '1' },
     onOutput: onData ? (line) => onData(line + '\n') : undefined,
   });
-  return { success };
+  return { success, output };
 }
 
 const inputSchema = z.object({
@@ -48,7 +51,7 @@ export const reactorProjectBuild = defineCommand({
   execute: async ({ name }, { workdir, runProcess }) => {
     const projectPath = await resolveReactorProjectPath(workdir, name);
 
-    const { success } = await runProcess('ph build', {
+    const { success, output } = await runProcess('ph build', {
       label: 'ph-build',
       timeout: 120_000,
       cwd: projectPath,
@@ -56,7 +59,9 @@ export const reactorProjectBuild = defineCommand({
     });
 
     if (!success) {
-      return { text: `**Build failed**` };
+      throw new Error(
+        formatProcessFailure('ph build failed', 'ph build', projectPath, output),
+      );
     }
 
     const hasDistDir = fs.existsSync(path.join(projectPath, 'dist'));

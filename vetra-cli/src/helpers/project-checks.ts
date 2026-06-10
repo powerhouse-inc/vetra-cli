@@ -26,6 +26,13 @@ type RunProcess = (
 
 const SEP = path.sep;
 
+/** Last `max` chars of captured output, for surfacing a run failure in a note. */
+function tailOutput(output: string, max = 1000): string {
+  const trimmed = output.trim();
+  if (!trimmed) return "(no output captured)";
+  return trimmed.length > max ? `…${trimmed.slice(-max)}` : trimmed;
+}
+
 /** Top-level directories the codegen writes spec-authored code into (the kinds
  * in `pruneManifestSection`). Each holds a per-artifact subtree — for document
  * models that is `gen/` output plus the editable `src/` implementation; editors,
@@ -166,11 +173,17 @@ export async function runChecks(
     if (!tsc) {
       notes.push("typecheck skipped: tsc not found in project node_modules");
     } else {
-      const { output } = await runProcess(
+      const { success, output } = await runProcess(
         `"${tsc}" --noEmit --pretty false`,
         { cwd: base, timeout: 120_000 },
       );
-      diagnostics.push(...parseTscOutput(output, base, scope));
+      const found = parseTscOutput(output, base, scope);
+      diagnostics.push(...found);
+      // tsc exits non-zero when it reports diagnostics (expected); only a
+      // non-zero exit with nothing parsed means the run itself failed.
+      if (!success && found.length === 0) {
+        notes.push(`typecheck failed to run: ${tailOutput(output)}`);
+      }
     }
   }
 
@@ -183,11 +196,17 @@ export async function runChecks(
       if (eslintArgs === null) {
         notes.push("lint skipped: no module directories present to lint");
       } else {
-        const { output } = await runProcess(
+        const { success, output } = await runProcess(
           `"${eslint}" --format json ${eslintArgs}`,
           { cwd: base, timeout: 120_000 },
         );
-        diagnostics.push(...parseEslintOutput(output, base));
+        const found = parseEslintOutput(output, base);
+        diagnostics.push(...found);
+        // eslint exits non-zero when it reports errors (expected); a non-zero
+        // exit with no parseable JSON means the run itself failed.
+        if (!success && found.length === 0) {
+          notes.push(`lint failed to run: ${tailOutput(output)}`);
+        }
       }
     }
   }
