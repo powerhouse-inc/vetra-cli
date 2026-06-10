@@ -10,6 +10,7 @@ import {
 } from '@powerhousedao/shared/registry';
 import { defineCommand } from '../../framework.js';
 import { resolveReactorProjectPath } from '../../helpers/project.js';
+import { formatProcessFailure } from '../../helpers/cli-errors.js';
 import { runBuild } from './build.js';
 
 function npmLogin(
@@ -135,9 +136,14 @@ Run \`npm login --registry <url>\` to create an account with a username, passwor
         }
       });
       if (!buildResult.success) {
-        return {
-          text: `**Build failed**. Publish aborted.`,
-        };
+        throw new Error(
+          formatProcessFailure(
+            'ph build failed; publish aborted',
+            'ph build',
+            projectPath,
+            buildResult.output,
+          ),
+        );
       }
     }
 

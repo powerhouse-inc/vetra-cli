@@ -71,3 +71,26 @@ export function unknownValueError(opts: UnknownValueOptions): Error {
 export function formatLines(message: string, hint: string | undefined): string {
   return hint ? `${message}\n${hint}` : message;
 }
+
+/**
+ * Build a process-failure message carrying the spawned command, cwd, and the
+ * captured combined stdout/stderr (tailed to the last `maxOutput` chars).
+ * `runProcess` returns no exit code, so the captured output is the only
+ * signal of the real cause (e.g. `sh: 1: ph: not found`).
+ */
+export function formatProcessFailure(
+  message: string,
+  command: string,
+  cwd: string,
+  output: string,
+  maxOutput = 2000,
+): string {
+  const trimmed = output.trim();
+  const tail =
+    trimmed.length > maxOutput
+      ? `…\n${trimmed.slice(-maxOutput)}`
+      : trimmed;
+  const lines = [message, `command: ${command}`, `cwd: ${cwd}`];
+  lines.push(tail ? `output:\n${tail}` : "output: (none captured)");
+  return lines.join("\n");
+}
