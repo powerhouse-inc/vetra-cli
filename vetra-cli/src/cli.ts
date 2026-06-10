@@ -32,6 +32,7 @@ import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url
 import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
 import { tsCheck } from './lifecycle/ts-check.js';
+import { ensurePh } from './lifecycle/ensure-ph.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
@@ -217,6 +218,7 @@ export const cli = defineCli({
 
   // @clint:begin lifecycle
   lifecycle: [
+    ensurePh(),
     observability(),
     genGuard(),
     tsCheck(),

@@ -27,7 +27,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LifecycleHook } from "@powerhousedao/ph-clint";
-import { isCodegenPath } from "./gen-guard.js";
+import { extractPath, isCodegenPath } from "./gen-guard.js";
 
 /** Minimal slice of ph-clint's Logger the hook uses (not re-exported). */
 type LogLike = { warn?: (msg: string) => void };
@@ -41,12 +41,6 @@ const WRITE_TOOLS = new Set([
 
 /* Generous ceiling — a full-project tsc on a cold cache can take ~15s. */
 const CHECK_TIMEOUT_MS = 120_000;
-
-function extractPath(args: unknown): string | undefined {
-  if (typeof args !== "object" || args === null) return undefined;
-  const p = (args as { path?: unknown }).path;
-  return typeof p === "string" && p.length > 0 ? p : undefined;
-}
 
 /** Mirror of ph-clint's resolveWorkdir: `-w/--workdir` resolved against cwd. */
 function resolveWorkdirFromArgv(argv: string[]): string {
@@ -150,10 +144,11 @@ export function tsCheck(): LifecycleHook {
             const innerExecute = tool.execute.bind(tool);
             return {
               ...tool,
-              execute: async (args: unknown) => {
-                const result = await innerExecute(args);
+              // Mastra calls execute(args, toolContext) — forward every arg.
+              execute: async (...args: unknown[]) => {
+                const result = await innerExecute(...args);
 
-                const rel = extractPath(args);
+                const rel = extractPath(args[0]);
                 if (!rel || !/\.tsx?$/.test(rel) || isCodegenPath(rel)) {
                   return result;
                 }
