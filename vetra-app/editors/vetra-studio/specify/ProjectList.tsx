@@ -28,8 +28,8 @@ export function ProjectList({
                 {project.name}
               </span>
               <span className="text-xs text-gray-500">
-                {project.models.length}{" "}
-                {project.models.length === 1 ? "model" : "models"}
+                {project.documents.length}{" "}
+                {project.documents.length === 1 ? "model" : "models"}
               </span>
             </button>
           ))}

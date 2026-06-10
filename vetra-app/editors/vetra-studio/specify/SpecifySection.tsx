@@ -33,7 +33,7 @@ export function SpecifySection({
   // the drive is hydrating (or the model's file node hasn't synced yet) this
   // is undefined and the project crumb is omitted — never mislabeled.
   const openProject = open
-    ? projects.find((p) => p.models.some((m) => m.id === open.id))
+    ? projects.find((p) => p.documents.some((doc) => doc.id === open.id))
     : undefined;
   const project = open ? openProject : projects.find((p) => p.id === projectId);
 
