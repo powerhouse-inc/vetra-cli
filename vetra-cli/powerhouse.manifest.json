@@ -21,7 +21,8 @@
       "package": "@powerhousedao/ph-clint-observability",
       "envVars": {
         "sentryDsn": "VETRA_SENTRY_DSN",
-        "otelExporterOtlpEndpoint": "VETRA_OTEL_EXPORTER_OTLP_ENDPOINT"
+        "otelExporterOtlpEndpoint": "VETRA_OTEL_EXPORTER_OTLP_ENDPOINT",
+        "telemetryConsent": "VETRA_OBSERVABILITY_CONSENT"
       }
     }
   },
@@ -60,6 +61,12 @@
       "name": "VETRA_OTEL_EXPORTER_OTLP_ENDPOINT",
       "type": "secret",
       "description": "OpenTelemetry exporter OTLP endpoint.",
+      "required": false
+    },
+    {
+      "name": "VETRA_OBSERVABILITY_CONSENT",
+      "type": "secret",
+      "description": "Pre-set telemetry consent ('granted' or 'denied') to skip the interactive prompt on non-interactive/deployed runs.",
       "required": false
     }
   ]
