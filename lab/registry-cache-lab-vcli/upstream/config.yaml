@@ -1,0 +1,30 @@
+# Upstream registry — stands in for public npm (registry.npmjs.org).
+# Test packages are published *here*; the edge registry uplinks from it.
+storage: /verdaccio/storage
+self_path: ./
+
+auth:
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+    # Allow on-the-fly user creation so the test client can adduser.
+    max_users: 1000
+
+uplinks: {}
+
+packages:
+  '@lab/*':
+    access: $all
+    publish: $all
+    unpublish: $all
+  '**':
+    access: $all
+    publish: $all
+    unpublish: $all
+
+log:
+  type: stdout
+  format: pretty
+  level: warn
+
+max_body_size: 300mb
+listen: 0.0.0.0:4873

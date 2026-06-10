@@ -1,0 +1,65 @@
+# Edge registry — stands in for registry.dev.vetra.io's verdaccio.
+#
+# Dual-uplink build for the vetra-cli deploy lab:
+#   - `upstream` -> local origin verdaccio (via npm-cdn lag mock). Serves the
+#                   locally-published vetra-cli + vetra-app tarballs.
+#   - `npmjs`    -> real https://registry.npmjs.org/. Serves vetra-cli's
+#                   dependency closure (@powerhousedao/*, document-model,
+#                   @mastra/*, etc.), which all live on public npm.
+#
+# vetra-cli + vetra-app proxy from the local origin; everything else proxies
+# from npmjs. This is the change that makes a real install resolvable inside
+# the lab without publishing the whole dep tree to the local origin.
+storage: /verdaccio/storage
+self_path: ./
+
+auth:
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+    max_users: 1000
+
+uplinks:
+  upstream:
+    # Uplink from the npm-cdn (propagation-lag mock), not the origin directly,
+    # so the edge sees the same write->read lag a real npm consumer would.
+    url: http://npm-cdn:80/
+    maxage: ${UPLINK_MAXAGE}
+    timeout: 60s
+    cache: true
+  npmjs:
+    url: https://registry.npmjs.org/
+    maxage: 30m
+    timeout: 60s
+    cache: true
+    max_fails: 10
+    fail_timeout: 10m
+
+packages:
+  # The two locally-published packages resolve ONLY from the local origin.
+  'vetra-cli':
+    access: $all
+    publish: $all
+    unpublish: $all
+    proxy: upstream
+  'vetra-app':
+    access: $all
+    publish: $all
+    unpublish: $all
+    proxy: upstream
+  # Everything else (the dependency closure) proxies from real npmjs.
+  '@*/*':
+    access: $all
+    publish: $all
+    proxy: npmjs
+  '**':
+    access: $all
+    publish: $all
+    proxy: npmjs
+
+log:
+  type: stdout
+  format: pretty
+  level: warn
+
+max_body_size: 300mb
+listen: 0.0.0.0:4873

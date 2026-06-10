@@ -1,0 +1,4 @@
+# render.sh outputs (generated from the *.template.* sources)
+registry-cache-lab-vcli/edge/config.yaml
+registry-cache-lab-vcli/nginx/nginx.conf
+registry-cache-lab-vcli/npm-cdn/nginx.conf
