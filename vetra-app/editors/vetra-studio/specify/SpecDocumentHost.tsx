@@ -8,18 +8,21 @@ import {
 import { Suspense, useEffect, useRef } from "react";
 import { DOCUMENT_MODEL_TYPE } from "./projects.js";
 
-const DM_EDITOR_ID = "document-model-editor-v2";
+// Overrides the by-type lookup where several registry editors match a type.
+const PREFERRED_EDITOR_ID: Record<string, string | undefined> = {
+  [DOCUMENT_MODEL_TYPE]: "document-model-editor-v2",
+};
 
 function Loading() {
   return <div className="p-6 text-sm text-gray-400">Loading document…</div>;
 }
 
 /**
- * Renders the registry document-model editor for a model node. The editor's
- * Component is zero-prop and reads the *selected* document, so this host
- * drives Connect's node selection: select when the node resolves, clear on
- * unmount only if the selection is still ours. Render is gated on the
- * selection matching so the editor never mounts without its selected
+ * Renders the registry editor matching `documentType` for a document node.
+ * The editor's Component is zero-prop and reads the *selected* document, so
+ * this host drives Connect's node selection: select when the node resolves,
+ * clear on unmount only if the selection is still ours. Render is gated on
+ * the selection matching so the editor never mounts without its selected
  * document.
  *
  * The editor ships its own toolbar whose "Close document" button moves the
@@ -27,16 +30,19 @@ function Loading() {
  * leaving the hosted node and reports it via `onClose` so the section drops
  * its open state instead of stranding on the loading gate.
  */
-export function DocumentModelHost({
+export function SpecDocumentHost({
   id,
+  documentType,
   onClose,
 }: {
   id: string;
+  documentType: string;
   onClose: () => void;
 }) {
   const node = useNodeById(id);
-  const byId = useEditorModuleById(DM_EDITOR_ID);
-  const byType = useEditorModulesForDocumentType(DOCUMENT_MODEL_TYPE);
+  const preferredId = PREFERRED_EDITOR_ID[documentType];
+  const byId = useEditorModuleById(preferredId);
+  const byType = useEditorModulesForDocumentType(documentType);
   const mod = byId ?? byType?.[0];
   const selected = useSelectedNode();
 
@@ -84,7 +90,7 @@ export function DocumentModelHost({
   if (!mod) {
     return (
       <div className="p-6 text-sm text-gray-500">
-        No document-model editor registered.
+        No editor registered for {documentType}.
       </div>
     );
   }

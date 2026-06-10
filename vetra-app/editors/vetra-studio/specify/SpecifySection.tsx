@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Breadcrumb, type Crumb } from "../Breadcrumb.js";
 import type { OpenTarget } from "../ideation/types.js";
-import { DocumentModelHost } from "./DocumentModelHost.js";
+import { SpecDocumentHost } from "./SpecDocumentHost.js";
 import { ProjectList } from "./ProjectList.js";
 import { ProjectModels } from "./ProjectModels.js";
 import { useProjects } from "./useProjects.js";
@@ -67,7 +67,11 @@ export function SpecifySection({
     <div className="mx-auto max-w-5xl px-8 py-8">
       <Breadcrumb items={crumbs} />
       {open ? (
-        <DocumentModelHost id={open.id} onClose={onClear} />
+        <SpecDocumentHost
+          id={open.id}
+          documentType={open.documentType}
+          onClose={onClear}
+        />
       ) : projectId ? (
         <ProjectModels projectId={projectId} onOpen={onOpen} />
       ) : (
