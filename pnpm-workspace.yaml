@@ -44,7 +44,6 @@ overrides:
   'mastra>@mastra/deployer': '1.41.0'
   zod: '4.3.6'
   viem: '2.49.0'
-  '@powerhousedao/ph-clint': 'link:../ph-clint/packages/ph-clint'
   # Dedupe reactor-attachments to one copy (hash-first instanceof needs a single class identity).
   '@powerhousedao/reactor-attachments': '6.2.0-dev.6'
 
