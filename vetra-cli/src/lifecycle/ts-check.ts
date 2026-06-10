@@ -39,6 +39,18 @@ const WRITE_TOOLS = new Set([
   "mastra_workspace_edit_file",
 ]);
 
+/* Cap a diagnostic block so the combined error message stays small enough to
+ * survive transport without mid-message truncation; the head carries the
+ * actionable diagnostics. */
+function capBlock(label: string, body: string, maxLines = 20): string {
+  const lines = body.split("\n");
+  if (lines.length <= maxLines) return `${label}:\n${body}`;
+  return (
+    `${label}:\n${lines.slice(0, maxLines).join("\n")}` +
+    `\n… (+${lines.length - maxLines} more lines)`
+  );
+}
+
 /* Generous ceiling — a full-project tsc on a cold cache can take ~15s. */
 const CHECK_TIMEOUT_MS = 120_000;
 
@@ -84,6 +96,7 @@ async function runBin(
 
 async function lintAndTypecheck(
   absFile: string,
+  rel: string,
   log: LogLike | undefined,
 ): Promise<string[]> {
   const problems: string[] = [];
@@ -102,7 +115,8 @@ async function lintAndTypecheck(
     );
     // eslint: 0 clean, 1 lint errors remain, 2 = eslint itself failed.
     if (code === 1 && output.trim()) {
-      problems.push(`eslint:\n${output.trim()}`);
+      // eslint prints the absolute path; rewrite to the tool-call relative path.
+      problems.push(capBlock("eslint", output.trim().split(absFile).join(rel)));
     } else if (code > 1) {
       log?.warn?.(`[ts-check] eslint failed to run on ${absFile}: ${output.trim()}`);
     }
@@ -119,13 +133,15 @@ async function lintAndTypecheck(
       ["--noEmit", "--pretty", "false"],
       tscRoot!,
     );
-    // tsc prints paths relative to its cwd (the project root).
+    // tsc prints paths relative to its cwd (the project root); keep this
+    // file's diagnostics and rewrite the prefix to the tool-call relative path.
     const relFromProject = path.relative(tscRoot!, absFile).replace(/\\/g, "/");
     const lines = output
       .split("\n")
-      .filter((l) => l.replace(/\\/g, "/").startsWith(relFromProject));
+      .filter((l) => l.replace(/\\/g, "/").startsWith(relFromProject))
+      .map((l) => l.replace(/\\/g, "/").replace(relFromProject, rel));
     if (lines.length) {
-      problems.push(`tsc:\n${lines.join("\n")}`);
+      problems.push(capBlock("tsc", lines.join("\n")));
     }
   }
 
@@ -157,7 +173,7 @@ export function tsCheck(): LifecycleHook {
 
                 let problems: string[];
                 try {
-                  problems = await lintAndTypecheck(absFile, ctx.log);
+                  problems = await lintAndTypecheck(absFile, rel, ctx.log);
                 } catch (err) {
                   ctx.log?.warn(`[ts-check] check errored for ${absFile}: ${String(err)}`);
                   return result;

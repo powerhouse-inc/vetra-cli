@@ -32,6 +32,7 @@ import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url
 import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
 import { tsCheck } from './lifecycle/ts-check.js';
+import { serializableToolErrors } from './lifecycle/tool-errors.js';
 import { ensurePh } from './lifecycle/ensure-ph.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { studioRedirectTrigger } from './triggers/studio-redirect.js';
@@ -229,6 +230,9 @@ export const cli = defineCli({
     connectDriveUrlOnSwitchboardReady({
       vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
     }),
+    // Outermost wrap: thrown tool errors keep their message through JSON
+    // serialization to the model. Must stay last to catch inner hooks' throws.
+    serializableToolErrors(),
   ],
   // @clint:end lifecycle
 
