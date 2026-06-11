@@ -153,6 +153,13 @@ export const reactorProject = defineService({
     NODE_ENV: 'development',
     // Heap cap is per-fork; each ph vetra child inherits it. See node-memory.ts.
     NODE_OPTIONS: reactorProjectNodeOptions(),
+    // Serve the heavy, stable Connect libs from a prebuilt vendor instead of
+    // re-running Vite's dep optimizer for them every session (~1-2 GB resident).
+    // The preview studio's own source still hot-reloads. No-op on a ph-cli that
+    // doesn't support it; set VETRA_CONNECT_EXTERNALIZE_VENDOR=0 to disable.
+    ...(process.env.VETRA_CONNECT_EXTERNALIZE_VENDOR === '0'
+      ? {}
+      : { PH_CONNECT_EXTERNALIZE_VENDOR: '1' }),
   }),
   readiness: {
     patterns: [
