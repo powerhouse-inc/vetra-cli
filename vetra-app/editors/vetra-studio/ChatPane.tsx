@@ -10,13 +10,20 @@ import {
   usePHToast,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
-import { SafeDocument } from "./SafeDocument.js";
+import { useSafeDocument } from "./SafeDocument.js";
 import type {
   DocumentDriveAction,
   DocumentDriveDocument,
   FileNode,
 } from "@powerhousedao/shared/document-drive";
-import { lazy, Suspense, useMemo, useState, useTransition } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import VetraMitosis from "./VetraMitosis.js";
 
 const ChatSession = lazy(() =>
@@ -43,12 +50,17 @@ export type ChatPaneProps = {
   dispatch: DocumentDispatch<DocumentDriveAction>;
   selectedSessionId: string | undefined;
   onSelectSession: (sessionId: string | undefined) => void;
+  /** True once the selected drive has hydrated (node list is authoritative).
+   *  Until then a session absent from `nodes` is sync lag, not a missing
+   *  record, so "not found" must wait. */
+  driveLoaded: boolean;
 };
 
 export function ChatPane({
   document,
   selectedSessionId,
   onSelectSession,
+  driveLoaded,
 }: ChatPaneProps) {
   const sessions = document.state.global.nodes.filter(
     (node): node is FileNode =>
@@ -99,6 +111,7 @@ export function ChatPane({
             <SessionView
               sessionId={selectedSessionId}
               knownInDrive={Boolean(knownSession)}
+              driveLoaded={driveLoaded}
               attachments={attachments}
             />
           </Suspense>
@@ -307,45 +320,58 @@ function ChevronRightIcon({ className }: { className?: string }) {
 function SessionView({
   sessionId,
   knownInDrive,
+  driveLoaded,
   attachments,
 }: {
   sessionId: string;
-  /** True when the parent has already located the session in the drive's
-   *  node list — meaning an unresolved document is a transient subscription
-   *  lag, not a missing record. False when the id came from a stale URL /
-   *  link, in which case "not found" is honest. */
+  /** True when the parent located the session in the drive's live node list.
+   *  Re-derived each render, so it flips true the moment the session syncs in. */
   knownInDrive: boolean;
+  /** True once the drive has hydrated. While false the node list is empty and
+   *  `knownInDrive` is meaningless, so a missing session is sync lag. */
+  driveLoaded: boolean;
   attachments: IAttachmentService;
 }) {
-  // SafeDocument resolves the session without suspending or throwing, so a
+  // useSafeDocument resolves the session without suspending or throwing, so a
   // not-yet-synced session — e.g. one the agent just created — renders a
   // placeholder in place instead of blanking the studio via a parent boundary.
-  // "Not found" is honest only for a stale id the drive doesn't know about;
-  // anything still resolving (or transiently erroring while known) keeps loading.
-  return (
-    <SafeDocument
-      id={sessionId}
-      guard={isChatSessionDocument}
-      pending={() => <SessionLoading />}
-      error={() =>
-        knownInDrive ? (
-          <SessionLoading />
-        ) : (
+  const { state, document, dispatch } = useSafeDocument(
+    sessionId,
+    isChatSessionDocument,
+  );
+
+  // The document cache doesn't react to `Created` events and may cache a
+  // rejected "not found" promise. Once the session appears in the drive's node
+  // list, force a refetch so a stale rejection doesn't strand us in error.
+  useEffect(() => {
+    if (state.status === "error" && knownInDrive) {
+      void state.reload?.();
+    }
+  }, [state, knownInDrive]);
+
+  if (!document) {
+    if (state.status === "error") {
+      // "Not found" is honest only once the drive has loaded AND the live node
+      // list lacks this id. While the drive is still syncing, or the session is
+      // known and we're refetching, keep loading.
+      if (driveLoaded && !knownInDrive) {
+        return (
           <div className="flex h-full items-center justify-center text-sm text-red-500">
             Session not found
           </div>
-        )
+        );
       }
-    >
-      {({ document, dispatch }) => (
-        <ChatSession
-          document={document}
-          dispatch={dispatch}
-          attachments={attachments}
-          agentAvatar={AgentMitosisAvatar}
-        />
-      )}
-    </SafeDocument>
+    }
+    return <SessionLoading />;
+  }
+
+  return (
+    <ChatSession
+      document={document}
+      dispatch={dispatch}
+      attachments={attachments}
+      agentAvatar={AgentMitosisAvatar}
+    />
   );
 }
 

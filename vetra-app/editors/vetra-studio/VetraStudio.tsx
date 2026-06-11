@@ -1,12 +1,11 @@
-import type {
-  ChatSessionAction,
-  ChatSessionDocument,
+import {
+  isChatSessionDocument,
+  type ChatSessionDocument,
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
-  useDocumentById,
+  useDocumentSafe,
   useDocumentsInSelectedDrive,
   type DocumentDispatch,
-  type UseDispatchResult,
 } from "@powerhousedao/reactor-browser";
 import type {
   DocumentDriveAction,
@@ -238,10 +237,15 @@ export function VetraStudio({
   /* The session doc is the source of truth for the BUILD preview: its tool
    * history names the project and document the agent last surfaced via
    * `spec-preview-show`. We re-resolve the URL each render from the live
-   * preview-server so reactor restarts don't strand the iframe. */
-  const [sessionDocument] = useDocumentById(
-    selectedSessionId ?? null,
-  ) as UseDispatchResult<ChatSessionDocument | undefined, ChatSessionAction>;
+   * preview-server so reactor restarts don't strand the iframe. Resolve via
+   * the non-throwing safe hook so an unsynced `?session=<id>` doesn't suspend
+   * or throw the whole studio; read the doc only once it resolves. */
+  const sessionState = useDocumentSafe(selectedSessionId ?? null);
+  const sessionDocument =
+    sessionState.status === "success" &&
+    isChatSessionDocument(sessionState.data)
+      ? (sessionState.data as ChatSessionDocument)
+      : undefined;
   const previewTarget = useSessionPreviewTarget(sessionDocument ?? undefined);
   const preview = useResolvedPreview(previewTarget);
 
@@ -340,6 +344,7 @@ export function VetraStudio({
           dispatch={dispatch}
           selectedSessionId={selectedSessionId}
           onSelectSession={setSelectedSessionId}
+          driveLoaded={documents !== undefined}
         />
       </aside>
       <div
