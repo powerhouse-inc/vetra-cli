@@ -15,6 +15,7 @@ import type {
 import { useState } from "react";
 import {
   Card,
+  ClearButton,
   EditableNumber,
   EditableText,
   EmptyHint,
@@ -57,7 +58,7 @@ export function FeatureHeader({
   dispatch: Dispatch;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-5">
+    <div className="flex flex-col gap-3 rounded-lg border border-vetra-border bg-vetra-accent p-5">
       <div className="flex items-center gap-2">
         <Pill tone={STATUS_TONE[state.status]}>{titleCase(state.status)}</Pill>
         <Select
@@ -71,14 +72,14 @@ export function FeatureHeader({
         placeholder="Feature name"
         variant="plain"
         onCommit={(name) => dispatch(actions.setFeatureName({ name }))}
-        className="text-2xl font-semibold text-gray-900"
+        className="text-2xl font-semibold text-vetra-fg"
       />
       <EditableText
         value={state.summary}
         placeholder="One-line summary"
         variant="plain"
         onCommit={(summary) => dispatch(actions.setSummary({ summary }))}
-        className="text-sm text-gray-600"
+        className="text-sm text-vetra-muted-fg"
       />
       <LifecycleControls status={state.status} dispatch={dispatch} />
     </div>
@@ -97,7 +98,7 @@ function LifecycleControls({
       key={label}
       type="button"
       onClick={onClick}
-      className="rounded border border-gray-300 bg-white px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100"
+      className="rounded border border-vetra-border bg-vetra-card px-2 py-0.5 text-xs text-vetra-fg hover:bg-vetra-muted"
     >
       {label}
     </button>
@@ -142,17 +143,17 @@ export function BetSection({
     <Section title="The Bet">
       <div className="flex flex-col gap-3 text-sm leading-relaxed">
         <div>
-          <span className="text-gray-400">By building </span>
+          <span className="text-vetra-muted-fg">By building </span>
           <EditableText
             value={state.premise}
             placeholder="the premise — what we'll build"
             multiline
             onCommit={(premise) => dispatch(actions.setPremise({ premise }))}
-            className="text-gray-800"
+            className="text-vetra-fg"
           />
         </div>
         <div>
-          <span className="text-gray-400">we expect </span>
+          <span className="text-vetra-muted-fg">we expect </span>
           <EditableText
             value={state.expectedEffect}
             placeholder="the expected outcome change"
@@ -160,11 +161,11 @@ export function BetSection({
             onCommit={(expectedEffect) =>
               dispatch(actions.setExpectedEffect({ expectedEffect }))
             }
-            className="text-gray-800"
+            className="text-vetra-fg"
           />
         </div>
         <div>
-          <span className="text-gray-400">because </span>
+          <span className="text-vetra-muted-fg">because </span>
           <EditableText
             value={state.reasoning}
             placeholder="the reasoning being tested"
@@ -172,7 +173,7 @@ export function BetSection({
             onCommit={(reasoning) =>
               dispatch(actions.setReasoning({ reasoning }))
             }
-            className="text-gray-800"
+            className="text-vetra-fg"
           />
         </div>
       </div>
@@ -193,9 +194,9 @@ export function EstimatesSection({
       title="Estimates"
       action={
         state.confidence || state.effort || state.impact ? (
-          <LinkButton onClick={() => dispatch(actions.clearEstimates({}))}>
+          <ClearButton onClick={() => dispatch(actions.clearEstimates({}))}>
             Clear
-          </LinkButton>
+          </ClearButton>
         ) : undefined
       }
     >
@@ -234,7 +235,7 @@ export function EstimatesSection({
               onCommit={(targetRelease) =>
                 dispatch(actions.setTargetRelease({ targetRelease }))
               }
-              className="text-sm text-gray-700"
+              className="text-sm text-vetra-fg"
             />
           </Field>
         </div>
@@ -244,7 +245,7 @@ export function EstimatesSection({
             placeholder="Notes (optional)"
             multiline
             onCommit={(notes) => dispatch(actions.setNotes({ notes }))}
-            className="text-sm text-gray-600"
+            className="text-sm text-vetra-muted-fg"
           />
         </Field>
       </Card>
@@ -299,11 +300,11 @@ function TargetRow({
   dispatch: Dispatch;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3">
-      <span className="min-w-40 flex-1 text-sm text-gray-700">
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-vetra-border bg-vetra-card p-3">
+      <span className="min-w-40 flex-1 text-sm text-vetra-fg">
         {target.outcome.statement || target.outcome.objectId}
       </span>
-      <label className="flex items-center gap-1 text-xs text-gray-500">
+      <label className="flex items-center gap-1 text-xs text-vetra-muted-fg">
         Δimp
         <EditableNumber
           value={target.expectedImportanceChange}
@@ -318,7 +319,7 @@ function TargetRow({
           className="w-14"
         />
       </label>
-      <label className="flex items-center gap-1 text-xs text-gray-500">
+      <label className="flex items-center gap-1 text-xs text-vetra-muted-fg">
         Δsat
         <EditableNumber
           value={target.expectedSatisfactionChange}
@@ -391,13 +392,13 @@ function SegmentChip({
   dispatch: Dispatch;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-sm text-gray-700">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-vetra-muted px-2.5 py-1 text-sm text-vetra-fg">
       {segment.name || segment.objectId}
       <button
         type="button"
         aria-label="Remove segment"
         onClick={() => dispatch(actions.removeSegmentRef({ id: segment.id }))}
-        className="text-gray-400 hover:text-rose-500"
+        className="text-vetra-muted-fg hover:text-rose-500"
       >
         ×
       </button>
@@ -462,7 +463,7 @@ function EvidenceRow({
         onCommit={(content) =>
           dispatch(actions.updateEvidence({ id: evidence.id, content }))
         }
-        className="text-sm text-gray-700"
+        className="text-sm text-vetra-fg"
       />
       <RemoveButton
         onClick={() => dispatch(actions.removeEvidence({ id: evidence.id }))}
@@ -555,19 +556,19 @@ function RefForm({
         value={text}
         placeholder={withStatement ? "statement" : "name"}
         onChange={(e) => setText(e.target.value)}
-        className="w-40 rounded border border-gray-200 px-1.5 py-0.5 outline-none focus:border-gray-400"
+        className="w-40 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
       />
       <input
         value={documentId}
         placeholder="document id"
         onChange={(e) => setDocumentId(e.target.value)}
-        className="w-36 rounded border border-gray-200 px-1.5 py-0.5 font-mono outline-none focus:border-gray-400"
+        className="w-36 rounded border border-vetra-border px-1.5 py-0.5 font-mono outline-none focus:border-vetra-muted-fg"
       />
       <input
         value={objectId}
         placeholder="object id"
         onChange={(e) => setObjectId(e.target.value)}
-        className="w-24 rounded border border-gray-200 px-1.5 py-0.5 font-mono outline-none focus:border-gray-400"
+        className="w-24 rounded border border-vetra-border px-1.5 py-0.5 font-mono outline-none focus:border-vetra-muted-fg"
       />
       <LinkButton onClick={commit}>Add</LinkButton>
       <LinkButton onClick={() => setOpen(false)}>Cancel</LinkButton>
@@ -600,7 +601,7 @@ function EvidenceAdder({
         value={content}
         placeholder="evidence"
         onChange={(e) => setContent(e.target.value)}
-        className="w-56 rounded border border-gray-200 px-1.5 py-0.5 outline-none focus:border-gray-400"
+        className="w-56 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
       />
       <Select value={source} options={SOURCES} onChange={setSource} />
       <LinkButton onClick={commit}>Add</LinkButton>

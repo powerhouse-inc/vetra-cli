@@ -16,9 +16,9 @@ import type {
 import { useRef, useState } from "react";
 import { BrandMark, readableText } from "./BrandMark.js";
 import {
+  AddButton,
   ChipList,
   EditableText,
-  LinkButton,
   Section,
 } from "../../shared/fields.js";
 
@@ -82,8 +82,9 @@ export function BrandHeader({
   );
   const symbolSrc = symbol ? logoSrc(symbol) : null;
   return (
-    <div className="flex items-center gap-5 rounded-lg border border-gray-200 bg-gray-50 p-5">
-      <div className="flex h-11 w-11 flex-none items-center justify-center text-gray-700">
+    <div className="relative flex items-center gap-5 overflow-hidden rounded-lg border border-vetra-border bg-vetra-accent p-5">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-vetra-primary to-transparent opacity-60" />
+      <div className="flex h-11 w-11 flex-none items-center justify-center text-vetra-fg">
         {symbolSrc ? (
           <img
             src={symbolSrc}
@@ -100,14 +101,14 @@ export function BrandHeader({
           placeholder="Product name"
           variant="plain"
           onCommit={(name) => dispatch(actions.setProductName({ name }))}
-          className="text-2xl font-semibold text-gray-900"
+          className="text-2xl font-semibold text-vetra-fg"
         />
         <EditableText
           value={state.maxim}
           placeholder="Maxim — an action paired with a benefit"
           variant="plain"
           onCommit={(maxim) => dispatch(actions.setMaxim({ maxim }))}
-          className="text-sm text-gray-500"
+          className="text-sm text-vetra-muted-fg"
         />
       </div>
     </div>
@@ -129,7 +130,7 @@ export function ConceptSection({
         placeholder="What is the product, in a few sentences?"
         multiline
         onCommit={(concept) => dispatch(actions.setConcept({ concept }))}
-        className="text-sm leading-relaxed text-gray-700"
+        className="text-sm leading-relaxed text-vetra-fg"
       />
     </Section>
   );
@@ -155,7 +156,7 @@ export function LogoConcept({
   return (
     <Section
       title="Logo Concept"
-      action={<LinkButton onClick={addLogo}>Add logo</LinkButton>}
+      action={<AddButton onClick={addLogo}>Add logo</AddButton>}
     >
       {state.logos.length === 0 ? (
         <Empty>No logos yet.</Empty>
@@ -191,7 +192,7 @@ function LogoRow({
           {MARK_TYPES.map((mark) => (
             <label
               key={mark}
-              className="flex items-center gap-1.5 text-sm text-gray-700"
+              className="flex items-center gap-1.5 text-sm text-vetra-fg"
             >
               <input
                 type="radio"
@@ -208,7 +209,7 @@ function LogoRow({
             type="button"
             aria-label="Remove logo"
             onClick={() => dispatch(actions.removeLogo({ id: logo.id }))}
-            className="ml-auto text-gray-300 hover:text-rose-500"
+            className="ml-auto text-vetra-border hover:text-rose-500"
           >
             ×
           </button>
@@ -220,7 +221,7 @@ function LogoRow({
           onCommit={(description) =>
             dispatch(actions.updateLogo({ id: logo.id, description }))
           }
-          className="text-sm leading-relaxed text-gray-700"
+          className="text-sm leading-relaxed text-vetra-fg"
         />
       </div>
       <LogoAssetBox logo={logo} productName={productName} dispatch={dispatch} />
@@ -267,7 +268,7 @@ function LogoAssetBox({
         setFromFile(e.dataTransfer.files[0]);
       }}
       className={`group relative flex min-h-24 items-center justify-center rounded-lg border border-dashed p-4 text-center transition-colors ${
-        dragOver ? "border-gray-400 bg-gray-100" : "border-gray-300 bg-gray-50"
+        dragOver ? "border-vetra-muted-fg bg-vetra-muted" : "border-vetra-border bg-vetra-accent"
       }`}
     >
       <input
@@ -293,7 +294,7 @@ function LogoAssetBox({
             className="max-h-24 max-w-full object-contain"
           />
         ) : (
-          <span className="flex flex-col items-center gap-1 text-gray-400">
+          <span className="flex flex-col items-center gap-1 text-vetra-muted-fg">
             <BrandMark size={28} />
             <span className="text-xs">
               {productName || "Logo"} — click or drop an image
@@ -306,7 +307,7 @@ function LogoAssetBox({
           type="button"
           aria-label="Remove logo image"
           onClick={() => dispatch(actions.clearLogoAsset({ logoId: logo.id }))}
-          className="absolute right-1.5 top-1.5 hidden rounded-full bg-white/90 px-1.5 text-gray-400 shadow-sm hover:text-rose-500 group-hover:block"
+          className="absolute right-1.5 top-1.5 hidden rounded-full bg-vetra-card/90 px-1.5 text-vetra-muted-fg shadow-sm hover:text-rose-500 group-hover:block"
         >
           ×
         </button>
@@ -343,7 +344,7 @@ export function ColorPalette({
         <button
           type="button"
           onClick={addColor}
-          className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 text-sm text-gray-400 hover:border-gray-400 hover:text-gray-600"
+          className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-vetra-border text-sm text-vetra-muted-fg hover:border-vetra-muted-fg hover:text-vetra-fg"
         >
           + add color
         </button>
@@ -357,12 +358,12 @@ function ColorCard({ color, dispatch }: { color: Color; dispatch: Dispatch }) {
     dispatch(actions.updateColor({ id: color.id, ...input }));
 
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200">
+    <div className="overflow-hidden rounded-lg border border-vetra-border">
       <div className="flex items-start justify-between px-3 pt-2">
         <select
           value={color.role}
           onChange={(e) => update({ role: e.target.value as ColorRole })}
-          className="bg-transparent text-xs font-semibold uppercase tracking-wide text-gray-500 outline-none"
+          className="bg-transparent text-xs font-semibold uppercase tracking-wide text-vetra-muted-fg outline-none"
         >
           {COLOR_ROLES.map((role) => (
             <option key={role} value={role}>
@@ -374,7 +375,7 @@ function ColorCard({ color, dispatch }: { color: Color; dispatch: Dispatch }) {
           type="button"
           aria-label="Remove color"
           onClick={() => dispatch(actions.removeColor({ id: color.id }))}
-          className="text-gray-300 hover:text-rose-500"
+          className="text-vetra-border hover:text-rose-500"
         >
           ×
         </button>
@@ -383,7 +384,7 @@ function ColorCard({ color, dispatch }: { color: Color; dispatch: Dispatch }) {
         value={color.usage}
         placeholder="Usage…"
         onCommit={(usage) => update({ usage })}
-        className="px-2 text-xs text-gray-400"
+        className="px-2 text-xs text-vetra-muted-fg"
       />
       <div
         className="relative mt-2 h-16"
@@ -408,13 +409,13 @@ function ColorCard({ color, dispatch }: { color: Color; dispatch: Dispatch }) {
           value={color.name}
           placeholder="Name"
           onCommit={(name) => update({ name })}
-          className="text-sm font-medium text-gray-800"
+          className="text-sm font-medium text-vetra-fg"
         />
         <EditableText
           value={color.hex}
           placeholder="#000000"
           onCommit={(hex) => update({ hex })}
-          className="w-20 text-right font-mono text-xs text-gray-500"
+          className="w-20 text-right font-mono text-xs text-vetra-muted-fg"
         />
       </div>
     </div>
@@ -442,7 +443,7 @@ export function TypographySection({
   return (
     <Section
       title="Typography"
-      action={<LinkButton onClick={addTypeface}>Add typeface</LinkButton>}
+      action={<AddButton onClick={addTypeface}>Add typeface</AddButton>}
     >
       {state.typography.length === 0 ? (
         <Empty>No typefaces yet.</Empty>
@@ -474,7 +475,7 @@ function TypefaceRow({
   return (
     <div className="flex gap-3">
       <div
-        className="flex h-14 w-14 flex-none items-center justify-center rounded border border-gray-200 text-3xl text-gray-800"
+        className="flex h-14 w-14 flex-none items-center justify-center rounded border border-vetra-border text-3xl text-vetra-fg"
         style={{ fontFamily: typeface.family || undefined }}
       >
         A
@@ -484,7 +485,7 @@ function TypefaceRow({
           <select
             value={typeface.role}
             onChange={(e) => update({ role: e.target.value as TypeRole })}
-            className="bg-transparent text-xs font-semibold uppercase tracking-wide text-gray-400 outline-none"
+            className="bg-transparent text-xs font-semibold uppercase tracking-wide text-vetra-muted-fg outline-none"
           >
             {TYPE_ROLES.map((role) => (
               <option key={role} value={role}>
@@ -498,7 +499,7 @@ function TypefaceRow({
             onClick={() =>
               dispatch(actions.removeTypeface({ id: typeface.id }))
             }
-            className="text-gray-300 hover:text-rose-500"
+            className="text-vetra-border hover:text-rose-500"
           >
             ×
           </button>
@@ -507,7 +508,7 @@ function TypefaceRow({
           value={typeface.family}
           placeholder="Family"
           onCommit={(family) => update({ family })}
-          className="text-base font-medium text-gray-800"
+          className="text-base font-medium text-vetra-fg"
         />
         <div className="mt-1">
           <ChipList
@@ -534,13 +535,13 @@ export function VoiceSection({
   if (!voice) {
     return (
       <Section title="Voice & Tone">
-        <LinkButton
+        <AddButton
           onClick={() =>
             dispatch(actions.setVoice({ qualities: [], guidance: "" }))
           }
         >
           Add voice
-        </LinkButton>
+        </AddButton>
       </Section>
     );
   }
@@ -558,7 +559,7 @@ export function VoiceSection({
           placeholder="How should the product speak?"
           multiline
           onCommit={(guidance) => dispatch(actions.updateVoice({ guidance }))}
-          className="text-sm leading-relaxed text-gray-700"
+          className="text-sm leading-relaxed text-vetra-fg"
         />
         <Vocabulary voice={voice} dispatch={dispatch} />
       </div>
@@ -572,7 +573,7 @@ function Vocabulary({ voice, dispatch }: { voice: Voice; dispatch: Dispatch }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div>
-        <h5 className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+        <h5 className="mb-1 text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
           Prefer
         </h5>
         <ChipList
@@ -583,7 +584,7 @@ function Vocabulary({ voice, dispatch }: { voice: Voice; dispatch: Dispatch }) {
         />
       </div>
       <div>
-        <h5 className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+        <h5 className="mb-1 text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
           Avoid
         </h5>
         <ChipList
@@ -624,11 +625,11 @@ export function ImagerySection({
           onCommit={(direction) =>
             dispatch(actions.setImageryDirection({ direction }))
           }
-          className="text-sm leading-relaxed text-gray-700"
+          className="text-sm leading-relaxed text-vetra-fg"
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <h5 className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+            <h5 className="mb-1 text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
               Include
             </h5>
             <ChipList
@@ -639,7 +640,7 @@ export function ImagerySection({
             />
           </div>
           <div>
-            <h5 className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+            <h5 className="mb-1 text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
               Avoid
             </h5>
             <ChipList
@@ -656,5 +657,5 @@ export function ImagerySection({
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-gray-400">{children}</p>;
+  return <p className="text-sm text-vetra-muted-fg">{children}</p>;
 }

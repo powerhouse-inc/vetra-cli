@@ -5,7 +5,7 @@ import { ProblemSheetEditor } from "./ProblemSheetEditor.js";
 export default function Editor() {
   const [document, dispatch] = useSelectedProblemSheetDocument();
   return (
-    <div className="mx-auto max-w-4xl bg-gray-50 p-6">
+    <div className="mx-auto max-w-4xl bg-vetra-accent p-6">
       <DocumentToolbar />
       <ProblemSheetEditor document={document} dispatch={dispatch} />
     </div>

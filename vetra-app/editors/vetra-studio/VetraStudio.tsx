@@ -375,7 +375,7 @@ export function VetraStudio({
       className={className ?? "flex h-full w-full overflow-hidden"}
     >
       <aside
-        className="flex shrink-0 flex-col bg-white"
+        className="flex shrink-0 flex-col bg-vetra-card"
         style={{ width: `${chatWidth}px` }}
       >
         <ChatPane
@@ -392,15 +392,15 @@ export function VetraStudio({
         aria-label="Resize chat panel"
         onMouseDown={handleResizeMouseDown}
         onDoubleClick={handleResizeDoubleClick}
-        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-gray-200 bg-white hover:bg-gray-100 active:bg-gray-200"
+        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-vetra-border bg-vetra-card hover:bg-vetra-accent active:bg-vetra-muted"
       >
         <div className="pointer-events-none flex flex-col gap-1">
-          <div className="h-1 w-1 rounded-full bg-gray-400 group-hover:bg-gray-700" />
-          <div className="h-1 w-1 rounded-full bg-gray-400 group-hover:bg-gray-700" />
-          <div className="h-1 w-1 rounded-full bg-gray-400 group-hover:bg-gray-700" />
+          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
+          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
+          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
         </div>
       </div>
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gray-50">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-vetra-accent">
         <AutoNavToggle
           enabled={autoNavEnabled}
           paused={userPinned}
@@ -466,13 +466,13 @@ function AutoNavToggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-end gap-2 border-b border-gray-200 bg-white px-4 py-1.5">
+    <div className="flex shrink-0 items-center justify-end gap-2 border-b border-vetra-border bg-vetra-card px-4 py-1.5">
       {enabled && paused ? (
-        <span className="text-[11px] text-gray-400">
+        <span className="text-[11px] text-vetra-muted-fg">
           paused — close the document to resume
         </span>
       ) : null}
-      <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-600">
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-vetra-muted-fg">
         <input
           type="checkbox"
           checked={enabled}

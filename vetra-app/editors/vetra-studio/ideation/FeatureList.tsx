@@ -21,14 +21,14 @@ export function FeatureList({
   );
   return (
     <section>
-      <h3 className="mb-3 text-base font-semibold text-gray-800">Features</h3>
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-medium text-gray-500">
+      <h3 className="mb-3 text-base font-semibold text-vetra-fg">Features</h3>
+      <div className="overflow-hidden rounded-xl border border-vetra-border bg-vetra-card">
+        <div className="flex items-center justify-between border-b border-vetra-border bg-vetra-accent px-4 py-2 text-xs font-medium text-vetra-muted-fg">
           <span>Feature title, status, scope</span>
           <span>WBS</span>
         </div>
         {features.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-gray-400">
+          <div className="px-4 py-6 text-sm text-vetra-muted-fg">
             No features yet.
           </div>
         ) : (
@@ -61,22 +61,22 @@ function FeatureRow({
   const wbs = feature?.state.global.wbs;
 
   return (
-    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50">
+    <div className="flex items-center justify-between border-b border-vetra-border/40 px-4 py-3 last:border-b-0 hover:bg-vetra-accent">
       <button
         type="button"
         onClick={() => onOpen({ id, documentType: FEATURE_TYPE, name })}
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
       >
-        <span className="truncate text-sm font-medium text-gray-800">
+        <span className="truncate text-sm font-medium text-vetra-fg">
           {name}
         </span>
         {status ? (
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-600">
+          <span className="rounded-md bg-vetra-muted px-2 py-0.5 text-[10px] font-semibold tracking-wide text-vetra-fg">
             {status}
           </span>
         ) : null}
         {scope ? (
-          <span className="text-[10px] tracking-wide text-gray-400">
+          <span className="text-[10px] tracking-wide text-vetra-muted-fg">
             {scope}
           </span>
         ) : null}
@@ -91,12 +91,12 @@ function FeatureRow({
               name: wbs.name ?? "WBS",
             })
           }
-          className="ml-3 shrink-0 text-xs font-medium text-blue-600 hover:underline"
+          className="ml-3 shrink-0 text-xs font-medium text-vetra-primary hover:underline"
         >
           {wbs.name ?? "WBS"} →
         </button>
       ) : (
-        <span className="ml-3 shrink-0 text-xs text-gray-300">no WBS</span>
+        <span className="ml-3 shrink-0 text-xs text-vetra-border">no WBS</span>
       )}
     </div>
   );

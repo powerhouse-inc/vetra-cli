@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
- * Field styling tokens. `FIELD` is an always-visible white input that reads
- * clearly on both white cards and grey surfaces. `PLAIN` is for editable
+ * Field styling tokens. `FIELD` is an always-visible card-surface input that
+ * reads clearly on both card and accent surfaces. `PLAIN` is for editable
  * display text (titles, sentence fragments): borderless until hover/focus.
  */
 const FIELD =
-  "rounded border border-gray-200 bg-white px-2 py-1 outline-none transition-colors focus:border-gray-400 focus:ring-1 focus:ring-gray-300";
+  "rounded border border-vetra-border bg-vetra-card px-2 py-1 outline-none transition-colors focus:border-vetra-muted-fg focus:ring-1 focus:ring-vetra-border";
 const PLAIN =
-  "rounded border border-transparent bg-transparent px-1 py-0.5 outline-none transition-colors hover:border-gray-200 focus:border-gray-400 focus:bg-white";
+  "rounded border border-transparent bg-transparent px-1 py-0.5 outline-none transition-colors hover:border-vetra-border focus:border-vetra-muted-fg focus:bg-vetra-card";
 
 export type FieldVariant = "field" | "plain";
 
@@ -16,16 +16,20 @@ export type FieldVariant = "field" | "plain";
 export function Section({
   title,
   action,
+  accent = false,
   children,
 }: {
   title: string;
   action?: React.ReactNode;
+  accent?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <section>
       <div className="mb-2 flex items-center justify-between">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+        <h4
+          className={`text-xs font-semibold uppercase tracking-wide ${accent ? "text-vetra-primary" : "text-vetra-muted-fg"}`}
+        >
           {title}
         </h4>
         {action}
@@ -35,7 +39,7 @@ export function Section({
   );
 }
 
-/** A subtle text-link button, used for "Add …" affordances. */
+/** A subtle text-link button, used for cancel/clear/commit affordances. */
 export function LinkButton({
   children,
   onClick,
@@ -50,8 +54,60 @@ export function LinkButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="text-sm text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline disabled:opacity-40"
+      className="text-sm text-vetra-fg underline-offset-2 hover:underline disabled:opacity-40"
     >
+      {children}
+    </button>
+  );
+}
+
+/** Ghost button for "Clear / Unlink …" section actions. */
+export function ClearButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-vetra-fg hover:border-vetra-border hover:bg-vetra-accent disabled:opacity-40"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M15 9l-6 6M9 9l6 6" />
+      </svg>
+      {children}
+    </button>
+  );
+}
+
+/** Ghost button for "Add …" section actions. */
+export function AddButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-vetra-fg hover:border-vetra-border hover:bg-vetra-accent disabled:opacity-40"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M12 8v8M8 12h8" />
+      </svg>
       {children}
     </button>
   );
@@ -70,7 +126,7 @@ export function RemoveButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="text-gray-300 hover:text-rose-500"
+      className="text-vetra-border hover:text-vetra-destructive"
     >
       ×
     </button>
@@ -79,7 +135,7 @@ export function RemoveButton({
 
 /** Faint placeholder line for empty collections. */
 export function EmptyHint({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-gray-400">{children}</p>;
+  return <p className="text-sm text-vetra-muted-fg">{children}</p>;
 }
 
 /** Read-only chip used to render enum values / tags. */
@@ -92,12 +148,12 @@ export function Pill({
 }) {
   const toneClass =
     tone === "prefer"
-      ? "bg-emerald-50 text-emerald-800"
+      ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
       : tone === "avoid"
-        ? "bg-rose-50 text-rose-800"
+        ? "bg-rose-50 text-rose-800 dark:bg-rose-950/30 dark:text-rose-300"
         : tone === "info"
-          ? "bg-blue-50 text-blue-800"
-          : "bg-gray-100 text-gray-600";
+          ? "bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-300"
+          : "bg-vetra-muted text-vetra-muted-fg";
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${toneClass}`}
@@ -329,7 +385,7 @@ export function Select<T extends string>({
         const next = normalized.find((o) => o.value === e.target.value);
         if (next) onChange(next.value);
       }}
-      className={`rounded border border-gray-200 bg-white px-1.5 py-1 text-sm outline-none transition-colors focus:border-gray-400 focus:ring-1 focus:ring-gray-300 ${className}`}
+      className={`rounded border border-vetra-border bg-vetra-card px-1.5 py-1 text-sm outline-none transition-colors focus:border-vetra-muted-fg focus:ring-1 focus:ring-vetra-border ${className}`}
     >
       {normalized.map((o) => (
         <option key={o.value} value={o.value}>
@@ -371,10 +427,10 @@ export function ChipList({
 
   const toneClass =
     tone === "prefer"
-      ? "bg-emerald-50 text-emerald-800"
+      ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
       : tone === "avoid"
-        ? "bg-rose-50 text-rose-800"
-        : "bg-gray-100 text-gray-700";
+        ? "bg-rose-50 text-rose-800 dark:bg-rose-950/30 dark:text-rose-300"
+        : "bg-vetra-muted text-vetra-fg";
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -406,7 +462,7 @@ export function ChipList({
             add();
           }
         }}
-        className="min-w-28 flex-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs outline-none transition-colors focus:border-gray-400 focus:ring-1 focus:ring-gray-300"
+        className="min-w-28 flex-1 rounded border border-vetra-border bg-vetra-card px-1.5 py-0.5 text-xs outline-none transition-colors focus:border-vetra-muted-fg focus:ring-1 focus:ring-vetra-border"
       />
     </div>
   );
@@ -440,8 +496,8 @@ export function EnumChips<T extends string>({
             }
             className={`rounded-full px-2 py-0.5 text-xs ${
               on
-                ? "bg-gray-800 text-white"
-                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                ? "bg-vetra-fg text-vetra-bg"
+                : "bg-vetra-muted text-vetra-muted-fg hover:bg-vetra-border/40"
             }`}
           >
             {titleCase(opt)}
@@ -462,7 +518,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
         {label}
       </span>
       {children}
@@ -480,7 +536,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-lg border border-gray-200 bg-white p-4 ${className}`}
+      className={`rounded-lg border border-vetra-border bg-vetra-card p-4 ${className}`}
     >
       {children}
     </div>
