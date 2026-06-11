@@ -37,6 +37,15 @@ function trimGenerateError(message: string): string {
   if (parse) {
     return parse[0];
   }
+  /* `@graphql-tools/load` echoes the entire failing SDL into the message after
+   * "Failed to load schema from", typically ending in `scalar Unknown`. Drop
+   * the echoed SDL and surface where to look. */
+  if (/Failed to load schema from/.test(message)) {
+    return (
+      "GraphQL schema failed to load (check operation/state SDL for " +
+      "undeclared types/scalars)."
+    );
+  }
   const firstLine = message.split("\n").find((l) => l.trim().length > 0);
   return firstLine ?? message;
 }

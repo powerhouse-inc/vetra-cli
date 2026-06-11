@@ -654,6 +654,18 @@ export function normalizeSpecActions(
     if (a.type === "SET_STATE_SCHEMA") {
       const schema = strVal(asRecord(a.input).schema);
       if (schema) validateStateSchemaSdl(schema, modelName);
+    } else if (a.type === "ADD_OPERATION") {
+      const input = asRecord(a.input);
+      const schema = strVal(input.schema);
+      if (schema)
+        validateOperationSchemaSdl(schema, strVal(input.name) ?? "<operation>");
+    } else if (a.type === "SET_OPERATION_SCHEMA") {
+      const input = asRecord(a.input);
+      const schema = strVal(input.schema);
+      // `id` here is the agent-supplied operation reference (name or id),
+      // resolved to a concrete id later — good enough as a label.
+      if (schema)
+        validateOperationSchemaSdl(schema, strVal(input.id) ?? "<operation>");
     }
     rejectInlineReducerBody(a, modelSlug);
   }
@@ -705,15 +717,150 @@ function expectedStateTypeName(modelName: string): string {
  *
  * When the model name is unknown (rare — SET_STATE_SCHEMA before any
  * SET_MODEL_NAME), fall back to rejecting the `extend type State` antipattern. */
+/* GraphQL built-in scalars, always available without declaration. */
+const GRAPHQL_BUILTINS = new Set(["Int", "Float", "String", "Boolean", "ID"]);
+
+/* Custom scalars the codegen injects into every document-model subgraph, so
+ * SDL may reference them without declaring them. Mirrors document-engineering's
+ * `generatorTypeDefs` scalars (`@powerhousedao/document-engineering/graphql`)
+ * plus the four locally-declared ones (`Unknown, DateTime, Address,
+ * AttachmentRef`). Hard-coded because `graphql`/document-engineering are not
+ * resolvable as direct deps of vetra-cli; keep in sync if the injected set
+ * changes. */
+const INJECTED_SCALARS = new Set([
+  "Unknown",
+  "DateTime",
+  "Address",
+  "AttachmentRef",
+  "Amount_Tokens",
+  "EthereumAddress",
+  "EmailAddress",
+  "Amount_Percentage",
+  "Date",
+  "URL",
+  "Amount_Money",
+  "OLabel",
+  "Currency",
+  "PHID",
+  "OID",
+  "Amount_Fiat",
+  "Amount_Currency",
+  "Amount_Crypto",
+  "Amount",
+  "Upload",
+]);
+
+/* Strip line + block comments so a `#`/`"""..."""` mention of a type name
+ * neither declares nor references it. */
+function stripSdlComments(schema: string): string {
+  return schema
+    .replace(/"""[\s\S]*?"""/g, "")
+    .replace(/(^|\n)\s*#[^\n]*/g, "$1");
+}
+
+/* Collect every type name DECLARED in an SDL fragment (object/input/enum/
+ * scalar/interface/union, with or without `extend`). */
+function collectDeclaredTypes(stripped: string): Set<string> {
+  const declared = new Set<string>();
+  const re =
+    /\b(?:extend\s+)?(?:type|input|enum|scalar|interface|union)\s+([A-Za-z_]\w*)/g;
+  for (const m of stripped.matchAll(re)) declared.add(m[1]!);
+  return declared;
+}
+
+/* Collect every type name REFERENCED by a field/argument in an SDL fragment:
+ * the identifier after a `:`, allowing list/non-null wrappers
+ * (`[Foo!]!`, `Bar`). Skips the leading field/arg name before the colon.
+ * Only references to declared type names are kept (Pascal/uppercase first
+ * letter); lowercase identifiers are field/scalar primitives, never refs. */
+function collectReferencedTypes(stripped: string): Set<string> {
+  const refs = new Set<string>();
+  const re = /:\s*\[?\s*([A-Za-z_]\w*)/g;
+  for (const m of stripped.matchAll(re)) {
+    const name = m[1]!;
+    if (/^[A-Z]/.test(name)) refs.add(name);
+  }
+  return refs;
+}
+
+/* Whether the fragment is well-formed enough for a reference check. TS pseudo-
+ * SDL (`type X = { ... }`) is not valid GraphQL; let it fall through to the
+ * codegen parse error rather than mis-reporting it as a dangling reference. */
+function looksLikeSdl(stripped: string): boolean {
+  return !/\b(?:type|input|enum|interface|union)\s+\w+\s*=/.test(stripped);
+}
+
+/* Names every SDL fragment may reference without declaring. */
+function knownTypeName(name: string, declared: Set<string>): boolean {
+  return (
+    GRAPHQL_BUILTINS.has(name) ||
+    INJECTED_SCALARS.has(name) ||
+    declared.has(name)
+  );
+}
+
+/* The supported-scalars hint, shared by the operation and state validators. */
+function scalarsHint(): string {
+  return (
+    "Supported without declaration: GraphQL built-ins " +
+    `(${[...GRAPHQL_BUILTINS].join(", ")}) and the injected custom scalars ` +
+    `(${[...INJECTED_SCALARS].join(", ")}). Any other type must be declared ` +
+    "in the same SDL fragment (e.g. an `input`/`enum`/`type`)."
+  );
+}
+
+/* The codegen loads each operation's input SDL as its own GraphQL fragment.
+ * A reference to a symbol that is neither a built-in, an injected custom
+ * scalar, nor a type declared in the same fragment makes `@graphql-tools/load`
+ * fail at `spec-generate` with an opaque "Unexpected schema type" / "Failed to
+ * load schema from scalar Unknown". Catch it here with an actionable error so
+ * the agent self-corrects. */
+function validateOperationSchemaSdl(schema: string, opLabel: string): void {
+  const stripped = stripSdlComments(schema);
+  if (!looksLikeSdl(stripped)) return;
+
+  const declared = collectDeclaredTypes(stripped);
+  const referenced = collectReferencedTypes(stripped);
+
+  const dangling = [...referenced].filter((n) => !knownTypeName(n, declared));
+  if (dangling.length === 0) return;
+
+  throw new Error(
+    `operation ${opLabel}: input schema references undeclared ` +
+      `${dangling.length === 1 ? "type" : "types"} ` +
+      `\`${dangling.join("`, `")}\`. ` +
+      scalarsHint() +
+      " Declare the missing type in this operation's `schema`, or use a " +
+      "supported scalar.",
+  );
+}
+
 function validateStateSchemaSdl(
   schema: string,
   modelName: string | undefined,
 ): void {
-  // Strip line comments so `# we used to extend type State here` doesn't trip
-  // the check. Block comments (`""" ... """`) are stripped lazily.
-  const stripped = schema
-    .replace(/"""[\s\S]*?"""/g, "")
-    .replace(/(^|\n)\s*#[^\n]*/g, "$1");
+  // Strip line + block comments so a commented mention of a type doesn't trip
+  // either the type-name check or the dangling-reference check.
+  const stripped = stripSdlComments(schema);
+
+  // Same dangling-reference guard as operations: a state schema referencing an
+  // undeclared symbol fails codegen the same opaque way. Skip non-SDL (TS
+  // pseudo-syntax) so it falls through to the codegen parse error.
+  const declared = collectDeclaredTypes(stripped);
+  const dangling = looksLikeSdl(stripped)
+    ? [...collectReferencedTypes(stripped)].filter(
+        (n) => !knownTypeName(n, declared),
+      )
+    : [];
+  if (dangling.length > 0) {
+    throw new Error(
+      "SET_STATE_SCHEMA: state schema references undeclared " +
+        `${dangling.length === 1 ? "type" : "types"} ` +
+        `\`${dangling.join("`, `")}\`. ` +
+        scalarsHint() +
+        " Declare the missing type in this schema, or use a supported scalar.",
+    );
+  }
 
   if (!modelName) {
     if (/\bextend\s+type\s+State\b/.test(stripped)) {
@@ -728,8 +875,8 @@ function validateStateSchemaSdl(
   }
 
   const expected = expectedStateTypeName(modelName);
-  const declared = new RegExp(`\\btype\\s+${expected}\\b`).test(stripped);
-  if (declared) return;
+  const declaresExpected = new RegExp(`\\btype\\s+${expected}\\b`).test(stripped);
+  if (declaresExpected) return;
 
   // Help the agent self-correct: tell it the exact name to use, and surface
   // the alternative names it likely tried.

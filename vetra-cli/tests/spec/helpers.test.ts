@@ -175,6 +175,46 @@ describe("normalizeSpecActions", () => {
     ).toThrow(/op-1.*op-2|multiple operations/);
   });
 
+  it("accepts an operation schema using built-ins and injected scalars", () => {
+    expect(() =>
+      normalizeSpecActions(fakeDoc([]), [
+        {
+          type: "ADD_OPERATION",
+          input: {
+            moduleId: "mod-1",
+            id: "op-1",
+            name: "ADD_TODO",
+            schema: "input AddTodoInput { id: OID! when: DateTime label: String }",
+          },
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it("rejects an operation schema referencing an undeclared type", () => {
+    expect(() =>
+      normalizeSpecActions(fakeDoc([]), [
+        {
+          type: "ADD_OPERATION",
+          input: {
+            moduleId: "mod-1",
+            id: "op-1",
+            name: "ADD_TODO",
+            schema: "input Wrapper { todo: AddTodoInput }",
+          },
+        },
+      ]),
+    ).toThrow(/operation ADD_TODO.*AddTodoInput/s);
+  });
+
+  it("rejects a state schema referencing an undeclared type", () => {
+    expect(() =>
+      normalizeSpecActions(fakeDoc([]), [
+        { type: "SET_STATE_SCHEMA", input: { schema: "type S { ref: Mystery }" } },
+      ]),
+    ).toThrow(/SET_STATE_SCHEMA.*Mystery/s);
+  });
+
   it("does not default scope or resolve names for non-document-model docs", () => {
     const { actions } = normalizeSpecActions(
       fakeDoc([], "powerhouse/document-editor"),
