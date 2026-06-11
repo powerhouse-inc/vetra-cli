@@ -12,17 +12,30 @@
  * mirroring `hooks/useSessionPreviewTarget.ts`.
  */
 import type { OpenTarget } from "./ideation/types.js";
+import { SPECIFY_TYPES } from "./specify/projects.js";
 
-/** Document types auto-nav follows — the five ideation sheets (the set
- * `DocumentHost` can render inline). Builder/project specs (document-model,
- * editor, app) belong to the SPECIFY phase and are out of MVP scope. */
-export const AUTO_NAV_TYPES: ReadonlySet<string> = new Set([
+/** The five ideation sheet types (the set `DocumentHost` can render inline). */
+export const IDEATION_TYPES: ReadonlySet<string> = new Set([
   "powerhouse/brand-sheet",
   "powerhouse/problem-sheet",
   "powerhouse/audience-sheet",
   "powerhouse/feature",
   "powerhouse/work-breakdown-structure",
 ]);
+
+/**
+ * The section a document opens in, by type: ideation sheets → IDEATE,
+ * builder spec types → SPECIFY. `null` = no inline editor for it (folders,
+ * custom models) — not followable/openable. Single source of truth for
+ * navigability: auto-nav follows exactly the non-null types.
+ */
+export function sectionForDocumentType(
+  documentType: string,
+): "ideate" | "specify" | null {
+  if (IDEATION_TYPES.has(documentType)) return "ideate";
+  if (SPECIFY_TYPES.has(documentType)) return "specify";
+  return null;
+}
 
 /** Minimal structural shape of a resolved document we read (a subset of
  * PHDocument). `useDocumentsInSelectedDrive()` returns these. */
@@ -36,8 +49,12 @@ export type DocLike = {
 };
 
 /** An auto-nav candidate: an OpenTarget plus the modified-time (epoch ms) used
- * to decide whether it's newer than what we've already followed. */
-export type TouchedTarget = OpenTarget & { ts: number };
+ * to decide whether it's newer than what we've already followed, and the
+ * section the document opens in. */
+export type TouchedTarget = OpenTarget & {
+  ts: number;
+  section: "ideate" | "specify";
+};
 
 function toMs(value: string | Date): number {
   return value instanceof Date ? value.getTime() : new Date(value).getTime();
@@ -54,11 +71,18 @@ export function latestTouchedNavigable(
   let best: TouchedTarget | null = null;
   for (const doc of docs) {
     const h = doc.header;
-    if (!AUTO_NAV_TYPES.has(h.documentType)) continue;
+    const section = sectionForDocumentType(h.documentType);
+    if (!section) continue;
     const ts = toMs(h.lastModifiedAtUtcIso);
     if (Number.isNaN(ts)) continue;
     if (!best || ts >= best.ts) {
-      best = { id: h.id, documentType: h.documentType, name: h.name, ts };
+      best = {
+        id: h.id,
+        documentType: h.documentType,
+        name: h.name,
+        ts,
+        section,
+      };
     }
   }
   return best;

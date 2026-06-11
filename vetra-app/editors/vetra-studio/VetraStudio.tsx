@@ -18,7 +18,8 @@ import { BuildSection } from "./BuildSection.js";
 import { ChatPane } from "./ChatPane.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
-import { latestTouchedNavigable } from "./auto-nav.js";
+import { SpecifySection } from "./specify/SpecifySection.js";
+import { latestTouchedNavigable, sectionForDocumentType } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
@@ -102,7 +103,13 @@ export type VetraStudioProps = {
   className?: string;
 };
 
-type Section = "home" | "ideate" | "build";
+type Section = "home" | "ideate" | "specify" | "build";
+
+/** The section an open document shows in; unknown types keep the legacy
+ * IDEATE fallback at restore/user-open sites. */
+function sectionForOpenDoc(target: OpenTarget): Section {
+  return sectionForDocumentType(target.documentType) ?? "ideate";
+}
 
 export function VetraStudio({
   document,
@@ -121,9 +128,10 @@ export function VetraStudio({
   const [openDoc, setOpenDoc] = useState<OpenTarget | null>(() =>
     resolveDocFromUrl(document),
   );
-  const [section, setSection] = useState<Section>(() =>
-    resolveDocFromUrl(document) ? "ideate" : "home",
-  );
+  const [section, setSection] = useState<Section>(() => {
+    const target = resolveDocFromUrl(document);
+    return target ? sectionForOpenDoc(target) : "home";
+  });
   // userPinned: a manual open pins the view so auto-nav won't yank it away.
   // A doc restored from the URL counts as pinned (the user was looking at it).
   const [userPinned, setUserPinned] = useState<boolean>(
@@ -158,20 +166,29 @@ export function VetraStudio({
     );
   }, [autoNavEnabled]);
 
+  // One place that opens (or clears) a document: keeps openDoc, the pin and
+  // the section in lockstep across every entry point (popstate, auto-nav,
+  // hydration restore, user click).
+  const openDocument = useCallback(
+    (target: OpenTarget | null, opts: { pinned: boolean }) => {
+      setOpenDoc(target);
+      setUserPinned(target !== null && opts.pinned);
+      if (target) setSection(sectionForOpenDoc(target));
+    },
+    [],
+  );
+
   // Keep local state in sync when the URL changes externally (back/forward,
   // someone editing the address bar, shared link arrives via in-page nav).
   useEffect(() => {
     if (typeof window === "undefined") return;
     function onPopState() {
       setSelectedSessionId(readSessionFromUrl());
-      const target = resolveDocFromUrl(documentRef.current);
-      setOpenDoc(target);
-      setUserPinned(target !== null);
-      if (target) setSection("ideate");
+      openDocument(resolveDocFromUrl(documentRef.current), { pinned: true });
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [openDocument]);
 
   // ── Auto-navigation: follow the ideation doc the agent is working on ──
   // useDocumentsInSelectedDrive is reactive: it re-renders when the agent
@@ -200,13 +217,11 @@ export function VetraStudio({
     lastTouchedRef.current = { id: latest.id, ts: latest.ts };
     if (latest.id === prev?.id) return; // same doc edited again — already shown
     if (!autoNavEnabled || userPinned) return; // respect toggle + pin
-    setSection("ideate");
-    setOpenDoc({
-      id: latest.id,
-      documentType: latest.documentType,
-      name: latest.name,
-    });
-  }, [documents, autoNavEnabled, userPinned]);
+    openDocument(
+      { id: latest.id, documentType: latest.documentType, name: latest.name },
+      { pinned: false },
+    );
+  }, [documents, autoNavEnabled, userPinned, openDocument]);
 
   // Restore `?doc=` once the drive hydrates: the initializer resolves against
   // the node list, which may be empty on first render (nodes arrive after
@@ -217,10 +232,8 @@ export function VetraStudio({
     if (openDoc) return;
     const target = resolveDocFromUrl(documentRef.current);
     if (!target) return;
-    setOpenDoc(target);
-    setUserPinned(true);
-    setSection("ideate");
-  }, [documents, openDoc]);
+    openDocument(target, { pinned: true });
+  }, [documents, openDoc, openDocument]);
 
   /* The session doc is the source of truth for the BUILD preview: its tool
    * history names the project and document the agent last surfaced via
@@ -233,24 +246,22 @@ export function VetraStudio({
   const preview = useResolvedPreview(previewTarget);
 
   // Manual open (a user click) — pins the view against auto-nav.
-  const handleUserOpen = useCallback((target: OpenTarget) => {
-    setOpenDoc(target);
-    setSection("ideate");
-    setUserPinned(true);
-  }, []);
+  const handleUserOpen = useCallback(
+    (target: OpenTarget) => openDocument(target, { pinned: true }),
+    [openDocument],
+  );
 
-  // Breadcrumb "Ideate" → back to the list; re-arms auto-follow.
-  const handleClearOpen = useCallback(() => {
-    setOpenDoc(null);
-    setUserPinned(false);
-  }, []);
+  // Breadcrumb section name → back to the list; re-arms auto-follow.
+  const handleClearOpen = useCallback(
+    () => openDocument(null, { pinned: false }),
+    [openDocument],
+  );
 
   // Breadcrumb product name → home; re-arms auto-follow.
   const handleExitToHome = useCallback(() => {
-    setOpenDoc(null);
-    setUserPinned(false);
+    openDocument(null, { pinned: false });
     setSection("home");
-  }, []);
+  }, [openDocument]);
 
   // Toggle handler — turning auto-follow back ON re-arms it (clears the pin).
   const handleToggleAutoNav = useCallback((next: boolean) => {
@@ -360,6 +371,16 @@ export function VetraStudio({
           <div className="min-h-0 flex-1 overflow-y-auto">
             <IdeationSection
               drive={document}
+              productName={productName}
+              open={openDoc}
+              onOpen={handleUserOpen}
+              onClear={handleClearOpen}
+              onExitToHome={handleExitToHome}
+            />
+          </div>
+        ) : section === "specify" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <SpecifySection
               productName={productName}
               open={openDoc}
               onOpen={handleUserOpen}

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  AUTO_NAV_TYPES,
+  IDEATION_TYPES,
   latestTouchedNavigable,
+  sectionForDocumentType,
   type DocLike,
 } from "./auto-nav.js";
+import { SPECIFY_TYPES } from "./specify/projects.js";
 
 function doc(
   id: string,
@@ -14,9 +16,9 @@ function doc(
   return { header: { id, name, documentType, lastModifiedAtUtcIso } };
 }
 
-describe("AUTO_NAV_TYPES", () => {
-  it("is exactly the five ideation sheet types", () => {
-    expect([...AUTO_NAV_TYPES].sort()).toEqual(
+describe("sectionForDocumentType", () => {
+  it("maps the five ideation sheet types to ideate", () => {
+    expect([...IDEATION_TYPES].sort()).toEqual(
       [
         "powerhouse/audience-sheet",
         "powerhouse/brand-sheet",
@@ -25,6 +27,29 @@ describe("AUTO_NAV_TYPES", () => {
         "powerhouse/work-breakdown-structure",
       ].sort(),
     );
+    for (const type of IDEATION_TYPES) {
+      expect(sectionForDocumentType(type)).toBe("ideate");
+    }
+  });
+
+  it("maps all five builder spec types to specify", () => {
+    expect([...SPECIFY_TYPES.keys()].sort()).toEqual(
+      [
+        "powerhouse/app",
+        "powerhouse/document-editor",
+        "powerhouse/document-model",
+        "powerhouse/processor",
+        "powerhouse/subgraph",
+      ].sort(),
+    );
+    for (const type of SPECIFY_TYPES.keys()) {
+      expect(sectionForDocumentType(type)).toBe("specify");
+    }
+  });
+
+  it("maps everything else to null", () => {
+    expect(sectionForDocumentType("powerhouse/chat-session")).toBeNull();
+    expect(sectionForDocumentType("custom/task")).toBeNull();
   });
 });
 
@@ -35,8 +60,8 @@ describe("latestTouchedNavigable", () => {
 
   it("returns null when no navigable docs exist", () => {
     const docs = [
-      doc("a", "powerhouse/document-model", "2026-06-04T10:00:00.000Z"),
-      doc("b", "powerhouse/chat-session", "2026-06-04T11:00:00.000Z"),
+      doc("a", "powerhouse/chat-session", "2026-06-04T10:00:00.000Z"),
+      doc("b", "custom/task", "2026-06-04T11:00:00.000Z"),
     ];
     expect(latestTouchedNavigable(docs)).toBeNull();
   });
@@ -52,13 +77,47 @@ describe("latestTouchedNavigable", () => {
       documentType: "powerhouse/problem-sheet",
       name: "Prob",
       ts: new Date("2026-06-04T12:00:00.000Z").getTime(),
+      section: "ideate",
+    });
+  });
+
+  it("follows a document-model and reports section specify", () => {
+    const docs = [
+      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
+      doc("m", "powerhouse/document-model", "2026-06-04T23:00:00.000Z", "Task"),
+    ];
+    expect(latestTouchedNavigable(docs)).toEqual({
+      id: "m",
+      documentType: "powerhouse/document-model",
+      name: "Task",
+      ts: new Date("2026-06-04T23:00:00.000Z").getTime(),
+      section: "specify",
+    });
+  });
+
+  it("follows a document-editor and reports section specify", () => {
+    const docs = [
+      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
+      doc(
+        "e",
+        "powerhouse/document-editor",
+        "2026-06-04T23:00:00.000Z",
+        "MyEditor",
+      ),
+    ];
+    expect(latestTouchedNavigable(docs)).toEqual({
+      id: "e",
+      documentType: "powerhouse/document-editor",
+      name: "MyEditor",
+      ts: new Date("2026-06-04T23:00:00.000Z").getTime(),
+      section: "specify",
     });
   });
 
   it("ignores non-navigable docs even if newer", () => {
     const docs = [
       doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
-      doc("z", "powerhouse/document-model", "2026-06-04T23:00:00.000Z"), // newest but not navigable
+      doc("z", "powerhouse/chat-session", "2026-06-04T23:00:00.000Z"), // newest but not navigable
     ];
     expect(latestTouchedNavigable(docs)?.id).toBe("a");
   });
