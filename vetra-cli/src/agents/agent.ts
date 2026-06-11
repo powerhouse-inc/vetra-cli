@@ -1,18 +1,8 @@
-import { Agent } from '@mastra/core/agent';
-import { TokenLimiterProcessor } from '@mastra/core/processors';
-import { MCPClient } from '@mastra/mcp';
-import { createMastraHelpers } from '@powerhousedao/ph-clint/mastra';
-import { createWorkdirStore } from '@powerhousedao/ph-clint';
+import type { Agent } from '@mastra/core/agent';
 import type { AgentSetupContext, AgentProvider } from '@powerhousedao/ph-clint';
 import type { WrapAgentOptions } from '@powerhousedao/ph-clint/mastra';
-import {
-  createClaudeSubscriptionModel,
-  createUserTokenStore,
-  resolveClaudeAgentModel,
-} from '@powerhousedao/ph-clint-claude-subscription';
 import { CLI_NAME } from '../config.js';
 import type { Config } from '../framework.js';
-import { createDemoAgent } from './demo-agent.js';
 
 const SUB_AGENT_MODEL_ID = 'anthropic/claude-sonnet-4-5';
 
@@ -33,6 +23,24 @@ const INPUT_TOKEN_LIMIT = 160_000;
  * session (`claude-login`, user scope), then the demo agent.
  */
 export async function createAgent(ctx: AgentSetupContext<Config>): Promise<AgentProvider> {
+  // Mastra + ph-clint mastra glue + the Claude-subscription auth stack load
+  // here; kept lazy so boot doesn't pay for them — only a chat session does.
+  const [
+    { Agent },
+    { TokenLimiterProcessor },
+    { MCPClient },
+    { createMastraHelpers },
+    { createWorkdirStore },
+    { createClaudeSubscriptionModel, createUserTokenStore, resolveClaudeAgentModel },
+  ] = await Promise.all([
+    import('@mastra/core/agent'),
+    import('@mastra/core/processors'),
+    import('@mastra/mcp'),
+    import('@powerhousedao/ph-clint/mastra'),
+    import('@powerhousedao/ph-clint'),
+    import('@powerhousedao/ph-clint-claude-subscription'),
+  ]);
+
   const resolved = await resolveClaudeAgentModel({
     store: createUserTokenStore({ cliName: CLI_NAME }),
     modelId: ctx.config.model,
@@ -42,6 +50,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     ctx.context.log?.info(
       '[agent] No API key and no Claude subscription session — run `claude-login` to authenticate.',
     );
+    const { createDemoAgent } = await import('./demo-agent.js');
     return createDemoAgent();
   }
   const subAgentModel =

@@ -1,13 +1,3 @@
-import {
-  extractAllDocuments,
-  extractAppDocuments,
-  extractDocumentModelDocuments,
-  extractEditorDocuments,
-  extractProcessorDocuments,
-  extractSubgraphDocuments,
-  saveSpec,
-} from "@powerhousedao/vetra/codegen";
-import { buildTsMorphProject } from "@powerhousedao/codegen/utils";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
@@ -33,6 +23,12 @@ export const specExtract = defineCommand({
   execute: async (input, context) => {
     const { workdir } = context;
     const base = await resolveReactorProjectPath(workdir, input.project);
+    // ts-morph + graphql-codegen + the TS compiler load here; kept lazy so boot
+    // doesn't pay for them — only spec-extract needs them.
+    const [codegen, { buildTsMorphProject }] = await Promise.all([
+      import("@powerhousedao/vetra/codegen"),
+      import("@powerhousedao/codegen/utils"),
+    ]);
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
@@ -41,17 +37,17 @@ export const specExtract = defineCommand({
     const docs: PHDocument[] = (() => {
       switch (input.type) {
         case "document-model":
-          return extractDocumentModelDocuments(tsProject);
+          return codegen.extractDocumentModelDocuments(tsProject);
         case "editor":
-          return extractEditorDocuments(tsProject);
+          return codegen.extractEditorDocuments(tsProject);
         case "app":
-          return extractAppDocuments(tsProject);
+          return codegen.extractAppDocuments(tsProject);
         case "processor":
-          return extractProcessorDocuments(tsProject);
+          return codegen.extractProcessorDocuments(tsProject);
         case "subgraph":
-          return extractSubgraphDocuments(tsProject);
+          return codegen.extractSubgraphDocuments(tsProject);
         case "all": {
-          const all = extractAllDocuments(tsProject);
+          const all = codegen.extractAllDocuments(tsProject);
           return [
             ...all.documentModels,
             ...all.editors,
@@ -70,7 +66,7 @@ export const specExtract = defineCommand({
       if (!doc.header.slug && doc.header.name) {
         doc.header.slug = slugify(doc.header.name);
       }
-      written.push(await saveSpec(doc, base));
+      written.push(await codegen.saveSpec(doc, base));
     }
 
     // Push extracted specs into the embedded drive when a reactor is running.
