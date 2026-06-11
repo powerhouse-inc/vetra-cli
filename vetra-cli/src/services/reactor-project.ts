@@ -1,12 +1,60 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { checkWorkdir, checkCommand, checkPort, type LifecycleHook } from '@powerhousedao/ph-clint';
+import {
+  checkWorkdir,
+  checkCommand,
+  checkPort,
+  type LifecycleHook,
+  type ServiceInstanceStatus,
+  type ServiceProxyRouteSpec,
+} from '@powerhousedao/ph-clint';
 import { defineService } from '../framework.js';
 import {
   REACTOR_PROJECT_CONNECT_PROXY_PATH,
   REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH,
 } from '../constants.js';
+import { reactorProjectNodeOptions } from '../helpers/node-memory.js';
+
+// Switchboard mount relative to the `/reactor-project/` service prefix that
+// ph-clint prepends to every proxyRoutes spec (e.g. 'switchboard').
+const SWITCHBOARD_MOUNT = REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH.replace(
+  /^\/reactor-project\//,
+  '',
+);
+
+/**
+ * Mirror the embedded `/switchboard/*` proxy scheme for the project's
+ * switchboard, under /reactor-project/switchboard. The `/d/`-aligned route
+ * shape makes the proxy send the X-Forwarded-Prefix the switchboard needs to
+ * announce proxied follow-up endpoints, so the drive URLs ph vetra rebases
+ * via --drives-public-base resolve through the proxy.
+ *
+ * A service proxyRoutes hook so ph-clint re-asserts these on every
+ * `service:ready` — including auto-restart and boot-adoption — alongside the
+ * readiness-capture routes, not just on the start command.
+ */
+export function switchboardProxyRoutes(
+  instance: ServiceInstanceStatus,
+): ServiceProxyRouteSpec[] {
+  const sbUrl = instance.endpoints?.['vetra-switchboard'];
+  const mcpUrl = instance.endpoints?.['mcp-server'];
+  if (!sbUrl) return [];
+
+  const base = SWITCHBOARD_MOUNT;
+  return [
+    { prefix: `${base}/d/`, upstream: new URL('/d/', sbUrl), ws: false },
+    { prefix: `${base}/graphql`, upstream: new URL('/graphql', sbUrl), ws: false },
+    {
+      prefix: `${base}/attachments/`,
+      upstream: new URL('/attachments/', sbUrl),
+      ws: false,
+    },
+    ...(mcpUrl
+      ? [{ prefix: `${base}/mcp`, upstream: new URL('/mcp', mcpUrl), ws: true }]
+      : []),
+  ];
+}
 
 // Normalize a proxy publicUrl into the mount base path: '' for an
 // unset/invalid/root URL, else a leading-slash no-trailing-slash form
@@ -97,12 +145,14 @@ export const reactorProject = defineService({
     return parts.join(' ');
   },
   paramsSchema: reactorProjectParams,
+  proxyRoutes: switchboardProxyRoutes,
   env: ({params}) => ({
     // PORT workaround: https://github.com/powerhouse-inc/powerhouse/commit/9830c16b
     PORT: String(params?.switchboardPort),
     HOST: '0.0.0.0',
     NODE_ENV: 'development',
-    NODE_OPTIONS: '--max-old-space-size=4096',
+    // Heap cap is per-fork; each ph vetra child inherits it. See node-memory.ts.
+    NODE_OPTIONS: reactorProjectNodeOptions(),
   }),
   readiness: {
     patterns: [
