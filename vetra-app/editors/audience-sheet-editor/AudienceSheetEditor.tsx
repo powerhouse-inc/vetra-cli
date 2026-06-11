@@ -16,7 +16,7 @@ export function AudienceSheetEditor({
 }) {
   const state = document.state.global;
   return (
-    <div className="flex flex-col gap-8 text-gray-800">
+    <div className="flex flex-col gap-8 text-vetra-fg">
       <SegmentsSection segments={state.segments} dispatch={dispatch} />
       <AgentFeedbackSection
         feedback={state.agentFeedback}

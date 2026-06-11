@@ -5,7 +5,7 @@ import { AudienceSheetEditor } from "./AudienceSheetEditor.js";
 export default function Editor() {
   const [document, dispatch] = useSelectedAudienceSheetDocument();
   return (
-    <div className="mx-auto max-w-4xl bg-gray-50 p-6">
+    <div className="mx-auto max-w-4xl bg-vetra-accent p-6">
       <DocumentToolbar />
       <AudienceSheetEditor document={document} dispatch={dispatch} />
     </div>

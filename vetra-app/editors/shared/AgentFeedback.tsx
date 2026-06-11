@@ -44,7 +44,7 @@ export function AgentFeedbackSection({
     <Section
       title="Agent Feedback"
       action={
-        <label className="flex items-center gap-1.5 text-sm text-gray-600">
+        <label className="flex items-center gap-1.5 text-sm text-vetra-muted-fg">
           <input
             type="checkbox"
             checked={feedback.readyForFeedback}
@@ -55,46 +55,46 @@ export function AgentFeedbackSection({
       }
     >
       {feedback.suggestions.length === 0 ? (
-        <p className="text-sm text-gray-400">No suggestions yet.</p>
+        <p className="text-sm text-vetra-muted-fg">No suggestions yet.</p>
       ) : (
         <div className="flex flex-col gap-2">
           {open.map((s) => (
             <div
               key={s.id}
-              className="rounded-lg border border-gray-200 bg-white p-3"
+              className="rounded-lg border border-vetra-border bg-vetra-card p-3"
             >
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-500">
+                <span className="text-xs font-medium text-vetra-muted-fg">
                   {s.agent}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onResolve(s.id, "ACCEPTED")}
-                    className="rounded border border-emerald-200 px-2 py-0.5 text-xs text-emerald-700 hover:bg-emerald-50"
+                    className="rounded border border-emerald-200 px-2 py-0.5 text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
                   >
                     Accept
                   </button>
                   <button
                     type="button"
                     onClick={() => onResolve(s.id, "DISMISSED")}
-                    className="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+                    className="rounded border border-vetra-border px-2 py-0.5 text-xs text-vetra-muted-fg hover:bg-vetra-accent"
                   >
                     Dismiss
                   </button>
                 </div>
               </div>
-              <p className="text-sm text-gray-700">{s.content}</p>
+              <p className="text-sm text-vetra-fg">{s.content}</p>
             </div>
           ))}
           {resolved.map((s) => (
             <div
               key={s.id}
-              className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3"
+              className="flex items-start justify-between gap-3 rounded-lg border border-vetra-border/40 bg-vetra-accent p-3"
             >
               <div className="min-w-0">
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="text-xs font-medium text-gray-400">
+                  <span className="text-xs font-medium text-vetra-muted-fg">
                     {s.agent}
                   </span>
                   <Pill
@@ -109,13 +109,13 @@ export function AgentFeedbackSection({
                       : "Dismissed"}
                   </Pill>
                 </div>
-                <p className="truncate text-sm text-gray-500">{s.content}</p>
+                <p className="truncate text-sm text-vetra-muted-fg">{s.content}</p>
               </div>
               <button
                 type="button"
                 aria-label="Remove suggestion"
                 onClick={() => onRemove(s.id)}
-                className="text-gray-300 hover:text-rose-500"
+                className="text-vetra-border hover:text-vetra-destructive"
               >
                 ×
               </button>

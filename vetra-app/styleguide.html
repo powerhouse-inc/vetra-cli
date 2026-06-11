@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vetra Studio — Design Style Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet" />
+  <style>
+    /* ── TOKENS ────────────────────────────────────────────────────────────── */
+    :root {
+      --font-sans: "Inter", sans-serif;
+
+      /* Palette — matches @powerhousedao/design-system theme.css */
+      --gray-50:  hsl(0 0% 99%);
+      --gray-100: hsl(0 0% 96%);
+      --gray-200: hsl(0 0% 94%);
+      --gray-300: hsl(210 3% 85%);
+      --gray-400: hsl(180 2% 78%);
+      --gray-500: hsl(200 2% 63%);
+      --gray-600: hsl(200 4% 44%);
+      --gray-700: hsl(189 5% 29%);
+      --gray-800: hsl(200 4% 26%);
+      --gray-900: hsl(192 5% 21%);
+
+      --emerald-50:  #ecfdf5;
+      --emerald-200: #a7f3d0;
+      --emerald-500: #10b981;
+      --emerald-800: #065f46;
+
+      --amber-50:  #fffbeb;
+      --amber-200: #fde68a;
+      --amber-500: #f59e0b;
+      --amber-800: #92400e;
+
+      --red-50:  hsl(3 82% 99%);
+      --red-200: hsl(3 82% 91%);
+      --red-500: hsl(5 80% 78%);
+      --red-700: hsl(4 81% 69%);
+
+      --yellow-100: hsl(46 100% 94%);
+
+      --white: #ffffff;
+    }
+
+    /* ── RESET ─────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--gray-900);
+      background: var(--gray-100);
+    }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; }
+    svg { display: block; }
+
+    /* ── GUIDE CHROME ───────────────────────────────────────────────────────── */
+    .guide-header {
+      background: var(--gray-900);
+      color: var(--white);
+      padding: 24px 48px;
+    }
+    .guide-header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .guide-header p { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+
+    .guide-body { max-width: 1200px; margin: 0 auto; padding: 48px 48px; display: flex; flex-direction: column; gap: 64px; }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--gray-500);
+      margin-bottom: 20px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--gray-200);
+    }
+
+    .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+    .col { display: flex; flex-direction: column; gap: 8px; }
+    .label { font-size: 11px; color: var(--gray-500); }
+
+    /* ── TOKEN SWATCHES ─────────────────────────────────────────────────────── */
+    .swatch-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+    .swatch {
+      display: flex; flex-direction: column; gap: 6px; width: 80px;
+    }
+    .swatch-color {
+      width: 80px; height: 48px; border-radius: 6px;
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+    .swatch-name { font-size: 11px; color: var(--gray-600); }
+    .swatch-value { font-size: 10px; color: var(--gray-400); font-family: monospace; }
+
+    /* ── TYPOGRAPHY ─────────────────────────────────────────────────────────── */
+    .type-stack { display: flex; flex-direction: column; gap: 20px; }
+    .type-row { display: flex; align-items: baseline; gap: 24px; }
+    .type-meta { width: 120px; font-size: 11px; color: var(--gray-400); flex-shrink: 0; font-family: monospace; }
+
+    /* ── APP SHELL DEMO ─────────────────────────────────────────────────────── */
+    .app-shell {
+      display: flex;
+      height: 600px;
+      border: 1px solid var(--gray-200);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0px 4px 24px rgba(0,0,0,0.06);
+    }
+
+    /* Chat pane */
+    .chat-pane {
+      width: 360px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--white);
+    }
+    .chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--gray-200);
+      background: var(--white);
+      padding: 12px 16px;
+    }
+    .chat-header-left { display: flex; align-items: baseline; gap: 8px; }
+    .chat-header h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--gray-900); }
+    .chat-count { font-size: 12px; font-weight: 500; color: var(--gray-400); }
+
+    /* Divider handle */
+    .divider {
+      width: 10px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-left: 1px solid var(--gray-200);
+      border-right: 1px solid var(--gray-200);
+      background: var(--white);
+      cursor: col-resize;
+    }
+    .divider:hover { background: var(--gray-100); }
+    .divider-dots { display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+    .divider-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--gray-400); }
+
+    /* Main area */
+    .main-pane {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--gray-50);
+      overflow: hidden;
+    }
+    .main-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--gray-200);
+      background: var(--white);
+      padding: 8px 32px;
+      flex-shrink: 0;
+    }
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 48px 32px;
+    }
+
+    /* ── SESSION LIST ───────────────────────────────────────────────────────── */
+    .session-list { list-style: none; flex: 1; overflow-y: auto; border-top: 1px solid var(--gray-100); }
+    .session-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-left: 2px solid transparent;
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 13px;
+      color: var(--gray-800);
+      transition: background 0.1s, border-color 0.1s;
+      cursor: pointer;
+      width: 100%;
+    }
+    .session-item:hover {
+      border-left-color: var(--gray-900);
+      background: var(--gray-50);
+    }
+    .session-item.active {
+      border-left-color: var(--gray-900);
+      background: var(--gray-50);
+    }
+    .session-item-icon { width: 16px; height: 16px; flex-shrink: 0; color: var(--gray-400); }
+    .session-item.active .session-item-icon { color: var(--gray-700); }
+    .session-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .session-item-chevron { width: 14px; height: 14px; flex-shrink: 0; color: var(--gray-300); }
+
+    /* ── PHASE CARDS ────────────────────────────────────────────────────────── */
+    .phase-list { display: flex; flex-direction: column; gap: 16px; max-width: 640px; }
+    .phase-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-radius: 8px;
+      border: 1px solid var(--gray-300);
+      background: var(--white);
+      padding: 24px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      cursor: pointer;
+    }
+    .phase-card:hover {
+      border-color: var(--gray-400);
+      box-shadow: 0px 1px 4px rgba(0,0,0,0.06);
+    }
+    .phase-card.disabled {
+      cursor: default;
+      border-color: var(--gray-200);
+      background: var(--gray-100);
+    }
+    .phase-label { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; color: var(--gray-500); }
+    .phase-note {
+      border-radius: 6px;
+      background: var(--yellow-100);
+      padding: 4px 12px;
+      font-size: 13px;
+      color: var(--gray-700);
+      box-shadow: 0px 1px 2px rgba(0,0,0,0.06);
+    }
+
+    /* ── BUTTONS ────────────────────────────────────────────────────────────── */
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 6px;
+      background: var(--gray-900);
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--white);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .btn-primary:hover { background: var(--gray-800); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--gray-700);
+    }
+    .btn-ghost:hover { background: var(--gray-100); }
+
+    .btn-primary-lg {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 6px;
+      background: var(--gray-900);
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--white);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .btn-primary-lg:hover { background: var(--gray-800); }
+
+    /* ── BREADCRUMB ─────────────────────────────────────────────────────────── */
+    .breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+    .breadcrumb-sep { color: var(--gray-300); }
+    .breadcrumb-link { color: var(--gray-500); }
+    .breadcrumb-link:hover { color: var(--gray-800); text-decoration: underline; }
+    .breadcrumb-current { font-weight: 500; color: var(--gray-800); }
+
+    /* ── STATUS CHIPS ───────────────────────────────────────────────────────── */
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 9999px;
+      border: 1px solid;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .chip-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+    .chip-ready  { border-color: var(--emerald-200); background: var(--emerald-50); color: var(--emerald-800); }
+    .chip-ready .chip-dot  { background: var(--emerald-500); }
+    .chip-starting { border-color: var(--amber-200); background: var(--amber-50); color: var(--amber-800); }
+    .chip-starting .chip-dot { background: var(--amber-500); }
+    .chip-error { border-color: var(--red-200); background: var(--red-50); color: var(--red-700); }
+    .chip-error .chip-dot { background: var(--red-500); }
+    .chip-stopped { border-color: var(--gray-200); background: var(--gray-50); color: var(--gray-700); }
+    .chip-stopped .chip-dot { background: var(--gray-400); }
+
+    /* ── EMPTY STATE ────────────────────────────────────────────────────────── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 48px 24px;
+      text-align: center;
+      flex: 1;
+    }
+    .empty-icon { color: var(--gray-300); }
+    .empty-title { font-size: 13px; font-weight: 500; color: var(--gray-700); }
+    .empty-sub { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+
+    /* ── STATUS BLOCK (build pane) ──────────────────────────────────────────── */
+    .status-block { text-align: center; max-width: 400px; }
+    .status-block-title { font-size: 13px; font-weight: 500; color: var(--gray-800); }
+    .status-block-detail { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+    .status-block.error .status-block-title { color: hsl(4 81% 49%); }
+
+    /* ── SESSION HEADER (inside-session view) ───────────────────────────────── */
+    .session-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--gray-200);
+      background: var(--white);
+      padding: 8px 12px;
+    }
+    .session-header-name { font-size: 13px; font-weight: 500; color: var(--gray-800); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── LOADING ────────────────────────────────────────────────────────────── */
+    .loading-state {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--gray-400);
+    }
+    .pulse-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--gray-400);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* ── IDEATION SECTION ───────────────────────────────────────────────────── */
+    .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .identity-card {
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      background: var(--white);
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .identity-card:hover { border-color: var(--gray-300); box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .identity-card-title { font-size: 13px; font-weight: 500; color: var(--gray-900); }
+    .identity-card-sub { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+
+    .feature-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--gray-100);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .feature-row:last-child { border-bottom: none; }
+    .feature-row:hover .feature-name { color: var(--gray-900); }
+    .feature-name { font-weight: 500; color: var(--gray-700); flex: 1; }
+    .feature-tag { font-size: 11px; color: var(--gray-400); }
+  </style>
+</head>
+<body>
+
+<div class="guide-header">
+  <h1>Vetra Studio — Current Design Style</h1>
+  <p>Snapshot of existing UI patterns, colors, and tokens. Branch: UI-exploration</p>
+</div>
+
+<div class="guide-body">
+
+  <!-- ── COLOR PALETTE ──────────────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">Color palette — Gray scale (primary)</div>
+    <div class="swatch-grid">
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--white); border-color:var(--gray-200)"></div>
+        <div class="swatch-name">white</div>
+        <div class="swatch-value">#ffffff</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-50)"></div>
+        <div class="swatch-name">gray-50</div>
+        <div class="swatch-value">0% 99%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-100)"></div>
+        <div class="swatch-name">gray-100</div>
+        <div class="swatch-value">0% 96%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-200)"></div>
+        <div class="swatch-name">gray-200</div>
+        <div class="swatch-value">0% 94%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-300)"></div>
+        <div class="swatch-name">gray-300</div>
+        <div class="swatch-value">210° 3% 85%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-400)"></div>
+        <div class="swatch-name">gray-400</div>
+        <div class="swatch-value">180° 2% 78%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-500)"></div>
+        <div class="swatch-name">gray-500</div>
+        <div class="swatch-value">200° 2% 63%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-600)"></div>
+        <div class="swatch-name">gray-600</div>
+        <div class="swatch-value">200° 4% 44%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-700)"></div>
+        <div class="swatch-name">gray-700</div>
+        <div class="swatch-value">189° 5% 29%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-800)"></div>
+        <div class="swatch-name">gray-800</div>
+        <div class="swatch-value">200° 4% 26%</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--gray-900)"></div>
+        <div class="swatch-name">gray-900</div>
+        <div class="swatch-value">192° 5% 21%</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Color palette — Accent &amp; status</div>
+    <div class="swatch-grid">
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--yellow-100)"></div>
+        <div class="swatch-name">yellow-100</div>
+        <div class="swatch-value">phase notes</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--emerald-50)"></div>
+        <div class="swatch-name">emerald-50</div>
+        <div class="swatch-value">ready bg</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--emerald-500)"></div>
+        <div class="swatch-name">emerald-500</div>
+        <div class="swatch-value">ready dot</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--amber-50)"></div>
+        <div class="swatch-name">amber-50</div>
+        <div class="swatch-value">starting bg</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--amber-500)"></div>
+        <div class="swatch-name">amber-500</div>
+        <div class="swatch-value">starting dot</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--red-50)"></div>
+        <div class="swatch-name">red-50</div>
+        <div class="swatch-value">error bg</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:var(--red-500)"></div>
+        <div class="swatch-name">red-500</div>
+        <div class="swatch-value">error dot</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── TYPOGRAPHY ──────────────────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">Typography — Inter</div>
+    <div class="type-stack">
+      <div class="type-row">
+        <div class="type-meta">10px / 600 / +0.12em</div>
+        <div style="font-size:10px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--gray-500)">IDEATE · PHASE LABEL · SECTION LABEL</div>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">11px / 500</div>
+        <div style="font-size:11px; font-weight:500; color:var(--gray-500)">Muted meta text — counts, secondary labels</div>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">12px / 400</div>
+        <div style="font-size:12px; color:var(--gray-500)">Supporting detail — empty state description, tooltips</div>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">12px / 500</div>
+        <div style="font-size:12px; font-weight:500; color:var(--gray-700)">Button label · chip text · breadcrumb link</div>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">13px / 400</div>
+        <div style="font-size:13px; color:var(--gray-800)">Session list item name · body text</div>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">13px / 500</div>
+        <div style="font-size:13px; font-weight:500; color:var(--gray-800)">Session header name · breadcrumb current · card title</div>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">13px / 600 / -0.01em</div>
+        <div style="font-size:13px; font-weight:600; letter-spacing:-0.01em; color:var(--gray-900)">Chat sessions — panel heading</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── BUTTONS ─────────────────────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">Buttons</div>
+    <div class="row" style="align-items:center; gap:24px;">
+      <div class="col">
+        <div class="label">Primary (sm) — New session</div>
+        <button class="btn-primary">
+          <svg viewBox="0 0 12 12" fill="none" style="width:12px;height:12px"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          New
+        </button>
+      </div>
+      <div class="col">
+        <div class="label">Primary (md) — Empty state CTA</div>
+        <button class="btn-primary-lg">
+          <svg viewBox="0 0 12 12" fill="none" style="width:12px;height:12px"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          New session
+        </button>
+      </div>
+      <div class="col">
+        <div class="label">Ghost — back nav</div>
+        <button class="btn-ghost">← Sessions</button>
+      </div>
+      <div class="col">
+        <div class="label">Primary disabled</div>
+        <button class="btn-primary" disabled>… Creating</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── STATUS CHIPS ────────────────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">Status chips — Preview server state</div>
+    <div class="row" style="align-items:center; gap:12px;">
+      <span class="chip chip-ready">
+        <span class="chip-dot"></span>
+        <span>my-project</span>
+        <span style="color:var(--gray-500)">·</span>
+        <span>running</span>
+      </span>
+      <span class="chip chip-starting">
+        <span class="chip-dot" style="animation:pulse 1.5s ease-in-out infinite"></span>
+        <span>my-project</span>
+        <span style="color:var(--gray-500)">·</span>
+        <span>starting…</span>
+      </span>
+      <span class="chip chip-error">
+        <span class="chip-dot"></span>
+        <span>preview-server</span>
+        <span style="color:var(--gray-500)">·</span>
+        <span>unreachable</span>
+      </span>
+      <span class="chip chip-stopped">
+        <span class="chip-dot"></span>
+        <span>my-project</span>
+        <span style="color:var(--gray-500)">·</span>
+        <span>stopped</span>
+      </span>
+    </div>
+  </section>
+
+  <!-- ── BREADCRUMB ──────────────────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">Breadcrumb navigation</div>
+    <div class="col" style="gap:16px;">
+      <div>
+        <div class="label" style="margin-bottom:8px;">Home level</div>
+        <nav class="breadcrumb">
+          <span class="breadcrumb-current">My Product</span>
+        </nav>
+      </div>
+      <div>
+        <div class="label" style="margin-bottom:8px;">Two levels</div>
+        <nav class="breadcrumb">
+          <span><button class="breadcrumb-link">My Product</button></span>
+          <span class="breadcrumb-sep">›</span>
+          <span class="breadcrumb-current">Ideate</span>
+        </nav>
+      </div>
+      <div>
+        <div class="label" style="margin-bottom:8px;">Three levels</div>
+        <nav class="breadcrumb">
+          <span><button class="breadcrumb-link">My Product</button></span>
+          <span class="breadcrumb-sep">›</span>
+          <span><button class="breadcrumb-link">Ideate</button></span>
+          <span class="breadcrumb-sep">›</span>
+          <span class="breadcrumb-current">Brand Sheet</span>
+        </nav>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PHASE CARDS ─────────────────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">Phase cycle cards — Home view</div>
+    <div class="phase-list">
+      <button class="phase-card">
+        <span class="phase-label">IDEATE</span>
+        <span class="phase-note">Problem Definition</span>
+      </button>
+      <button class="phase-card disabled" disabled>
+        <span class="phase-label">SPECIFY</span>
+        <span class="phase-note">Solution Design</span>
+      </button>
+      <button class="phase-card">
+        <span class="phase-label">BUILD</span>
+        <span class="phase-note">Implementation &amp; Testing</span>
+      </button>
+      <button class="phase-card disabled" disabled>
+        <span class="phase-label">DEPLOY</span>
+        <span class="phase-note">Delivery</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ── FULL APP SHELL ──────────────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">App shell — Chat pane · Divider · Main area (Phase Home)</div>
+    <div class="app-shell">
+
+      <!-- Chat pane -->
+      <div class="chat-pane">
+        <div class="chat-header">
+          <div class="chat-header-left">
+            <h2>Chat sessions</h2>
+            <span class="chat-count">3</span>
+          </div>
+          <button class="btn-primary">
+            <svg viewBox="0 0 12 12" fill="none" style="width:12px;height:12px"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            New
+          </button>
+        </div>
+        <ul class="session-list">
+          <li>
+            <button class="session-item active">
+              <svg class="session-item-icon" viewBox="0 0 16 16" fill="none"><path d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span class="session-item-name">Session 1</span>
+              <span class="pulse-dot" style="animation:pulse 1.5s ease-in-out infinite"></span>
+            </button>
+          </li>
+          <li>
+            <button class="session-item">
+              <svg class="session-item-icon" viewBox="0 0 16 16" fill="none"><path d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span class="session-item-name">Session 2</span>
+              <svg class="session-item-chevron" viewBox="0 0 12 12" fill="none"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </li>
+          <li>
+            <button class="session-item">
+              <svg class="session-item-icon" viewBox="0 0 16 16" fill="none"><path d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span class="session-item-name">Session 3 — long name that gets clipped</span>
+              <svg class="session-item-chevron" viewBox="0 0 12 12" fill="none"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Resize divider -->
+      <div class="divider">
+        <div class="divider-dots">
+          <div class="divider-dot"></div>
+          <div class="divider-dot"></div>
+          <div class="divider-dot"></div>
+        </div>
+      </div>
+
+      <!-- Main pane — phase home -->
+      <div class="main-pane">
+        <div class="main-content" style="display:flex; flex-direction:column; gap:16px; max-width:600px;">
+          <button class="phase-card">
+            <span class="phase-label">IDEATE</span>
+            <span class="phase-note">Problem Definition</span>
+          </button>
+          <button class="phase-card disabled" disabled>
+            <span class="phase-label">SPECIFY</span>
+            <span class="phase-note">Solution Design</span>
+          </button>
+          <button class="phase-card">
+            <span class="phase-label">BUILD</span>
+            <span class="phase-note">Implementation &amp; Testing</span>
+          </button>
+          <button class="phase-card disabled" disabled>
+            <span class="phase-label">DEPLOY</span>
+            <span class="phase-note">Delivery</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── APP SHELL — BUILD VIEW ──────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">App shell — Build view header + session-level breadcrumb</div>
+    <div class="app-shell">
+      <div class="chat-pane">
+        <div class="session-header">
+          <button class="btn-ghost" style="font-size:12px;">← Sessions</button>
+          <span class="session-header-name">Session 1</span>
+        </div>
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; background:var(--gray-50);">
+          <div class="loading-state">
+            <span class="pulse-dot"></span>
+            Loading session…
+          </div>
+        </div>
+      </div>
+      <div class="divider">
+        <div class="divider-dots">
+          <div class="divider-dot"></div>
+          <div class="divider-dot"></div>
+          <div class="divider-dot"></div>
+        </div>
+      </div>
+      <div class="main-pane">
+        <div class="main-header">
+          <nav class="breadcrumb">
+            <span><button class="breadcrumb-link">My Product</button></span>
+            <span class="breadcrumb-sep">›</span>
+            <span class="breadcrumb-current">Build</span>
+          </nav>
+          <span class="chip chip-ready">
+            <span class="chip-dot"></span>
+            <span>my-project</span>
+            <span style="color:var(--gray-500)">·</span>
+            <span>running</span>
+          </span>
+        </div>
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; background:var(--gray-50);">
+          <div class="status-block">
+            <div class="status-block-title">No preview yet</div>
+            <div class="status-block-detail">The BUILD preview appears once the agent scaffolds a project for this session.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── APP SHELL — IDEATE VIEW ─────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">App shell — Ideate view: Product identity cards + feature list</div>
+    <div class="app-shell">
+      <div class="chat-pane">
+        <div class="chat-header">
+          <div class="chat-header-left">
+            <h2>Chat sessions</h2>
+            <span class="chat-count">2</span>
+          </div>
+          <button class="btn-primary">
+            <svg viewBox="0 0 12 12" fill="none" style="width:12px;height:12px"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            New
+          </button>
+        </div>
+        <div class="empty-state">
+          <svg class="empty-icon" viewBox="0 0 16 16" fill="none" style="width:32px;height:32px"><path d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <div>
+            <div class="empty-title">What will you build today?</div>
+            <div class="empty-sub">Start a session to talk to the agent.</div>
+          </div>
+          <button class="btn-primary-lg">
+            <svg viewBox="0 0 12 12" fill="none" style="width:12px;height:12px"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            New session
+          </button>
+        </div>
+      </div>
+      <div class="divider">
+        <div class="divider-dots">
+          <div class="divider-dot"></div>
+          <div class="divider-dot"></div>
+          <div class="divider-dot"></div>
+        </div>
+      </div>
+      <div class="main-pane">
+        <div class="main-content">
+          <nav class="breadcrumb" style="margin-bottom:24px;">
+            <span><button class="breadcrumb-link">My Product</button></span>
+            <span class="breadcrumb-sep">›</span>
+            <span class="breadcrumb-current">Ideate</span>
+          </nav>
+
+          <!-- Product identity cards -->
+          <div style="margin-bottom:32px;">
+            <div class="label" style="margin-bottom:12px; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--gray-500);">Product identity</div>
+            <div class="card-grid">
+              <div class="identity-card">
+                <div class="identity-card-title">Brand Sheet</div>
+                <div class="identity-card-sub">Voice &amp; visual identity</div>
+              </div>
+              <div class="identity-card">
+                <div class="identity-card-title">Audience Sheet</div>
+                <div class="identity-card-sub">Target users &amp; personas</div>
+              </div>
+              <div class="identity-card">
+                <div class="identity-card-title">Problem Sheet</div>
+                <div class="identity-card-sub">Core problems &amp; jobs-to-be-done</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Feature list -->
+          <div>
+            <div class="label" style="margin-bottom:12px; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--gray-500);">Features</div>
+            <div class="feature-row">
+              <span class="feature-name">Authentication flow</span>
+              <span class="feature-tag">feature</span>
+              <svg viewBox="0 0 12 12" fill="none" style="width:12px;height:12px;color:var(--gray-300)"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="feature-row">
+              <span class="feature-name">Dashboard overview</span>
+              <span class="feature-tag">feature</span>
+              <svg viewBox="0 0 12 12" fill="none" style="width:12px;height:12px;color:var(--gray-300)"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="feature-row">
+              <span class="feature-name">Notification system</span>
+              <span class="feature-tag">feature</span>
+              <svg viewBox="0 0 12 12" fill="none" style="width:12px;height:12px;color:var(--gray-300)"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── TOKEN MAP ───────────────────────────────────────────────────────── -->
+  <section>
+    <div class="section-label">Override map — how to retheme</div>
+    <div style="font-size:12px; color:var(--gray-600); line-height:1.7; font-family:monospace; background:var(--gray-50); border:1px solid var(--gray-200); border-radius:8px; padding:24px;">
+      <strong style="font-family:var(--font-sans); font-size:13px; color:var(--gray-900); font-weight:600;">File to edit: vetra-app/style.css — @theme {} block + :root {} override</strong><br><br>
+      Components use hardcoded Tailwind classes. Three levers:<br><br>
+      <strong>[1] Palette override</strong> — redefine gray-* in @theme {} → shifts all components at once<br>
+      &nbsp;&nbsp;e.g. --color-gray-50: hsl(220 20% 98%); → cool tinted backgrounds<br><br>
+      <strong>[2] Semantic token override</strong> — :root { --background: ...; --primary: ...; } → shadcn components only<br><br>
+      <strong>[3] Component class edits</strong> — change bg-white → bg-slate-900 etc. in the TSX files<br>
+      &nbsp;&nbsp;Key files: VetraStudio.tsx, ChatPane.tsx, PhaseCycle.tsx, BuildSection.tsx, Breadcrumb.tsx
+    </div>
+  </section>
+
+</div><!-- /guide-body -->
+</body>
+</html>

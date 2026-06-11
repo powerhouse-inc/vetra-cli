@@ -29,6 +29,7 @@ import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { publishReloadTrigger } from './triggers/publish-reload.js';
 import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url.js';
+import { connectExternalPackagesLayerOrder } from './lifecycle/connect-layer-order.js';
 import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
 import { tsCheck } from './lifecycle/ts-check.js';
@@ -228,6 +229,9 @@ export const cli = defineCli({
     genGuard(),
     tsCheck(),
     connectDriveUrlOnSwitchboardReady({
+      vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
+    }),
+    connectExternalPackagesLayerOrder({
       vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
     }),
     // Outermost wrap: thrown tool errors keep their message through JSON

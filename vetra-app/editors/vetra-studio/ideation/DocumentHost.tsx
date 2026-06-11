@@ -66,7 +66,7 @@ export function DocumentHost({
       );
     default:
       return (
-        <div className="p-6 text-sm text-gray-500">
+        <div className="p-6 text-sm text-vetra-muted-fg">
           No editor registered for {documentType}.
         </div>
       );

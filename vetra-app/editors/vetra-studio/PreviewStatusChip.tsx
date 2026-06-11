@@ -35,7 +35,7 @@ export function PreviewStatusChip({ preview }: { preview: ResolvedPreview }) {
       <span className="truncate max-w-[10rem]" title={project}>
         {project}
       </span>
-      <span className="text-gray-500">·</span>
+      <span className="text-vetra-muted-fg">·</span>
       <span>{label}</span>
     </span>
   );
@@ -84,25 +84,25 @@ function tooltipFor(preview: ResolvedPreview): string | undefined {
 function toneClasses(tone: Tone): string {
   switch (tone) {
     case "ready":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+      return "border-vetra-primary/30 bg-vetra-primary/10 text-vetra-primary";
     case "starting":
-      return "border-amber-200 bg-amber-50 text-amber-800";
+      return "border-vetra-warning/30 bg-vetra-warning/10 text-vetra-warning";
     case "error":
-      return "border-red-200 bg-red-50 text-red-800";
+      return "border-vetra-destructive/30 bg-vetra-destructive/10 text-vetra-destructive";
     case "stopped":
-      return "border-gray-200 bg-gray-50 text-gray-700";
+      return "border-vetra-border bg-vetra-accent text-vetra-muted-fg";
   }
 }
 
 function dotClasses(tone: Tone): string {
   switch (tone) {
     case "ready":
-      return "bg-emerald-500";
+      return "bg-vetra-primary";
     case "starting":
-      return "bg-amber-500";
+      return "bg-vetra-warning";
     case "error":
-      return "bg-red-500";
+      return "bg-vetra-destructive";
     case "stopped":
-      return "bg-gray-400";
+      return "bg-vetra-muted-fg";
   }
 }

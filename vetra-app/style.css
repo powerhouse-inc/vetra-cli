@@ -1,15 +1,51 @@
-@import "tailwindcss";
-@import "@powerhousedao/design-system/theme.css";
-@import "@powerhousedao/connect/style.css";
-@import './node_modules/@powerhousedao/clint-common/dist/style.css';
+/* Project stylesheet, compiled into the Connect studio bundle alongside the
+   Connect app's own styles. The host ships Tailwind preflight and the full
+   design-system theme already, so only theme tokens + utilities are imported
+   here — no preflight (a second copy resets elements out from under the
+   host's utilities), no Connect/clint-common imports (the host bundles the
+   Connect styles itself and the package manager auto-imports every bundled
+   package's style.css). */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import '@powerhousedao/design-system/theme.css';
+/* The Connect application styles (sidebar, drive tiles, dark: variants).
+   In the embedded-studio build this import is the only thing that brings
+   them into the page — the build does not inject them on its own. */
+@import '@powerhousedao/connect/style.css';
+
+/* The connect build's Vite root is not this package, so point Tailwind's
+   scanner at our sources explicitly. */
+@source "./editors/**/*.{ts,tsx}";
 
 @theme {
-  /* You can customize the theme by overriding the theme variables here */
-  /* See https://tailwindcss.com/docs/theme#using-a-custom-theme for details */
+  /* Vetra design system palette (light) */
+  --color-vetra-primary: #04c161;
+  --color-vetra-primary-fg: #ffffff;
+  --color-vetra-bg: #fcfcfc;
+  --color-vetra-fg: #343839;
+  --color-vetra-border: #d7d8d9;
+  --color-vetra-muted: #efefef;
+  --color-vetra-muted-fg: #9ea0a1;
+  --color-vetra-accent: #f3f5f7;
+  --color-vetra-card: #fcfcfc;
+  --color-vetra-destructive: #ea4335;
+  --color-vetra-warning: #ffa132;
+  --color-vetra-info: #329dff;
+  --color-vetra-success: #4fc86f;
+}
 
-  /* If you would prefer to use plain css, add your styles below this @theme tag as you normally would */
-
-  /* A sensible CSS reset is applied by default. If you would prefer to use a different reset or none at all, uncomment the following line */
-
-  /* --*: initial; */
+/* Dark values for the vetra tokens, aligned with the design-system slate
+   scale Connect uses for dark mode (literals: Tailwind only emits theme
+   variables it sees used, so var(--color-slate-N) references here could
+   dangle). Every vetra-token bg/text/border utility flips automatically;
+   components don't need dark: pairs for these. */
+.dark {
+  --color-vetra-bg: hsl(195 9% 9%); /* slate-800 */
+  --color-vetra-fg: hsl(210 20% 99%); /* slate-50 */
+  --color-vetra-border: hsl(207 8% 21%); /* slate-500 */
+  --color-vetra-muted: hsl(204 9% 11%); /* slate-700 */
+  --color-vetra-muted-fg: hsl(210 9% 63%); /* slate-400 */
+  --color-vetra-accent: hsl(195 9% 9%); /* slate-800 */
+  --color-vetra-card: hsl(210 9% 13%); /* slate-600 */
 }
