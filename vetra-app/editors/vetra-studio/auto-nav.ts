@@ -60,6 +60,68 @@ function toMs(value: string | Date): number {
   return value instanceof Date ? value.getTime() : new Date(value).getTime();
 }
 
+/** High-water mark of the newest touch the watcher has processed. */
+export type FollowMark = { id: string; ts: number };
+
+/** What the user is currently looking at, as the watcher needs it. */
+export type FollowView = {
+  autoNavEnabled: boolean;
+  userPinned: boolean;
+  /** Id of the document open inline, or null when a list/home is shown. */
+  openDocId: string | null;
+};
+
+/**
+ * Decide how the auto-follow watcher reacts to the newest touch. Returns the
+ * mark to record (null = leave unchanged) and the target to open (null = stay
+ * put). The mark advances even when navigation is suppressed (toggle off,
+ * pinned) so re-arming follows future activity rather than replaying old
+ * touches. Navigation is skipped only when the touched doc is the one
+ * already open — a closed doc re-opens on its next touch.
+ */
+export function followAction(
+  latest: TouchedTarget | null,
+  prev: FollowMark | null,
+  view: FollowView,
+): { mark: FollowMark | null; open: TouchedTarget | null } {
+  if (!latest) return { mark: null, open: null };
+  if (latest.ts <= (prev?.ts ?? -1)) return { mark: null, open: null };
+  const mark = { id: latest.id, ts: latest.ts };
+  if (!view.autoNavEnabled || view.userPinned) return { mark, open: null };
+  if (latest.id === view.openDocId) return { mark, open: null };
+  return { mark, open: latest };
+}
+
+/** The spec-preview-show call the BUILD watcher last processed, per session. */
+export type PreviewMark = { sessionId: string; callId: string | null };
+
+/**
+ * Decide whether a session's preview target should switch the view to BUILD.
+ * Keyed on the show call's toolCallId: a re-show of the same target is a new
+ * call and navigates again. Seeds per session (a target already in the
+ * transcript at load/session-switch doesn't navigate). Like `followAction`,
+ * the mark advances when navigation is suppressed, so re-arming doesn't
+ * replay an old show.
+ */
+export function previewFollowAction(
+  next: { sessionId: string | null; callId: string | null },
+  prev: PreviewMark | null,
+  view: { autoNavEnabled: boolean; userPinned: boolean },
+): { mark: PreviewMark | null; navigate: boolean } {
+  if (!next.sessionId) return { mark: null, navigate: false };
+  if (!prev || prev.sessionId !== next.sessionId) {
+    return {
+      mark: { sessionId: next.sessionId, callId: next.callId },
+      navigate: false,
+    };
+  }
+  if (!next.callId || next.callId === prev.callId) {
+    return { mark: null, navigate: false };
+  }
+  const mark = { sessionId: next.sessionId, callId: next.callId };
+  return { mark, navigate: view.autoNavEnabled && !view.userPinned };
+}
+
 /**
  * The navigable document most recently created-or-modified. Returns `null` when
  * the drive has no navigable documents. On ties the later entry in `docs` wins

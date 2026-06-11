@@ -4,7 +4,6 @@ import {
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
   useDocumentSafe,
-  useDocumentsInSelectedDrive,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
 import type {
@@ -18,8 +17,16 @@ import { ChatPane } from "./ChatPane.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
-import { latestTouchedNavigable, sectionForDocumentType } from "./auto-nav.js";
+import {
+  followAction,
+  latestTouchedNavigable,
+  previewFollowAction,
+  sectionForDocumentType,
+  type FollowMark,
+  type PreviewMark,
+} from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
+import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
 
@@ -189,38 +196,40 @@ export function VetraStudio({
     return () => window.removeEventListener("popstate", onPopState);
   }, [openDocument]);
 
-  // ── Auto-navigation: follow the ideation doc the agent is working on ──
-  // useDocumentsInSelectedDrive is reactive: it re-renders when the agent
-  // creates OR edits a doc (lastModifiedAtUtcIso bumps). We track the newest
-  // touch we've followed (high-water mark) and open the doc whenever a *more
-  // recent* touch lands on a *different* doc — so a fast burst of creations
-  // followed by spaced-out edits walks the view through each sheet as it fills
-  // in. Seed on first observation so we never jump to a pre-existing doc on
-  // mount; re-editing the already-open doc doesn't re-trigger.
-  const documents = useDocumentsInSelectedDrive();
-  const lastTouchedRef = useRef<{ id: string; ts: number } | null>(null);
+  // ── Auto-navigation: follow the doc the agent is working on ──
+  // useDriveDocuments is reactive (re-renders when the agent creates or edits
+  // a doc — lastModifiedAtUtcIso bumps) and self-heals documents whose node
+  // synced before their content. We track the newest touch we've processed
+  // (high-water mark) and open the doc whenever a more recent touch lands on
+  // a doc that isn't in view — `followAction` holds the decision rules. Seed
+  // on first observation so we never jump to a pre-existing doc on mount.
+  const documents = useDriveDocuments();
+  const lastTouchedRef = useRef<FollowMark | null>(null);
   const seededRef = useRef(false);
   useEffect(() => {
     if (documents === undefined) return; // drive not loaded yet
     const latest = latestTouchedNavigable(documents);
-    // Seed once the drive has loaded — even when empty — so a doc that existed
-    // at mount isn't auto-opened, but the first doc created afterwards is.
+    // Seed once the drive has loaded — even when empty — so a doc that
+    // existed at mount isn't auto-opened, but the first doc created
+    // afterwards is.
     if (!seededRef.current) {
       lastTouchedRef.current = latest ? { id: latest.id, ts: latest.ts } : null;
       seededRef.current = true;
       return;
     }
-    if (!latest) return;
-    const prev = lastTouchedRef.current;
-    if (latest.ts <= (prev?.ts ?? -1)) return; // nothing newer happened
-    lastTouchedRef.current = { id: latest.id, ts: latest.ts };
-    if (latest.id === prev?.id) return; // same doc edited again — already shown
-    if (!autoNavEnabled || userPinned) return; // respect toggle + pin
-    openDocument(
-      { id: latest.id, documentType: latest.documentType, name: latest.name },
-      { pinned: false },
-    );
-  }, [documents, autoNavEnabled, userPinned, openDocument]);
+    const { mark, open } = followAction(latest, lastTouchedRef.current, {
+      autoNavEnabled,
+      userPinned,
+      openDocId: openDoc?.id ?? null,
+    });
+    if (mark) lastTouchedRef.current = mark;
+    if (open) {
+      openDocument(
+        { id: open.id, documentType: open.documentType, name: open.name },
+        { pinned: false },
+      );
+    }
+  }, [documents, autoNavEnabled, userPinned, openDoc, openDocument]);
 
   // Restore `?doc=` once the drive hydrates: the initializer resolves against
   // the node list, which may be empty on first render (nodes arrive after
@@ -248,6 +257,36 @@ export function VetraStudio({
       : undefined;
   const previewTarget = useSessionPreviewTarget(sessionDocument ?? undefined);
   const preview = useResolvedPreview(previewTarget);
+
+  // ── Auto-navigation: follow the preview the agent surfaces ──
+  // A spec-preview-show is the agent explicitly showing the user something —
+  // switch to BUILD when a NEW show lands (keyed by toolCallId, so re-showing
+  // the same target counts). Seeded per session once its transcript resolves,
+  // so a show already in the transcript at load/session-switch doesn't yank
+  // the view; `previewFollowAction` holds the decision rules.
+  const previewMarkRef = useRef<PreviewMark | null>(null);
+  useEffect(() => {
+    const { mark, navigate } = previewFollowAction(
+      {
+        sessionId: sessionDocument?.header.id ?? null,
+        callId: previewTarget?.callId ?? null,
+      },
+      previewMarkRef.current,
+      { autoNavEnabled, userPinned },
+    );
+    if (mark) previewMarkRef.current = mark;
+    if (navigate) {
+      // Clear any auto-opened doc so openDoc and section stay in lockstep.
+      openDocument(null, { pinned: false });
+      setSection("build");
+    }
+  }, [
+    sessionDocument,
+    previewTarget,
+    autoNavEnabled,
+    userPinned,
+    openDocument,
+  ]);
 
   // Manual open (a user click) — pins the view against auto-nav.
   const handleUserOpen = useCallback(
@@ -364,6 +403,7 @@ export function VetraStudio({
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-gray-50">
         <AutoNavToggle
           enabled={autoNavEnabled}
+          paused={userPinned}
           onChange={handleToggleAutoNav}
         />
         {section === "build" ? (
@@ -413,16 +453,25 @@ export function VetraStudio({
   );
 }
 
-/** The auto-follow toggle in the main-pane chrome. */
+/** The auto-follow toggle in the main-pane chrome. A pin (manually opened
+ * doc) suppresses auto-follow while the toggle stays on — surface that state
+ * so "not navigating" reads as paused, not broken. */
 function AutoNavToggle({
   enabled,
+  paused,
   onChange,
 }: {
   enabled: boolean;
+  paused: boolean;
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-end border-b border-gray-200 bg-white px-4 py-1.5">
+    <div className="flex shrink-0 items-center justify-end gap-2 border-b border-gray-200 bg-white px-4 py-1.5">
+      {enabled && paused ? (
+        <span className="text-[11px] text-gray-400">
+          paused — close the document to resume
+        </span>
+      ) : null}
       <label className="flex cursor-pointer items-center gap-2 text-xs text-gray-600">
         <input
           type="checkbox"

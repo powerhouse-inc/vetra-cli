@@ -112,6 +112,7 @@ describe("extractPreviewTarget", () => {
     expect(extractPreviewTarget(session)).toEqual({
       project: "workout-tracker",
       doc: "bench-day",
+      callId: "c1",
     });
   });
 
@@ -130,6 +131,7 @@ describe("extractPreviewTarget", () => {
     expect(extractPreviewTarget(session)).toEqual({
       project: "p1",
       doc: "doc-only-id",
+      callId: "c1",
     });
   });
 
@@ -160,6 +162,7 @@ describe("extractPreviewTarget", () => {
     expect(extractPreviewTarget(session)).toEqual({
       project: "newest",
       doc: "newest-doc",
+      callId: "c3",
     });
   });
 
