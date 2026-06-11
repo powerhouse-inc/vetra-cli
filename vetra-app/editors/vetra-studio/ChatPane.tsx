@@ -1,7 +1,4 @@
-import type {
-  ChatSessionAction,
-  ChatSessionDocument,
-} from "@powerhousedao/clint-common/document-models/chat-session";
+import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
   createRemoteAttachmentService,
   type IAttachmentService,
@@ -10,17 +7,17 @@ import {
   addDocument,
   DEFAULT_SWITCHBOARD_URL,
   useDefaultDrivesUrl,
-  useDocumentById,
   usePHToast,
   type DocumentDispatch,
-  type UseDispatchResult,
 } from "@powerhousedao/reactor-browser";
+import { SafeDocument } from "./SafeDocument.js";
 import type {
   DocumentDriveAction,
   DocumentDriveDocument,
   FileNode,
 } from "@powerhousedao/shared/document-drive";
 import { lazy, Suspense, useMemo, useState, useTransition } from "react";
+import VetraMitosis from "./VetraMitosis.js";
 
 const ChatSession = lazy(() =>
   import("@powerhousedao/clint-common/editors").then((m) => ({
@@ -29,6 +26,11 @@ const ChatSession = lazy(() =>
 );
 
 const CHAT_SESSION_DOCUMENT_TYPE = "powerhouse/chat-session";
+
+// Animated Vetra logo as the agent avatar; animates while the agent responds.
+function AgentMitosisAvatar({ responding, size }: { responding: boolean; size: number }) {
+  return <VetraMitosis active={responding} size={size} />;
+}
 
 export type ChatPaneProps = {
   document: DocumentDriveDocument;
@@ -304,31 +306,41 @@ function SessionView({
 }: {
   sessionId: string;
   /** True when the parent has already located the session in the drive's
-   *  node list — meaning a null document from useDocumentById is a transient
-   *  subscription lag, not a missing record. False when the id came from a
-   *  stale URL / link, in which case "not found" is honest. */
+   *  node list — meaning an unresolved document is a transient subscription
+   *  lag, not a missing record. False when the id came from a stale URL /
+   *  link, in which case "not found" is honest. */
   knownInDrive: boolean;
   attachments: IAttachmentService;
 }) {
-  const [chatDocument, dispatch] = useDocumentById(
-    sessionId,
-  ) as UseDispatchResult<ChatSessionDocument, ChatSessionAction>;
-
-  if (!chatDocument) {
-    if (knownInDrive) return <SessionLoading />;
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-red-500">
-        Session not found
-      </div>
-    );
-  }
-
+  // SafeDocument resolves the session without suspending or throwing, so a
+  // not-yet-synced session — e.g. one the agent just created — renders a
+  // placeholder in place instead of blanking the studio via a parent boundary.
+  // "Not found" is honest only for a stale id the drive doesn't know about;
+  // anything still resolving (or transiently erroring while known) keeps loading.
   return (
-    <ChatSession
-      document={chatDocument}
-      dispatch={dispatch}
-      attachments={attachments}
-    />
+    <SafeDocument
+      id={sessionId}
+      guard={isChatSessionDocument}
+      pending={() => <SessionLoading />}
+      error={() =>
+        knownInDrive ? (
+          <SessionLoading />
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-red-500">
+            Session not found
+          </div>
+        )
+      }
+    >
+      {({ document, dispatch }) => (
+        <ChatSession
+          document={document}
+          dispatch={dispatch}
+          attachments={attachments}
+          agentAvatar={AgentMitosisAvatar}
+        />
+      )}
+    </SafeDocument>
   );
 }
 

@@ -1,51 +1,18 @@
-import { useAudienceSheetDocumentById } from "document-models/audience-sheet";
-import { useBrandSheetDocumentById } from "document-models/brand-sheet";
-import { useFeatureDocumentById } from "document-models/feature";
-import { useProblemSheetDocumentById } from "document-models/problem-sheet";
-import { useWorkBreakdownStructureDocumentById } from "document-models/work-breakdown-structure";
+import { isAudienceSheetDocument } from "document-models/audience-sheet";
+import { isBrandSheetDocument } from "document-models/brand-sheet";
+import { isFeatureDocument } from "document-models/feature";
+import { isProblemSheetDocument } from "document-models/problem-sheet";
+import { isWorkBreakdownStructureDocument } from "document-models/work-breakdown-structure";
 import { AudienceSheetEditor } from "../../audience-sheet-editor/AudienceSheetEditor.js";
 import { BrandSheetEditor } from "../../brand-sheet-editor/BrandSheetEditor.js";
 import { FeatureEditor } from "../../feature-editor/FeatureEditor.js";
 import { ProblemSheetEditor } from "../../problem-sheet-editor/ProblemSheetEditor.js";
 import { WorkBreakdownStructureEditor } from "../../work-breakdown-structure-editor/WorkBreakdownStructureEditor.js";
+import { SafeDocument } from "../SafeDocument.js";
 
-function Loading() {
-  return <div className="p-6 text-sm text-gray-400">Loading document…</div>;
-}
-
-function ProblemSheetHost({ id }: { id: string }) {
-  const [document, dispatch] = useProblemSheetDocumentById(id);
-  if (!document) return <Loading />;
-  return <ProblemSheetEditor document={document} dispatch={dispatch} />;
-}
-
-function AudienceSheetHost({ id }: { id: string }) {
-  const [document, dispatch] = useAudienceSheetDocumentById(id);
-  if (!document) return <Loading />;
-  return <AudienceSheetEditor document={document} dispatch={dispatch} />;
-}
-
-function BrandSheetHost({ id }: { id: string }) {
-  const [document, dispatch] = useBrandSheetDocumentById(id);
-  if (!document) return <Loading />;
-  return <BrandSheetEditor document={document} dispatch={dispatch} />;
-}
-
-function FeatureHost({ id }: { id: string }) {
-  const [document, dispatch] = useFeatureDocumentById(id);
-  if (!document) return <Loading />;
-  return <FeatureEditor document={document} dispatch={dispatch} />;
-}
-
-function WbsHost({ id }: { id: string }) {
-  const [document, dispatch] = useWorkBreakdownStructureDocumentById(id);
-  if (!document) return <Loading />;
-  return (
-    <WorkBreakdownStructureEditor document={document} dispatch={dispatch} />
-  );
-}
-
-/** Renders the inline editor for a selected document, picked by its type. */
+/** Renders the inline editor for a selected document, picked by its type. The
+ *  document load is contained per-pane by SafeDocument (no suspend/throw), so a
+ *  freshly-created document swaps in without blanking the studio. */
 export function DocumentHost({
   id,
   documentType,
@@ -55,15 +22,37 @@ export function DocumentHost({
 }) {
   switch (documentType) {
     case "powerhouse/problem-sheet":
-      return <ProblemSheetHost id={id} />;
+      return (
+        <SafeDocument id={id} guard={isProblemSheetDocument}>
+          {({ document, dispatch }) => <ProblemSheetEditor document={document} dispatch={dispatch} />}
+        </SafeDocument>
+      );
     case "powerhouse/audience-sheet":
-      return <AudienceSheetHost id={id} />;
+      return (
+        <SafeDocument id={id} guard={isAudienceSheetDocument}>
+          {({ document, dispatch }) => <AudienceSheetEditor document={document} dispatch={dispatch} />}
+        </SafeDocument>
+      );
     case "powerhouse/brand-sheet":
-      return <BrandSheetHost id={id} />;
+      return (
+        <SafeDocument id={id} guard={isBrandSheetDocument}>
+          {({ document, dispatch }) => <BrandSheetEditor document={document} dispatch={dispatch} />}
+        </SafeDocument>
+      );
     case "powerhouse/feature":
-      return <FeatureHost id={id} />;
+      return (
+        <SafeDocument id={id} guard={isFeatureDocument}>
+          {({ document, dispatch }) => <FeatureEditor document={document} dispatch={dispatch} />}
+        </SafeDocument>
+      );
     case "powerhouse/work-breakdown-structure":
-      return <WbsHost id={id} />;
+      return (
+        <SafeDocument id={id} guard={isWorkBreakdownStructureDocument}>
+          {({ document, dispatch }) => (
+            <WorkBreakdownStructureEditor document={document} dispatch={dispatch} />
+          )}
+        </SafeDocument>
+      );
     default:
       return (
         <div className="p-6 text-sm text-gray-500">
