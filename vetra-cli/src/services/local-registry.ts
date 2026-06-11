@@ -1,6 +1,7 @@
 import { checkPort } from '@powerhousedao/ph-clint';
 import { defineService } from '../framework.js';
 import { LOCAL_REGISTRY_PORT } from '../constants.js';
+import { localRegistryNodeOptions } from '../helpers/node-memory.js';
 
 /**
  * Local Powerhouse package registry — runs `ph-registry` (Verdaccio + CDN +
@@ -23,6 +24,7 @@ export const localRegistry = defineService({
   ].join(' '),
   env: () => ({
     NODE_ENV: 'development',
+    NODE_OPTIONS: localRegistryNodeOptions(),
   }),
   readiness: {
     patterns: [

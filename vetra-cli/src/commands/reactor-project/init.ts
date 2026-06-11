@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { defineCommand } from '../../framework.js';
 import { requireOption, formatProcessFailure } from '../../helpers/cli-errors.js';
+import { phInitNodeOptions } from '../../helpers/node-memory.js';
 import { DEFAULT_PH_VERSION } from '../../constants.js';
 
 const NAME_PATTERN = /^[a-zA-Z0-9-_]+$/;
@@ -67,7 +68,7 @@ export const reactorProjectInit = defineCommand({
       label: 'ph-init',
       timeout: 300_000,
       cwd: workdir,
-      env: { FORCE_COLOR: '1' },
+      env: { FORCE_COLOR: '1', NODE_OPTIONS: phInitNodeOptions() },
     });
 
     if (!success) {

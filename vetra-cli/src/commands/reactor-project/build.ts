@@ -5,6 +5,7 @@ import { createProcessManager } from '@powerhousedao/ph-clint';
 import { defineCommand } from '../../framework.js';
 import { resolveReactorProjectPath } from '../../helpers/project.js';
 import { formatProcessFailure } from '../../helpers/cli-errors.js';
+import { phBuildNodeOptions } from '../../helpers/node-memory.js';
 
 export interface BuildResult {
   success: boolean;
@@ -25,7 +26,7 @@ export async function runBuild(
     label: 'ph-build',
     timeout: 120_000,
     cwd: projectPath,
-    env: { FORCE_COLOR: '1' },
+    env: { FORCE_COLOR: '1', NODE_OPTIONS: phBuildNodeOptions() },
     onOutput: onData ? (line) => onData(line + '\n') : undefined,
   });
   return { success, output };
@@ -55,7 +56,7 @@ export const reactorProjectBuild = defineCommand({
       label: 'ph-build',
       timeout: 120_000,
       cwd: projectPath,
-      env: { FORCE_COLOR: '1' },
+      env: { FORCE_COLOR: '1', NODE_OPTIONS: phBuildNodeOptions() },
     });
 
     if (!success) {
