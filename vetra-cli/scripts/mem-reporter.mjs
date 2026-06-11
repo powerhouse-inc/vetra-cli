@@ -75,7 +75,32 @@ if (dir) {
     });
   }
 
-  // SIGUSR2 -> write a heap snapshot for this process (analyze the V8 heap).
+  // Allocation sampling profiler (function-level attribution): which functions
+  // allocate the memory. Opt-in via VETRA_MEM_ALLOC_PROF (adds inspector
+  // overhead). Started at load so it captures boot allocations; dumped on
+  // SIGUSR2 as a .heapprofile (V8 sampling-profile tree of call frames).
+  let allocSession = null;
+  if (process.env.VETRA_MEM_ALLOC_PROF) {
+    try {
+      const { Session } = await import('node:inspector');
+      allocSession = new Session();
+      allocSession.connect();
+      const interval = Number.parseInt(
+        process.env.VETRA_MEM_ALLOC_INTERVAL ?? '16384',
+        10,
+      );
+      allocSession.post('HeapProfiler.enable', () => {
+        allocSession.post('HeapProfiler.startSampling', {
+          samplingInterval: interval,
+        });
+      });
+    } catch {
+      allocSession = null;
+    }
+  }
+
+  // SIGUSR2 -> write a heap snapshot (retained by type) and, when allocation
+  // profiling is on, the allocation sampling profile (by function).
   process.on('SIGUSR2', () => {
     try {
       const snap = join(dir, `${role}-${process.pid}-${Date.now()}.heapsnapshot`);
@@ -83,6 +108,18 @@ if (dir) {
       appendFileSync(file, JSON.stringify({ t: Date.now(), phase: 'heapsnapshot', pid: process.pid, role, snap }) + '\n');
     } catch {
       /* best-effort */
+    }
+    if (allocSession) {
+      allocSession.post('HeapProfiler.getSamplingProfile', (err, res) => {
+        if (err || !res) return;
+        try {
+          const f = join(dir, `${role}-${process.pid}-${Date.now()}.heapprofile`);
+          appendFileSync(f, JSON.stringify(res.profile));
+          appendFileSync(file, JSON.stringify({ t: Date.now(), phase: 'allocprofile', pid: process.pid, role, file: f }) + '\n');
+        } catch {
+          /* best-effort */
+        }
+      });
     }
   });
 }
