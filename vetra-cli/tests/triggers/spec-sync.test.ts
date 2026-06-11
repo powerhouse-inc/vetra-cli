@@ -53,6 +53,37 @@ describe('syncSpecsToFs', () => {
     expect(log.debug).toHaveBeenCalledTimes(1);
   });
 
+  it('re-attaches operation history from the client, grouped by scope and ordered, dropping document scope', async () => {
+    saveSpec.mockResolvedValue('/work/specs/foo.json');
+    const getOperations = jest.fn<(docId: string) => Promise<unknown>>();
+    getOperations
+      .mockResolvedValueOnce({
+        results: [
+          { index: 1, action: { scope: 'global' } },
+          { index: 0, action: { scope: 'global' } },
+          { index: 0, action: { scope: 'document' } },
+        ],
+        next: () =>
+          Promise.resolve({
+            results: [{ index: 0, action: { scope: 'local' } }],
+          }),
+      });
+    const docs = [
+      { header: { id: 'a', documentType: 'powerhouse/app', name: 'foo' } },
+    ];
+    await syncSpecsToFs(docs, '/work', { log, client: { getOperations } });
+
+    expect(getOperations).toHaveBeenCalledWith('a');
+    expect(saveSpec).toHaveBeenCalledTimes(1);
+    const written = saveSpec.mock.calls[0][0] as {
+      operations: Record<string, { index: number }[]>;
+    };
+    // global ops re-ordered by index; document scope omitted; local drained from page 2.
+    expect(written.operations.global.map((o) => o.index)).toEqual([0, 1]);
+    expect(written.operations.local.map((o) => o.index)).toEqual([0]);
+    expect(written.operations.document).toBeUndefined();
+  });
+
   it('is a no-op for empty input', async () => {
     await syncSpecsToFs([], '/work', { log });
     expect(saveSpec).not.toHaveBeenCalled();

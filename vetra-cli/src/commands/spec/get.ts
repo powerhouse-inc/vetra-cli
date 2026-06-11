@@ -88,10 +88,14 @@ export const specGet = defineCommand({
     // Workspace-root product specs are reachable without a reactor project.
     const { base } = await resolveSpecBasePath(workdir, input.project, true);
     const doc = await loadByName(base, input.name);
-    const opsTotal = doc.operations.global.length + doc.operations.local.length;
-    const summary = `${doc.header.documentType} "${doc.header.name}" — ${opsTotal} operation(s).`;
 
     if (!input.full && !input.filter && !input.latest) {
+      // Docs loaded from disk may omit empty operation scopes entirely.
+      const ops = doc.operations as Partial<
+        Record<"global" | "local", unknown[]>
+      >;
+      const opsTotal = (ops.global?.length ?? 0) + (ops.local?.length ?? 0);
+      const summary = `${doc.header.documentType} "${doc.header.name}" — ${opsTotal} operation(s).`;
       return { text: `${summary}\n\n${buildHelp(doc.header.documentType, input.name)}` };
     }
 

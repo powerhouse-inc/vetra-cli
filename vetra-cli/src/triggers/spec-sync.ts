@@ -35,6 +35,46 @@ interface DriveNode {
   parentFolder?: string | null;
 }
 
+/** Minimal slice of the reactor operation history we read. */
+interface Operation {
+  index: number;
+  action?: { scope?: string };
+}
+interface OperationsPage {
+  results: Operation[];
+  next?: () => Promise<OperationsPage>;
+}
+interface OperationsClient {
+  getOperations: (docId: string) => Promise<OperationsPage>;
+}
+
+/**
+ * Reactor change events (and `client.get`) carry the current state with an
+ * empty `operations` map — history lives in the reactor's own store. Pull it
+ * back so the `.phd` we write preserves the operation history instead of
+ * flattening to a state-only snapshot. Drains all pages, groups by action
+ * scope, and drops the `document` scope (create ops) to keep the spec `.phd`'s
+ * content-only shape — `applyFsChangesToReactor` re-materializes the document
+ * separately and only replays content scopes.
+ */
+async function operationsByScope(
+  client: OperationsClient,
+  docId: string,
+): Promise<Record<string, Operation[]>> {
+  const byScope: Record<string, Operation[]> = {};
+  let page: OperationsPage | undefined = await client.getOperations(docId);
+  while (page) {
+    for (const op of page.results) {
+      const scope = op.action?.scope ?? "global";
+      if (scope === "document") continue;
+      (byScope[scope] ??= []).push(op);
+    }
+    page = page.next ? await page.next() : undefined;
+  }
+  for (const ops of Object.values(byScope)) ops.sort((a, b) => a.index - b.index);
+  return byScope;
+}
+
 /**
  * Resolve the project directory a doc should be written under, from the drive
  * node tree: locate the doc's file node, walk to its parent folder, and use the
@@ -56,14 +96,23 @@ function projectDirForDoc(
 export async function syncSpecsToFs(
   docs: ReadonlyArray<{ header: { id: string; documentType: string; name: string } }>,
   workdir: string,
-  opts?: { nodes?: ReadonlyArray<DriveNode>; log?: SpecLogger },
+  opts?: {
+    nodes?: ReadonlyArray<DriveNode>;
+    log?: SpecLogger;
+    client?: OperationsClient;
+  },
 ): Promise<void> {
   const nodes = opts?.nodes ?? [];
   const log = opts?.log;
   for (const doc of docs) {
     try {
       const projectDir = projectDirForDoc(doc.header.id, workdir, nodes);
-      const written = await saveSpec(doc as never, projectDir);
+      // Re-attach the operation history the change event omits, so the `.phd`
+      // is a full document and not a state-only snapshot.
+      const toWrite = opts?.client
+        ? { ...doc, operations: await operationsByScope(opts.client, doc.header.id) }
+        : doc;
+      const written = await saveSpec(toWrite as never, projectDir);
       log?.debug(
         `[spec-sync] wrote ${doc.header.documentType} "${doc.header.name}" → ${written}`,
       );
@@ -103,6 +152,7 @@ export const specSyncTrigger = createDocumentChangeTrigger({
     await syncSpecsToFs(docs, ctx.context.workdir, {
       nodes,
       log: ctx.context.log,
+      client: reactor?.client as OperationsClient | undefined,
     });
     // Side-effect-only trigger — no agent work item produced.
     return null;

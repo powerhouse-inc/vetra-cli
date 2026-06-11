@@ -90,7 +90,10 @@ describe('spec-sync drive → FS integration', () => {
         if (event.documents.length === 0) return;
         eventCount += 1;
         chain = chain.then(() =>
-          syncSpecsToFs(event.documents as never, tmpDir, { log }),
+          syncSpecsToFs(event.documents as never, tmpDir, {
+            log,
+            client: module.client as never,
+          }),
         );
       },
     );
@@ -122,10 +125,20 @@ describe('spec-sync drive → FS integration', () => {
     const specDoc = await baseLoadFromFile(expectedPath, AppModuleV1.reducer);
     const inMemory = await module.client.get<AppModuleDocument>(doc.header.id);
 
-    expect(specDoc).toEqual(inMemory);
+    expect(specDoc.header).toEqual(inMemory.header);
+    expect(specDoc.state).toEqual(inMemory.state);
     expect((specDoc.state.global as { name: string }).name).toBe(
       'my-test-app-name',
     );
+    // The written `.phd` preserves the operation history (the SET_APP_NAME
+    // execute), not just the current-state snapshot. `client.get` returns a
+    // state-only view, so this is asserted against the file, not `inMemory`.
+    expect(specDoc.operations.global.length).toBeGreaterThan(0);
+    expect(
+      specDoc.operations.global.some(
+        (op) => op.action.type === 'SET_APP_NAME',
+      ),
+    ).toBe(true);
 
     unsubscribe();
   }, 15_000);
