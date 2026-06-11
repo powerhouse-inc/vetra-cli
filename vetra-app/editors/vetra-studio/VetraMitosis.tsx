@@ -1,12 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
-type Quadrant = 'tl' | 'tr' | 'bl' | 'br';
+type Quadrant = "tl" | "tr" | "bl" | "br";
 
 const PATHS: Record<Quadrant, string> = {
-  tl: 'M0 14.4433C0 6.46648 6.46657 0 14.4435 0L80.9867 0C88.9636 0 95.4302 6.46649 95.4302 14.4433V23.2125C95.4302 63.0965 63.0973 95.429 23.2127 95.429H14.4435C6.46656 95.429 0 88.9625 0 80.9857L0 14.4433Z',
-  tr: 'M105.36 14.4433C105.36 6.46648 111.827 0 119.804 0L186.347 0C194.324 0 200.791 6.46649 200.791 14.4433V80.9857C200.791 88.9625 194.324 95.429 186.347 95.429H177.578C137.693 95.429 105.36 63.0965 105.36 23.2124V14.4433Z',
-  bl: 'M0.000976563 119.803C0.000976563 111.826 6.46754 105.359 14.4445 105.359H23.2137C63.0983 105.359 95.4311 137.692 95.4311 177.576V186.345C95.4311 194.322 88.9646 200.788 80.9876 200.788H14.4445C6.46754 200.788 0.000976563 194.322 0.000976563 186.345L0.000976563 119.803Z',
-  br: 'M105.36 177.578C105.36 137.694 137.693 105.361 177.578 105.361H186.347C194.324 105.361 200.791 111.828 200.791 119.805V186.347C200.791 194.324 194.324 200.79 186.347 200.79H119.804C111.827 200.79 105.36 194.324 105.36 186.347V177.578Z',
+  tl: "M0 14.4433C0 6.46648 6.46657 0 14.4435 0L80.9867 0C88.9636 0 95.4302 6.46649 95.4302 14.4433V23.2125C95.4302 63.0965 63.0973 95.429 23.2127 95.429H14.4435C6.46656 95.429 0 88.9625 0 80.9857L0 14.4433Z",
+  tr: "M105.36 14.4433C105.36 6.46648 111.827 0 119.804 0L186.347 0C194.324 0 200.791 6.46649 200.791 14.4433V80.9857C200.791 88.9625 194.324 95.429 186.347 95.429H177.578C137.693 95.429 105.36 63.0965 105.36 23.2124V14.4433Z",
+  bl: "M0.000976563 119.803C0.000976563 111.826 6.46754 105.359 14.4445 105.359H23.2137C63.0983 105.359 95.4311 137.692 95.4311 177.576V186.345C95.4311 194.322 88.9646 200.788 80.9876 200.788H14.4445C6.46754 200.788 0.000976563 194.322 0.000976563 186.345L0.000976563 119.803Z",
+  br: "M105.36 177.578C105.36 137.694 137.693 105.361 177.578 105.361H186.347C194.324 105.361 200.791 111.828 200.791 119.805V186.347C200.791 194.324 194.324 200.79 186.347 200.79H119.804C111.827 200.79 105.36 194.324 105.36 186.347V177.578Z",
 };
 
 const SIGN: Record<Quadrant, { x: number; y: number }> = {
@@ -31,11 +31,11 @@ const FRAMES: Record<string, Frame> = {
 };
 
 const SEQ = [
-  { frame: 'blob', hold: 320, trans: 0 },
-  { frame: 'twoV', hold: 180, trans: 280 },
-  { frame: 'logo', hold: 420, trans: 260 },
-  { frame: 'twoH', hold: 180, trans: 280 },
-  { frame: 'blob', hold: 320, trans: 300 },
+  { frame: "blob", hold: 320, trans: 0 },
+  { frame: "twoV", hold: 180, trans: 280 },
+  { frame: "logo", hold: 420, trans: 260 },
+  { frame: "twoH", hold: 180, trans: 280 },
+  { frame: "blob", hold: 320, trans: 300 },
 ];
 
 type Pose = Record<Quadrant, [number, number]>;
@@ -68,11 +68,20 @@ interface VetraMitosisProps {
 }
 
 type Segment =
-  | { t0: number; t1: number; type: 'trans'; from: Pose; to: Pose }
-  | { t0: number; t1: number; type: 'hold'; pose: Pose };
+  | { t0: number; t1: number; type: "trans"; from: Pose; to: Pose }
+  | { t0: number; t1: number; type: "hold"; pose: Pose };
 
-export default function VetraMitosis({ size = 120, color = '#04C161', active = true }: VetraMitosisProps) {
-  const refs = useRef<Record<Quadrant, SVGGElement | null>>({ tl: null, tr: null, bl: null, br: null });
+export default function VetraMitosis({
+  size = 120,
+  color = "#04C161",
+  active = true,
+}: VetraMitosisProps) {
+  const refs = useRef<Record<Quadrant, SVGGElement | null>>({
+    tl: null,
+    tr: null,
+    bl: null,
+    br: null,
+  });
   const rafRef = useRef<number | null>(null);
   const activeRef = useRef(active);
 
@@ -93,14 +102,25 @@ export default function VetraMitosis({ size = 120, color = '#04C161', active = t
       const from = i === 0 ? poses[poses.length - 1] : poses[i - 1];
       const to = poses[i];
       if (s.trans > 0) {
-        timeline.push({ t0: clock, t1: clock + s.trans, type: 'trans', from, to });
+        timeline.push({
+          t0: clock,
+          t1: clock + s.trans,
+          type: "trans",
+          from,
+          to,
+        });
         clock += s.trans;
       }
       const holdStart = clock;
-      const holdSeg: Segment = { t0: clock, t1: clock + s.hold, type: 'hold', pose: to };
+      const holdSeg: Segment = {
+        t0: clock,
+        t1: clock + s.hold,
+        type: "hold",
+        pose: to,
+      };
       timeline.push(holdSeg);
       clock += s.hold;
-      if (s.frame === 'logo') {
+      if (s.frame === "logo") {
         logoResumeAt = holdStart;
         logoHoldSeg = holdSeg;
       }
@@ -114,7 +134,8 @@ export default function VetraMitosis({ size = 120, color = '#04C161', active = t
 
     const apply = (k: Quadrant, tx: number, ty: number, sc: number) => {
       const el = refs.current[k];
-      if (el) el.style.transform = `translate(${tx}px,${ty}px) rotate(180deg) scale(${sc})`;
+      if (el)
+        el.style.transform = `translate(${tx}px,${ty}px) rotate(180deg) scale(${sc})`;
     };
 
     let t0 = 0;
@@ -141,7 +162,7 @@ export default function VetraMitosis({ size = 120, color = '#04C161', active = t
         const time = (ts - t0) % LOOP;
         for (const seg of timeline) {
           if (time >= seg.t0 && time < seg.t1) {
-            if (seg.type === 'hold') {
+            if (seg.type === "hold") {
               const ht = (time - seg.t0) / (seg.t1 - seg.t0);
               curScale = 1 + Math.sin(ht * Math.PI * 2) * 0.012;
               for (const k of QUADRANTS) {
@@ -168,7 +189,8 @@ export default function VetraMitosis({ size = 120, color = '#04C161', active = t
           cur[k][0] += (LOGO_POSE[k][0] - cur[k][0]) * s;
           cur[k][1] += (LOGO_POSE[k][1] - cur[k][1]) * s;
         }
-        const breathe = 1 + Math.sin((ts / 1000) * IDLE_BREATHE_SPEED) * IDLE_BREATHE_AMP;
+        const breathe =
+          1 + Math.sin((ts / 1000) * IDLE_BREATHE_SPEED) * IDLE_BREATHE_AMP;
         curScale += (breathe - curScale) * s;
       }
 
@@ -190,7 +212,7 @@ export default function VetraMitosis({ size = 120, color = '#04C161', active = t
       viewBox="0 0 201 201"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ overflow: 'visible' }}
+      style={{ overflow: "visible" }}
     >
       {QUADRANTS.map((k) => (
         <g
@@ -198,7 +220,11 @@ export default function VetraMitosis({ size = 120, color = '#04C161', active = t
           ref={(el) => {
             refs.current[k] = el;
           }}
-          style={{ transformBox: 'fill-box', transformOrigin: 'center', transform: 'rotate(180deg)' }}
+          style={{
+            transformBox: "fill-box",
+            transformOrigin: "center",
+            transform: "rotate(180deg)",
+          }}
         >
           <path d={PATHS[k]} fill={color} />
         </g>

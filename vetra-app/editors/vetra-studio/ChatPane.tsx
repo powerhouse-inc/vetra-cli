@@ -28,7 +28,13 @@ const ChatSession = lazy(() =>
 const CHAT_SESSION_DOCUMENT_TYPE = "powerhouse/chat-session";
 
 // Animated Vetra logo as the agent avatar; animates while the agent responds.
-function AgentMitosisAvatar({ responding, size }: { responding: boolean; size: number }) {
+function AgentMitosisAvatar({
+  responding,
+  size,
+}: {
+  responding: boolean;
+  size: number;
+}) {
   return <VetraMitosis active={responding} size={size} />;
 }
 
@@ -68,8 +74,7 @@ export function ChatPane({
     const remoteUrl =
       sbEnd === -1
         ? url.origin
-        : url.origin +
-          url.pathname.slice(0, sbEnd + "/switchboard".length);
+        : url.origin + url.pathname.slice(0, sbEnd + "/switchboard".length);
     return createRemoteAttachmentService({ remoteUrl });
   }, [driveRemoteUrl, defaultDrivesUrl]);
 

@@ -67,7 +67,7 @@ export const reactorProject = defineService({
   id: 'reactor-project',
   name: 'Reactor Project',
   description: 'Vetra Studio server for reactor project development',
-  command: (params) => {
+  command: ({params}) => {
     const parts = ['ph', 'vetra'];
     if (params?.watch !== false) parts.push('--watch');
     if (typeof params?.connectPort === 'number') parts.push('--connect-port', String(params.connectPort));
@@ -97,7 +97,7 @@ export const reactorProject = defineService({
     return parts.join(' ');
   },
   paramsSchema: reactorProjectParams,
-  env: (config, params) => ({
+  env: ({params}) => ({
     // PORT workaround: https://github.com/powerhouse-inc/powerhouse/commit/9830c16b
     PORT: String(params?.switchboardPort),
     HOST: '0.0.0.0',

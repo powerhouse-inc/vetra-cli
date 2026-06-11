@@ -24,32 +24,43 @@ export function DocumentHost({
     case "powerhouse/problem-sheet":
       return (
         <SafeDocument id={id} guard={isProblemSheetDocument}>
-          {({ document, dispatch }) => <ProblemSheetEditor document={document} dispatch={dispatch} />}
+          {({ document, dispatch }) => (
+            <ProblemSheetEditor document={document} dispatch={dispatch} />
+          )}
         </SafeDocument>
       );
     case "powerhouse/audience-sheet":
       return (
         <SafeDocument id={id} guard={isAudienceSheetDocument}>
-          {({ document, dispatch }) => <AudienceSheetEditor document={document} dispatch={dispatch} />}
+          {({ document, dispatch }) => (
+            <AudienceSheetEditor document={document} dispatch={dispatch} />
+          )}
         </SafeDocument>
       );
     case "powerhouse/brand-sheet":
       return (
         <SafeDocument id={id} guard={isBrandSheetDocument}>
-          {({ document, dispatch }) => <BrandSheetEditor document={document} dispatch={dispatch} />}
+          {({ document, dispatch }) => (
+            <BrandSheetEditor document={document} dispatch={dispatch} />
+          )}
         </SafeDocument>
       );
     case "powerhouse/feature":
       return (
         <SafeDocument id={id} guard={isFeatureDocument}>
-          {({ document, dispatch }) => <FeatureEditor document={document} dispatch={dispatch} />}
+          {({ document, dispatch }) => (
+            <FeatureEditor document={document} dispatch={dispatch} />
+          )}
         </SafeDocument>
       );
     case "powerhouse/work-breakdown-structure":
       return (
         <SafeDocument id={id} guard={isWorkBreakdownStructureDocument}>
           {({ document, dispatch }) => (
-            <WorkBreakdownStructureEditor document={document} dispatch={dispatch} />
+            <WorkBreakdownStructureEditor
+              document={document}
+              dispatch={dispatch}
+            />
           )}
         </SafeDocument>
       );

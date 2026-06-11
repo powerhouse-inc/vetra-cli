@@ -18,13 +18,16 @@ type ErrorState = Extract<SafeState, { status: "error" }>;
 export function useSafeDocument<TDoc extends PHDocument>(
   id: string | null | undefined,
   guard: (doc: unknown) => doc is TDoc,
-): { state: SafeState; document: TDoc | undefined; dispatch: DocumentDispatch<Action> } {
+): {
+  state: SafeState;
+  document: TDoc | undefined;
+  dispatch: DocumentDispatch<Action>;
+} {
   const state = useDocumentSafe(id);
-  const document = state.status === "success" && guard(state.data) ? state.data : undefined;
+  const document =
+    state.status === "success" && guard(state.data) ? state.data : undefined;
   const [, dispatch] = useDispatch(document);
-  // DispatchFn<Action> accepts a superset of any model action, so it satisfies
-  // every editor's DocumentDispatch<XAction> prop (same widening codegen relies on).
-  return { state, document, dispatch: dispatch as DocumentDispatch<Action> };
+  return { state, document, dispatch } as const;
 }
 
 function DefaultPending() {
@@ -60,7 +63,10 @@ export function SafeDocument<TDoc extends PHDocument>({
 }: {
   id: string | null | undefined;
   guard: (doc: unknown) => doc is TDoc;
-  children: (args: { document: TDoc; dispatch: DocumentDispatch<Action> }) => ReactNode;
+  children: (args: {
+    document: TDoc;
+    dispatch: DocumentDispatch<Action>;
+  }) => ReactNode;
   pending?: (state: SafeState) => ReactNode;
   error?: (state: ErrorState) => ReactNode;
 }) {

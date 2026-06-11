@@ -53,7 +53,7 @@ export function ensurePh(): LifecycleHook {
       const log: Logger = ctx.log;
 
       if (await phAvailable()) {
-        log.info("[ensure-ph] ph already on PATH; skipping install");
+        log.debug("[ensure-ph] ph already on PATH; skipping install");
         return {};
       }
 
