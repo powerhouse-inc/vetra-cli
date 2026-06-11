@@ -22,6 +22,10 @@ export interface PreviewTarget {
   project: string;
   doc?: string;
   drive?: string;
+  /** toolCallId of the spec-preview-show that produced this target — lets
+   * consumers tell a NEW show apart from the same one re-rendered, even when
+   * project/doc are unchanged. */
+  callId: string;
 }
 
 interface ShowToolResultData {
@@ -75,7 +79,7 @@ export function extractPreviewTarget(
         const call = findToolCall(messages, part.toolCallId);
         const project = call?.project;
         if (!project) continue;
-        return { project, drive: data.data.driveId };
+        return { project, drive: data.data.driveId, callId: part.toolCallId };
       }
 
       const doc = data?.data?.documentSlug ?? data?.data?.documentId;
@@ -85,7 +89,7 @@ export function extractPreviewTarget(
       const project = call?.project;
       if (!project) continue;
 
-      return { project, doc };
+      return { project, doc, callId: part.toolCallId };
     }
   }
   return undefined;
