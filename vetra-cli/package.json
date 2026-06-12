@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.16",
+  "version": "0.0.1-dev.17",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -10,8 +10,7 @@
     "vetra": "./dist/main.js"
   },
   "files": [
-    "dist",
-    "Dockerfile"
+    "dist"
   ],
   "scripts": {
     "build:assets": "tsx scripts/build-assets.ts",
