@@ -32,6 +32,7 @@
       "vetra-agent-xl",
       "vetra-agent-xxl"
   ],
+  "dockerfile": "Dockerfile",
   "config": [
     {
       "name": "VETRA_ANTHROPIC_API_KEY",
