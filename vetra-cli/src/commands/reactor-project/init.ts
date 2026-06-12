@@ -58,10 +58,10 @@ export const reactorProjectInit = defineCommand({
       ? [`--${phVersion}`]
       : ['--version', phVersion];
     // ph-cmd uses the version flag to dlx the right ph-cli; the downstream
-    // ph-cli ignores the version when --template is set (template lockfile is
-    // authoritative) and just warns, which is the intended UX.
+    // ph-cli ignores the version when --clone is set (the cloned project's
+    // lockfile is authoritative) and just warns, which is the intended UX.
     const initArgs = clonePath
-      ? `${versionArgs.join(' ')} --pnpm --template ${clonePath}`
+      ? `${versionArgs.join(' ')} --pnpm --clone ${clonePath}`
       : `${versionArgs.join(' ')} --pnpm`;
     const command = `ph init ${name} ${initArgs}`;
     const { success, output } = await runProcess(command, {

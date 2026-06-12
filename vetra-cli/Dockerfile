@@ -61,7 +61,7 @@ RUN pnpm add -g "vetra-cli@${CLINT_VERSION}" \
 
 # Install ph-cmd separately so the `ph init` template prewarm below has the
 # --template-capable binary on PATH, and bake a scaffolded reactor-project
-# that runtime inits clone via `ph init --template`. The cost of the install
+# that runtime inits clone via `ph init --clone`. The cost of the install
 # + scaffold is paid here, once, so every runtime init is a directory copy.
 # Resolve the ph version: explicit PH_VERSION build-arg wins; otherwise read
 # DEFAULT_PH_VERSION from the just-installed vetra-cli so the runtime config
