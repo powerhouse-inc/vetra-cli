@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './ensure-home.js';
 import './version-banner.js';
 import { cli } from './cli.js';
 
