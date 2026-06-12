@@ -28,26 +28,34 @@ const DOC_TYPES = {
   subgraph: "powerhouse/subgraph",
 } as const;
 
+/* `@graphql-tools/load` inlines the entire failing SDL into `err.message`, so
+ * the real cause is buried in a wall of type definitions. These patterns pull
+ * the meaningful diagnostic back out — the actual GraphQLError, not the SDL. */
+const DIAGNOSTIC_PATTERNS = [
+  // Syntax/validation failures the loader wraps explicitly.
+  /Failed to parse the GraphQL document\.[^\n]*/,
+  // Duplicate-graphql realm mismatch: a type built by one graphql instance is
+  // checked by another (e.g. top-level graphql vs a nested copy under
+  // @graphql-tools). instanceOf fails — surfaces as this, not an SDL error.
+  /Cannot use [A-Za-z]+ "[^"]+" from another module or realm\.?/,
+  // Undeclared types/scalars/directives in the operation or state SDL.
+  /Unknown type[:]? "?[^"\n]+"?/,
+  /Unknown directive "?[^"\n]+"?/,
+  /Type "[^"]+" not found/,
+];
+
 function trimGenerateError(message: string): string {
-  /* `@graphql-tools/load` inlines the full schema into `err.message` several
-   * times when codegen fails on the SDL. Pull out just the diagnostic line:
-   * the library wraps every schema failure (syntax + validation) in a
-   * "Failed to parse the GraphQL document. <GraphQLError>" line. */
-  const parse = message.match(/Failed to parse the GraphQL document\.[^\n]*/);
-  if (parse) {
-    return parse[0];
+  for (const pattern of DIAGNOSTIC_PATTERNS) {
+    const m = message.match(pattern);
+    if (m) return m[0];
   }
-  /* `@graphql-tools/load` echoes the entire failing SDL into the message after
-   * "Failed to load schema from", typically ending in `scalar Unknown`. Drop
-   * the echoed SDL and surface where to look. */
   if (/Failed to load schema from/.test(message)) {
     return (
       "GraphQL schema failed to load (check operation/state SDL for " +
-      "undeclared types/scalars)."
+      "undeclared types/scalars). Run with debug logging for the full error."
     );
   }
-  const firstLine = message.split("\n").find((l) => l.trim().length > 0);
-  return firstLine ?? message;
+  return message;
 }
 
 async function generateOne(doc: PHDocument, project: Project): Promise<void> {

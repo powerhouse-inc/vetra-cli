@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.18",
+  "version": "0.0.1-dev.19",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -46,6 +46,7 @@
     "@toon-format/toon": "^2.2.0",
     "chokidar": "^3.6.0",
     "document-model": "catalog:",
+    "graphql": "catalog:",
     "jsonpath-plus": "^10.4.0",
     "vetra-app": "workspace:*",
     "zod": "catalog:"
