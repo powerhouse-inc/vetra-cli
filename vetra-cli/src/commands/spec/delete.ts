@@ -1,3 +1,4 @@
+import { deleteDocument } from "@powerhousedao/vetra/codegen";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveSpecBasePath } from "../../helpers/project.js";
@@ -22,9 +23,6 @@ export const specDelete = defineCommand({
     // Workspace-root product specs are reachable without a reactor project.
     const { base } = await resolveSpecBasePath(workdir, input.project, true);
     const { doc, path } = await findByName(base, input.name);
-    // Lazy: pulls in the codegen module (ts-morph/graphql-codegen); only
-    // spec-delete needs it, so boot doesn't load it.
-    const { deleteDocument } = await import("@powerhousedao/vetra/codegen");
     const result = await deleteDocument(path);
     if (!result.success) {
       return { text: `Failed to delete "${doc.header.name}" at ${path}` };

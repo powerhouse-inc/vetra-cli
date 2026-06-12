@@ -25,19 +25,8 @@ function maxOldSpaceMb(envVar: string, fallbackMb: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMb;
 }
 
-/* When memory profiling is on (VETRA_MEM_PROFILE_DIR set), every spawned Node
- * process must load the reporter. These children override NODE_OPTIONS, so the
- * inherited `--import` is lost unless re-appended here. Dev/measurement only —
- * a no-op in normal operation. */
-function profileImportFlag(): string {
-  if (!process.env.VETRA_MEM_PROFILE_DIR) return '';
-  const reporter = new URL('../../scripts/mem-reporter.mjs', import.meta.url)
-    .pathname;
-  return ` --import ${reporter}`;
-}
-
 function nodeOptions(envVar: string, fallbackMb: number): string {
-  return `--max-old-space-size=${maxOldSpaceMb(envVar, fallbackMb)} --max-semi-space-size=64${profileImportFlag()}`;
+  return `--max-old-space-size=${maxOldSpaceMb(envVar, fallbackMb)} --max-semi-space-size=64`;
 }
 
 export function reactorProjectNodeOptions(): string {

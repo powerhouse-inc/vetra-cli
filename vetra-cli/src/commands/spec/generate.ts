@@ -1,4 +1,12 @@
-import type { generateDocumentModelFromDocument } from "@powerhousedao/vetra/codegen";
+import {
+  generateAppFromDocument,
+  generateDocumentModelFromDocument,
+  generateEditorFromDocument,
+  generateProcessorFromDocument,
+  generateSubgraphFromDocument,
+  getDocuments,
+} from "@powerhousedao/vetra/codegen";
+import { buildTsMorphProject } from "@powerhousedao/codegen/utils";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
@@ -11,16 +19,6 @@ import {
 import { loadByName } from "./_helpers.js";
 
 type Project = Parameters<typeof generateDocumentModelFromDocument>[1];
-
-// ts-morph + graphql-codegen + the TS compiler load here; kept lazy so boot
-// doesn't pay for them — only spec-generate needs them.
-async function loadCodegen() {
-  return import("@powerhousedao/vetra/codegen");
-}
-async function loadTsMorph() {
-  return import("@powerhousedao/codegen/utils");
-}
-type Codegen = Awaited<ReturnType<typeof loadCodegen>>;
 
 const DOC_TYPES = {
   documentModel: "powerhouse/document-model",
@@ -52,22 +50,18 @@ function trimGenerateError(message: string): string {
   return firstLine ?? message;
 }
 
-async function generateOne(
-  doc: PHDocument,
-  project: Project,
-  codegen: Codegen,
-): Promise<void> {
+async function generateOne(doc: PHDocument, project: Project): Promise<void> {
   switch (doc.header.documentType) {
     case DOC_TYPES.documentModel:
-      return codegen.generateDocumentModelFromDocument(doc as never, project);
+      return generateDocumentModelFromDocument(doc as never, project);
     case DOC_TYPES.editor:
-      return codegen.generateEditorFromDocument(doc as never, project);
+      return generateEditorFromDocument(doc as never, project);
     case DOC_TYPES.app:
-      return codegen.generateAppFromDocument(doc as never, project);
+      return generateAppFromDocument(doc as never, project);
     case DOC_TYPES.processor:
-      return codegen.generateProcessorFromDocument(doc as never, project);
+      return generateProcessorFromDocument(doc as never, project);
     case DOC_TYPES.subgraph:
-      return codegen.generateSubgraphFromDocument(doc as never, project);
+      return generateSubgraphFromDocument(doc as never, project);
     default:
       throw new Error(
         `Unsupported document type for code generation: ${doc.header.documentType}`,
@@ -96,10 +90,6 @@ export const specGenerate = defineCommand({
   }),
   execute: async (input, { workdir, runProcess }) => {
     const base = await resolveReactorProjectPath(workdir, input.project);
-    const [codegen, { buildTsMorphProject }] = await Promise.all([
-      loadCodegen(),
-      loadTsMorph(),
-    ]);
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
@@ -108,7 +98,7 @@ export const specGenerate = defineCommand({
 
     const docs = input.name
       ? [await loadByName(base, input.name)]
-      : await codegen.getDocuments(base);
+      : await getDocuments(base);
 
     if (docs.length === 0) {
       return { text: "(no specs to generate)" };
@@ -119,7 +109,7 @@ export const specGenerate = defineCommand({
 
     for (const doc of docs) {
       try {
-        await generateOne(doc, tsProject, codegen);
+        await generateOne(doc, tsProject);
         generated.push({
           name: doc.header.name,
           type: doc.header.documentType,

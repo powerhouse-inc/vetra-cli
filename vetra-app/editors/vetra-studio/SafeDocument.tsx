@@ -31,9 +31,7 @@ export function useSafeDocument<TDoc extends PHDocument>(
 }
 
 function DefaultPending() {
-  return (
-    <div className="p-6 text-sm text-vetra-muted-fg">Loading document…</div>
-  );
+  return <div className="p-6 text-sm text-vetra-muted-fg">Loading document…</div>;
 }
 
 function DefaultError({ state }: { state: ErrorState }) {
