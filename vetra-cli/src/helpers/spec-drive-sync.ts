@@ -29,7 +29,7 @@ import type { ReactorContext } from "@powerhousedao/ph-clint";
 import type { LoadJobPlan } from "@powerhousedao/reactor";
 import { listSpecTypes, resolveSpecEntry } from "../commands/spec/registry.js";
 
-const SPECS_DIRNAME = "specs";
+export const SPECS_DIRNAME = "specs";
 
 export interface SpecRegistration {
   documentType: string;

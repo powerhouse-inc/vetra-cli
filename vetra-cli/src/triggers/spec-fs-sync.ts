@@ -25,6 +25,7 @@ import {
   applyFsChangesToReactor,
   removeSpecFromDrive,
   specForPath,
+  SPECS_DIRNAME,
 } from "../helpers/spec-drive-sync.js";
 import { defineTrigger } from "../framework.js";
 
@@ -38,9 +39,7 @@ interface TriggerState {
   driveId: string | undefined;
 }
 
-// Directory names never worth descending into when scanning for specs. Keeping
-// these out keeps the recursive workdir watch cheap and avoids watching huge
-// trees like node_modules.
+// Directory names never worth descending into when scanning for specs.
 const IGNORED_DIRS = new Set([
   "node_modules",
   ".git",
@@ -53,8 +52,34 @@ const IGNORED_DIRS = new Set([
   ".cache",
 ]);
 
-function isIgnoredPath(p: string): boolean {
-  return p.split(path.sep).some((seg) => IGNORED_DIRS.has(seg));
+// Specs live only under a `specs/` folder: `<workdir>/specs/...` or
+// `<workdir>/<project>/specs/...`. A path is in scope if it is the workdir
+// root, an immediate child (root `specs/` or a project dir, watched so a
+// `specs/` folder created later is seen), or anything under a `specs/` segment.
+// Deeper non-specs dirs (project src trees, etc.) are pruned so chokidar never
+// descends them. IGNORED_DIRS are always out of scope.
+function outOfSpecScope(p: string, workdir: string): boolean {
+  const rel = path.relative(workdir, p);
+  if (rel === "" || rel.startsWith("..")) return false;
+  const segs = rel.split(path.sep);
+  if (segs.some((s) => IGNORED_DIRS.has(s))) return true;
+  if (segs.includes(SPECS_DIRNAME)) return false;
+  return segs.length > 1;
+}
+
+// What chokidar currently tracks: .phd files retained in the watch set, and
+// the directory count (inotify is per-dir, so dirs are watched for discovery
+// regardless of how many specs they hold).
+function watchedCounts(watcher: ReturnType<typeof chokidar.watch>): {
+  phd: number;
+  dirs: number;
+} {
+  const watched = watcher.getWatched();
+  let phd = 0;
+  for (const entries of Object.values(watched)) {
+    for (const e of entries) if (e.endsWith(".phd")) phd++;
+  }
+  return { phd, dirs: Object.keys(watched).length };
 }
 
 export const specFsSyncTrigger = defineTrigger<TriggerState>({
@@ -79,15 +104,33 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
     // workdir-as-project and workspace (`<workdir>/<project>/specs/`) layouts.
     // ignoreInitial:false so specs written before this daemon started are
     // synced on boot too (loadBatch + node attach are idempotent).
+    // Traversal is scoped to specs/ folders (outOfSpecScope) and only .phd
+    // files are retained in the watch set, so chokidar tracks specs — not whole
+    // project trees.
     const watcher = chokidar.watch(workdir, {
       ignoreInitial: false,
-      ignored: (p: string) => isIgnoredPath(p),
+      ignored: (p: string, stats?: { isFile(): boolean }) =>
+        outOfSpecScope(p, workdir) ||
+        (stats?.isFile() === true && !p.endsWith(".phd")),
       awaitWriteFinish: { stabilityThreshold: 75, pollInterval: 25 },
     });
+    // Throttle the watched-count log so add/unlink storms (e.g. a git pull)
+    // emit at most one count line per second.
+    let lastCountLog = 0;
+    const logWatchedCount = () => {
+      const now = Date.now();
+      if (now - lastCountLog < 1000) return;
+      lastCountLog = now;
+      const { phd, dirs } = watchedCounts(watcher);
+      log?.debug?.(
+        `[spec-fs-sync] watching ${phd} .phd file(s) across ${dirs} dir(s)`,
+      );
+    };
     const onFsEvent = (kind: string) => (p: string) => {
       if (!p.endsWith(".phd") || !specForPath(p)) return;
       ctx.state.changed.add(p);
       log?.debug?.(`[spec-fs-sync] fs ${kind}: ${p}`);
+      logWatchedCount();
     };
     watcher.on("add", onFsEvent("add"));
     watcher.on("change", onFsEvent("change"));
@@ -96,15 +139,19 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
       ctx.state.changed.delete(p);
       ctx.state.removed.add(p);
       log?.debug?.(`[spec-fs-sync] fs unlink: ${p}`);
+      logWatchedCount();
     });
     watcher.on("error", (err) =>
       log?.error?.(
         `[spec-fs-sync] watcher error: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
-    watcher.on("ready", () =>
-      log?.debug?.(`[spec-fs-sync] watching ${workdir} for specs/**/*.phd`),
-    );
+    watcher.on("ready", () => {
+      const { phd, dirs } = watchedCounts(watcher);
+      log?.debug?.(
+        `[spec-fs-sync] watching ${workdir} for specs/**/*.phd (${phd} .phd file(s) across ${dirs} dir(s))`,
+      );
+    });
     ctx.state.watcher = watcher;
   },
 
