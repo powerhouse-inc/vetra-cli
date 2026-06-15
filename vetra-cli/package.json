@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.21",
+  "version": "0.0.1-dev.22",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -31,9 +31,6 @@
     "@ai-sdk/anthropic": "^2.0.80",
     "@mastra/core": "^1.41.0",
     "@mastra/libsql": "^1.12.1",
-    "@graphql-codegen/add": "6.0.0",
-    "@graphql-codegen/cli": "6.1.1",
-    "@graphql-codegen/typescript": "5.0.7",
     "@mastra/mcp": "^1.9.1",
     "@mastra/memory": "^1.20.2",
     "@powerhousedao/clint-common": "catalog:",
@@ -51,7 +48,6 @@
     "chokidar": "^3.6.0",
     "document-model": "catalog:",
     "graphql": "catalog:",
-    "graphql-codegen-typescript-validation-schema": "0.18.1",
     "jsonpath-plus": "^10.4.0",
     "vetra-app": "workspace:*",
     "zod": "catalog:"

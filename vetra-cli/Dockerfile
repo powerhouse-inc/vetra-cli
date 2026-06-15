@@ -97,9 +97,6 @@ RUN set -eu; \
       --config.blockExoticSubdeps=false \
       --config.minimumReleaseAge=0 \
       "@powerhousedao/codegen@${PH_VERSION}" \
-      @graphql-codegen/cli@6.1.1 \
-      @graphql-codegen/typescript@5.0.7 \
-      @graphql-codegen/add@6.0.0 \
  && printf '\nenableGlobalVirtualStore: true\nminimumReleaseAge: 0\n' >> pnpm-workspace.yaml \
  && rm -rf node_modules \
  && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0
