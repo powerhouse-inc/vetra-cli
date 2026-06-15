@@ -131,6 +131,19 @@ RUN printf '%s\n' \
       'if [ -n "${SERVICE_ANNOUNCE_URL:-}" ]; then' \
       '  echo "==> vetra-cli: SERVICE_ANNOUNCE_URL is configured"' \
       'fi' \
+      '# Global virtual store: pnpm hoists deps to <install>/.pnpm/node_modules but' \
+      '# does not put it on NODE_PATH for a global bin shim. graphql-codegen plugins' \
+      '# (e.g. graphql-codegen-typescript-validation-schema) require @graphql-codegen/' \
+      '# typescript without declaring it, so the in-process codegen needs that hoisted' \
+      '# dir on NODE_PATH to resolve them.' \
+      'VETRA_SHIM="$(command -v vetra || true)"' \
+      'if [ -n "$VETRA_SHIM" ]; then' \
+      '  SEG="$(grep -oE "global/v11/[^/]+/node_modules" "$VETRA_SHIM" | head -1)"' \
+      '  if [ -n "$SEG" ]; then' \
+      '    NODE_PATH="$(dirname "$VETRA_SHIM")/../$SEG/.pnpm/node_modules"' \
+      '    export NODE_PATH' \
+      '  fi' \
+      'fi' \
       'echo "==> vetra-cli: starting prebuilt agent"' \
       'echo "    \$ ${SERVICE_COMMAND}"' \
       'exec sh -c "${SERVICE_COMMAND}"' \
