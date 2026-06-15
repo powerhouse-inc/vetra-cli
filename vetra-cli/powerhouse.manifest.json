@@ -32,6 +32,7 @@
       "vetra-agent-xl",
       "vetra-agent-xxl"
   ],
+  "dockerfile": "Dockerfile",
   "config": [
     {
       "name": "VETRA_ANTHROPIC_API_KEY",
@@ -52,9 +53,9 @@
       "required": false
     },
     {
-      "name": "VETRA_OBSERVABILITY_CONSENT",
-      "type": "secret",
-      "description": "Pre-set telemetry consent ('granted' or 'denied') to skip the interactive prompt on non-interactive/deployed runs.",
+      "name": "VETRA_TELEMETRY_CONSENT",
+      "type": "var",
+      "description": "Pre-set telemetry consent ('granted' or 'denied') to skip the interactive prompt on non-interactive/deployed runs. Maps to the observability `telemetryConsent` config key.",
       "required": false
     }
   ]

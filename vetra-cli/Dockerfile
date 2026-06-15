@@ -37,14 +37,15 @@ ARG CLINT_REGISTRY=http://localhost:8181
 ARG PH_REGISTRY=http://host.docker.internal:8181
 ARG PH_VERSION=
 ARG PNPM_VERSION=11.4.0
-ARG REACTOR_TEMPLATE_DIR=/home/clint/templates
+ARG REACTOR_TEMPLATE_DIR=/home/clint/.vetra/templates
 
 RUN test -n "${CLINT_VERSION}" || (echo "CLINT_VERSION build-arg is required" >&2; exit 1)
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends time \
  && rm -rf /var/lib/apt/lists/* \
- && corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+ && corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate \
+ && chown -R clint:clint /home/clint/.cache
 USER clint
 RUN corepack prepare "pnpm@${PNPM_VERSION}" --activate \
  && pnpm --version
@@ -103,15 +104,12 @@ RUN set -eu; \
  && rm -rf node_modules \
  && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0
 
-ENV VETRA_REACTOR_PROJECT_CLONE_PATH=/home/clint/templates/reactor-template
+ENV VETRA_REACTOR_PROJECT_CLONE_PATH=${REACTOR_TEMPLATE_DIR}/reactor-template
 
-# Pre-record observability consent. The consent gate defaults non-TTY runs to
-# denied, so without this the container never reports. Bake a decision; set
-# OBSERVABILITY_CONSENT=denied to ship an opted-out image.
-ARG OBSERVABILITY_CONSENT=granted
-RUN mkdir -p /home/clint/.ph/vetra \
- && printf '{\n  "consent": "%s",\n  "promptedAt": null\n}\n' "${OBSERVABILITY_CONSENT}" \
-      > /home/clint/.ph/vetra/observability-consent.json
+# Observability consent is supplied at runtime via VETRA_TELEMETRY_CONSENT
+# (the observability `telemetryConsent` config key), which is authoritative and
+# skips both the prompt and the on-disk decision — so nothing is baked here. A
+# non-TTY run without it defaults to denied.
 
 LABEL io.vetra.clint.package="vetra-cli" \
       io.vetra.clint.version="${CLINT_VERSION}"
@@ -142,5 +140,8 @@ RUN printf '%s\n' \
     > /usr/local/bin/vetra-run.sh \
  && chmod +x /usr/local/bin/vetra-run.sh
 USER clint
+
+RUN mkdir -p /home/clint/workspace
+WORKDIR /home/clint/workspace
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/vetra-run.sh"]
