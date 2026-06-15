@@ -197,7 +197,7 @@ export async function runChecks(
         notes.push("lint skipped: no module directories present to lint");
       } else {
         const { success, output } = await runProcess(
-          `"${eslint}" --format json ${eslintArgs}`,
+          `"${eslint}" --no-error-on-unmatched-pattern --format json ${eslintArgs}`,
           { cwd: base, timeout: 120_000 },
         );
         const found = parseEslintOutput(output, base);
