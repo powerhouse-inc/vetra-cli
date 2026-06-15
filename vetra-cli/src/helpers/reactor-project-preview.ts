@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
-import { unknownValueError } from "./cli-errors.js";
+import { formatLines, unknownValueError } from "./cli-errors.js";
 
 const PREVIEW_DRIVE_PREFIX = "preview";
 
@@ -79,7 +79,10 @@ export function resolvePreviewEndpoint(
   );
   if (!live) {
     throw new Error(
-      `Reactor project "${projectLabel}" is not running. Start it with \`reactor-project-start ${projectLabel}\`.`,
+      formatLines(
+        `Reactor project "${projectLabel}" is not running. Start it with \`reactor-project-start ${projectLabel}\`.`,
+        runningProjectsHint(instances),
+      ),
     );
   }
   const switchboardUrl = live.endpoints?.["vetra-switchboard"];
@@ -93,6 +96,25 @@ export function resolvePreviewEndpoint(
     connectUrl: live.endpoints?.["vetra-studio"],
     driveId: getPreviewDriveId(projectPath),
   };
+}
+
+/**
+ * Enumerate the reactor-project instances currently running, labelled by
+ * workdir basename (what `--project` accepts). Returns undefined when none are
+ * live so the caller's leading message stands alone.
+ */
+function runningProjectsHint(
+  instances: ReturnType<ServiceManager["list"]>,
+): string | undefined {
+  const running = instances
+    .filter(
+      (i) =>
+        i.workdir && (i.status === "ready" || i.status === "starting"),
+    )
+    .map((i) => path.basename(i.workdir as string))
+    .sort();
+  if (running.length === 0) return undefined;
+  return `Running reactor projects: ${running.join(", ")}`;
 }
 
 /**

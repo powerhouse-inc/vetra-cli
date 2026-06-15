@@ -1,7 +1,7 @@
-import path from "node:path";
 import { z } from "zod";
 import { formatStatus } from "@powerhousedao/ph-clint";
 import { defineCommand } from "../../framework.js";
+import { resolveReactorProjectPath } from "../../helpers/project.js";
 
 // The `/reactor-project/switchboard/*` proxy routes are declared on the
 // reactor-project service (proxyRoutes hook), so ph-clint re-asserts them on
@@ -39,10 +39,11 @@ export const reactorProjectStart = defineCommand({
   execute: async (input, context) => {
     const services = context.services;
     if (!services) throw new Error("No services configured");
-
-    const resolvedWorkdir = input.workdir
-      ? path.resolve(context.workdir, input.workdir)
-      : context.workdir;
+ 
+    const resolvedWorkdir = await resolveReactorProjectPath(
+      context.workdir,
+      input.workdir,
+    );
 
     const existing = services
       .list("reactor-project")
