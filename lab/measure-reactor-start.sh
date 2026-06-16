@@ -319,13 +319,21 @@ run_arm() {
     local VENDOR_DIR="$WORK_BASE/$arm/vendor-$i"   # per-run writable .ph-vendor (arm-controlled)
     rm -rf "$RUN" "$VENDOR_DIR"; mkdir -p "$RUN" "$VENDOR_DIR"
     rsync -a "$TEMPLATE"/ "$RUN/$PROJECT"/
-    # node_modules: the shared writable stage (/nm, RW). The vendor cache lives
-    # under node_modules but is mounted SEPARATELY (/nm-vendor) so each arm can
-    # pre-fill (on-warm) or clear (on-cold) it without disturbing the shared
-    # node_modules. The project's node_modules symlinks to the /nm mount; the
-    # stage's .ph-vendor symlinks to the /nm-vendor mount (recreated each run so
-    # the vendor cache is the per-run mount, not stale stage contents).
-    ln -s /nm "$RUN/$PROJECT/node_modules"
+    # node_modules: the shared writable stage, mounted at /nm/node_modules (RW).
+    # The mount path MUST end in `node_modules`: the vendor build worker resolves
+    # bare specifiers via `import.meta.resolve` from its own location
+    # (<project>/node_modules/.ph-vendor.tmp-*/build-worker.mjs, realpath under the
+    # mount), and Node's resolver walks up for a `node_modules`-named ancestor. The
+    # real deployed image has one (<project>/node_modules is a real dir); a flat /nm
+    # mount does NOT, so resolution would fail and the prebuild would falsely fall
+    # back. Keep it a SEPARATE top-level mount (nested only as /nm/node_modules) to
+    # dodge the macOS virtiofs nested-bind race (see measure-codegen.sh). The vendor
+    # cache lives under node_modules but is mounted SEPARATELY (/nm-vendor) so each
+    # arm can pre-fill (on-warm) or clear (on-cold) it without disturbing the shared
+    # node_modules. The project's node_modules symlinks to /nm/node_modules; the
+    # stage's .ph-vendor symlinks to the /nm-vendor mount (recreated each run so the
+    # vendor cache is the per-run mount, not stale stage contents).
+    ln -s /nm/node_modules "$RUN/$PROJECT/node_modules"
     rm -rf "$NM_RW/.ph-vendor"
     ln -s /nm-vendor "$NM_RW/.ph-vendor"
 
@@ -354,7 +362,7 @@ run_arm() {
     # shellcheck disable=SC2046
     docker run --rm --memory "$MEM_LIMIT" --name "$CNAME" \
       -v "$RUN":/work \
-      -v "$NM_RW":/nm \
+      -v "$NM_RW":/nm/node_modules \
       -v "$VENDOR_DIR":/nm-vendor \
       -v "$DRIVER":/driver.sh:ro \
       -e CI=true \
