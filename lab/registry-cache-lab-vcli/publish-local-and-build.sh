@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Option 2 (prod-close): publish LOCAL ph-clint + vetra-cli to the lab origin at
-# fresh versions, then build the clint-agent image the prod way (hoisted
-# `pnpm add -g` against the lab registry). Exercises real packaging/resolution
-# (catalog inlining, caret/exact pinning, hoisted global install) that the
-# source-link path (option 1) skips.
+# fresh versions, then build vetra-cli's own production Dockerfile the prod way
+# (hoisted `pnpm add -g` against the lab registry). Exercises real
+# packaging/resolution (catalog inlining, caret/exact pinning, hoisted global
+# install) AND the shipped image definition (entrypoint shim, template prewarm)
+# that the source-link path (option 1) skips.
 #
 # Flow:
 #   1. bump the 4 ph-clint packages vetra-cli depends on to PH_CLINT_VERSION,
 #      rebuild dist, pnpm-pack + publish each to the lab origin.
 #   2. bump vetra-cli's catalog pin for those packages to PH_CLINT_VERSION.
 #   3. bump vetra-cli + vetra-app to VETRA_VERSION, pnpm-pack + publish.
-#   4. DOCKER_BUILDKIT=1 docker build the clint-agent image from the lab nginx.
+#   4. DOCKER_BUILDKIT=1 docker build vetra-cli's own production Dockerfile from
+#      the lab nginx (its entrypoint shim + `ph init` template prewarm).
 #
 # Isolation: the manifests this script mutates (vetra-cli pnpm-workspace.yaml +
 # the two package.json, the four ph-clint package.json) are snapshotted up front
@@ -273,16 +275,22 @@ if [ "${SKIP_PH_CLINT:-0}" != "1" ]; then
   done
 fi
 
-# --- step 4: build the clint-agent image the prod way ------------------------
-echo "==> building clint-agent image ${IMAGE_TAG} from ${NGINX_REGISTRY}"
-# Lab Dockerfile.prodclose mirrors ph-clint/docker/clint-agent/Dockerfile's
-# hoisted `pnpm add -g` and adds a BuildKit pnpm-store cache mount.
+# --- step 4: build vetra-cli's own production image --------------------------
+echo "==> building vetra-cli image ${IMAGE_TAG} from ${NGINX_REGISTRY}"
+# Build vetra-cli/Dockerfile (the shipped production image: hoisted `pnpm add
+# -g` + the vetra-run.sh entrypoint with the codegen NODE_PATH fix + the
+# `ph init` template prewarm), so the image definition itself is exercised,
+# not just package resolution.
+# CLINT_REGISTRY (vetra-cli) and PH_REGISTRY (ph-cmd + codegen prewarm) both
+# point at the lab nginx; PH_VERSION is left empty so the build reads
+# DEFAULT_PH_VERSION from the installed vetra-cli, matching prod.
+# Context is LAB_DIR (small); the Dockerfile COPYs nothing from it.
 DOCKER_BUILDKIT=1 docker build --network host -t "${IMAGE_TAG}" \
-  -f "${LAB_DIR}/Dockerfile.prodclose" \
+  -f "${VETRA_ROOT}/vetra-cli/Dockerfile" \
   --build-arg BASE_IMAGE="${BASE_IMAGE}" \
-  --build-arg CLINT_PACKAGE=vetra-cli \
   --build-arg CLINT_VERSION="${VETRA_VERSION}" \
   --build-arg CLINT_REGISTRY="${NGINX_REGISTRY}" \
+  --build-arg PH_REGISTRY="${NGINX_REGISTRY}" \
   "${LAB_DIR}"
 
 echo

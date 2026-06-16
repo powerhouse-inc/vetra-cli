@@ -1,0 +1,14 @@
+{
+  "name": "todo-list",
+  "prompt": "Create a minimal todo list",
+  "replay": "todo-list.replay.json",
+  "preview": {
+    "project": "todo-list",
+    "documentName": "My Todos",
+    "items": [
+      { "text": "Buy groceries", "completed": true },
+      { "text": "Write unit tests", "completed": false },
+      { "text": "Ship the feature", "completed": false }
+    ]
+  }
+}

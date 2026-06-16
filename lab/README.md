@@ -168,10 +168,13 @@ Params: `PH_CLINT_VERSION`, `VETRA_VERSION`, `IMAGE_TAG`, `BASE_IMAGE`,
    consecutive confirming reads of the **abbreviated** packument
    `Accept: application/vnd.npm.install-v1+json` that pnpm fetches) before
    building — so the build never races the cache layers.
-5. `DOCKER_BUILDKIT=1 docker build --network host` of `Dockerfile.prodclose` (a
-   mirror of `ph-clint/docker/clint-agent/Dockerfile`'s `pnpm add -g`) with
-   `CLINT_PACKAGE=vetra-cli`, `CLINT_VERSION=<ver>`,
-   `CLINT_REGISTRY=http://localhost:5100`, `BASE_IMAGE`.
+5. `DOCKER_BUILDKIT=1 docker build --network host` of vetra-cli's own
+   `Dockerfile` (the shipped production image: hoisted `pnpm add -g` plus the
+   `vetra-run.sh` entrypoint with the codegen NODE_PATH fix and the `ph init`
+   template prewarm) with `CLINT_VERSION=<ver>`,
+   `CLINT_REGISTRY=PH_REGISTRY=http://localhost:5100`, `BASE_IMAGE`, and
+   `PH_VERSION` left empty (read from the installed vetra-cli, as in prod). So
+   the image definition itself is exercised, not just package resolution.
 
 Isolation: every manifest the script edits (`pnpm-workspace.yaml`, the two
 `package.json`, and — only when publishing local ph-clint — the four ph-clint

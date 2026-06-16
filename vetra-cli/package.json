@@ -21,6 +21,9 @@
     "start": "node dist/main.js --workdir ../../vetra-test",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest --detectOpenHandles",
     "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage --collectCoverageFrom='src/**/*.ts'",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e:report": "playwright show-report e2e/playwright-report",
     "lint": "eslint src tests",
     "mastra:dev": "mastra dev",
     "mastra:build": "mastra build",
@@ -54,6 +57,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
+    "@playwright/test": "^1.61.0",
     "@powerhousedao/ph-clint-dev": "catalog:",
     "@types/node": "catalog:",
     "eslint-config-prettier": "catalog:",
