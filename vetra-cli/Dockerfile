@@ -99,7 +99,21 @@ RUN set -eu; \
       "@powerhousedao/codegen@${PH_VERSION}" \
  && printf '\nenableGlobalVirtualStore: true\nminimumReleaseAge: 0\n' >> pnpm-workspace.yaml \
  && rm -rf node_modules \
- && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0
+ && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0 \
+ # Image-size trim — folded into THIS RUN (a separate `rm` RUN only writes a
+ # whiteout; the bytes would survive in the lower layer). Removes the pnpm
+ # download cache (.cache/pnpm/v11 — registry packument metadata; frozen/offline
+ # installs do no version resolution) and store/v11/files CAS blobs not hardlinked
+ # into the live store/v11/links tree (enableGlobalVirtualStore makes the install
+ # resolve through links/). Most of files/ IS hardlinked to links/ in a fresh
+ # build, so the real reclaim is ~1.24 GiB rootfs / ~130 MiB compressed — a naive
+ # `du` double-counts the shared CAS bytes and overstates it (~2.68 GiB).
+ # Validated head-to-head (trim vs untrimmed same-base vs stock dev.23): behavior
+ # is byte-identical — spec-generate PASSES (codegen plugins resolve via NODE_PATH
+ # through links/); reactor-project-init is unchanged (it hits a pre-existing
+ # offline pglite gap present in stock dev.23 too, independent of this trim). The
+ # trim regresses nothing. index.db (~30 MiB) is kept.
+ && rm -rf "$(pnpm store path)/files" /home/clint/.cache/pnpm/v11
 
 ENV VETRA_REACTOR_PROJECT_CLONE_PATH=${REACTOR_TEMPLATE_DIR}/reactor-template
 
