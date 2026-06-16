@@ -10,8 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="colors.css" />
-    <link rel="stylesheet" href="typography.css" />
+    <link rel="stylesheet" href="./vetra-design-system/colors.css" />
     <style>
       /* Alias: globals.css uses --info / --warning; colors.css uses --progress / --todo */
       :root {
@@ -798,6 +797,116 @@
         color: var(--muted-foreground);
         font-weight: 500;
       }
+
+      /* ── BREADCRUMB ─────────────────────────────────────────────────────── */
+      .vsg-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+      .vsg-breadcrumb-sep { color: var(--border); }
+      .vsg-breadcrumb-link { color: var(--muted-foreground); background: none; border: none; cursor: pointer; font-family: inherit; font-size: 13px; padding: 0; }
+      .vsg-breadcrumb-link:hover { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+      .vsg-breadcrumb-current { font-weight: 500; color: var(--foreground); }
+
+      /* ── SERVER STATUS CHIPS ────────────────────────────────────────────── */
+      .vsg-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 9999px; border: 1px solid; padding: 2px 8px; font-size: 11px; font-weight: 500; }
+      .vsg-chip-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+      .vsg-chip-ready    { border-color: rgba(79,200,111,0.4);  background: rgba(79,200,111,0.08);  color: var(--success); }
+      .vsg-chip-ready    .vsg-chip-dot { background: var(--success); }
+      .vsg-chip-starting { border-color: rgba(255,161,50,0.4);  background: rgba(255,161,50,0.08);  color: var(--todo); }
+      .vsg-chip-starting .vsg-chip-dot { background: var(--todo); animation: pulse 1.5s ease-in-out infinite; }
+      .vsg-chip-error    { border-color: rgba(234,67,53,0.4);   background: rgba(234,67,53,0.08);   color: var(--destructive); }
+      .vsg-chip-error    .vsg-chip-dot { background: var(--destructive); }
+      .vsg-chip-stopped  { border-color: var(--border); background: var(--muted); color: var(--muted-foreground); }
+      .vsg-chip-stopped  .vsg-chip-dot { background: var(--muted-foreground); }
+
+      /* ── APP SHELL ──────────────────────────────────────────────────────── */
+      .vsg-app-shell { display: flex; height: 600px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-md); transition: border-color 0.3s; }
+      .vsg-chat-pane { width: 360px; flex-shrink: 0; display: flex; flex-direction: column; background: var(--card); transition: background 0.3s; }
+      .vsg-chat-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); padding: 12px 16px; transition: border-color 0.3s; }
+      .vsg-chat-header h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--foreground); }
+      .vsg-chat-count { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+      .vsg-divider { width: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--border); border-right: 1px solid var(--border); background: var(--card); cursor: col-resize; transition: background 0.3s, border-color 0.3s; }
+      .vsg-divider:hover { background: var(--accent); }
+      .vsg-divider-dots { display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+      .vsg-divider-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--muted-foreground); }
+      .vsg-main-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--background); overflow: hidden; transition: background 0.3s; }
+      .vsg-main-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); background: var(--card); padding: 8px 32px; flex-shrink: 0; transition: background 0.3s, border-color 0.3s; }
+      .vsg-main-content { flex: 1; overflow-y: auto; padding: 24px; }
+      .vsg-session-list { list-style: none; flex: 1; overflow-y: auto; }
+      .vsg-session-item { display: flex; align-items: center; gap: 12px; border-left: 2px solid transparent; padding: 10px 16px; font-size: 13px; color: var(--foreground); transition: background 0.1s, border-color 0.1s; cursor: pointer; width: 100%; background: none; border-right: none; border-top: none; border-bottom: none; font-family: inherit; }
+      .vsg-session-item:hover { border-left-color: var(--primary); background: var(--accent); }
+      .vsg-session-item.active { border-left-color: var(--primary); background: var(--accent); }
+      .vsg-session-icon { width: 16px; height: 16px; flex-shrink: 0; color: var(--muted-foreground); }
+      .vsg-session-item.active .vsg-session-icon { color: var(--primary); }
+      .vsg-session-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+      .vsg-session-chevron { width: 14px; height: 14px; flex-shrink: 0; color: var(--border); }
+      .vsg-session-header { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: var(--card); padding: 8px 12px; transition: background 0.3s, border-color 0.3s; }
+      .vsg-session-header-name { font-size: 13px; font-weight: 500; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      /* ── PHASE CARDS ────────────────────────────────────────────────────── */
+      .vsg-phase-list { display: flex; flex-direction: column; gap: 16px; }
+      .vsg-phase-card { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--card); padding: 24px; transition: border-color 0.15s, box-shadow 0.15s, background 0.3s; cursor: pointer; width: 100%; font-family: inherit; text-align: left; }
+      .vsg-phase-card:not(.disabled):hover { border-color: var(--primary); box-shadow: var(--shadow-xs); }
+      .vsg-phase-card:not(.disabled):hover .vsg-phase-gradient { opacity: 0.6; }
+      .vsg-phase-card.disabled { cursor: default; background: var(--muted); border-color: rgba(215,216,217,0.5); }
+      .vsg-phase-gradient { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(to right, transparent, var(--primary), transparent); opacity: 0; transition: opacity 0.15s; pointer-events: none; }
+      .vsg-phase-left { display: flex; align-items: center; gap: 10px; }
+      .vsg-phase-icon-enabled { color: var(--primary); }
+      .vsg-phase-icon-disabled { color: var(--muted-foreground); }
+      .vsg-phase-label { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted-foreground); }
+      .vsg-phase-note { border-radius: var(--radius-sm); padding: 4px 12px; font-size: 13px; font-weight: 500; }
+      .vsg-phase-note.enabled  { background: rgba(4,193,97,0.10); color: var(--primary); }
+      .vsg-phase-note.disabled { background: var(--muted); color: var(--muted-foreground); }
+
+      /* ── IDENTITY CARDS ─────────────────────────────────────────────────── */
+      .vsg-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+      .vsg-identity-card { height: 112px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); padding: 16px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s, background 0.3s; text-align: left; font-family: inherit; }
+      .vsg-identity-card:hover { border-color: var(--primary); box-shadow: var(--shadow-xs); }
+      .vsg-identity-card-create { height: 112px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed var(--border); border-radius: var(--radius-lg); background: var(--accent); padding: 16px; cursor: pointer; transition: border-color 0.15s, background 0.3s; text-align: center; font-family: inherit; }
+      .vsg-identity-card-create:hover { border-color: var(--primary); }
+      .vsg-identity-title { font-size: 14px; font-weight: 600; color: var(--foreground); }
+      .vsg-identity-sub { font-size: 12px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .vsg-identity-create-label { font-size: 14px; font-weight: 500; color: var(--foreground); }
+      .vsg-identity-create-hint { font-size: 12px; color: var(--muted-foreground); margin-top: 4px; }
+
+      /* ── FEATURE LIST ────────────────────────────────────────────────────── */
+      .vsg-feature-list { overflow: hidden; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--card); transition: border-color 0.3s, background 0.3s; }
+      .vsg-feature-list-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--accent); padding: 8px 16px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); transition: background 0.3s, border-color 0.3s; }
+      .vsg-feature-row { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(215,216,217,0.4); padding: 12px 16px; transition: background 0.1s, border-color 0.3s; }
+      .vsg-feature-row:last-child { border-bottom: none; }
+      .vsg-feature-row:hover { background: var(--accent); }
+      .vsg-feature-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; cursor: pointer; }
+      .vsg-feature-name { font-size: 14px; font-weight: 500; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .vsg-feature-status { border-radius: 6px; background: var(--muted); padding: 2px 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; color: var(--foreground); white-space: nowrap; }
+      .vsg-feature-scope { font-size: 10px; letter-spacing: 0.05em; color: var(--muted-foreground); white-space: nowrap; }
+      .vsg-feature-wbs { font-size: 12px; font-weight: 500; color: var(--primary); cursor: pointer; background: none; border: none; font-family: inherit; flex-shrink: 0; margin-left: 12px; }
+      .vsg-feature-wbs:hover { text-decoration: underline; text-underline-offset: 3px; }
+      .vsg-feature-no-wbs { font-size: 12px; color: var(--border); flex-shrink: 0; margin-left: 12px; }
+
+      /* ── CHAT MESSAGES ──────────────────────────────────────────────────── */
+      .vsg-msg-row { display: flex; align-items: flex-start; gap: 8px; max-width: 95%; }
+      .vsg-msg-row.user { margin-left: auto; flex-direction: row-reverse; }
+      .vsg-msg-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+      .vsg-msg-avatar.agent { background: var(--secondary); color: var(--secondary-foreground); }
+      .vsg-msg-avatar.user  { background: var(--foreground); color: var(--background); }
+      .vsg-msg-content { font-size: 13px; color: var(--foreground); line-height: 1.55; }
+      .vsg-msg-content.user { background: var(--secondary); border-radius: var(--radius-md); padding: 10px 14px; }
+
+      /* ── RENOWN LOGIN CARD ──────────────────────────────────────────────── */
+      .vsg-renown-card { display: flex; align-items: flex-start; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-xs); max-width: 300px; }
+      .vsg-renown-icon { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: var(--foreground); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+      .vsg-renown-title { font-size: 13px; font-weight: 600; color: var(--foreground); letter-spacing: -0.01em; }
+      .vsg-renown-desc  { margin-top: 4px; font-size: 12px; color: var(--muted-foreground); line-height: 1.55; }
+      .vsg-renown-btn { margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; background: var(--primary); color: var(--primary-foreground); border-radius: var(--radius-md); padding: 6px 12px; font-size: 12px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; border: none; transition: opacity 0.15s; }
+      .vsg-renown-btn:hover { opacity: 0.9; }
+
+      /* ── MISC ───────────────────────────────────────────────────────────── */
+      .vsg-pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: pulse 1.5s ease-in-out infinite; }
+      .vsg-loading-state { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted-foreground); }
+      .vsg-status-block { text-align: center; max-width: 360px; }
+      .vsg-status-block-title { font-size: 13px; font-weight: 500; color: var(--foreground); }
+      .vsg-status-block-detail { font-size: 12px; color: var(--muted-foreground); margin-top: 4px; line-height: 1.5; }
+      .vsg-empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 48px 24px; text-align: center; flex: 1; }
+      .vsg-empty-title { font-size: 13px; font-weight: 500; color: var(--foreground); }
+      .vsg-empty-sub   { font-size: 12px; color: var(--muted-foreground); margin-top: 4px; }
     </style>
   </head>
   <body>
@@ -806,9 +915,9 @@
       <!-- Header -->
       <header class="sg-header">
         <div class="sg-header-left">
-          <img src="logos/vetra-icon.svg" alt="Vetra" height="36" />
-          <img src="logos/vetra-logo-light-text.svg" alt="Vetra" height="24" class="logo-light-mode" />
-          <img src="logos/vetra-logo-dark-text.svg" alt="Vetra" height="24" class="logo-dark-mode" style="display: none" />
+          <img src="./vetra-design-system/logos/vetra-icon.svg" alt="Vetra" height="36" />
+          <img src="./vetra-design-system/logos/vetra-logo-light-text.svg" alt="Vetra" height="24" class="logo-light-mode" />
+          <img src="./vetra-design-system/logos/vetra-logo-dark-text.svg" alt="Vetra" height="24" class="logo-dark-mode" style="display: none" />
           <span class="sg-header-title">Styleguide</span>
         </div>
         <label class="theme-toggle">
@@ -824,32 +933,32 @@
         <h2 class="sg-section-title">Logo</h2>
         <div class="logo-grid">
           <div class="logo-card">
-            <img src="logos/vetra-icon.svg" alt="Vetra Icon" />
+            <img src="./vetra-design-system/logos/vetra-icon.svg" alt="Vetra Icon" />
             <span class="logo-label">Icon (Colored)</span>
           </div>
           <div class="logo-card">
-            <img src="logos/vetra-full-logo.svg"        alt="Full Logo"       style="height:32px" class="logo-light" />
-            <img src="logos/vetra-full-logo-light.svg"  alt="Full Logo Light" style="height:32px" class="logo-dark" />
+            <img src="./vetra-design-system/logos/vetra-full-logo.svg"        alt="Full Logo"       style="height:32px" class="logo-light" />
+            <img src="./vetra-design-system/logos/vetra-full-logo-light.svg"  alt="Full Logo Light" style="height:32px" class="logo-dark" />
             <span class="logo-label">Full Logo</span>
           </div>
           <div class="logo-card" style="background:#04c161;border-color:#04c161">
-            <img src="logos/vetra-full-logo-white.svg" alt="Full Logo White" style="height:32px" />
+            <img src="./vetra-design-system/logos/vetra-full-logo-white.svg" alt="Full Logo White" style="height:32px" />
             <span class="logo-label" style="color:rgba(255,255,255,0.6)">Full Logo · Primary BG</span>
           </div>
           <div class="logo-card">
-            <img src="logos/vetra-logo-light-text.svg" alt="Vetra Wordmark Dark"  class="logo-light" />
-            <img src="logos/vetra-logo-dark-text.svg"  alt="Vetra Wordmark Light" class="logo-dark" />
+            <img src="./vetra-design-system/logos/vetra-logo-light-text.svg" alt="Vetra Wordmark Dark"  class="logo-light" />
+            <img src="./vetra-design-system/logos/vetra-logo-dark-text.svg"  alt="Vetra Wordmark Light" class="logo-dark" />
             <span class="logo-label">Wordmark</span>
           </div>
           <div class="logo-card">
-            <img src="logos/vetra-icon-black.svg" alt="Vetra Icon Black" class="logo-light" />
-            <img src="logos/vetra-icon-dark.svg"  alt="Vetra Icon White" class="logo-dark" />
+            <img src="./vetra-design-system/logos/vetra-icon-black.svg" alt="Vetra Icon Black" class="logo-light" />
+            <img src="./vetra-design-system/logos/vetra-icon-dark.svg"  alt="Vetra Icon White" class="logo-dark" />
             <span class="logo-label logo-light">Icon (Black)</span>
             <span class="logo-label logo-dark">Icon (White)</span>
           </div>
           <div class="logo-card">
-            <img src="logos/vetra-full-logo-black.svg" alt="Full Logo Black" style="height:32px" class="logo-light" />
-            <img src="logos/vetra-full-logo-white.svg" alt="Full Logo White" style="height:32px" class="logo-dark" />
+            <img src="./vetra-design-system/logos/vetra-full-logo-black.svg" alt="Full Logo Black" style="height:32px" class="logo-light" />
+            <img src="./vetra-design-system/logos/vetra-full-logo-white.svg" alt="Full Logo White" style="height:32px" class="logo-dark" />
             <span class="logo-label logo-light">Full Logo (Black)</span>
             <span class="logo-label logo-dark">Full Logo (White)</span>
           </div>
@@ -1567,6 +1676,411 @@
           Threshold colors: warn ≥ 75% → <strong style="color:#ffa132">#FFA132</strong> &nbsp;|&nbsp;
           error ≥ 90% → <strong style="color:#ea4335">#EA4335</strong>
         </p>
+      </section>
+
+
+      <!-- ── Breadcrumb ──────────────────────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">Breadcrumb</h2>
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div>
+            <p class="button-row-label" style="margin-bottom:8px">Home level</p>
+            <nav class="vsg-breadcrumb"><span class="vsg-breadcrumb-current">My Product</span></nav>
+          </div>
+          <div>
+            <p class="button-row-label" style="margin-bottom:8px">Two levels</p>
+            <nav class="vsg-breadcrumb">
+              <button class="vsg-breadcrumb-link">My Product</button>
+              <span class="vsg-breadcrumb-sep">›</span>
+              <span class="vsg-breadcrumb-current">Ideate</span>
+            </nav>
+          </div>
+          <div>
+            <p class="button-row-label" style="margin-bottom:8px">Three levels</p>
+            <nav class="vsg-breadcrumb">
+              <button class="vsg-breadcrumb-link">My Product</button>
+              <span class="vsg-breadcrumb-sep">›</span>
+              <button class="vsg-breadcrumb-link">Ideate</button>
+              <span class="vsg-breadcrumb-sep">›</span>
+              <span class="vsg-breadcrumb-current">Brand Sheet</span>
+            </nav>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Server Status Chips ────────────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">Server Status Chips</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+          <span class="vsg-chip vsg-chip-ready">
+            <span class="vsg-chip-dot"></span>
+            <span>my-project</span>
+            <span style="color:var(--muted-foreground)">·</span>
+            <span>running</span>
+          </span>
+          <span class="vsg-chip vsg-chip-starting">
+            <span class="vsg-chip-dot"></span>
+            <span>my-project</span>
+            <span style="color:var(--muted-foreground)">·</span>
+            <span>starting…</span>
+          </span>
+          <span class="vsg-chip vsg-chip-error">
+            <span class="vsg-chip-dot"></span>
+            <span>preview-server</span>
+            <span style="color:var(--muted-foreground)">·</span>
+            <span>unreachable</span>
+          </span>
+          <span class="vsg-chip vsg-chip-stopped">
+            <span class="vsg-chip-dot"></span>
+            <span>my-project</span>
+            <span style="color:var(--muted-foreground)">·</span>
+            <span>stopped</span>
+          </span>
+        </div>
+      </section>
+
+      <!-- ── Phase Cards ────────────────────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">Phase Cards</h2>
+        <div class="vsg-phase-list" style="max-width:640px">
+          <button class="vsg-phase-card">
+            <span class="vsg-phase-gradient"></span>
+            <span class="vsg-phase-left">
+              <svg class="vsg-phase-icon-enabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+              <span class="vsg-phase-label">IDEATE</span>
+            </span>
+            <span class="vsg-phase-note enabled">Problem Definition</span>
+          </button>
+          <button class="vsg-phase-card disabled" disabled>
+            <span class="vsg-phase-left">
+              <svg class="vsg-phase-icon-disabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <span class="vsg-phase-label">SPECIFY</span>
+            </span>
+            <span class="vsg-phase-note disabled">Solution Design</span>
+          </button>
+          <button class="vsg-phase-card">
+            <span class="vsg-phase-gradient"></span>
+            <span class="vsg-phase-left">
+              <svg class="vsg-phase-icon-enabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="m15 12-8.5 8.5c-.83.83-2.17.83-3 0 0 0 0 0 0 0a2.12 2.12 0 0 1 0-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/></svg>
+              <span class="vsg-phase-label">BUILD</span>
+            </span>
+            <span class="vsg-phase-note enabled">Implementation &amp; Testing</span>
+          </button>
+          <button class="vsg-phase-card disabled" disabled>
+            <span class="vsg-phase-left">
+              <svg class="vsg-phase-icon-disabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
+              <span class="vsg-phase-label">DEPLOY</span>
+            </span>
+            <span class="vsg-phase-note disabled">Delivery</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ── App Shell — Phase Home ─────────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">App Shell — Chat Pane · Phase Home</h2>
+        <div class="vsg-app-shell">
+          <div class="vsg-chat-pane">
+            <div class="vsg-chat-header">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <h2>Chat sessions</h2>
+                <span class="vsg-chat-count">3</span>
+              </div>
+              <button class="btn btn-sm btn-primary">
+                <svg viewBox="0 0 12 12" fill="none" style="width:11px;height:11px"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                New
+              </button>
+            </div>
+            <ul class="vsg-session-list">
+              <li>
+                <button class="vsg-session-item active">
+                  <svg class="vsg-session-icon" viewBox="0 0 16 16" fill="none"><path d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                  <span class="vsg-session-name">Session 1</span>
+                  <span class="vsg-pulse-dot"></span>
+                </button>
+              </li>
+              <li>
+                <button class="vsg-session-item">
+                  <svg class="vsg-session-icon" viewBox="0 0 16 16" fill="none"><path d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                  <span class="vsg-session-name">Session 2</span>
+                  <svg class="vsg-session-chevron" viewBox="0 0 12 12" fill="none"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </li>
+              <li>
+                <button class="vsg-session-item">
+                  <svg class="vsg-session-icon" viewBox="0 0 16 16" fill="none"><path d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                  <span class="vsg-session-name">Session 3 — long name that gets clipped</span>
+                  <svg class="vsg-session-chevron" viewBox="0 0 12 12" fill="none"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </li>
+            </ul>
+          </div>
+          <div class="vsg-divider">
+            <div class="vsg-divider-dots">
+              <div class="vsg-divider-dot"></div><div class="vsg-divider-dot"></div><div class="vsg-divider-dot"></div>
+            </div>
+          </div>
+          <div class="vsg-main-pane">
+            <div class="vsg-main-content">
+              <div class="vsg-phase-list">
+                <button class="vsg-phase-card"><span class="vsg-phase-gradient"></span><span class="vsg-phase-left"><svg class="vsg-phase-icon-enabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg><span class="vsg-phase-label">IDEATE</span></span><span class="vsg-phase-note enabled">Problem Definition</span></button>
+                <button class="vsg-phase-card disabled" disabled><span class="vsg-phase-left"><svg class="vsg-phase-icon-disabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span class="vsg-phase-label">SPECIFY</span></span><span class="vsg-phase-note disabled">Solution Design</span></button>
+                <button class="vsg-phase-card"><span class="vsg-phase-gradient"></span><span class="vsg-phase-left"><svg class="vsg-phase-icon-enabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="m15 12-8.5 8.5c-.83.83-2.17.83-3 0 0 0 0 0 0 0a2.12 2.12 0 0 1 0-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/></svg><span class="vsg-phase-label">BUILD</span></span><span class="vsg-phase-note enabled">Implementation &amp; Testing</span></button>
+                <button class="vsg-phase-card disabled" disabled><span class="vsg-phase-left"><svg class="vsg-phase-icon-disabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg><span class="vsg-phase-label">DEPLOY</span></span><span class="vsg-phase-note disabled">Delivery</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── App Shell — Build View ─────────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">App Shell — Build View</h2>
+        <div class="vsg-app-shell">
+          <div class="vsg-chat-pane">
+            <div class="vsg-session-header">
+              <button class="btn btn-sm btn-ghost">← Sessions</button>
+              <span class="vsg-session-header-name">Session 1</span>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--background)">
+              <div class="vsg-loading-state">
+                <span class="vsg-pulse-dot"></span>
+                Loading session…
+              </div>
+            </div>
+          </div>
+          <div class="vsg-divider">
+            <div class="vsg-divider-dots">
+              <div class="vsg-divider-dot"></div><div class="vsg-divider-dot"></div><div class="vsg-divider-dot"></div>
+            </div>
+          </div>
+          <div class="vsg-main-pane">
+            <div class="vsg-main-header">
+              <nav class="vsg-breadcrumb">
+                <button class="vsg-breadcrumb-link">My Product</button>
+                <span class="vsg-breadcrumb-sep">›</span>
+                <span class="vsg-breadcrumb-current">Build</span>
+              </nav>
+              <span class="vsg-chip vsg-chip-ready">
+                <span class="vsg-chip-dot"></span>
+                <span>my-project</span>
+                <span style="color:var(--muted-foreground)">·</span>
+                <span>running</span>
+              </span>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center">
+              <div class="vsg-status-block">
+                <div class="vsg-status-block-title">No preview yet</div>
+                <div class="vsg-status-block-detail">The BUILD preview appears once the agent scaffolds a project for this session.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── App Shell — Ideate View ────────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">App Shell — Ideate View</h2>
+        <div class="vsg-app-shell">
+          <div class="vsg-chat-pane">
+            <div class="vsg-chat-header">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <h2>Chat sessions</h2>
+                <span class="vsg-chat-count">2</span>
+              </div>
+              <button class="btn btn-sm btn-primary">
+                <svg viewBox="0 0 12 12" fill="none" style="width:11px;height:11px"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                New
+              </button>
+            </div>
+            <div class="vsg-empty-state">
+              <svg viewBox="0 0 16 16" fill="none" style="width:32px;height:32px;color:var(--border)"><path d="M3 3h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 13 12H7.5L4 14.5V12H3a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3 3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <div>
+                <div class="vsg-empty-title">What will you build today?</div>
+                <div class="vsg-empty-sub">Start a session to talk to the agent.</div>
+              </div>
+              <button class="btn btn-md btn-primary">
+                <svg viewBox="0 0 12 12" fill="none" style="width:11px;height:11px"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                New session
+              </button>
+            </div>
+          </div>
+          <div class="vsg-divider">
+            <div class="vsg-divider-dots">
+              <div class="vsg-divider-dot"></div><div class="vsg-divider-dot"></div><div class="vsg-divider-dot"></div>
+            </div>
+          </div>
+          <div class="vsg-main-pane">
+            <div class="vsg-main-content">
+              <nav class="vsg-breadcrumb" style="margin-bottom:24px">
+                <button class="vsg-breadcrumb-link">My Product</button>
+                <span class="vsg-breadcrumb-sep">›</span>
+                <span class="vsg-breadcrumb-current">Ideate</span>
+              </nav>
+              <h3 style="font-size:16px;font-weight:600;color:var(--foreground);margin-bottom:12px">Product Identity</h3>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:40px;min-width:0">
+                <button class="vsg-identity-card" style="min-width:0">
+                  <span class="vsg-identity-title">Brand Sheet</span>
+                  <span class="vsg-identity-sub">brand-sheet.phdm</span>
+                </button>
+                <button class="vsg-identity-card-create" style="min-width:0">
+                  <span class="vsg-identity-create-label">Problem Sheet</span>
+                  <span class="vsg-identity-create-hint">+ Create</span>
+                </button>
+                <button class="vsg-identity-card-create" style="min-width:0">
+                  <span class="vsg-identity-create-label">Audience Sheet</span>
+                  <span class="vsg-identity-create-hint">+ Create</span>
+                </button>
+              </div>
+              <h3 style="font-size:16px;font-weight:600;color:var(--foreground);margin-bottom:12px">Features</h3>
+              <div class="vsg-feature-list">
+                <div class="vsg-feature-list-header">
+                  <span>Feature title, status, scope</span>
+                  <span>WBS</span>
+                </div>
+                <div class="vsg-feature-row">
+                  <div class="vsg-feature-left">
+                    <span class="vsg-feature-name">Authentication flow</span>
+                    <span class="vsg-feature-status">IN PROGRESS</span>
+                    <span class="vsg-feature-scope">MVP</span>
+                  </div>
+                  <button class="vsg-feature-wbs">Auth WBS →</button>
+                </div>
+                <div class="vsg-feature-row">
+                  <div class="vsg-feature-left">
+                    <span class="vsg-feature-name">Dashboard overview</span>
+                    <span class="vsg-feature-status">TODO</span>
+                  </div>
+                  <span class="vsg-feature-no-wbs">no WBS</span>
+                </div>
+                <div class="vsg-feature-row">
+                  <div class="vsg-feature-left">
+                    <span class="vsg-feature-name">Notification system</span>
+                  </div>
+                  <span class="vsg-feature-no-wbs">no WBS</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Product Identity Cards ────────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">Product Identity Cards</h2>
+        <p style="font-size:13px;color:var(--muted-foreground);margin-bottom:20px;line-height:1.5">Two states: an existing document (solid border, label + filename) and an empty slot (dashed border, centered "+ Create"). Both get a green border on hover.</p>
+        <div class="vsg-card-grid" style="max-width:680px">
+          <button class="vsg-identity-card">
+            <span class="vsg-identity-title">Brand Sheet</span>
+            <span class="vsg-identity-sub">brand-sheet.phdm</span>
+          </button>
+          <button class="vsg-identity-card-create">
+            <span class="vsg-identity-create-label">Problem Sheet</span>
+            <span class="vsg-identity-create-hint">+ Create</span>
+          </button>
+          <button class="vsg-identity-card-create" disabled style="opacity:0.5;cursor:not-allowed">
+            <span class="vsg-identity-create-label">Audience Sheet</span>
+            <span class="vsg-identity-create-hint">Creating…</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ── Feature List ───────────────────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">Feature List</h2>
+        <p style="font-size:13px;color:var(--muted-foreground);margin-bottom:20px;line-height:1.5">Table-like container with an accent header row. Each row shows name, optional status badge, optional scope label, and a green WBS link or a muted "no WBS" fallback.</p>
+        <div class="vsg-feature-list" style="max-width:680px">
+          <div class="vsg-feature-list-header">
+            <span>Feature title, status, scope</span>
+            <span>WBS</span>
+          </div>
+          <div class="vsg-feature-row">
+            <div class="vsg-feature-left">
+              <span class="vsg-feature-name">Authentication flow</span>
+              <span class="vsg-feature-status">IN PROGRESS</span>
+              <span class="vsg-feature-scope">MVP</span>
+            </div>
+            <button class="vsg-feature-wbs">Auth WBS →</button>
+          </div>
+          <div class="vsg-feature-row">
+            <div class="vsg-feature-left">
+              <span class="vsg-feature-name">Dashboard overview</span>
+              <span class="vsg-feature-status">TODO</span>
+            </div>
+            <span class="vsg-feature-no-wbs">no WBS</span>
+          </div>
+          <div class="vsg-feature-row">
+            <div class="vsg-feature-left">
+              <span class="vsg-feature-name">Notification system</span>
+            </div>
+            <span class="vsg-feature-no-wbs">no WBS</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Chat — Renown Login Prompt ────────────────────────────────── -->
+      <section class="sg-section">
+        <h2 class="sg-section-title">Chat — Inline Agent Message: Renown Login Prompt</h2>
+
+        <div style="border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-md);max-width:520px;transition:border-color 0.3s">
+          <div class="vsg-session-header">
+            <button class="btn btn-sm btn-ghost">← Sessions</button>
+            <span class="vsg-session-header-name">Session 1</span>
+          </div>
+          <div style="background:var(--background);padding:24px 20px;display:flex;flex-direction:column;gap:16px;transition:background 0.3s">
+            <div class="vsg-msg-row user">
+              <div class="vsg-msg-content user">Can you connect to the Acme Corp drive so I can access the project documents?</div>
+              <div class="vsg-msg-avatar user">
+                <svg viewBox="0 0 24 24" fill="none" style="width:13px;height:13px"><circle cx="12" cy="8" r="3.5" stroke="currentColor" stroke-width="1.6"/><path d="M4.5 20c0-3.6 3.4-6.5 7.5-6.5s7.5 2.9 7.5 6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </div>
+            </div>
+            <div class="vsg-msg-row">
+              <div class="vsg-msg-avatar agent">
+                <svg viewBox="0 0 24 24" fill="none" style="width:13px;height:13px"><rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="16" r="1" fill="currentColor"/><circle cx="15" cy="16" r="1" fill="currentColor"/></svg>
+              </div>
+              <div class="vsg-msg-content">I can help you connect to that drive. Let me try to establish access…</div>
+            </div>
+            <div class="vsg-msg-row">
+              <div class="vsg-msg-avatar agent">
+                <svg viewBox="0 0 24 24" fill="none" style="width:13px;height:13px"><rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="16" r="1" fill="currentColor"/><circle cx="15" cy="16" r="1" fill="currentColor"/></svg>
+              </div>
+              <div class="vsg-renown-card">
+                <div class="vsg-renown-icon">
+                  <svg viewBox="0 0 24 24" fill="none" style="width:15px;height:15px"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </div>
+                <div>
+                  <p class="vsg-renown-title">Login with Renown</p>
+                  <p class="vsg-renown-desc">Authorization is required for the specific drive or instance you are trying to access.</p>
+                  <button class="vsg-renown-btn">
+                    <svg viewBox="0 0 24 24" fill="none" style="width:11px;height:11px"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    Login with Renown
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="border-top:1px solid var(--border);background:var(--card);padding:10px 14px;display:flex;align-items:center;gap:8px;transition:background 0.3s,border-color 0.3s">
+            <div style="flex:1;border:1px solid var(--border);border-radius:var(--radius-md);padding:8px 12px;font-size:13px;color:var(--muted-foreground);background:var(--input)">Type a message…</div>
+            <button class="btn btn-md btn-primary">Send</button>
+          </div>
+        </div>
+
+        <div style="margin-top:32px">
+          <p class="button-row-label" style="margin-bottom:10px">Card in isolation</p>
+          <div class="vsg-renown-card">
+            <div class="vsg-renown-icon">
+              <svg viewBox="0 0 24 24" fill="none" style="width:15px;height:15px"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div>
+              <p class="vsg-renown-title">Login with Renown</p>
+              <p class="vsg-renown-desc">Authorization is required for the specific drive or instance you are trying to access.</p>
+              <button class="vsg-renown-btn">
+                <svg viewBox="0 0 24 24" fill="none" style="width:11px;height:11px"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                Login with Renown
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
 
     </div><!-- /styleguide -->

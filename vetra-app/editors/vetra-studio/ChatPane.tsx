@@ -43,11 +43,13 @@ export function ChatPane({
   selectedSessionId,
   onSelectSession,
 }: ChatPaneProps) {
-  const sessions = document.state.global.nodes.filter(
-    (node): node is FileNode =>
-      node.kind === "file" &&
-      (node as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
-  );
+  const sessions = document.state.global.nodes
+    .filter(
+      (node): node is FileNode =>
+        node.kind === "file" &&
+        (node as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
   const driveRemoteUrl = (
     document.state.local as { remoteUrl?: string } | undefined

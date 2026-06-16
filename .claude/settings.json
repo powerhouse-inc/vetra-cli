@@ -33,7 +33,15 @@
       "Bash(pnpm add *)",
       "Bash(npx tsc *)",
       "Bash(pnpm start *)",
-      "Bash(git -C /Users/teunhabraken/vetra-cli diff HEAD -- vetra-app/style.css)"
+      "Bash(git -C /Users/teunhabraken/vetra-cli diff HEAD -- vetra-app/style.css)",
+      "Bash(git fetch *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(gh pr create --title 'feat: vetra agent UI exploration — mitosis animation + chat animation' --body ' *)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli branch --list)",
+      "Bash(git -C /Users/teunhabraken/vetra-cli checkout -b feat/renown-login-prompt)",
+      "Bash(open /Users/teunhabraken/vetra-cli/vetra-app/styleguide.html)",
+      "Bash(open /Users/teunhabraken/vetra-cli/vetra-app/vetra-styleguide.html)"
     ],
     "additionalDirectories": [
       "/Users/teunhabraken/vetra-cli-main/vetra-app",
