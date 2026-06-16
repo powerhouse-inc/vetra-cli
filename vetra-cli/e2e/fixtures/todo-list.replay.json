@@ -1,0 +1,224 @@
+{
+  "name": "todo-list",
+  "prompt": "Create a minimal todo list",
+  "source": "20260616_1707_001.md",
+  "steps": [
+    {
+      "tool": "reactor-project-init",
+      "args": {
+        "name": "todo-list"
+      }
+    },
+    {
+      "tool": "reactor-project-start",
+      "args": {
+        "workdir": "todo-list"
+      }
+    },
+    {
+      "tool": "spec-create",
+      "args": {
+        "project": "todo-list",
+        "type": "powerhouse/document-model",
+        "name": "Todo List"
+      }
+    },
+    {
+      "tool": "spec-update",
+      "args": {
+        "project": "todo-list",
+        "name": "Todo List",
+        "actions": [
+          {
+            "type": "SET_MODEL_ID",
+            "input": {
+              "id": "powerhouse/todo-list"
+            }
+          },
+          {
+            "type": "SET_MODEL_NAME",
+            "input": {
+              "name": "Todo List"
+            }
+          },
+          {
+            "type": "SET_MODEL_EXTENSION",
+            "input": {
+              "extension": "phd"
+            }
+          },
+          {
+            "type": "SET_MODEL_DESCRIPTION",
+            "input": {
+              "description": "A minimal todo list document model."
+            }
+          },
+          {
+            "type": "SET_STATE_SCHEMA",
+            "input": {
+              "scope": "global",
+              "schema": "type TodoItem {\n  id: ID!\n  text: String!\n  completed: Boolean!\n}\n\ntype TodoListState {\n  items: [TodoItem!]!\n}"
+            }
+          },
+          {
+            "type": "SET_INITIAL_STATE",
+            "input": {
+              "scope": "global",
+              "initialValue": "{ \"items\": [] }"
+            }
+          },
+          {
+            "type": "ADD_MODULE",
+            "input": {
+              "id": "todos",
+              "name": "todos"
+            }
+          },
+          {
+            "type": "ADD_OPERATION",
+            "input": {
+              "moduleId": "todos",
+              "id": "ADD_TODO",
+              "name": "ADD_TODO",
+              "schema": "input AddTodoInput {\n  id: ID!\n  text: String!\n}"
+            }
+          },
+          {
+            "type": "ADD_OPERATION",
+            "input": {
+              "moduleId": "todos",
+              "id": "TOGGLE_TODO",
+              "name": "TOGGLE_TODO",
+              "schema": "input ToggleTodoInput {\n  id: ID!\n}"
+            }
+          },
+          {
+            "type": "ADD_OPERATION",
+            "input": {
+              "moduleId": "todos",
+              "id": "DELETE_TODO",
+              "name": "DELETE_TODO",
+              "schema": "input DeleteTodoInput {\n  id: ID!\n}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "spec-generate",
+      "args": {
+        "project": "todo-list",
+        "name": "Todo List"
+      }
+    },
+    {
+      "tool": "mastra_workspace_write_file",
+      "args": {
+        "path": "todo-list/document-models/todo-list/v1/src/reducers/todos.ts",
+        "content": "import type { TodoListTodosOperations } from \"document-models/todo-list/v1\";\n\nexport const todoListTodosOperations: TodoListTodosOperations = {\n  addTodoOperation(state, action) {\n    state.items.push({\n      id: action.input.id,\n      text: action.input.text,\n      completed: false,\n    });\n  },\n  toggleTodoOperation(state, action) {\n    const item = state.items.find((i) => i.id === action.input.id);\n    if (item) item.completed = !item.completed;\n  },\n  deleteTodoOperation(state, action) {\n    const idx = state.items.findIndex((i) => i.id === action.input.id);\n    if (idx !== -1) state.items.splice(idx, 1);\n  },\n};\n"
+      }
+    },
+    {
+      "tool": "spec-create",
+      "args": {
+        "project": "todo-list",
+        "type": "powerhouse/document-editor",
+        "name": "Todo List Editor"
+      }
+    },
+    {
+      "tool": "spec-update",
+      "args": {
+        "project": "todo-list",
+        "name": "Todo List Editor",
+        "actions": [
+          {
+            "type": "SET_EDITOR_NAME",
+            "input": {
+              "name": "Todo List Editor"
+            }
+          },
+          {
+            "type": "ADD_DOCUMENT_TYPE",
+            "input": {
+              "id": "powerhouse/todo-list",
+              "documentType": "powerhouse/todo-list"
+            }
+          },
+          {
+            "type": "SET_EDITOR_STATUS",
+            "input": {
+              "status": "CONFIRMED"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "spec-generate",
+      "args": {
+        "project": "todo-list",
+        "name": "Todo List Editor"
+      }
+    },
+    {
+      "tool": "mastra_workspace_write_file",
+      "args": {
+        "path": "todo-list/editors/todo-list-editor/editor.tsx",
+        "content": "import { useState } from \"react\";\nimport { DocumentToolbar } from \"@powerhousedao/design-system/connect\";\nimport { actions, useSelectedTodoListDocument } from \"document-models/todo-list\";\n\nexport default function Editor() {\n  const [document, dispatch] = useSelectedTodoListDocument();\n  const [newText, setNewText] = useState(\"\");\n\n  const items = document.state.global.items;\n\n  const handleAdd = () => {\n    const text = newText.trim();\n    if (!text) return;\n    dispatch(\n      actions.addTodo({\n        id: crypto.randomUUID(),\n        text,\n      }),\n    );\n    setNewText(\"\");\n  };\n\n  return (\n    <div className=\"mx-auto max-w-xl bg-white p-6\">\n      <DocumentToolbar />\n      <h1 className=\"mb-4 text-2xl font-bold\">{document.header.name}</h1>\n\n      {/* Add item */}\n      <div className=\"mb-4 flex gap-2\">\n        <input\n          type=\"text\"\n          className=\"flex-1 rounded border px-3 py-2\"\n          placeholder=\"New todo…\"\n          value={newText}\n          onChange={(e) => setNewText(e.target.value)}\n          onKeyDown={(e) => {\n            if (e.key === \"Enter\") handleAdd();\n          }}\n        />\n        <button\n          className=\"rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700\"\n          onClick={handleAdd}\n        >\n          Add\n        </button>\n      </div>\n\n      {/* List */}\n      {items.length === 0 && (\n        <p className=\"text-gray-400\">No todos yet.</p>\n      )}\n      <ul className=\"space-y-2\">\n        {items.map((item) => (\n          <li\n            key={item.id}\n            className=\"flex items-center justify-between rounded border px-3 py-2\"\n          >\n            <div className=\"flex items-center gap-3\">\n              <input\n                type=\"checkbox\"\n                checked={item.completed}\n                onChange={() =>\n                  dispatch(actions.toggleTodo({ id: item.id }))\n                }\n              />\n              <span\n                className={\n                  item.completed ? \"line-through text-gray-400\" : \"\"\n                }\n              >\n                {item.text}\n              </span>\n            </div>\n            <button\n              className=\"text-red-400 hover:text-red-600\"\n              onClick={() =>\n                dispatch(actions.deleteTodo({ id: item.id }))\n              }\n            >\n              ✕\n            </button>\n          </li>\n        ))}\n      </ul>\n    </div>\n  );\n}\n"
+      }
+    },
+    {
+      "tool": "spec-preview-create",
+      "args": {
+        "project": "todo-list",
+        "type": "powerhouse/todo-list",
+        "name": "My Todos"
+      }
+    },
+    {
+      "tool": "spec-preview-update",
+      "args": {
+        "project": "todo-list",
+        "name": "My Todos",
+        "actions": [
+          {
+            "type": "ADD_TODO",
+            "input": {
+              "id": "1",
+              "text": "Buy groceries"
+            }
+          },
+          {
+            "type": "ADD_TODO",
+            "input": {
+              "id": "2",
+              "text": "Write unit tests"
+            }
+          },
+          {
+            "type": "ADD_TODO",
+            "input": {
+              "id": "3",
+              "text": "Ship the feature"
+            }
+          },
+          {
+            "type": "TOGGLE_TODO",
+            "input": {
+              "id": "1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "spec-preview-show",
+      "args": {
+        "project": "todo-list",
+        "name": "My Todos"
+      }
+    }
+  ],
+  "done": "Done. Built the todo-list document model, editor, and a preview with three sample todos."
+}

@@ -1,0 +1,132 @@
+name: e2e
+
+# Two end-to-end checks run in parallel as matrix legs of one job:
+#   source — from-source seeded Playwright e2e (boots the studio via tsx, drives
+#            the chat UI, asserts the generated editor renders). Fast tripwire.
+#   docker — prod-close: publish + build the clint-agent image the prod way and
+#            assert the studio HTTP contract (lab/ci/run-prodclose-e2e.sh).
+# fail-fast (matrix default) cancels the in-progress sibling on the first
+# failure, so a broken source check aborts the slow docker build early.
+on:
+  pull_request:
+    paths:
+      - "vetra-cli/src/**"
+      - "vetra-cli/e2e/**"
+      - "vetra-cli/package.json"
+      - "vetra-cli/Dockerfile"
+      - "vetra-app/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "lab/**"
+      - ".github/workflows/e2e.yml"
+  workflow_dispatch:
+
+# A new push on the same ref cancels the in-progress run.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: e2e (${{ matrix.leg }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: true
+      matrix:
+        leg: [source, docker]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # --- source leg ------------------------------------------------------
+      - name: Install workspace
+        if: matrix.leg == 'source'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build vetra-app (studio + connect)
+        if: matrix.leg == 'source'
+        run: |
+          pnpm --filter vetra-app build
+          pnpm --filter vetra-app build:connect
+
+      - name: Generate vetra-cli assets
+        if: matrix.leg == 'source'
+        run: pnpm --filter vetra-cli build:assets
+
+      # The studio shells out to `ph` for the reactor-project; CI has no global
+      # `ph`, so install ph-cmd onto a pnpm global-bin dir that's on PATH (the
+      # version matches DEFAULT_PH_VERSION). Without this the studio's ensure-ph
+      # hook tries the install at boot and `pnpm add -g` fails (bin dir not on
+      # PATH under pnpm/action-setup).
+      - name: Install ph CLI
+        if: matrix.leg == 'source'
+        run: |
+          export PNPM_HOME="$HOME/.pnpm-global"
+          mkdir -p "$PNPM_HOME"
+          pnpm config set global-bin-dir "$PNPM_HOME"
+          export PATH="$PNPM_HOME:$PATH"
+          PH_VERSION=$(node -p "require('fs').readFileSync('vetra-cli/src/ph-version.gen.ts','utf8').match(/'([^']+)'/)[1]")
+          echo "installing ph-cmd@$PH_VERSION"
+          pnpm add -g "ph-cmd@$PH_VERSION" \
+            --config.blockExoticSubdeps=false --config.minimumReleaseAge=0
+          ph --version
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+
+      - name: Cache inner-build pnpm store
+        if: matrix.leg == 'source'
+        uses: actions/cache@v4
+        with:
+          path: /tmp/vetra-e2e-pnpm-store
+          key: vetra-e2e-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: vetra-e2e-store-
+
+      - name: Install Playwright Chromium
+        if: matrix.leg == 'source'
+        run: pnpm --filter vetra-cli exec playwright install --with-deps chromium
+
+      - name: Run seeded e2e
+        if: matrix.leg == 'source'
+        run: pnpm --filter vetra-cli test:e2e
+
+      - name: Dump studio + service logs on failure
+        if: failure() && matrix.leg == 'source'
+        run: |
+          echo "=== studio.log (tail) ==="
+          tail -200 vetra-cli/e2e/.cache/studio.log 2>/dev/null || echo "(none)"
+          echo "=== service logs (incl. inner ph vetra) ==="
+          for f in vetra-cli/e2e/.cache/service-logs/*; do
+            [ -e "$f" ] || continue
+            echo "--- $f ---"; tail -150 "$f" 2>/dev/null
+          done
+
+      - name: Upload seeded-e2e artifacts on failure
+        if: failure() && matrix.leg == 'source'
+        uses: actions/upload-artifact@v4
+        with:
+          name: seeded-e2e-report
+          path: |
+            vetra-cli/e2e/playwright-report/
+            vetra-cli/e2e/.cache/studio.log
+            vetra-cli/e2e/.cache/service-logs/
+          retention-days: 7
+
+      # --- docker leg ------------------------------------------------------
+      - name: Set up Docker Buildx
+        if: matrix.leg == 'docker'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run prod-close e2e
+        if: matrix.leg == 'docker'
+        run: ./lab/ci/run-prodclose-e2e.sh
+
+      - name: Dump studio logs on failure
+        if: failure() && matrix.leg == 'docker'
+        run: docker logs vetra-studio-prodclose 2>&1 | tail -200 || true

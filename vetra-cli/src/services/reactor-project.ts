@@ -16,6 +16,11 @@ import {
 } from '../constants.js';
 import { reactorProjectNodeOptions } from '../helpers/node-memory.js';
 
+// Readiness wait for the inner `ph vetra` dev server; env-overridable for slow
+// runners where cold Vite start exceeds the default.
+const READINESS_TIMEOUT_MS =
+  Number(process.env.VETRA_REACTOR_READINESS_TIMEOUT_MS) || 90_000;
+
 // Switchboard mount relative to the `/reactor-project/` service prefix that
 // ph-clint prepends to every proxyRoutes spec (e.g. 'switchboard').
 const SWITCHBOARD_MOUNT = REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH.replace(
@@ -186,7 +191,7 @@ export const reactorProject = defineService({
         captures: { 'mcp-server': { group: 1, type: 'api-mcp' } },
       },
     ],
-    timeout: 90_000,
+    timeout: READINESS_TIMEOUT_MS,
   },
   preflight: [
     checkWorkdir(

@@ -276,15 +276,15 @@ cli.configureReactor({
     }),
   switchboard: {
     enabled: true,
-    // Wire the local-registry's URL into the embedded switchboard so the
-    // `Packages` GraphQL subgraph picks it up — required for the
-    // publish-reload trigger's install/uninstall mutations.
+    // Scan up from the derived default so a parallel studio gets a free port.
+    portRange: 20,
+    // Local-registry URL for the `Packages` subgraph (publish-reload trigger).
     ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
   connect: {
     enabled: true,
-    // Forwarded to Connect's vite config as PH_CONNECT_PACKAGES_REGISTRY so
-    // the browser fetches Powerhouse package bundles from the local registry.
+    portRange: 20,
+    // Forwarded to Connect's vite as PH_CONNECT_PACKAGES_REGISTRY.
     ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
 });
