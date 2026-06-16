@@ -13,6 +13,7 @@ import {
 import { CLI_NAME } from '../config.js';
 import type { Config } from '../framework.js';
 import { createDemoAgent } from './demo-agent.js';
+import { assertCredentialIfRequired } from './require-key.js';
 
 const SUB_AGENT_MODEL_ID = 'anthropic/claude-sonnet-4-5';
 
@@ -38,6 +39,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     modelId: ctx.config.model,
     anthropicApiKey: ctx.config.anthropicApiKey,
   });
+  assertCredentialIfRequired(resolved.kind, ctx.config.requireApiKey);
   if (resolved.kind === 'none') {
     ctx.context.log?.info(
       '[agent] No API key and no Claude subscription session — run `claude-login` to authenticate.',
