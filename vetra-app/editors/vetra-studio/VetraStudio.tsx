@@ -14,6 +14,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BuildSection } from "./BuildSection.js";
 import { ChatPane } from "./ChatPane.js";
+import { DeploySection } from "./DeploySection.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
@@ -109,7 +110,7 @@ export type VetraStudioProps = {
   className?: string;
 };
 
-type Section = "home" | "ideate" | "specify" | "build";
+type Section = "home" | "ideate" | "specify" | "build" | "deploy";
 
 /** The section an open document shows in; unknown types keep the legacy
  * IDEATE fallback at restore/user-open sites. */
@@ -430,6 +431,13 @@ export function VetraStudio({
               open={openDoc}
               onOpen={handleUserOpen}
               onClear={handleClearOpen}
+              onExitToHome={handleExitToHome}
+            />
+          </div>
+        ) : section === "deploy" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <DeploySection
+              productName={productName}
               onExitToHome={handleExitToHome}
             />
           </div>
