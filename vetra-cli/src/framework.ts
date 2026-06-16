@@ -18,6 +18,7 @@ export const configSchema = z.object({
   // @clint:begin framework-config
   model: z.string().default('anthropic/claude-sonnet-4-6').describe('LLM model for the main agent (sub-agent models come from the spec)'),
   agentLogging: z.boolean().default(false).describe('Enable agent conversation logging'),
+  requireApiKey: z.preprocess((v) => (typeof v === 'string' ? v === 'true' : v), z.boolean()).default(false).describe('Refuse to start the agent unless an Anthropic API key (or Claude subscription) is available. Set true (env VETRA_REQUIRE_API_KEY) for provisioned cloud/studio envs.'),
   memoryModel: z.string().default('anthropic/claude-haiku-4-5').describe('Model for observational memory (background compression of long chat histories)'),
   phVersion: z.string().optional().describe(`Powerhouse version for new reactor projects (defaults to ${DEFAULT_PH_VERSION})`),
   reactorProjectClonePath: z.string().optional().describe('Path to a pre-scaffolded reactor-project. When set, reactor-project-init clones it via `ph init --clone` (fast path). Typically baked into container images.'),
