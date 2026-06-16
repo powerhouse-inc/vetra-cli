@@ -15,6 +15,7 @@ import {
   REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH,
 } from '../constants.js';
 import { reactorProjectNodeOptions } from '../helpers/node-memory.js';
+import { connectExternalizeVendorEnv } from '../helpers/connect-vendor.js';
 
 // Readiness wait for the inner `ph vetra` dev server; env-overridable for slow
 // runners where cold Vite start exceeds the default.
@@ -158,6 +159,10 @@ export const reactorProject = defineService({
     NODE_ENV: 'development',
     // Heap cap is per-fork; each ph vetra child inherits it. See node-memory.ts.
     NODE_OPTIONS: reactorProjectNodeOptions(),
+    // Opt-in: serve Connect's heavy stable deps from a prebuilt vendor bundle so
+    // the long-lived Vite dev server never dep-optimizes them (~1 GB resident).
+    // Off unless a vetra-cli-level signal is set. See connect-vendor.ts.
+    ...connectExternalizeVendorEnv(),
   }),
   readiness: {
     patterns: [
