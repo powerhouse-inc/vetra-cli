@@ -41,10 +41,18 @@
 # render/respond identically ON vs OFF. Encoded as:
 #   - HTTP 200 on the preview root + key routes.
 #   - The served index HTML contains an <script type="importmap"> block.
-#   - NO failure signature in the dev-server log: the false-fallback warning
+#   - NO failure signature in BOTH the start command's stdout (start.out) AND
+#     every dev-server service .log: the false-fallback warning
 #     ("PH_CONNECT_EXTERNALIZE_VENDOR set but vendor prebuild failed"), a missing
-#     named export ("no named export"), or a vendor/shim 404. A failing arm is
-#     REJECTED (this is what catches the stale-cache / false-fallback bug class).
+#     named export ("no named export"), or a vendor/shim 404. (The warning can
+#     land in either stream depending on how `ph vetra` wires the dev server's
+#     console, so the driver dumps both into the container log the host greps.)
+#   - POSITIVE ON gate: for an ON arm the served import map MUST name a
+#     /__vendor__/ entry AND that URL must serve 200. A silently-inert ON arm
+#     (env never reached the dev server, or the prebuild failed without printing
+#     the fallback warning) loads the SAME graph as OFF and would report a false
+#     win; this gate REJECTS it. A failing arm is REJECTED, not recorded (this is
+#     what catches the stale-cache / false-fallback / inert-toggle bug class).
 #
 # Env knobs
 #   IMAGE        measured image (default dev.23 prod image)
@@ -204,6 +212,30 @@ else
   echo "GATE_IMPORTMAP=0"
 fi
 
+# Vendor-active signal (the positive ON gate). devReactImportmapPlugin only adds
+# vendor entries to the import map — bare specifier -> "<base>/__vendor__/<entry>.js"
+# (VENDOR_URL_PREFIX) — when the prebuild SUCCEEDED. On a silent fallback (the
+# prebuild failed, OR the env never reached the dev server) the import map carries
+# ONLY the React-shim entries (__ph/dev-react-shim/) and NO __vendor__ entry. So an
+# ON arm whose served HTML has no __vendor__ import-map entry behaved like OFF — a
+# false win. Detect it and (host-side) REJECT the ON arm. Also fetch one vendor
+# entry to confirm the bundle is actually served (the import map could name a URL
+# the middleware 404s).
+VENDOR_HTML_HIT="$(printf '%s' "$ROOT_HTML" | grep -oE '"[^"]*/__vendor__/[^"]+\.js"' | head -1 | sed -E 's/^"//; s/"$//')"
+if [ -n "$VENDOR_HTML_HIT" ]; then
+  echo "GATE_VENDOR_IMPORTMAP=1"
+  case "$VENDOR_HTML_HIT" in
+    http*) vurl="$VENDOR_HTML_HIT" ;;
+    /*)    vurl="$ORIGIN$VENDOR_HTML_HIT" ;;
+    *)     vurl="$BASE$VENDOR_HTML_HIT" ;;
+  esac
+  VCODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$vurl" 2>/dev/null || echo 000)"
+  echo "GATE_VENDOR_SERVED=$VCODE $vurl"
+else
+  echo "GATE_VENDOR_IMPORTMAP=0"
+  echo "GATE_VENDOR_SERVED=000 <none>"
+fi
+
 # Pull the entry module(s) referenced by the HTML to force the optimizer to run
 # over the real graph, plus the Vite client. Best-effort; statuses recorded.
 ENTRIES="$(printf '%s' "$ROOT_HTML" | grep -oE 'src="[^"]+\.[mc]?[jt]sx?"' | sed -E 's/^src="//; s/"$//' | head -5)"
@@ -234,13 +266,26 @@ done
 echo "PEAK_BYTES=$(PEAK)"
 echo "MAX_BYTES=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo 0)"
 
-# Surface the dev-server log so the host can scan it for failure signatures.
-LOGF="$(ls -t "$SVC_LOG_DIR"/*.log 2>/dev/null | head -1)"
-if [ -n "$LOGF" ]; then
-  echo "===SERVICE_LOG_BEGIN==="
+# Surface BOTH logs so the host gate can scan them for failure signatures. The
+# vendor-prebuild fallback warning ("PH_CONNECT_EXTERNALIZE_VENDOR set but vendor
+# prebuild failed") can land in EITHER stream depending on how `ph vetra` wires
+# the dev server's console: the reactor-project-start command's own stdout
+# (start.out) OR the detached dev-server service .log. Earlier this driver only
+# dumped the service .log, so a fallback warning printed to start.out slipped the
+# gate. Re-cat start.out at the END too (it's a redirect file, so this captures a
+# warning printed after the readiness snapshot). The host greps the whole
+# container log (both blocks) for the fallback / no-named-export / __vendor__ 404
+# signatures.
+echo "===START_OUT_BEGIN==="
+cat /tmp/start.out 2>/dev/null || true
+echo "===START_OUT_END==="
+# Scan EVERY service .log (not just the newest): an auto-restart rotates the
+# log, and the early vendor-prebuild warning lives in the FIRST instance's log.
+for LOGF in $(ls -t "$SVC_LOG_DIR"/*.log 2>/dev/null); do
+  echo "===SERVICE_LOG_BEGIN $LOGF==="
   cat "$LOGF"
   echo "===SERVICE_LOG_END==="
-fi
+done
 DRIVER_EOF
 chmod +x "$DRIVER"
 
@@ -321,13 +366,17 @@ run_arm() {
     END=$(now_s)
     WALL=$(wall_sec "$START" "$END")
 
-    local PEAK_BYTES STARTUP_BYTES READY GROOT GIMPORT GENTRYBAD
+    local PEAK_BYTES STARTUP_BYTES READY GROOT GIMPORT GENTRYBAD GVIMPORT GVSERVED
     PEAK_BYTES=$(last_marker_int "$LOGF" "PEAK_BYTES")
     STARTUP_BYTES=$(last_marker_int "$LOGF" "STARTUP_PEAK_BYTES")
     READY=$(last_marker_int "$LOGF" "GATE_READY")
     GROOT=$(grep -oE 'GATE_ROOT_STATUS=[0-9]+' "$LOGF" | tail -1 | cut -d= -f2 || true)
     GIMPORT=$(last_marker_int "$LOGF" "GATE_IMPORTMAP")
     GENTRYBAD=$(last_marker_int "$LOGF" "GATE_ENTRY_BAD")
+    # Vendor-active markers (the positive ON gate): the served import map names a
+    # /__vendor__/ entry (GVIMPORT=1) AND that URL serves 200 (GVSERVED).
+    GVIMPORT=$(last_marker_int "$LOGF" "GATE_VENDOR_IMPORTMAP")
+    GVSERVED=$(grep -oE 'GATE_VENDOR_SERVED=[0-9]+' "$LOGF" | tail -1 | cut -d= -f2 || true)
 
     # --- correctness gate + sanity --------------------------------------------
     local status="ok" gate="pass"
@@ -362,6 +411,27 @@ run_arm() {
       reject_run "$arm" "$(( i + 1 ))" "vendor/shim 404" "$LOGF"
     fi
 
+    # Positive ON gate: an ON arm MUST genuinely externalize the vendor. The
+    # import map has to name a /__vendor__/ entry AND that URL must serve 200.
+    # Without this a silently-inert ON arm (env never reached the dev server, or
+    # the prebuild failed without emitting the fallback warning) measures the
+    # SAME graph as OFF and reports a false win. This is the hard-fail the
+    # deliberately-broken-build test must trip. (OFF arms have no vendor by
+    # design, so they're exempt.)
+    if [ "$status" = "ok" ]; then
+      case "$arm" in
+        on-warm|on-cold)
+          if [ "${GVIMPORT:-0}" != "1" ]; then
+            status="rejected: ON arm but import map has no /__vendor__/ entry (vendor inert — would be a false win)"; gate="fail"
+            reject_run "$arm" "$(( i + 1 ))" "vendor not in import map (inert ON)" "$LOGF"
+          elif [ "${GVSERVED:-000}" != "200" ]; then
+            status="rejected: ON arm vendor URL served ${GVSERVED:-000} (expected 200 — bundle not actually served)"; gate="fail"
+            reject_run "$arm" "$(( i + 1 ))" "vendor URL not served (status ${GVSERVED:-000})" "$LOGF"
+          fi
+          ;;
+      esac
+    fi
+
     local peak_mib="" startup_mib=""
     if [ "$status" = "ok" ]; then
       peak_mib=$(bytes_to_mib "$PEAK_BYTES")
@@ -383,6 +453,8 @@ run_arm() {
       --arg wall "${WALL}" \
       --arg rootStatus "${GROOT:-}" \
       --arg importmap "${GIMPORT:-}" \
+      --arg vendorImportmap "${GVIMPORT:-}" \
+      --arg vendorServed "${GVSERVED:-}" \
       --arg logf "$LOGF" \
       '{run:$idx,status:$status,gate:$gate,
         peakMiB:($peak|if .=="" then null else tonumber end),
@@ -390,6 +462,8 @@ run_arm() {
         wallSec:($wall|if .=="" then null else tonumber end),
         previewRootStatus:($rootStatus|if .=="" then null else tonumber end),
         hasImportmap:($importmap|if .=="" then null else (.=="1") end),
+        vendorActive:($vendorImportmap|if .=="" then null else (.=="1") end),
+        vendorServedStatus:($vendorServed|if .=="" then null else tonumber end),
         log:$logf}')
   done
   runs_json+="]"
