@@ -1,28 +1,29 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
-import { describeEnvironment, resolveEnvironment } from "./_helpers.js";
 import {
-  environmentStatusSchema,
+  describeEnvironmentState,
   packageListSchema,
   parsePackageSpec,
+  resolveEnvironment,
   serviceListSchema,
-  updateEnvironment,
-} from "./_mock.js";
+} from "./_helpers.js";
+import { applyEnvironmentUpdate } from "../../cloud/environments-write.js";
 
 export const deployEnvironmentUpdate = defineCommand({
   id: "deploy-environment-update",
   description:
-    "Update a Vetra Cloud deployment environment — rename it, toggle services, manage packages, or move its deployment status. NOTE: cloud auth is not wired up yet — this operates on mocked data.",
+    "Update a Vetra Cloud deployment environment — rename it, toggle services, manage packages, or drive its deployment status. Pushes signed edits to the live environment at staging.vetra.io; requires Renown authorization (check with whoami).",
   inputSchema: z.object({
     name: z
       .string()
       .default("")
       .describe("Environment to update — accepts id, name, or subdomain."),
     label: z.string().optional().describe("New display name."),
-    status: environmentStatusSchema
+    transition: z
+      .enum(["CHANGES_APPROVED", "TERMINATING"])
       .optional()
       .describe(
-        "Set deployment status. Common transitions: DRAFT/CHANGES_PENDING → CHANGES_APPROVED (approve), any → TERMINATING (terminate).",
+        "Drive the deployment status. CHANGES_APPROVED approves pending changes (from DRAFT/CHANGES_PENDING); TERMINATING terminates the environment.",
       ),
     enableService: serviceListSchema
       .optional()
@@ -39,19 +40,21 @@ export const deployEnvironmentUpdate = defineCommand({
       .optional()
       .describe('Package names to remove, e.g. "@acme/todo".'),
   }),
-  execute: async (input) => {
-    const env = resolveEnvironment(input.name);
-    const next = updateEnvironment(env, {
+  execute: async (input, { workdir, config }) => {
+    const ctx = { workdir, config };
+    const env = await resolveEnvironment(ctx, input.name);
+    const state = await applyEnvironmentUpdate(ctx, env.id, {
       label: input.label,
-      status: input.status,
+      transition: input.transition,
       enableServices: input.enableService,
       disableServices: input.disableService,
       addPackages: input.addPackage?.map(parsePackageSpec),
       removePackages: input.removePackage,
     });
     return {
-      text: `Updated environment "${next.label}" (${next.id}).\n${describeEnvironment(
-        next,
+      text: `Updated environment "${state.label ?? env.id}" (${env.id}).\n${describeEnvironmentState(
+        state,
+        env.id,
       )}`,
     };
   },

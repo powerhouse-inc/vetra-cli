@@ -1,17 +1,13 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { requireOption } from "../../helpers/cli-errors.js";
-import { describeEnvironment } from "./_helpers.js";
-import {
-  createEnvironment,
-  environmentHost,
-  serviceListSchema,
-} from "./_mock.js";
+import { describeEnvironmentState, serviceListSchema } from "./_helpers.js";
+import { createCloudEnvironment } from "../../cloud/environments-write.js";
 
 export const deployEnvironmentCreate = defineCommand({
   id: "deploy-environment-create",
   description:
-    "Create a Vetra Cloud deployment environment. A <subdomain>.vetra.io host is assigned automatically; the environment starts in DRAFT with CONNECT enabled. NOTE: cloud auth is not wired up yet — this operates on mocked data.",
+    "Create a Vetra Cloud deployment environment. A <subdomain>.vetra.io host is assigned automatically; the environment starts in DRAFT with CONNECT enabled. Creates a live environment at staging.vetra.io owned by the signed-in user; requires Renown authorization (check with whoami).",
   inputSchema: z.object({
     name: z
       .string()
@@ -23,16 +19,17 @@ export const deployEnvironmentCreate = defineCommand({
         'Services to enable on create, e.g. "CONNECT,SWITCHBOARD". Defaults to CONNECT. One of CONNECT, SWITCHBOARD, FUSION.',
       ),
   }),
-  execute: async (input) => {
+  execute: async (input, { workdir, config }) => {
     requireOption(input.name, "name", "The environment needs a display name.");
-    const env = createEnvironment({
-      label: input.name,
-      services: input.services,
-    });
+    const { id, state } = await createCloudEnvironment(
+      { workdir, config },
+      { label: input.name, services: input.services },
+    );
     return {
-      text: `Created environment "${env.label}"  id: ${env.id}  ${environmentHost(
-        env,
-      )}  status: ${env.status}\n${describeEnvironment(env)}`,
+      text: `Created environment "${state.label ?? input.name}"  id: ${id}  status: ${state.status}\n${describeEnvironmentState(
+        state,
+        id,
+      )}`,
     };
   },
 });

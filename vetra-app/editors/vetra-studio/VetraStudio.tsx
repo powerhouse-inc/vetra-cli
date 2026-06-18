@@ -12,6 +12,7 @@ import type {
   FileNode,
 } from "@powerhousedao/shared/document-drive";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AgentAuthButton } from "./AgentAuthButton.js";
 import { BuildSection } from "./BuildSection.js";
 import { ChatPane } from "./ChatPane.js";
 import { DeploySection } from "./DeploySection.js";
@@ -474,7 +475,8 @@ function AutoNavToggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-end gap-2 border-b border-vetra-border bg-vetra-card px-4 py-1.5">
+    <div className="flex shrink-0 items-center justify-end gap-3 border-b border-vetra-border bg-vetra-card px-4 py-1.5 min-h-10">
+      <AgentAuthButton />
       {enabled && paused ? (
         <span className="text-[11px] text-vetra-muted-fg">
           paused — close the document to resume

@@ -330,6 +330,53 @@ BUILD step payload shape: `{ projectId, documentId, title? }`. The
 scaffold resolves the iframe URL from the editor's project-state
 subscription; the agent does not construct Connect URLs.
 
+### Renown identity (agent authorization)
+
+**Renown is the identity/auth provider.** The user authorizes the agent with
+their Renown identity once; that authorization lets the agent act as the user
+across Vetra Cloud and other Renown-protected services. The `deploy-environment-*`
+tools are one consumer — they operate on the user's real Vetra Cloud environments
+at `switchboard.staging.vetra.io` (the same switchboard the vetra-app Studio
+Deploy section uses). The Node side lives in `vetra-cli/src/cloud/`.
+
+Two Renown identities are involved: the user's wallet identity (browser, on
+`renown.id`) and the agent's own `did:key` (backend). Authorizing the agent
+delegates the user's wallet to that `did:key`.
+
+- **Identity.** `@renown/sdk/node` `RenownBuilder` gives the agent a stable
+  `did:key`. The keypair persists to `<workdir>/.ph/.keypair.json` and the
+  delegated credential to `<workdir>/.ph/.renown.json` (workdir-scoped, like
+  the embedded reactor's state); `PH_RENOWN_PRIVATE_KEY` overrides the keypair
+  for pre-provisioned deployed agents. `src/auth/renown.ts` caches one
+  `IRenown` per workdir and exposes `getBearerToken` (no `aud` — the
+  switchboard's verifier rejects it), `getSigner`, the auth state machine
+  (`startAuth` / `getAuthState` / `confirmAuth` / `logoutAuth`), and
+  `getRenownStatus`. (The Vetra Cloud resource layer — switchboard URL,
+  environments, drive — stays under `src/cloud/`.)
+- **Authorization is the user's action, from the studio.** The agent has a
+  single read-only `whoami` tool (reports whether it's authorized, and as
+  which address); it cannot log in. The studio header renders an **Authorize
+  agent** button (`vetra-app/.../AgentAuthButton.tsx`, left of "Auto-follow
+  agent") that drives the console flow via the preview-server (the in-process
+  local API, sharing the same per-workdir `IRenown`): `POST /auth/start`
+  builds the `<renownUrl>/console?session=…&connect=<agentDid>` URL and opens
+  it; the user approves with their wallet on `renown.id`; `POST /auth/confirm`
+  polls `<renownUrl>/api/console/session/<id>` and runs `renown.login` to store
+  the credential; `GET /auth/status` and `POST /auth/logout` round it out. (An
+  in-app one-click authorize isn't possible — the wallet session and credential
+  publishing live on the
+  `renown.id` origin.) The Renown server URL defaults to
+  `https://www.renown.id` (`config.cloudRenownUrl` overrides); the switchboard
+  URL defaults to staging (`config.cloudSwitchboardUrl`).
+- **Read path (live).** `deploy-environment-list` / `-get` query
+  `myEnvironments` over GraphQL with the bearer token
+  (`src/cloud/graphql.ts`) and trim to the caller's own environments
+  (`filterOwn`, mirroring the Studio).
+- **Write path (planned).** `deploy-environment-create` / `-update` still
+  use the in-process mock (`src/commands/deploy/_mock.ts`). The live version
+  mirrors the Studio's `RemoteDocumentController` + signer push against the
+  `vetra-cloud-environment` document model.
+
 ### Triggers
 
 Registered in `cli.ts`. Run as part of ph-clint's routine loop.

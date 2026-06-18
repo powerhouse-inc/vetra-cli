@@ -21,6 +21,7 @@ import { agentRun } from './commands/agent-run.js';
 import { specCommands } from './commands/spec/index.js';
 import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { deployCommands } from './commands/deploy/index.js';
+import { authCommands } from './commands/auth/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject, proxyBasePathHook } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
@@ -58,6 +59,7 @@ export const cli = defineCli({
     ...specCommands,
     ...specPreviewCommands,
     ...deployCommands,
+    ...authCommands,
     ...reactorProjectCommands,
     ...createAttachmentCommands(),
     agentRun,
