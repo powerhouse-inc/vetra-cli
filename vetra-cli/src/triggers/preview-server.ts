@@ -57,6 +57,7 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         workdir,
         renownUrl,
         port: DEFAULT_PREVIEW_SERVER_PORT,
+        proxyPublicUrl: ctx.commandContext.proxy?.url,
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),

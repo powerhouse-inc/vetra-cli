@@ -78,8 +78,24 @@ export const reactorProjectInit = defineCommand({
     const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
     const hasConfig = fs.existsSync(path.join(projectPath, 'powerhouse.config.json'));
     if (hasPackageJson && hasConfig) {
+      if (clonePath) seedVendorCache(clonePath, projectPath);
       return { text: `Project ${name} initialized at ${projectPath}` };
     }
     return { text: `Project created but missing expected config files at ${projectPath}` };
   },
 });
+
+// ph init --clone reinstalls node_modules from the lockfile, dropping the baked
+// .ph-vendor; reseed it from the template so ph vetra warm-hits (digest match).
+function seedVendorCache(clonePath: string, projectPath: string): void {
+  const src = path.join(clonePath, 'node_modules', '.ph-vendor');
+  const nodeModules = path.join(projectPath, 'node_modules');
+  if (!fs.existsSync(path.join(src, 'import-map.json')) || !fs.existsSync(nodeModules)) return;
+  try {
+    const dest = path.join(nodeModules, '.ph-vendor');
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.cpSync(src, dest, { recursive: true });
+  } catch {
+    // best-effort warm cache; ph vetra rebuilds on a miss
+  }
+}

@@ -1,29 +1,179 @@
-# vetra-cli
+# Vetra CLI
 
-A ph-clint-based project.
+**Build Powerhouse document-model apps and packages by chatting with an agent.**
 
-## Getting started
+
+
+---
+
+Vetra is an **agent-driven CLI** for the [Powerhouse](https://www.powerhouse.inc/)
+tech stack. Instead of hand-scaffolding boilerplate, you describe what you want
+in plain language and the agent designs and generates it for you — then renders
+it live in a browser editor (**Vetra Studio**) as you iterate.
+
+You can build:
+
+- **Document models** — state schemas, operations, and reducers.
+- **Editors** — React components for editing a document type.
+- **Drive-apps** — dashboards, kanban boards, and custom drive-level views.
+- **Reactor packages** — initialize, build, and publish the whole thing.
+
+## How it works
+
+```
+   you (terminal)
+        │  "build a to-do document model"
+        ▼
+  ┌─────────────────┐      ┌──────────────────┐
+  │  Vetra agent    │◄────►│ Embedded Reactor │
+  │  (interactive)  │      │ (in-process DM)  │
+  └────────┬────────┘      └──────────────────┘
+           │ spawns + previews
+           ▼
+  ┌──────────────────────────────────────────┐
+  │ Vetra Studio (Connect + Switchboard)       │
+  │ live preview → http://localhost:8090/d/... │
+  └──────────────────────────────────────────┘
+```
+
+A single `vetra` process runs the interactive REPL, an embedded Reactor, and an
+embedded Switchboard. The agent spawns **Vetra Studio** — a Connect-based
+browser editor — so a freshly generated document model renders live while you
+iterate. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full map.
+
+The orchestrator (`vetra-agent`) delegates to three specialists —
+`agent-document-model`, `agent-editor`, and `agent-app` — each backed by skills
+that run in `expert`, `discovery`, or `one-shot` mode depending on how much you
+want the agent to decide on its own.
+
+## Prerequisites
+
+- **Node** ≥ 22.13.0
+- **pnpm** 11.5.0 (`corepack enable`)
+- An **Anthropic API key** (the agent runs on
+Claude)
+- **Docker** — only needed for the end-to-end [lab](lab/README.md)
+
+## Run it locally
+
+Clone the repo, install, and start the agent:
 
 ```sh
 pnpm install
 pnpm dev
 ```
 
-## Enabled features
+> `**pnpm dev` is the local entrypoint.** It launches the interactive agent
+> REPL (`tsx src/main.ts`, no build step) with the embedded Reactor and
+> Switchboard. When the agent starts a build, watch the logs for
+> `Vetra Studio: http://localhost:8090/d/<driveId>` and open that URL to see
+> your work live.
 
-- **Powerhouse**: on (Connect)
-  - Switchboard: on
-  - Connect: on
-- **Mastra agent**: on
-- **Routine loop**: on
+Authenticate the agent once, either way:
 
-## Regenerate
+```sh
+# API key
+export ANTHROPIC_API_KEY=sk-ant-...
+```
 
-Toggle features or update metadata in `.ph/ph-clint-cli/project-spec.json`,
-then re-run `ph-clint clint-project-regen` to regenerate.
+To wipe the local dev workspace and start clean:
 
-## Split layout
+```sh
+pnpm dev:reset
+```
 
-This project is split into `vetra-cli-cli/` (the CLI) and `vetra-cli-app/` (the Powerhouse reactor package).
+## Your first session
 
-Run `ph init` inside `vetra-cli-app/` to scaffold the reactor package layout (document-models, editors, manifest, etc.).
+Once the REPL is up you'll see:
+
+```
+vetra v0.0.1 …
+Workdir: …
+Type a message to talk to the agent, or / for commands.
+```
+
+Try a build, end to end:
+
+```
+> Create a "todo-list" document model with tasks that have a title,
+  a done flag, and a priority. Then generate an editor for it.
+```
+
+The agent designs the schema, generates the model and editor, and boots Vetra
+Studio. Open the printed `http://localhost:8090/d/<driveId>` URL and edit your
+new document type in the browser. Iterate by continuing the conversation.
+
+Type `/` at any time to see the available slash commands (publishing, service
+control, auth, and more).
+
+## Installing the published CLI
+
+The released CLI ships as the `vetra` binary:
+
+```sh
+npm install -g vetra      # or: pnpm add -g vetra
+export ANTHROPIC_API_KEY= 
+vetra                     # launch the agent REPL
+```
+
+## Project layout
+
+
+| Path                               | What it is                                                                        |
+| ---------------------------------- | --------------------------------------------------------------------------------- |
+| [vetra-cli/](vetra-cli/)           | The CLI — agent definitions, skills, services, triggers, and the local API.       |
+| [vetra-app/](vetra-app/)           | The Powerhouse Reactor package — document models, editors, processors, subgraphs. |
+| [lab/](lab/)                       | Docker-based e2e reproduction of the publish → build → run pipeline.              |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Durable map of how the runtime fits together.                                     |
+| [CLAUDE.md](CLAUDE.md)             | Agent/contributor instructions and dev-daemon gotchas.                            |
+
+
+## Publishing
+
+```sh
+pnpm publish:dev          # publish to the dev registry
+pnpm publish:staging      # publish to staging
+pnpm publish:production   # publish to production
+```
+
+## Troubleshooting
+
+- **"I fixed it but nothing changed."** The Studio service is detached and
+survives the REPL, so rebuilds aren't picked up until it's cycled. Stop it
+with `vetra vetra-studio-stop`, then re-run `pnpm dev`. Don't `pkill` the
+processes — the managed stop command kills the whole group cleanly.
+- **Port collision (8090 / 27370 / 59220).** Vetra derives its Studio,
+Connect, and Switchboard ports from the CLI name with no fallback. Free those
+ports (stop any prior `vetra-studio`) before starting.
+- **Agent types but never replies / a profile is missing.** Agent profiles and
+skills are generated into `gen/`. After editing agents or skills run
+`pnpm --filter vetra-cli build:assets` and restart the REPL — `pnpm dev`
+does not regenerate them.
+
+More detail on the dev-daemon model and reload story lives in
+[CLAUDE.md](CLAUDE.md).
+
+## Contributing
+
+The codebase ships three durable docs that carry project state across sessions:
+[ARCHITECTURE.md](ARCHITECTURE.md) (how it fits together), [HANDOFF.md](HANDOFF.md)
+(in-progress publish/dynamic-load work), and [TODO.md](TODO.md) (backlog). Read
+them before non-trivial changes. To validate the full publish/build/run pipeline
+without touching production, use the [lab](lab/README.md):
+
+```sh
+./lab/ci/run-prodclose-e2e.sh
+```
+
+## Learn more
+
+- [Powerhouse](https://www.powerhouse.inc/) — the broader platform
+- [Vetra Academy](https://academy.vetra.io/) - Vetra documentation 
+- [ARCHITECTURE.md](ARCHITECTURE.md) — runtime internals
+
+## License
+
+[AGPL-3.0](LICENSE). If you run a modified version of Vetra as a network
+service, the AGPL requires you to make your modified source available to its
+users.
+

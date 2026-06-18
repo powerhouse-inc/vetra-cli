@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.24",
+  "version": "0.0.1-dev.25",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -18,9 +18,13 @@
     "build": "pnpm build:assets && tsc",
     "refresh:test-skills": "pnpm build:assets && rm -rf ../../vetra-test/.ph/vetra/.mastra/skills && cp -R gen/skills ../../vetra-test/.ph/vetra/.mastra/skills && echo '[refresh] vetra-test skills replaced; restart vetra for the change to take effect'",
     "dev": "tsx src/main.ts --workdir ../../vetra-test",
+    "dev:reset": "bash scripts/dev-reset.sh",
     "start": "node dist/main.js --workdir ../../vetra-test",
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest --detectOpenHandles",
     "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage --collectCoverageFrom='src/**/*.ts'",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e:report": "playwright show-report e2e/playwright-report",
     "lint": "eslint src tests",
     "mastra:dev": "mastra dev",
     "mastra:build": "mastra build",
@@ -52,13 +56,16 @@
     "document-model": "catalog:",
     "graphql": "catalog:",
     "jsonpath-plus": "^10.4.0",
+    "proper-lockfile": "^4.1.2",
     "vetra-app": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@jest/globals": "^30.2.0",
+    "@playwright/test": "^1.61.0",
     "@powerhousedao/ph-clint-dev": "catalog:",
     "@types/node": "catalog:",
+    "@types/proper-lockfile": "^4.1.4",
     "eslint-config-prettier": "catalog:",
     "eslint-plugin-jest": "^29.15.2",
     "jest": "^30.2.0",

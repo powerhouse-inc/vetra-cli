@@ -16,6 +16,7 @@
  *   VETRA_MEM_PH_INIT_MB          ph init                      (default 2048)
  *   VETRA_MEM_REGISTRY_MB         local package registry       (default 512)
  *   VETRA_MEM_PH_BUILD_MB         ph build                     (default 2048)
+ *   VETRA_MEM_CHECK_MB            tsc / eslint codegen checks   (default 1024)
  */
 
 function maxOldSpaceMb(envVar: string, fallbackMb: number): number {
@@ -43,4 +44,8 @@ export function localRegistryNodeOptions(): string {
 
 export function phBuildNodeOptions(): string {
   return nodeOptions('VETRA_MEM_PH_BUILD_MB', 2048);
+}
+
+export function checkNodeOptions(): string {
+  return nodeOptions('VETRA_MEM_CHECK_MB', 1024);
 }
