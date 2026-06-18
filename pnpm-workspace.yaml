@@ -52,6 +52,32 @@ overrides:
   # Pinned to match clint-common's exact 16.12.0 anchor so the whole tree collapses to one realm.
   graphql: '16.12.0'
 
+  # --- image-size dedupe candidates (Trim 4) — DRAFT, not active. Each collapses a
+  # duplicate-version train in the global store; reclaim is the freed train copies in
+  # store/v11/{links,files}. Requires a rebuild to confirm the closure still resolves and
+  # builds/runs. Listed cheapest-risk first; uncomment individually and rebuild to verify.
+  #
+  # date-fns: all three (4.1.0/4.3.0/4.4.0) are major 4 — semver-compatible, lowest risk.
+  #   reclaim ~66 MiB (3 copies ~105 MiB -> 1 copy ~39 MiB).
+  # 'date-fns': '4.4.0'
+  #
+  # @powerhousedao/shared dev-trains (6.0.0-dev.257 + 6.2.0-dev.6/8/16). Collapsing to the
+  #   catalog pin removes 3 stale copies (~18 MiB). RISK: cross-version class identity
+  #   (same family as the reactor-attachments dedupe note above) — rebuild + smoke required.
+  # '@powerhousedao/shared': '6.2.0-dev.23'
+  #
+  # @rolldown/binding train (rc.8/rc.15/rc.17/1.0.2). Highest reclaim (~67 MiB: 4 native
+  #   binding copies ~88 MiB -> 1 copy ~21 MiB) but HIGHEST risk — pre-1.0 rc APIs differ
+  #   and consumers (vite/tsdown) may pin an rc; a forced single version can break the build.
+  # rolldown: '1.0.2'
+  #
+  # @opentelemetry/* sub-packages: 81 version-dirs (~121 MiB), multiple SDK majors. No single
+  #   safe pin (the api anchor is already single at 1.9.1); deduping the sdk/instrumentation
+  #   trains is high-risk and not recommended without a dedicated audit.
+  #
+  # zod v3 (3.25.76) coexists with v4 (4.3.6) despite the `zod: '4.3.6'` override above — a
+  #   dep hard-requires v3. Forcing v3->v4 is a breaking-API change for ~6 MiB; not worth it.
+
 allowBuilds:
   '@apollo/protobufjs': true
   '@datadog/pprof': true
