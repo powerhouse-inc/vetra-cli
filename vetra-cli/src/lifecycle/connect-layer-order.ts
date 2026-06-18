@@ -67,7 +67,7 @@ export function connectExternalPackagesLayerOrder(
           indexFile,
           html.slice(0, insertAt) + LAYER_STYLE + html.slice(insertAt),
         );
-        ctx.log.info(
+        ctx.log.debug(
           "[connect-layer-order] Pinned external-packages as the lowest cascade layer.",
         );
       } catch (err: unknown) {
