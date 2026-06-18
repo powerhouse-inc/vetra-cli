@@ -61,6 +61,9 @@ export const reactorProjectStart = defineCommand({
     if (input.connectPort !== undefined) params.connectPort = input.connectPort;
     if (input.switchboardPort !== undefined)
       params.switchboardPort = input.switchboardPort;
+    // The live proxy origin (with any auto-assigned port) is only knowable
+    // here; the service builder can't read it. Drives are advertised under it.
+    if (context.proxy?.url) params.proxyPublicUrl = context.proxy.url;
 
     try {
       const instanceId = await services.start("reactor-project", {
