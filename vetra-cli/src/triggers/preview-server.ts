@@ -53,6 +53,7 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         subscribe: (event, handler) => on(event, handler),
         workdir,
         port: DEFAULT_PREVIEW_SERVER_PORT,
+        proxyPublicUrl: ctx.commandContext.proxy?.url,
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),

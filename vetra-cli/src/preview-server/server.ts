@@ -24,6 +24,8 @@ interface PreviewServerDeps {
   subscribe: (eventName: string, handler: (raw: unknown) => void) => void;
   workdir: string;
   port: number;
+  /** Live public proxy origin, forwarded to reactor-project starts. */
+  proxyPublicUrl?: string;
   log?: {
     info: (m: string) => void;
     error: (m: string) => void;
@@ -59,7 +61,7 @@ function parseQuery(url: string): URLSearchParams {
 export async function startPreviewServer(
   deps: PreviewServerDeps,
 ): Promise<PreviewServerHandle> {
-  const { services, subscribe, workdir, port, log } = deps;
+  const { services, subscribe, workdir, port, proxyPublicUrl, log } = deps;
   const broadcaster = createSseBroadcaster({ subscribe });
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -103,6 +105,7 @@ export async function startPreviewServer(
           services,
           workdir,
           project: q.get("project") ?? "",
+          proxyPublicUrl,
         });
         const status =
           result.kind === "unknown-project"
