@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
 
-import { fetchMyEnvironments } from "../../src/cloud/graphql.js";
+import { fetchMyEnvironments } from "@powerhousedao/vetra-cloud-client";
 
 const ENDPOINT = "https://switchboard.example/graphql";
 

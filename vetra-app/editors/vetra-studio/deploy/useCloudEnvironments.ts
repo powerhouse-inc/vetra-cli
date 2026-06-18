@@ -1,4 +1,5 @@
 import { useRenown } from "@powerhousedao/reactor-browser";
+import { filterOwn } from "@powerhousedao/vetra-cloud-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAuthToken } from "./cloudClient.js";
 import {
@@ -15,26 +16,6 @@ export type EnvironmentsState =
 /** Background revalidation cadence — keeps statuses (DEPLOYING → READY) fresh
  * without a manual refresh. */
 const POLL_INTERVAL_MS = 10_000;
-
-/**
- * Keep only the caller's own environments. The backend `myEnvironments(MINE)`
- * scope also returns *unclaimed* envs (owner == null), so without this filter
- * other people's in-progress/unclaimed envs leak into the list. Mirrors
- * vetra.to's filterByScope MINE rule: owned by me, or unclaimed-but-created
- * by me (covers the gap before SET_OWNER lands).
- */
-function filterOwn(
-  items: EnvironmentSummary[],
-  viewerAddress: string | undefined,
-): EnvironmentSummary[] {
-  const me = viewerAddress?.toLowerCase() ?? null;
-  if (me === null) return [];
-  return items.filter((e) => {
-    const owner = e.owner?.toLowerCase() ?? null;
-    const createdBy = e.createdBy?.toLowerCase() ?? null;
-    return owner === me || (owner === null && createdBy === me);
-  });
-}
 
 /**
  * Fetch the caller's own environments (scope MINE, server-enforced + filtered

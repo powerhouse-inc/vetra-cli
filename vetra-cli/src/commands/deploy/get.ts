@@ -2,12 +2,14 @@ import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { formatSchema, renderProjected } from "../spec/_helpers.js";
 import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
-import { CLOUD_BASE_DOMAIN } from "../../cloud/config.js";
+import {
+  CLOUD_BASE_DOMAIN,
+  type EnvironmentSummary,
+} from "@powerhousedao/vetra-cloud-client";
 import {
   findMyEnvironment,
   listMyEnvironments,
 } from "../../cloud/environments-read.js";
-import type { EnvironmentSummary } from "../../cloud/graphql.js";
 
 function describe(env: EnvironmentSummary): string {
   const host = env.subdomain ? `${env.subdomain}.${CLOUD_BASE_DOMAIN}` : "(no host)";

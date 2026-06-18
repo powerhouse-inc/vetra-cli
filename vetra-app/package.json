@@ -93,6 +93,7 @@
     "@powerhousedao/reactor-attachments": "6.2.0-dev.6",
     "@powerhousedao/reactor-browser": "catalog:",
     "@powerhousedao/shared": "catalog:",
+    "@powerhousedao/vetra-cloud-client": "workspace:*",
     "@tailwindcss/cli": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "catalog:",

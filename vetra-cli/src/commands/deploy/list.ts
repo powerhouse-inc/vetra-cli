@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { formatColumns } from "../spec/_helpers.js";
-import { CLOUD_BASE_DOMAIN } from "../../cloud/config.js";
+import { CLOUD_BASE_DOMAIN } from "@powerhousedao/vetra-cloud-client";
 import { listMyEnvironments } from "../../cloud/environments-read.js";
 
 function host(subdomain: string | null): string {

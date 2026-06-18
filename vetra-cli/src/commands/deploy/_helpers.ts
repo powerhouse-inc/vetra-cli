@@ -1,13 +1,15 @@
 import { z } from "zod";
-import type { VetraCloudEnvironmentGlobalState } from "@powerhousedao/vetra-cloud-package/document-models/vetra-cloud-environment";
+import {
+  CLOUD_BASE_DOMAIN,
+  type EnvironmentSummary,
+  type VetraCloudEnvironmentGlobalState,
+} from "@powerhousedao/vetra-cloud-client";
 import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
-import { CLOUD_BASE_DOMAIN } from "../../cloud/config.js";
 import {
   findMyEnvironment,
   listMyEnvironments,
   type ReadContext,
 } from "../../cloud/environments-read.js";
-import type { EnvironmentSummary } from "../../cloud/graphql.js";
 
 /** Comma-separated string or array → array of service types. */
 export const serviceListSchema = z.preprocess(

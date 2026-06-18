@@ -1,7 +1,9 @@
 import { describe, expect, it } from "@jest/globals";
 
-import { filterOwn } from "../../src/cloud/environments-read.js";
-import type { EnvironmentSummary } from "../../src/cloud/graphql.js";
+import {
+  filterOwn,
+  type EnvironmentSummary,
+} from "@powerhousedao/vetra-cloud-client";
 
 function env(p: Partial<EnvironmentSummary>): EnvironmentSummary {
   return {

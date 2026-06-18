@@ -1,6 +1,7 @@
-// Copied verbatim from vetra-app's deploy/subdomain.ts (in turn from
-// vetra-cloud-package/shared/subdomain-generator.ts). Must produce identical
-// output for the same id — the gitops namespace derives from the same fragment.
+// Subdomain generator — must produce identical output for the same id as
+// vetra-cloud-package/shared/subdomain-generator.ts (the gitops namespace
+// derives from the same fragment). That upstream module isn't exported, so the
+// algorithm lives here as the single in-repo source of truth.
 
 const ADJECTIVES = [
   "bright", "calm", "cool", "crisp", "bold", "eager", "fair", "fast", "glad",

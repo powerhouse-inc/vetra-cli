@@ -1,9 +1,9 @@
 import { TextInput } from "@powerhousedao/document-engineering/ui";
+import { applyCreateEnvironment } from "@powerhousedao/vetra-cloud-client";
 import type { ISigner } from "document-model";
 import { useState } from "react";
 import { createNewEnvironmentController } from "./cloudController.js";
-import { CLOUD_BASE_DOMAIN, CLOUD_DEFAULT_PACKAGE_REGISTRY } from "./config.js";
-import { generateSubdomain } from "./subdomain.js";
+import { CLOUD_BASE_DOMAIN } from "./config.js";
 import { errorMessage } from "./utils.js";
 
 export function CreateEnvironmentForm({
@@ -34,22 +34,11 @@ export function CreateEnvironmentForm({
         throw new Error("Signer has no user address — cannot claim ownership.");
       }
       const label = name.trim();
-      // Subdomain is auto-generated, matching vetra.to: a memorable
-      // adjective-animal prefix plus a collision-proof suffix.
-      const subdomain = generateSubdomain(crypto.randomUUID());
       const controller = createNewEnvironmentController({
         parentIdentifier: driveId,
         signer,
       });
-      // setOwner first — every subsequent action is owner-gated on the remote.
-      controller.setOwner({ address: ownerAddress });
-      controller.setLabel({ label });
-      controller.initialize({
-        genericSubdomain: subdomain,
-        genericBaseDomain: CLOUD_BASE_DOMAIN,
-        defaultPackageRegistry: CLOUD_DEFAULT_PACKAGE_REGISTRY,
-      });
-      controller.enableService({ type: "CONNECT", prefix: "connect" });
+      applyCreateEnvironment(controller, { address: ownerAddress, label });
       const result = await controller.push();
       onCreated(result.remoteDocument.id, label);
     } catch (err) {

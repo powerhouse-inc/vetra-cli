@@ -1,25 +1,4 @@
-/**
- * Cloud switchboard GraphQL reads. Port of
- * vetra-app/editors/vetra-studio/deploy/cloudGraphql.ts for Node — plain fetch,
- * no browser dependencies.
- */
-
-/** Caller-scoped environment summary from the observability subgraph's
- * `myEnvironments` query. The server enforces the scope, so we only receive the
- * caller's own environments. */
-export type EnvironmentSummary = {
-  id: string;
-  name: string | null;
-  subdomain: string | null;
-  customDomain: string | null;
-  status: string | null;
-  owner: string | null;
-  /** Legacy creator column — keeps a just-created env (before SET_OWNER lands)
-   * in the creator's MINE view. */
-  createdBy: string | null;
-};
-
-export type ListScope = "MINE" | "ALL";
+import type { EnvironmentSummary, ListScope } from "./types.js";
 
 type GqlResponse<T> = { data?: T; errors?: Array<{ message?: string }> };
 
@@ -64,4 +43,22 @@ export async function fetchMyEnvironments(
     token,
   );
   return data.myEnvironments;
+}
+
+/**
+ * Keep only the caller's own environments: owned by me, or unclaimed (owner
+ * null) but created by me. The MINE scope is enforced server-side but still
+ * returns unclaimed envs, so this trims the leak.
+ */
+export function filterOwn(
+  items: EnvironmentSummary[],
+  viewer: string | undefined,
+): EnvironmentSummary[] {
+  const me = viewer?.toLowerCase() ?? null;
+  if (me === null) return [];
+  return items.filter((e) => {
+    const owner = e.owner?.toLowerCase() ?? null;
+    const createdBy = e.createdBy?.toLowerCase() ?? null;
+    return owner === me || (owner === null && createdBy === me);
+  });
 }

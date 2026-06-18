@@ -1,7 +1,7 @@
 import {
-  createClient,
+  createReactorClient,
   type ReactorGraphQLClient,
-} from "@powerhousedao/reactor-browser";
+} from "@powerhousedao/vetra-cloud-client";
 import { CLOUD_SWITCHBOARD_URL } from "./config.js";
 
 /** GraphQL endpoint of the cloud switchboard (staging.vetra.io). */
@@ -54,16 +54,8 @@ async function resolveToken(): Promise<string | null> {
   return null;
 }
 
-async function withAuth<T>(
-  action: (headers?: Record<string, string>) => Promise<T>,
-): Promise<T> {
-  const token = await resolveToken();
-  if (!token) return action();
-  return action({ authorization: `Bearer ${token}` });
-}
-
 /** Reactor GraphQL client for signed action push/pull against the cloud. */
-export const client: ReactorGraphQLClient = createClient(
+export const client: ReactorGraphQLClient = createReactorClient(
   cloudGraphqlEndpoint,
-  withAuth,
+  resolveToken,
 );
