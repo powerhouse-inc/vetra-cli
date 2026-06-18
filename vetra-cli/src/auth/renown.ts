@@ -15,6 +15,7 @@
 import path from "node:path";
 import {
   RenownBuilder,
+  generateAccessToken,
   getAuthStatus,
   type AuthStatusResult,
   type CreateBearerTokenOptions,
@@ -152,6 +153,24 @@ export async function getBearerToken(
   const renown = await getRenown(workdir, renownUrl);
   if (!renown.user) return null;
   return renown.getBearerToken(opts);
+}
+
+/** Mint a registry-bound bearer token (JWT `aud` = registryUrl) from the
+ * agent's authorized identity, or null if not authorized. Mirrors `ph
+ * publish`'s registry auth so the same identity publishes packages. */
+export async function getRegistryToken(
+  workdir: string,
+  renownUrl: string,
+  registryUrl: string,
+  expiresIn = 300,
+): Promise<string | null> {
+  const renown = await getRenown(workdir, renownUrl);
+  if (!renown.user) return null;
+  const { token } = await generateAccessToken(renown, {
+    expiresIn,
+    aud: registryUrl,
+  });
+  return token;
 }
 
 /** The Renown signer for signed document pushes (write path). Its `.user` is

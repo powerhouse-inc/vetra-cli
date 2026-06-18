@@ -368,6 +368,13 @@ delegates the user's wallet to that `did:key`.
   `renown.id` origin.) The Renown server URL defaults to
   `https://www.renown.id` (`config.cloudRenownUrl` overrides); the switchboard
   URL defaults to staging (`config.cloudSwitchboardUrl`).
+- **Publish path (live).** `reactor-project-publish` mints a registry-bound
+  bearer token from the agent's identity (`getRegistryToken` in
+  `src/auth/renown.ts` → `generateAccessToken(…, { aud: registryUrl })`, the
+  same mechanism as `ph publish`) and passes it to `npm publish` as the
+  ephemeral `_authToken`; `reactor-project-publish-status` reads the registry
+  packument over HTTP with the same token. No `npm login` — authorizing the
+  agent is the only prerequisite.
 - **Read path (live).** `deploy-environment-list` / `-get` query
   `myEnvironments` over GraphQL with the bearer token
   (`src/cloud/graphql.ts`) and trim to the caller's own environments
@@ -686,10 +693,15 @@ swaps. That whole chain remains in the source tree, gated by
 - `services/local-registry.ts` (Verdaccio supervisor service)
 - `triggers/publish-reload.ts` (SSE consumer + Switchboard/Connect
   reconciler)
-- `commands/reactor-project/publish.ts` (publish flow)
 - `LOCAL_REGISTRY_URL` / `LOCAL_REGISTRY_PORT` constants
 - `registryUrl` wiring in `cli.configureReactor`'s switchboard/connect
   options
+
+`commands/reactor-project/publish.ts` (and `publish-status.ts`) are **not**
+dormant — they are the live deploy-flow tools that publish a Reactor package
+to the remote registry via the agent's Renown token (see "Renown identity →
+Publish path" above). Only the local-registry preview wiring above is gated
+off.
 
 With the flag false, none of this runs. The code is retained as
 reference for future scenarios where dynamic package loading is the

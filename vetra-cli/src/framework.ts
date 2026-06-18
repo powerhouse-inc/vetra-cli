@@ -23,8 +23,6 @@ export const configSchema = z.object({
   phVersion: z.string().optional().describe(`Powerhouse version for new reactor projects (defaults to ${DEFAULT_PH_VERSION})`),
   reactorProjectClonePath: z.string().optional().describe('Path to a pre-scaffolded reactor-project. When set, reactor-project-init clones it via `ph init --clone` (fast path). Typically baked into container images.'),
   registryUrl: z.string().optional().describe('Registry URL to use when publishing packages. When unset, resolution falls through to PH_REGISTRY_URL, powerhouse.config.json, then the default vetra registry (https://registry.dev.vetra.io)'),
-  registryUsername: z.string().optional().describe('Username for registry authentication'),
-  registryEmail: z.email().optional().describe('Email for registry authentication'),
   cloudSwitchboardUrl: z.string().optional().describe('Vetra Cloud switchboard GraphQL base URL the deploy commands talk to (defaults to https://switchboard.staging.vetra.io)'),
   cloudRenownUrl: z.string().optional().describe('Renown identity service URL for the cloud login flow (defaults to https://www.renown.id)'),
   // @clint:end framework-config
@@ -33,7 +31,6 @@ export const configSchema = z.object({
 export const secretsSchema = z.object({
   // @clint:begin framework-secrets
   anthropicApiKey: z.string().optional().describe('anthropic API key'),
-  registryPassword: z.string().optional().describe('Password for registry authentication'),
   // @clint:end framework-secrets
 });
 

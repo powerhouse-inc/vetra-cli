@@ -1,61 +1,13 @@
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { spawnAsync } from '@powerhousedao/shared/clis';
-import {
-  checkNpmAuth,
-  npmPublish,
-  resolveRegistryUrl,
-} from '@powerhousedao/shared/registry';
+import { npmPublish, resolveRegistryUrl } from '@powerhousedao/shared/registry';
 import { defineCommand } from '../../framework.js';
+import { getRegistryToken } from '../../auth/renown.js';
+import { resolveCloudConfig } from '../../cloud/config.js';
 import { resolveReactorProjectPath } from '../../helpers/project.js';
 import { formatProcessFailure } from '../../helpers/cli-errors.js';
 import { runBuild } from './build.js';
-
-function npmLogin(
-  registryUrl: string,
-  username: string,
-  password: string,
-  email?: string,
-  cwd?: string,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    const child = spawn(cmd, ['login', '--registry', registryUrl], {
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    const answers: Record<string, string> = {
-      Username: username,
-      Password: password,
-      Email: email ?? '',
-    };
-
-    const handleData = (data: Buffer) => {
-      const text = data.toString();
-      for (const [prompt, answer] of Object.entries(answers)) {
-        if (text.includes(prompt)) {
-          child.stdin?.write(answer + '\n');
-          return;
-        }
-      }
-    };
-
-    child.stdout.on('data', handleData);
-    child.stderr.on('data', handleData);
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`npm adduser exited with code ${code}`));
-    });
-  });
-}
-
-function npmLogout(registryUrl: string, cwd?: string): Promise<string> {
-  return spawnAsync('npm', ['logout', '--registry', registryUrl], { cwd });
-}
 
 const publishInputSchema = z.object({
   name: z.string().optional().describe('Project directory name (relative to workdir).'),
@@ -76,36 +28,27 @@ const publishInputSchema = z.object({
     .boolean()
     .optional()
     .describe('Whether to log output to the console. Only enable for debugging purposes.'),
-  username: z
-    .string()
-    .optional()
-    .describe('Registry username (overrides config.registryUsername)'),
-  password: z
-    .string()
-    .optional()
-    .describe('Registry password (overrides config.registryPassword)'),
 });
 
 export const reactorProjectPublish = defineCommand({
   id: 'reactor-project-publish',
-  description: `Build and publish a Reactor Package to the npm registry.
+  description: `Build and publish a Reactor Package to the Powerhouse registry.
 
 This command:
 1. Optionally updates the version in package.json
 2. Runs \`reactor-project-build\` — uses tsdown to produce Node.js and browser bundles so the package can be loaded in both Connect (browser) and Switchboard (Node.js) instances
 3. Resolves the registry URL (--registry flag > PH_REGISTRY_URL env > powerhouse.config.json > default)
-4. Checks authentication with the registry
-5. Runs npm publish
+4. Mints a short-lived registry token from the agent's Renown identity
+5. Runs npm publish with that token
 
-Prerequisites: You must be authenticated with the npm registry.
-Run \`npm login --registry <url>\` to create an account with a username, password, and email.`,
+Prerequisites: the agent must be authorized with the user's Renown identity
+(the studio "Authorize agent" button, or \`ph login\` from the CLI). No npm
+login is required.`,
   inputSchema: publishInputSchema,
   execute: async (
-    { name, version, registry, tag, skipBuild, dryRun, log, username: usernameArg, password: passwordArg },
+    { name, version, registry, tag, skipBuild, dryRun, log },
     { workdir, config, stdout },
   ) => {
-    const registryUsername = usernameArg ?? config.registryUsername;
-    const registryPassword = passwordArg ?? config.registryPassword;
     const projectPath = await resolveReactorProjectPath(workdir, name);
     const packageJsonPath = path.join(projectPath, 'package.json');
 
@@ -147,47 +90,11 @@ Run \`npm login --registry <url>\` to create an account with a username, passwor
       }
     }
 
-    let username: string | undefined;
-    try {
-      try {
-        username = await checkNpmAuth(registryUrl);
-      } catch {
-        // not authenticated, will attempt to log in
-      }
-
-      if (registryUsername && username && username !== registryUsername) {
-        await npmLogout(registryUrl, projectPath);
-        username = undefined;
-      }
-
-      if (!username) {
-        if (registryUsername && registryPassword) {
-          await npmLogin(
-            registryUrl,
-            registryUsername,
-            registryPassword,
-            config.registryEmail,
-            projectPath,
-          );
-          username = registryUsername;
-        } else {
-          return {
-            text: `**Error:** Not authenticated with registry \`${registryUrl}\`. Please provide username and password (as tool args or via config.registryUsername / config.registryPassword), or run \`npm login --registry ${registryUrl}\` to log in.`,
-          };
-        }
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+    const { renownUrl } = resolveCloudConfig(config);
+    const authToken = await getRegistryToken(workdir, renownUrl, registryUrl);
+    if (!authToken) {
       return {
-        text: [
-          '**Authentication failed**',
-          '',
-          `Registry: \`${registryUrl}\``,
-          '',
-          '```',
-          message,
-          '```',
-        ].join('\n'),
+        text: `**Error:** Agent not authorized. Publishing uses the user's Renown identity — authorize the agent first (the studio "Authorize agent" button, or \`ph login\` from the CLI), then retry.`,
       };
     }
 
@@ -200,6 +107,7 @@ Run \`npm login --registry <url>\` to create an account with a username, passwor
         registryUrl,
         cwd: projectPath,
         args: extraArgs,
+        authToken,
       });
 
       const lines = [
@@ -210,7 +118,6 @@ Run \`npm login --registry <url>\` to create an account with a username, passwor
         packageJson.name ? `| Package | \`${packageJson.name}\` |` : null,
         packageJson.version ? `| Version | \`${packageJson.version}\` |` : null,
         `| Registry | \`${registryUrl}\` |`,
-        `| User | \`${username}\` |`,
         tag ? `| Tag | \`${tag}\` |` : null,
         dryRun ? `| Mode | dry-run |` : null,
       ].filter((l) => l !== null);
