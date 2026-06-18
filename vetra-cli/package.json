@@ -53,6 +53,7 @@
     "document-model": "catalog:",
     "graphql": "catalog:",
     "jsonpath-plus": "^10.4.0",
+    "proper-lockfile": "^4.1.2",
     "vetra-app": "workspace:*",
     "zod": "catalog:"
   },
@@ -61,6 +62,7 @@
     "@playwright/test": "^1.61.0",
     "@powerhousedao/ph-clint-dev": "catalog:",
     "@types/node": "catalog:",
+    "@types/proper-lockfile": "^4.1.4",
     "eslint-config-prettier": "catalog:",
     "eslint-plugin-jest": "^29.15.2",
     "jest": "^30.2.0",
