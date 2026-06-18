@@ -36,8 +36,10 @@ export const specExtract = defineCommand({
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
-     * gap; identical at runtime. */
-    const tsProject = buildTsMorphProject(base);
+     * gap; identical at runtime. Held in a `let` so the full-project AST can be
+     * dropped once extraction is done. */
+    let tsProject: ReturnType<typeof buildTsMorphProject> | null =
+      buildTsMorphProject(base);
     const docs: PHDocument[] = (() => {
       switch (input.type) {
         case "document-model":
@@ -62,6 +64,8 @@ export const specExtract = defineCommand({
         }
       }
     })();
+    // Drop the AST; the rest of the command only touches extracted docs.
+    tsProject = null;
 
     const written: string[] = [];
     for (const doc of docs) {

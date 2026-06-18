@@ -101,8 +101,9 @@ export const specGenerate = defineCommand({
     /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
      * physical copies of `ts-morph` (same version, different install paths), so
      * TS treats their `Project` types as distinct. Cast bridges the structural
-     * gap; identical at runtime. */
-    const tsProject = buildTsMorphProject(base);
+     * gap; identical at runtime. Held in a `let` so the full-project AST can be
+     * dropped before tsc/eslint spawn (it stacks otherwise). */
+    let tsProject: Project | null = buildTsMorphProject(base);
 
     const docs = input.name
       ? [await loadByName(base, input.name)]
@@ -140,6 +141,8 @@ export const specGenerate = defineCommand({
     }
 
     await tsProject.save();
+    // Drop the AST so it GCs before the tsc/eslint subprocesses spawn.
+    tsProject = null;
 
     let diagnostics: GenDiagnostic[] = [];
     const checkNotes: string[] = [];

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { checkNodeOptions } from "./node-memory.js";
 
 export interface GenDiagnostic {
   source: "tsc" | "eslint";
@@ -21,7 +22,7 @@ export type CheckScope = "module" | "all";
 
 type RunProcess = (
   command: string,
-  opts?: { cwd?: string; timeout?: number },
+  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
 ) => Promise<{ success: boolean; output: string }>;
 
 const SEP = path.sep;
@@ -175,7 +176,7 @@ export async function runChecks(
     } else {
       const { success, output } = await runProcess(
         `"${tsc}" --noEmit --pretty false`,
-        { cwd: base, timeout: 120_000 },
+        { cwd: base, timeout: 120_000, env: { NODE_OPTIONS: checkNodeOptions() } },
       );
       const found = parseTscOutput(output, base, scope);
       diagnostics.push(...found);
@@ -198,7 +199,7 @@ export async function runChecks(
       } else {
         const { success, output } = await runProcess(
           `"${eslint}" --no-error-on-unmatched-pattern --format json ${eslintArgs}`,
-          { cwd: base, timeout: 120_000 },
+          { cwd: base, timeout: 120_000, env: { NODE_OPTIONS: checkNodeOptions() } },
         );
         const found = parseEslintOutput(output, base);
         diagnostics.push(...found);
