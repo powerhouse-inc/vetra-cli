@@ -379,10 +379,16 @@ delegates the user's wallet to that `did:key`.
   `myEnvironments` over GraphQL with the bearer token
   (`src/cloud/graphql.ts`) and trim to the caller's own environments
   (`filterOwn`, mirroring the Studio).
-- **Write path (planned).** `deploy-environment-create` / `-update` still
-  use the in-process mock (`src/commands/deploy/_mock.ts`). The live version
-  mirrors the Studio's `RemoteDocumentController` + signer push against the
-  `vetra-cloud-environment` document model.
+- **Write path (live).** `deploy-environment-create` / `-update` load (or
+  create) the `vetra-cloud-environment` document via a `RemoteDocumentController`
+  and push signer-signed actions against the cloud, mirroring the Studio
+  (`src/cloud/environments-write.ts`, delegating to
+  `@powerhousedao/vetra-cloud-client`).
+- **Wait.** `deploy-environment-wait` polls the read path every 5s (up to a
+  caller-set timeout — default 30s, max 60s) until the status leaves the
+  in-flight set (`CHANGES_*` / `DEPLOYING` / `TERMINATING`) and settles, so the
+  agent blocks in a single tool call instead of looping `deploy-environment-get`
+  (`src/commands/deploy/wait.ts`).
 
 ### Triggers
 

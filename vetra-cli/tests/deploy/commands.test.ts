@@ -7,6 +7,7 @@ import { deployEnvironmentCreate } from "../../src/commands/deploy/create.js";
 import { deployEnvironmentGet } from "../../src/commands/deploy/get.js";
 import { deployEnvironmentList } from "../../src/commands/deploy/list.js";
 import { deployEnvironmentUpdate } from "../../src/commands/deploy/update.js";
+import { deployEnvironmentWait } from "../../src/commands/deploy/wait.js";
 
 // All four commands hit the real cloud path: a throwaway workdir builds an
 // unauthenticated Renown identity, so reads short-circuit (null token) and
@@ -39,6 +40,10 @@ describe("deploy-environment command shapes", () => {
     expect(deployEnvironmentUpdate.inputSchema.shape).toHaveProperty(
       "enableService",
     );
+
+    expect(deployEnvironmentWait.id).toBe("deploy-environment-wait");
+    expect(deployEnvironmentWait.inputSchema.shape).toHaveProperty("name");
+    expect(deployEnvironmentWait.inputSchema.shape).toHaveProperty("timeout");
   });
 });
 
@@ -58,6 +63,18 @@ describe("deploy reads require cloud auth", () => {
   it("get still requires a name first", async () => {
     await expect(
       deployEnvironmentGet.execute({ name: "", full: false }, cloudCtx()),
+    ).rejects.toThrow(/Missing required option --name/);
+  });
+
+  it("wait throws not-authorized while resolving an environment", async () => {
+    await expect(
+      deployEnvironmentWait.execute({ name: "anything", timeout: 30 }, cloudCtx()),
+    ).rejects.toThrow(/Not authorized/);
+  });
+
+  it("wait still requires a name first", async () => {
+    await expect(
+      deployEnvironmentWait.execute({ name: "", timeout: 30 }, cloudCtx()),
     ).rejects.toThrow(/Missing required option --name/);
   });
 });

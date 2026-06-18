@@ -3,26 +3,10 @@ import { defineCommand } from "../../framework.js";
 import { formatSchema, renderProjected } from "../spec/_helpers.js";
 import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
 import {
-  CLOUD_BASE_DOMAIN,
-  type EnvironmentSummary,
-} from "@powerhousedao/vetra-cloud-client";
-import {
   findMyEnvironment,
   listMyEnvironments,
 } from "../../cloud/environments-read.js";
-
-function describe(env: EnvironmentSummary): string {
-  const host = env.subdomain ? `${env.subdomain}.${CLOUD_BASE_DOMAIN}` : "(no host)";
-  const lines = [
-    `${env.name ?? "(unnamed)"}  [${env.status ?? "unknown"}]`,
-    `host:   ${host}`,
-    `id:     ${env.id}`,
-  ];
-  if (env.owner) lines.push(`owner:  ${env.owner}`);
-  if (env.customDomain) lines.push(`domain: ${env.customDomain}`);
-  lines.push("(service/package detail lands with the write path)");
-  return lines.join("\n");
-}
+import { describeEnvironmentSummary } from "./_helpers.js";
 
 export const deployEnvironmentGet = defineCommand({
   id: "deploy-environment-get",
@@ -69,6 +53,6 @@ export const deployEnvironmentGet = defineCommand({
     if (input.full || input.filter) {
       return { text: renderProjected(env, input.filter ?? "$", input.format) };
     }
-    return { text: describe(env) };
+    return { text: describeEnvironmentSummary(env) };
   },
 });

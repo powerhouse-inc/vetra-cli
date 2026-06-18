@@ -81,6 +81,20 @@ function serviceHost(
     : "(no host)";
 }
 
+/** Human-readable summary from the read path (`myEnvironments`). Lacks the
+ * service/package detail that only the loaded document carries. */
+export function describeEnvironmentSummary(env: EnvironmentSummary): string {
+  const host = env.subdomain ? `${env.subdomain}.${CLOUD_BASE_DOMAIN}` : "(no host)";
+  const lines = [
+    `${env.name ?? "(unnamed)"}  [${env.status ?? "unknown"}]`,
+    `host:   ${host}`,
+    `id:     ${env.id}`,
+  ];
+  if (env.owner) lines.push(`owner:  ${env.owner}`);
+  if (env.customDomain) lines.push(`domain: ${env.customDomain}`);
+  return lines.join("\n");
+}
+
 /** Human-readable multi-line detail view of an environment's document state. */
 export function describeEnvironmentState(
   state: VetraCloudEnvironmentGlobalState,
