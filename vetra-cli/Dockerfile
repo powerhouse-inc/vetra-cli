@@ -107,11 +107,11 @@ RUN set -eu; \
  # Prebuild Connect's vendor bundle into the template's node_modules/.ph-vendor.
  # ph init --clone reinstalls node_modules from the lockfile, so reactor-project-
  # init reseeds this into the clone (digest matches) and ph vetra warm-hits it.
- # builder-tools is ESM-only and lives in the global store; resolve by absolute
- # path (NODE_PATH doesn't help ESM). The build worker self-resolves vite from cwd.
+ # builder-tools is ESM-only in the global store; resolve dist by absolute path
+ # (NODE_PATH can't help ESM), pinned to PH_VERSION as the closure brings others.
  && VETRA_SHIM="$(command -v vetra)" \
  && NODE_PATH="$(dirname "$VETRA_SHIM")/../$(grep -oE 'global/v11/[^/]+/node_modules' "$VETRA_SHIM" | head -1)/.pnpm/node_modules" \
-    BT_PATH="$(find "$(pnpm store path)/links/@powerhousedao/builder-tools" -path '*/dist/index.mjs' | head -1)" \
+    BT_PATH="$(find "$(pnpm store path)/links/@powerhousedao/builder-tools/${PH_VERSION}" -path '*/dist/index.mjs' | head -1)" \
     PH_CONNECT_EXTERNALIZE_VENDOR=1 \
     node --input-type=module -e 'const {pathToFileURL}=await import("node:url");const m=await import(pathToFileURL(process.env.BT_PATH).href);const e={};const r=await m.prebuildConnectVendor({dirname:process.cwd(),errorRef:e});if(!r){console.error("[vendor-prebuild] FAILED: "+(e.message||"unknown"));process.exit(1);}console.log("[vendor-prebuild] ok imports="+Object.keys(r.imports).length);' \
  && test -f node_modules/.ph-vendor/import-map.json \
