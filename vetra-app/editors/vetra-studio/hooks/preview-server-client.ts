@@ -113,6 +113,77 @@ export async function fetchStart(args: {
   return (await res.json()) as StartResult;
 }
 
+/** Renown auth state served by the daemon's /auth endpoints. `pending`
+ * is set while a Renown console login is awaiting browser approval. */
+export type AuthState = {
+  authenticated: boolean;
+  address?: string;
+  pending?: { loginUrl: string };
+};
+
+/** Current Renown auth state (read-only; does not advance the login). */
+export async function fetchAuthStatus(
+  signal?: AbortSignal,
+): Promise<AuthState> {
+  const res = await fetch(`${BASE}/auth/status`, { signal });
+  if (!res.ok) {
+    throw new Error(
+      `preview-server /auth/status: ${res.status} ${res.statusText}`,
+    );
+  }
+  return (await res.json()) as AuthState;
+}
+
+/** Start a login for the agent's identity: the daemon builds the renown.id
+ * console URL (returned as `pending.loginUrl`) and stashes the session. */
+export async function startAuth(signal?: AbortSignal): Promise<AuthState> {
+  const res = await fetch(`${BASE}/auth/start`, {
+    method: "POST",
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `preview-server /auth/start: ${res.status} ${res.statusText}`,
+    );
+  }
+  return (await res.json()) as AuthState;
+}
+
+/** Advance a pending login: the daemon polls Renown for up to `waitMs` and,
+ * once the user has approved in the browser, stores the credential. */
+export async function confirmAuth(args?: {
+  waitMs?: number;
+  signal?: AbortSignal;
+}): Promise<AuthState> {
+  const params = new URLSearchParams();
+  if (args?.waitMs != null) params.set("wait", String(args.waitMs));
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/auth/confirm${qs ? `?${qs}` : ""}`, {
+    method: "POST",
+    signal: args?.signal,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `preview-server /auth/confirm: ${res.status} ${res.statusText}`,
+    );
+  }
+  return (await res.json()) as AuthState;
+}
+
+/** Clear the stored credential (the agent's keypair/DID is kept). */
+export async function logoutAuth(signal?: AbortSignal): Promise<AuthState> {
+  const res = await fetch(`${BASE}/auth/logout`, {
+    method: "POST",
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `preview-server /auth/logout: ${res.status} ${res.statusText}`,
+    );
+  }
+  return (await res.json()) as AuthState;
+}
+
 type Listener = (eventType: string) => void;
 
 let sharedSource: EventSource | undefined;

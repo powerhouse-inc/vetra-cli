@@ -5,18 +5,31 @@ type PhaseId = "ideate" | "specify" | "build" | "deploy";
 type Phase = { id: PhaseId; label: string; note: string; Icon: LucideIcon };
 
 const PHASES: Phase[] = [
-  { id: "ideate", label: "IDEATE", note: "Problem Definition", Icon: Lightbulb },
+  {
+    id: "ideate",
+    label: "IDEATE",
+    note: "Problem Definition",
+    Icon: Lightbulb,
+  },
   { id: "specify", label: "SPECIFY", note: "Solution Design", Icon: FileText },
-  { id: "build", label: "BUILD", note: "Implementation & Testing", Icon: Hammer },
+  {
+    id: "build",
+    label: "BUILD",
+    note: "Implementation & Testing",
+    Icon: Hammer,
+  },
   { id: "deploy", label: "DEPLOY", note: "Delivery", Icon: Rocket },
 ];
 
-type OpenablePhase = "ideate" | "specify" | "build";
+type OpenablePhase = "ideate" | "specify" | "build" | "deploy";
 
 /** Single source of phase availability: a tile is enabled exactly when the
  * studio has a section for it. */
 function isOpenablePhase(id: PhaseId): id is OpenablePhase {
-  return id === "ideate" || id === "specify" || id === "build";
+  return (
+    // TODO: deploy should be openable only when there's something built, otherwise it doesn't make sense
+    id === "ideate" || id === "specify" || id === "build" || id === "deploy"
+  );
 }
 
 /** The product "home" overview: the four-phase cycle. */

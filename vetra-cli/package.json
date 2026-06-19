@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.26",
+  "version": "0.0.1-dev.27",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -15,7 +15,8 @@
   ],
   "scripts": {
     "build:assets": "tsx scripts/build-assets.ts",
-    "build": "pnpm build:assets && tsc",
+    "build:cloud-client": "tsdown -c tsdown.cloud-client.config.ts && node scripts/vendor-cloud-client.mjs",
+    "build": "pnpm build:assets && tsc && pnpm build:cloud-client",
     "refresh:test-skills": "pnpm build:assets && rm -rf ../../vetra-test/.ph/vetra/.mastra/skills && cp -R gen/skills ../../vetra-test/.ph/vetra/.mastra/skills && echo '[refresh] vetra-test skills replaced; restart vetra for the change to take effect'",
     "dev": "tsx src/main.ts --workdir ../../vetra-test",
     "dev:reset": "bash scripts/dev-reset.sh",
@@ -45,9 +46,11 @@
     "@powerhousedao/reactor": "catalog:",
     "@powerhousedao/reactor-api": "catalog:",
     "@powerhousedao/reactor-attachments": "6.2.0-dev.6",
+    "@powerhousedao/reactor-browser": "catalog:",
     "@powerhousedao/shared": "catalog:",
     "@powerhousedao/switchboard": "catalog:",
     "@powerhousedao/vetra": "catalog:",
+    "@renown/sdk": "catalog:",
     "@toon-format/toon": "^2.2.0",
     "chokidar": "^3.6.0",
     "document-model": "catalog:",
@@ -61,6 +64,7 @@
     "@jest/globals": "^30.2.0",
     "@playwright/test": "^1.61.0",
     "@powerhousedao/ph-clint-dev": "catalog:",
+    "@powerhousedao/vetra-cloud-client": "workspace:*",
     "@types/node": "catalog:",
     "@types/proper-lockfile": "^4.1.4",
     "eslint-config-prettier": "catalog:",

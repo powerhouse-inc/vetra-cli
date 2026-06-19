@@ -20,6 +20,8 @@ import { observability } from '@powerhousedao/ph-clint-observability';
 import { agentRun } from './commands/agent-run.js';
 import { specCommands } from './commands/spec/index.js';
 import { specPreviewCommands } from './commands/spec-preview/index.js';
+import { deployCommands } from './commands/deploy/index.js';
+import { authCommands } from './commands/auth/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject, proxyBasePathHook } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
@@ -56,6 +58,8 @@ export const cli = defineCli({
   commands: [
     ...specCommands,
     ...specPreviewCommands,
+    ...deployCommands,
+    ...authCommands,
     ...reactorProjectCommands,
     ...createAttachmentCommands(),
     agentRun,
@@ -88,7 +92,7 @@ export const cli = defineCli({
       'vetra-agent': {
         name: 'vetra-agent',
         sections: ['base.md', 'tools.md', 'workflow.md'],
-        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation'],
+        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation', 'deploy'],
       },
       'agent-document-model': {
         name: 'agent-document-model',
@@ -107,6 +111,19 @@ export const cli = defineCli({
       },
     },
     skills: {
+      'deploy': {
+        description: 'Build, publish, and deploy a Reactor package to a Vetra Cloud environment — reuse or create an environment, install the package, return the live links, and answer deployment status questions (is the package published, installed, or the environment ready).',
+        inputSchema: z.object({
+          mode: z
+            .enum(['expert', 'discovery', 'one-shot'])
+            .default('expert')
+            .describe(
+              'Expert: align technical design decisions between fellow experts. Discovery: explain the process and guide non-expert users to decisions. One-shot: make all design decisions autonomously and execute without asking',
+            ),
+        }),
+        instructionTemplate:
+          'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
+      },
       'reactor-project-management': {
         description: 'Initialize, build, and publish Reactor Package projects',
         inputSchema: z.object({

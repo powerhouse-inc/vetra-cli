@@ -18,6 +18,8 @@
    scanner at our sources explicitly. */
 @source "./editors/**/*.{ts,tsx}";
 
+@source "./node_modules/@powerhousedao/document-engineering/dist/**/*.js";
+
 @theme {
   /* Vetra design system palette (light) */
   --color-vetra-primary: #04c161;
