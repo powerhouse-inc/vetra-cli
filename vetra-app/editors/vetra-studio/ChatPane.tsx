@@ -25,6 +25,7 @@ import {
   useTransition,
 } from "react";
 import VetraMitosis from "./VetraMitosis.js";
+import { vetraToolRenderers } from "./tool-renderers/index.js";
 
 const ChatSession = lazy(() =>
   import("@powerhousedao/clint-common/editors").then((m) => ({
@@ -345,7 +346,7 @@ function SessionView({
   // list, force a refetch so a stale rejection doesn't strand us in error.
   useEffect(() => {
     if (state.status === "error" && knownInDrive) {
-      void state.reload?.();
+      void state.reload();
     }
   }, [state, knownInDrive]);
 
@@ -371,6 +372,7 @@ function SessionView({
       dispatch={dispatch}
       attachments={attachments}
       agentAvatar={AgentMitosisAvatar}
+      toolRenderers={vetraToolRenderers}
     />
   );
 }
