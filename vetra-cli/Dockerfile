@@ -178,6 +178,15 @@ RUN printf '%s\n' \
       '    export NODE_PATH' \
       '  fi' \
       'fi' \
+      '# Hosted image requires a key by default; set VETRA_REQUIRE_API_KEY=false to opt out.' \
+      ': "${VETRA_REQUIRE_API_KEY:=true}"' \
+      'export VETRA_REQUIRE_API_KEY' \
+      '# No credential yet: hold without serving/announcing; a keyed restart supersedes this.' \
+      'if [ "${VETRA_REQUIRE_API_KEY:-}" = "true" ] && [ -z "${VETRA_ANTHROPIC_API_KEY:-}" ]; then' \
+      '  echo "==> vetra-cli: no API key yet — holding, not serving (waiting for provisioning)" >&2' \
+      '  trap "exit 0" TERM INT' \
+      '  while true; do sleep 5 & wait $!; done' \
+      'fi' \
       'echo "==> vetra-cli: starting prebuilt agent"' \
       'echo "    \$ ${SERVICE_COMMAND}"' \
       'exec sh -c "${SERVICE_COMMAND}"' \
