@@ -9,7 +9,7 @@ import {
   filterOwn,
   type EnvironmentSummary,
   type ListScope,
-} from "@powerhousedao/vetra-cloud-client";
+} from "./_cloud-client.js";
 import { getBearerToken, getRenownStatus } from "../auth/renown.js";
 import { resolveCloudConfig } from "./config.js";
 
