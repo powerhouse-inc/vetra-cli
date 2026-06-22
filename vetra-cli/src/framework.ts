@@ -26,6 +26,23 @@ export const configSchema = z.object({
   registryUsername: z.string().optional().describe('Username for registry authentication'),
   registryEmail: z.email().optional().describe('Email for registry authentication'),
   // @clint:end framework-config
+
+  cloudSwitchboardUrl: z
+    .string()
+    .optional()
+    .describe(
+      'Cloud switchboard GraphQL URL hosting the vetra-github-auth subgraph (env VETRA_CLOUD_SWITCHBOARD_URL)',
+    ),
+  githubAppSlug: z
+    .string()
+    .default('vetra-studio')
+    .describe('GitHub App slug; the bot commits as <slug>[bot] (env VETRA_GITHUB_APP_SLUG)'),
+  environmentId: z
+    .string()
+    .optional()
+    .describe(
+      'The studio environment document id used to scope the GitHub repo (env VETRA_ENVIRONMENT_ID)',
+    ),
 });
 
 export const secretsSchema = z.object({

@@ -274,6 +274,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.8.0
+      eslint:
+        specifier: 9.39.4
+        version: 9.39.4(jiti@2.7.0)
       eslint-config-prettier:
         specifier: 'catalog:'
         version: 10.1.8(eslint@9.39.4(jiti@2.7.0))
