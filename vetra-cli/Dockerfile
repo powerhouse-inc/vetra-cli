@@ -93,15 +93,49 @@ RUN set -eu; \
  && cd "${REACTOR_TEMPLATE_DIR}" \
  && ph init reactor-template --pnpm ${PH_INIT_FLAG} \
  && cd reactor-template \
+ # vite-plugin-externalize-dependencies is builder-tools' optional peer that
+ # activates the prebuilt vendor; ph vetra resolves it from the project's hoisted
+ # node_modules (on its NODE_PATH), so install it into the template.
  && pnpm add -D \
       --config.blockExoticSubdeps=false \
       --config.minimumReleaseAge=0 \
       "@powerhousedao/codegen@${PH_VERSION}" \
+      "vite-plugin-externalize-dependencies@^1.0.1" \
  && printf '\nenableGlobalVirtualStore: true\nminimumReleaseAge: 0\n' >> pnpm-workspace.yaml \
  && rm -rf node_modules \
- && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0
+ && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0 \
+ # Prebuild Connect's vendor bundle into the template's node_modules/.ph-vendor.
+ # ph init --clone reinstalls node_modules from the lockfile, so reactor-project-
+ # init reseeds this into the clone (digest matches) and ph vetra warm-hits it.
+ # builder-tools is ESM-only in the global store; resolve dist by absolute path
+ # (NODE_PATH can't help ESM), pinned to PH_VERSION as the closure brings others.
+ && VETRA_SHIM="$(command -v vetra)" \
+ && NODE_PATH="$(dirname "$VETRA_SHIM")/../$(grep -oE 'global/v11/[^/]+/node_modules' "$VETRA_SHIM" | head -1)/.pnpm/node_modules" \
+    BT_PATH="$(find "$(pnpm store path)/links/@powerhousedao/builder-tools/${PH_VERSION}" -path '*/dist/index.mjs' | head -1)" \
+    PH_CONNECT_EXTERNALIZE_VENDOR=1 \
+    node --input-type=module -e 'const {pathToFileURL}=await import("node:url");const m=await import(pathToFileURL(process.env.BT_PATH).href);const e={};const r=await m.prebuildConnectVendor({dirname:process.cwd(),errorRef:e});if(!r){console.error("[vendor-prebuild] FAILED: "+(e.message||"unknown"));process.exit(1);}console.log("[vendor-prebuild] ok imports="+Object.keys(r.imports).length);' \
+ && test -f node_modules/.ph-vendor/import-map.json \
+ # Image-size trim — folded into THIS RUN (a separate `rm` RUN only writes a
+ # whiteout; the bytes would survive in the lower layer). Removes the pnpm
+ # download cache (.cache/pnpm/v11 — registry packument metadata; frozen/offline
+ # installs do no version resolution) and store/v11/files CAS blobs not hardlinked
+ # into the live store/v11/links tree (enableGlobalVirtualStore makes the install
+ # resolve through links/). Most of files/ IS hardlinked to links/ in a fresh
+ # build, so the real reclaim is ~1.24 GiB rootfs / ~130 MiB compressed — a naive
+ # `du` double-counts the shared CAS bytes and overstates it (~2.68 GiB).
+ # Validated head-to-head (trim vs untrimmed same-base vs stock dev.23): behavior
+ # is byte-identical — spec-generate PASSES (codegen plugins resolve via NODE_PATH
+ # through links/); reactor-project-init is unchanged (it hits a pre-existing
+ # offline pglite gap present in stock dev.23 too, independent of this trim). The
+ # trim regresses nothing. index.db (~30 MiB) is kept.
+ && rm -rf "$(pnpm store path)/files" /home/clint/.cache/pnpm/v11
 
 ENV VETRA_REACTOR_PROJECT_CLONE_PATH=${REACTOR_TEMPLATE_DIR}/reactor-template
+
+# Arm the Connect externalize-vendor lever so ph vetra serves the prebuilt
+# vendor (warm-hit on the reseeded .ph-vendor). Must match the baked include
+# set — do NOT also set PH_CONNECT_VENDOR_EXTRA, or the digest mismatches.
+ENV VETRA_CONNECT_EXTERNALIZE_VENDOR=1
 
 # Observability consent is supplied at runtime via VETRA_TELEMETRY_CONSENT
 # (the observability `telemetryConsent` config key), which is authoritative and
@@ -143,6 +177,15 @@ RUN printf '%s\n' \
       '    NODE_PATH="$(dirname "$VETRA_SHIM")/../$SEG/.pnpm/node_modules"' \
       '    export NODE_PATH' \
       '  fi' \
+      'fi' \
+      '# Hosted image requires a key by default; set VETRA_REQUIRE_API_KEY=false to opt out.' \
+      ': "${VETRA_REQUIRE_API_KEY:=true}"' \
+      'export VETRA_REQUIRE_API_KEY' \
+      '# No credential yet: hold without serving/announcing; a keyed restart supersedes this.' \
+      'if [ "${VETRA_REQUIRE_API_KEY:-}" = "true" ] && [ -z "${VETRA_ANTHROPIC_API_KEY:-}" ]; then' \
+      '  echo "==> vetra-cli: no API key yet — holding, not serving (waiting for provisioning)" >&2' \
+      '  trap "exit 0" TERM INT' \
+      '  while true; do sleep 5 & wait $!; done' \
       'fi' \
       'echo "==> vetra-cli: starting prebuilt agent"' \
       'echo "    \$ ${SERVICE_COMMAND}"' \

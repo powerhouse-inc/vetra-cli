@@ -1,6 +1,6 @@
 {
   "name": "vetra-app",
-  "version": "0.0.1-dev.23",
+  "version": "0.0.1-dev.27",
   "license": "AGPL-3.0-only",
   "publishConfig": {
     "access": "public",
@@ -85,6 +85,7 @@
     "@eslint/js": "^9.38.0",
     "@powerhousedao/connect": "catalog:",
     "@powerhousedao/clint-common": "catalog:",
+    "@powerhousedao/vetra-cloud-package": "https://registry.dev.vetra.io/@powerhousedao/vetra-cloud-package/-/vetra-cloud-package-0.0.3-dev.93.tgz",
     "@powerhousedao/design-system": "catalog:",
     "@powerhousedao/document-engineering": "1.40.5",
     "@powerhousedao/ph-cli": "catalog:",
@@ -92,6 +93,7 @@
     "@powerhousedao/reactor-attachments": "6.2.0-dev.6",
     "@powerhousedao/reactor-browser": "catalog:",
     "@powerhousedao/shared": "catalog:",
+    "@powerhousedao/vetra-cloud-client": "workspace:*",
     "@tailwindcss/cli": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "catalog:",

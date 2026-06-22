@@ -16,6 +16,7 @@ import {
   summarizeDiagnostics,
   type GenDiagnostic,
 } from "../../helpers/project-checks.js";
+import { withProjectCodegenLock } from "../../helpers/project-lock.js";
 import { loadByName } from "./_helpers.js";
 
 type Project = Parameters<typeof generateDocumentModelFromDocument>[1];
@@ -98,102 +99,106 @@ export const specGenerate = defineCommand({
   }),
   execute: async (input, { workdir, runProcess }) => {
     const base = await resolveReactorProjectPath(workdir, input.project);
-    /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
-     * physical copies of `ts-morph` (same version, different install paths), so
-     * TS treats their `Project` types as distinct. Cast bridges the structural
-     * gap; identical at runtime. */
-    const tsProject = buildTsMorphProject(base);
+    // codegen rewrites shared barrels/manifest from the project's view, so
+    // concurrent runs clobber each other; serialize per reactor project.
+    return withProjectCodegenLock(base, async () => {
+      // codegen and vetra resolve to two physical ts-morph copies, so TS treats
+      // their Project types as distinct; held in a `let` to drop the AST early.
+      let tsProject: Project | null = buildTsMorphProject(base);
 
-    const docs = input.name
-      ? [await loadByName(base, input.name)]
-      : await getDocuments(base);
+      const docs = input.name
+        ? [await loadByName(base, input.name)]
+        : await getDocuments(base);
 
-    if (docs.length === 0) {
-      return { text: "(no specs to generate)" };
-    }
+      if (docs.length === 0) {
+        return { text: "(no specs to generate)" };
+      }
 
-    const generated: { name: string; type: string }[] = [];
-    const skipped: { name: string; type: string; reason: string }[] = [];
+      const generated: { name: string; type: string }[] = [];
+      const skipped: { name: string; type: string; reason: string }[] = [];
 
-    for (const doc of docs) {
-      try {
-        await generateOne(doc, tsProject);
-        generated.push({
-          name: doc.header.name,
-          type: doc.header.documentType,
-        });
-      } catch (err) {
-        const reason = trimGenerateError(
-          err instanceof Error ? err.message : String(err),
+      for (const doc of docs) {
+        try {
+          await generateOne(doc, tsProject);
+          generated.push({
+            name: doc.header.name,
+            type: doc.header.documentType,
+          });
+        } catch (err) {
+          const reason = trimGenerateError(
+            err instanceof Error ? err.message : String(err),
+          );
+          if (input.name) {
+            throw new Error(
+              `${doc.header.documentType} — ${doc.header.name}: ${reason}`,
+            );
+          }
+          skipped.push({
+            name: doc.header.name,
+            type: doc.header.documentType,
+            reason,
+          });
+        }
+      }
+
+      await tsProject.save();
+      // Drop the AST so it GCs before the tsc/eslint subprocesses spawn.
+      tsProject = null;
+
+      let diagnostics: GenDiagnostic[] = [];
+      const checkNotes: string[] = [];
+      if (!input.skipChecks && generated.length > 0) {
+        const outcome = await runChecks(base, runProcess, { scope: "module" });
+        diagnostics = outcome.diagnostics;
+        checkNotes.push(...outcome.notes);
+      }
+      const summary = summarizeDiagnostics(diagnostics);
+
+      if (input.name && summary.errors > 0) {
+        const head = diagnostics
+          .filter((d) => d.severity === "error")
+          .slice(0, 5)
+          .map(
+            (d) =>
+              `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
+          )
+          .join("\n  ");
+        throw new Error(
+          `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
         );
-        if (input.name) {
-          throw new Error(
-            `${doc.header.documentType} — ${doc.header.name}: ${reason}`,
+      }
+
+      const lines = [
+        `Generated ${generated.length} module(s)` +
+          (skipped.length > 0 ? `, skipped ${skipped.length}` : "") +
+          ".",
+      ];
+      for (const g of generated) {
+        lines.push(`  ✓ ${g.type} — ${g.name}`);
+      }
+      for (const s of skipped) {
+        lines.push(`  ✗ ${s.type} — ${s.name}: ${s.reason}`);
+      }
+      if (diagnostics.length > 0) {
+        lines.push(
+          `Generated-file checks: ${summary.errors} error(s), ${summary.warnings} warning(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}).`,
+        );
+        for (const d of diagnostics.slice(0, 20)) {
+          lines.push(
+            `  ${d.severity === "error" ? "✗" : "!"} [${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
           );
         }
-        skipped.push({
-          name: doc.header.name,
-          type: doc.header.documentType,
-          reason,
-        });
+        if (diagnostics.length > 20) {
+          lines.push(`  … ${diagnostics.length - 20} more`);
+        }
       }
-    }
-
-    await tsProject.save();
-
-    let diagnostics: GenDiagnostic[] = [];
-    const checkNotes: string[] = [];
-    if (!input.skipChecks && generated.length > 0) {
-      const outcome = await runChecks(base, runProcess, { scope: "module" });
-      diagnostics = outcome.diagnostics;
-      checkNotes.push(...outcome.notes);
-    }
-    const summary = summarizeDiagnostics(diagnostics);
-
-    if (input.name && summary.errors > 0) {
-      const head = diagnostics
-        .filter((d) => d.severity === "error")
-        .slice(0, 5)
-        .map(
-          (d) =>
-            `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
-        )
-        .join("\n  ");
-      throw new Error(
-        `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
-      );
-    }
-
-    const lines = [
-      `Generated ${generated.length} module(s)` +
-        (skipped.length > 0 ? `, skipped ${skipped.length}` : "") +
-        ".",
-    ];
-    for (const g of generated) {
-      lines.push(`  ✓ ${g.type} — ${g.name}`);
-    }
-    for (const s of skipped) {
-      lines.push(`  ✗ ${s.type} — ${s.name}: ${s.reason}`);
-    }
-    if (diagnostics.length > 0) {
-      lines.push(
-        `Generated-file checks: ${summary.errors} error(s), ${summary.warnings} warning(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}).`,
-      );
-      for (const d of diagnostics.slice(0, 20)) {
-        lines.push(
-          `  ${d.severity === "error" ? "✗" : "!"} [${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
-        );
+      for (const note of checkNotes) {
+        lines.push(`  · ${note}`);
       }
-      if (diagnostics.length > 20) {
-        lines.push(`  … ${diagnostics.length - 20} more`);
-      }
-    }
-    for (const note of checkNotes) {
-      lines.push(`  · ${note}`);
-    }
 
-    return {
-      text: lines.join("\n"),
-    };
+      return {
+        text: lines.join("\n"),
+      };
+    });
   },
 });

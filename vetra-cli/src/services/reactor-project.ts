@@ -15,6 +15,12 @@ import {
   REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH,
 } from '../constants.js';
 import { reactorProjectNodeOptions } from '../helpers/node-memory.js';
+import { connectExternalizeVendorEnv } from '../helpers/connect-vendor.js';
+
+// Readiness wait for the inner `ph vetra` dev server; env-overridable for slow
+// runners where cold Vite start exceeds the default.
+const READINESS_TIMEOUT_MS =
+  Number(process.env.VETRA_REACTOR_READINESS_TIMEOUT_MS) || 90_000;
 
 // Switchboard mount relative to the `/reactor-project/` service prefix that
 // ph-clint prepends to every proxyRoutes spec (e.g. 'switchboard').
@@ -78,9 +84,8 @@ export function deployBasePath(publicUrl: string | undefined): string {
 // is captured here rather than read from context at command-build time.
 let resolvedDeployBasePath = '';
 
-// Full public proxy URL (origin + base path, no trailing slash), '' when no
-// publicUrl is configured. Gates the --drives-public-base flag: local dev
-// without a publicUrl keeps localhost drive URLs.
+// Configured public proxy URL (no trailing slash), '' when none is set.
+// Takes precedence over the live proxy origin for --drives-public-base.
 let resolvedProxyPublicUrl = '';
 
 export function proxyBasePathHook(): LifecycleHook {
@@ -94,7 +99,7 @@ export function proxyBasePathHook(): LifecycleHook {
           new URL(raw);
           resolvedProxyPublicUrl = raw.replace(/\/+$/, '');
         } catch {
-          // invalid publicUrl — treat as unset, same as deployBasePath
+          // invalid publicUrl — fall through to the proxy origin
         }
       }
       resolvedDeployBasePath = deployBasePath(
@@ -109,13 +114,18 @@ const reactorProjectParams = z.object({
   watch: z.boolean().default(true).describe('Enable file watching'),
   connectPort: z.coerce.number().optional().describe('Connect Studio port'),
   switchboardPort: z.coerce.number().optional().describe('Vetra Switchboard port'),
+  proxyPublicUrl: z
+    .string()
+    .url()
+    .optional()
+    .describe('Live public proxy origin for advertised drive URLs'),
 });
 
 export const reactorProject = defineService({
   id: 'reactor-project',
   name: 'Reactor Project',
   description: 'Vetra Studio server for reactor project development',
-  command: ({params}) => {
+  command: ({params, config}) => {
     const parts = ['ph', 'vetra'];
     if (params?.watch !== false) parts.push('--watch');
     if (typeof params?.connectPort === 'number') parts.push('--connect-port', String(params.connectPort));
@@ -131,17 +141,16 @@ export const reactorProject = defineService({
     // 127.0.0.1 where nothing then listens -> ECONNREFUSED. env.HOST is not
     // applied to the dev server, so the --host flag is the only lever.
     parts.push('--host', '127.0.0.1');
-    // Deployed behind the proxy: the nested studio's drive URLs must carry
-    // the public proxy origin (the switchboard's localhost origin is
-    // unreachable from a remote browser). ph vetra rebases its advertised
-    // drive URLs onto <publicUrl>/reactor-project/switchboard/d/<slug>;
-    // reactor-project-start registers the matching proxy routes.
-    if (resolvedProxyPublicUrl) {
-      parts.push(
-        '--drives-public-base',
-        `${resolvedProxyPublicUrl}${REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH}`,
-      );
-    }
+    // Advertise drives via the public proxy origin (localhost switchboard is
+    // unreachable remotely). publicUrl > live origin from start > default port.
+    const proxyBase =
+      resolvedProxyPublicUrl ||
+      (params?.proxyPublicUrl as string | undefined)?.replace(/\/+$/, '') ||
+      `http://localhost:${Number((config as Record<string, unknown>).proxyPort) || 8090}`;
+    parts.push(
+      '--drives-public-base',
+      `${proxyBase}${REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH}`,
+    );
     return parts.join(' ');
   },
   paramsSchema: reactorProjectParams,
@@ -153,6 +162,10 @@ export const reactorProject = defineService({
     NODE_ENV: 'development',
     // Heap cap is per-fork; each ph vetra child inherits it. See node-memory.ts.
     NODE_OPTIONS: reactorProjectNodeOptions(),
+    // Opt-in: serve Connect's heavy stable deps from a prebuilt vendor bundle so
+    // the long-lived Vite dev server never dep-optimizes them (~1 GB resident).
+    // Off unless a vetra-cli-level signal is set. See connect-vendor.ts.
+    ...connectExternalizeVendorEnv(),
   }),
   readiness: {
     patterns: [
@@ -186,7 +199,7 @@ export const reactorProject = defineService({
         captures: { 'mcp-server': { group: 1, type: 'api-mcp' } },
       },
     ],
-    timeout: 90_000,
+    timeout: READINESS_TIMEOUT_MS,
   },
   preflight: [
     checkWorkdir(

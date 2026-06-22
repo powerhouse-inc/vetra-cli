@@ -17,13 +17,23 @@ import { PREVIEW_SERVER_HOST } from "./config.js";
 import { createSseBroadcaster } from "./events.js";
 import { resolvePreview } from "./resolver.js";
 import { startPreview } from "./starter.js";
+import {
+  confirmAuth,
+  getAuthState,
+  logoutAuth,
+  startAuth,
+} from "../auth/renown.js";
 
 interface PreviewServerDeps {
   services: ServiceManager;
   /** Trigger context exposes `on`; we subscribe once at startup. */
   subscribe: (eventName: string, handler: (raw: unknown) => void) => void;
   workdir: string;
+  /** Renown server URL the /auth endpoints authenticate against. */
+  renownUrl: string;
   port: number;
+  /** Live public proxy origin, forwarded to reactor-project starts. */
+  proxyPublicUrl?: string;
   log?: {
     info: (m: string) => void;
     error: (m: string) => void;
@@ -59,7 +69,8 @@ function parseQuery(url: string): URLSearchParams {
 export async function startPreviewServer(
   deps: PreviewServerDeps,
 ): Promise<PreviewServerHandle> {
-  const { services, subscribe, workdir, port, log } = deps;
+  const { services, subscribe, workdir, renownUrl, port, proxyPublicUrl, log } =
+    deps;
   const broadcaster = createSseBroadcaster({ subscribe });
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -103,6 +114,7 @@ export async function startPreviewServer(
           services,
           workdir,
           project: q.get("project") ?? "",
+          proxyPublicUrl,
         });
         const status =
           result.kind === "unknown-project"
@@ -116,6 +128,36 @@ export async function startPreviewServer(
 
       if (path === "/events" && method === "GET") {
         broadcaster.attach(res);
+        return;
+      }
+
+      // Renown auth state for the studio "Authorize agent" button. Both run in
+      // this same process as the agent's whoami/deploy tools, sharing the
+      // per-workdir Renown instance — so confirm here stores the credential the
+      // tools read.
+      if (path === "/auth/status" && method === "GET") {
+        const state = await getAuthState(workdir, renownUrl);
+        writeJson(res, 200, state);
+        return;
+      }
+
+      if (path === "/auth/start" && method === "POST") {
+        const state = await startAuth(workdir, renownUrl);
+        writeJson(res, 200, state);
+        return;
+      }
+
+      if (path === "/auth/logout" && method === "POST") {
+        const state = await logoutAuth(workdir, renownUrl);
+        writeJson(res, 200, state);
+        return;
+      }
+
+      if (path === "/auth/confirm" && method === "POST") {
+        const q = parseQuery(url);
+        const waitMs = Math.min(Math.max(Number(q.get("wait")) || 20000, 0), 60000);
+        const state = await confirmAuth(workdir, renownUrl, waitMs);
+        writeJson(res, 200, state);
         return;
       }
 

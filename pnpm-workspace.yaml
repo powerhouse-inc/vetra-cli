@@ -1,39 +1,40 @@
 packages:
+  - 'packages/*'
   - 'vetra-app'
   - 'vetra-cli'
 
 catalog:
   # @powerhousedao/monorepo packages (pinned together for local-link compatibility)
-  '@powerhousedao/builder-tools': '6.2.0-dev.16'
-  '@powerhousedao/codegen': '6.2.0-dev.16'
-  '@powerhousedao/common': '6.2.0-dev.16'
-  '@powerhousedao/config': '6.2.0-dev.16'
-  '@powerhousedao/connect': '6.2.0-dev.16'
-  '@powerhousedao/design-system': '6.2.0-dev.16'
-  '@powerhousedao/opentelemetry-instrumentation-reactor': '6.2.0-dev.16'
-  '@powerhousedao/pglite-fs': '6.2.0-dev.16'
-  '@powerhousedao/ph-cli': '6.2.0-dev.16'
-  '@powerhousedao/powerhouse-vetra-packages': '6.2.0-dev.16'
-  '@powerhousedao/reactor': '6.2.0-dev.16'
-  '@powerhousedao/reactor-api': '6.2.0-dev.16'
-  '@powerhousedao/reactor-attachments': '6.2.0-dev.16'
-  '@powerhousedao/reactor-browser': '6.2.0-dev.16'
-  '@powerhousedao/reactor-drive': '6.2.0-dev.16'
-  '@powerhousedao/reactor-hypercore': '6.2.0-dev.16'
-  '@powerhousedao/reactor-mcp': '6.2.0-dev.16'
-  '@powerhousedao/registry': '6.2.0-dev.16'
-  '@powerhousedao/shared': '6.2.0-dev.16'
-  '@powerhousedao/switchboard': '6.2.0-dev.16'
-  '@powerhousedao/vetra': '6.2.0-dev.16'
-  '@renown/sdk': '6.2.0-dev.16'
-  document-model: '6.2.0-dev.16'
-  ph-cmd: '6.2.0-dev.16'
+  '@powerhousedao/builder-tools': '6.2.0-dev.23'
+  '@powerhousedao/codegen': '6.2.0-dev.23'
+  '@powerhousedao/common': '6.2.0-dev.23'
+  '@powerhousedao/config': '6.2.0-dev.23'
+  '@powerhousedao/connect': '6.2.0-dev.23'
+  '@powerhousedao/design-system': '6.2.0-dev.23'
+  '@powerhousedao/opentelemetry-instrumentation-reactor': '6.2.0-dev.23'
+  '@powerhousedao/pglite-fs': '6.2.0-dev.23'
+  '@powerhousedao/ph-cli': '6.2.0-dev.23'
+  '@powerhousedao/powerhouse-vetra-packages': '6.2.0-dev.23'
+  '@powerhousedao/reactor': '6.2.0-dev.23'
+  '@powerhousedao/reactor-api': '6.2.0-dev.23'
+  '@powerhousedao/reactor-attachments': '6.2.0-dev.23'
+  '@powerhousedao/reactor-browser': '6.2.0-dev.23'
+  '@powerhousedao/reactor-drive': '6.2.0-dev.23'
+  '@powerhousedao/reactor-hypercore': '6.2.0-dev.23'
+  '@powerhousedao/reactor-mcp': '6.2.0-dev.23'
+  '@powerhousedao/registry': '6.2.0-dev.23'
+  '@powerhousedao/shared': '6.2.0-dev.23'
+  '@powerhousedao/switchboard': '6.2.0-dev.23'
+  '@powerhousedao/vetra': '6.2.0-dev.23'
+  '@renown/sdk': '6.2.0-dev.23'
+  document-model: '6.2.0-dev.23'
+  ph-cmd: '6.2.0-dev.23'
 
   # other shared deps
-  '@powerhousedao/clint-common': '0.1.0-dev.86'
-  '@powerhousedao/ph-clint': '0.1.0-dev.86'
-  '@powerhousedao/ph-clint-dev': '0.1.0-dev.86'
-  '@powerhousedao/ph-clint-observability': '0.1.0-dev.86'
+  '@powerhousedao/clint-common': '0.1.0-dev.91'
+  '@powerhousedao/ph-clint': '0.1.0-dev.91'
+  '@powerhousedao/ph-clint-dev': '0.1.0-dev.91'
+  '@powerhousedao/ph-clint-observability': '0.1.0-dev.91'
   '@types/node': '^25.5.2'
   eslint-config-prettier: '^10.1.8'
   graphql: '16.12.0'
@@ -45,12 +46,36 @@ overrides:
   'mastra>@mastra/deployer': '1.41.0'
   zod: '4.3.6'
   viem: '2.49.0'
-  # Dedupe reactor-attachments to one copy (hash-first instanceof needs a single class identity).
-  '@powerhousedao/reactor-attachments': '6.2.0-dev.16'
   # Dedupe graphql to one copy: @graphql-tools schema merge does cross-instance isObjectType
   # checks, which fail when codegen builds types with a different graphql copy than Apollo pulls in.
   # Pinned to match clint-common's exact 16.12.0 anchor so the whole tree collapses to one realm.
   graphql: '16.12.0'
+
+  # --- image-size dedupe candidates (Trim 4) — DRAFT, not active. Each collapses a
+  # duplicate-version train in the global store; reclaim is the freed train copies in
+  # store/v11/{links,files}. Requires a rebuild to confirm the closure still resolves and
+  # builds/runs. Listed cheapest-risk first; uncomment individually and rebuild to verify.
+  #
+  # date-fns: all three (4.1.0/4.3.0/4.4.0) are major 4 — semver-compatible, lowest risk.
+  #   reclaim ~66 MiB (3 copies ~105 MiB -> 1 copy ~39 MiB).
+  # 'date-fns': '4.4.0'
+  #
+  # @powerhousedao/shared dev-trains (6.0.0-dev.257 + 6.2.0-dev.6/8/16). Collapsing to the
+  #   catalog pin removes 3 stale copies (~18 MiB). RISK: cross-version class identity
+  #   (same family as the reactor-attachments dedupe note above) — rebuild + smoke required.
+  # '@powerhousedao/shared': '6.2.0-dev.23'
+  #
+  # @rolldown/binding train (rc.8/rc.15/rc.17/1.0.2). Highest reclaim (~67 MiB: 4 native
+  #   binding copies ~88 MiB -> 1 copy ~21 MiB) but HIGHEST risk — pre-1.0 rc APIs differ
+  #   and consumers (vite/tsdown) may pin an rc; a forced single version can break the build.
+  # rolldown: '1.0.2'
+  #
+  # @opentelemetry/* sub-packages: 81 version-dirs (~121 MiB), multiple SDK majors. No single
+  #   safe pin (the api anchor is already single at 1.9.1); deduping the sdk/instrumentation
+  #   trains is high-risk and not recommended without a dedicated audit.
+  #
+  # zod v3 (3.25.76) coexists with v4 (4.3.6) despite the `zod: '4.3.6'` override above — a
+  #   dep hard-requires v3. Forcing v3->v4 is a breaking-API change for ~6 MiB; not worth it.
 
 allowBuilds:
   '@apollo/protobufjs': true

@@ -12,8 +12,10 @@ import type {
   FileNode,
 } from "@powerhousedao/shared/document-drive";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AgentAuthButton } from "./AgentAuthButton.js";
 import { BuildSection } from "./BuildSection.js";
 import { ChatPane } from "./ChatPane.js";
+import { DeploySection } from "./DeploySection.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
@@ -109,7 +111,7 @@ export type VetraStudioProps = {
   className?: string;
 };
 
-type Section = "home" | "ideate" | "specify" | "build";
+type Section = "home" | "ideate" | "specify" | "build" | "deploy";
 
 /** The section an open document shows in; unknown types keep the legacy
  * IDEATE fallback at restore/user-open sites. */
@@ -433,6 +435,13 @@ export function VetraStudio({
               onExitToHome={handleExitToHome}
             />
           </div>
+        ) : section === "deploy" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <DeploySection
+              productName={productName}
+              onExitToHome={handleExitToHome}
+            />
+          </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <PhaseCycle onOpen={setSection} />
@@ -466,7 +475,8 @@ function AutoNavToggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-end gap-2 border-b border-vetra-border bg-vetra-card px-4 py-1.5">
+    <div className="flex shrink-0 items-center justify-end gap-3 border-b border-vetra-border bg-vetra-card px-4 py-1.5 min-h-10">
+      <AgentAuthButton />
       {enabled && paused ? (
         <span className="text-[11px] text-vetra-muted-fg">
           paused — close the document to resume

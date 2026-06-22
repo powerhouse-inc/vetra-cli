@@ -20,6 +20,7 @@ import {
   startPreviewServer,
   type PreviewServerHandle,
 } from "../preview-server/index.js";
+import { resolveCloudConfig } from "../cloud/config.js";
 
 interface TriggerState {
   handle: PreviewServerHandle | undefined;
@@ -47,12 +48,16 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
       return;
     }
 
+    const { renownUrl } = resolveCloudConfig(ctx.context.config);
+
     try {
       ctx.state.handle = await startPreviewServer({
         services,
         subscribe: (event, handler) => on(event, handler),
         workdir,
+        renownUrl,
         port: DEFAULT_PREVIEW_SERVER_PORT,
+        proxyPublicUrl: ctx.commandContext.proxy?.url,
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),

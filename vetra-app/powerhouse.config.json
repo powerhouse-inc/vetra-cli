@@ -14,7 +14,17 @@
       "packageName": "@powerhousedao/clint-common",
       "version": "0.1.0-dev.79",
       "provider": "local"
+    },
+    {
+      "packageName": "@powerhousedao/vetra-cloud-package",
+      "version": "0.0.3-dev.93",
+      "provider": "local"
     }
   ],
-  "packageRegistryUrl": "https://registry.dev.vetra.io/"
+  "packageRegistryUrl": "https://registry.dev.vetra.io/",
+  "connect": {
+    "renown": {
+      "url": "https://www.renown.id/"
+    }
+  }
 }

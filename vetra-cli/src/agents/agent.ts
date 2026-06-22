@@ -13,6 +13,7 @@ import {
 import { CLI_NAME } from '../config.js';
 import type { Config } from '../framework.js';
 import { createDemoAgent } from './demo-agent.js';
+import { createReplayAgent } from './replay-agent.js';
 import { assertCredentialIfRequired } from './require-key.js';
 
 const SUB_AGENT_MODEL_ID = 'anthropic/claude-sonnet-4-5';
@@ -34,6 +35,14 @@ const INPUT_TOKEN_LIMIT = 160_000;
  * session (`claude-login`, user scope), then the demo agent.
  */
 export async function createAgent(ctx: AgentSetupContext<Config>): Promise<AgentProvider> {
+  // Deterministic e2e: replay a recorded tool sequence against the real
+  // reactor instead of calling an LLM. Gated so it never affects production.
+  const replayFixture = process.env.VETRA_REPLAY_FIXTURE;
+  if (replayFixture) {
+    ctx.context.log?.info(`[agent] replay mode — fixture ${replayFixture}`);
+    return createReplayAgent(replayFixture, ctx);
+  }
+
   const resolved = await resolveClaudeAgentModel({
     store: createUserTokenStore({ cliName: CLI_NAME }),
     modelId: ctx.config.model,

@@ -47,8 +47,11 @@ RUN apt-get update \
 
 RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
 
-# Non-root runtime user.
-RUN useradd -m -u 1001 -s /bin/bash clint
+# Non-root runtime user. Pre-create .cache so an agent Dockerfile deriving from
+# this base can `chown -R clint:clint /home/clint/.cache` (mirrors prod).
+RUN useradd -m -u 1001 -s /bin/bash clint \
+  && mkdir -p /home/clint/.cache \
+  && chown clint:clint /home/clint/.cache
 USER clint
 WORKDIR /home/clint
 

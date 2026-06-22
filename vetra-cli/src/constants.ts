@@ -8,8 +8,8 @@
  * keep this fixed.
  */
 export const LOCAL_REGISTRY_PORT = 8765;
-export const LOCAL_REGISTRY_URL = `http://localhost:${LOCAL_REGISTRY_PORT}`;
-
+// export const LOCAL_REGISTRY_URL = `http://localhost:${LOCAL_REGISTRY_PORT}`;
+export const LOCAL_REGISTRY_URL = 'https://registry.dev.vetra.io'
 /**
  * Internal kill-switch for the local-registry + publish-reload integration
  * with the embedded Switchboard and Connect. When false, the registry
