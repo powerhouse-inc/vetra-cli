@@ -28,7 +28,7 @@ export const githubPush = defineCommand({
     const botName = `${slug}[bot]`;
     const botEmail = `${botUserId}+${slug}[bot]@users.noreply.github.com`;
 
-    const steps: Array<{ label: string; command: string }> = [
+    const steps: { label: string; command: string }[] = [
       { label: 'git-init', command: 'git init -q' },
       {
         label: 'git-commit',

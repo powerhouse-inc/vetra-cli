@@ -1,6 +1,6 @@
 type GqlResponse<T> = {
   data?: T;
-  errors?: Array<{ message?: string; extensions?: { code?: string } }>;
+  errors?: { message?: string; extensions?: { code?: string } }[];
 };
 
 /** An error code returned by the vetra-github-auth subgraph. */

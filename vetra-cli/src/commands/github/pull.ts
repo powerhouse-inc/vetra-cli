@@ -19,7 +19,7 @@ export const githubPull = defineCommand({
     }
     const { token, repoFullName, remoteUrl } = await resolveRepoRemote(config);
 
-    const steps: Array<{ label: string; command: string }> = [
+    const steps: { label: string; command: string }[] = [
       { label: 'git-init', command: 'git init -q' },
       {
         label: 'git-pull',

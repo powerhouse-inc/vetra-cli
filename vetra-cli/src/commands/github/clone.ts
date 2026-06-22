@@ -13,7 +13,7 @@ export const githubClone = defineCommand({
     const { token, repoFullName, remoteUrl } = await resolveRepoRemote(config);
     const cleanUrl = `https://github.com/${repoFullName}.git`;
 
-    const steps: Array<{ label: string; command: string }> = [
+    const steps: { label: string; command: string }[] = [
       { label: 'git-clone', command: `git clone ${shq(remoteUrl)} .` },
       { label: 'git-remote', command: `git remote set-url origin ${shq(cleanUrl)}` },
     ];
