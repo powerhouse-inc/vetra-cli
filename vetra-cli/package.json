@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.27",
+  "version": "0.0.1-dev.28",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -40,7 +40,7 @@
     "@mastra/memory": "^1.20.2",
     "@powerhousedao/clint-common": "catalog:",
     "@powerhousedao/codegen": "catalog:",
-    "@powerhousedao/ph-clint": "catalog:",
+    "@powerhousedao/ph-clint": "https://registry.dev.vetra.io/@powerhousedao/ph-clint/-/ph-clint-0.1.0-dev.93.tgz",
     "@powerhousedao/ph-clint-claude-subscription": "0.1.0-dev.1",
     "@powerhousedao/ph-clint-observability": "catalog:",
     "@powerhousedao/reactor": "catalog:",

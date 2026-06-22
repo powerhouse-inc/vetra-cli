@@ -32,7 +32,7 @@ catalog:
 
   # other shared deps
   '@powerhousedao/clint-common': '0.1.0-dev.91'
-  '@powerhousedao/ph-clint': '0.1.0-dev.91'
+  '@powerhousedao/ph-clint': '0.1.0-dev.93'
   '@powerhousedao/ph-clint-dev': '0.1.0-dev.91'
   '@powerhousedao/ph-clint-observability': '0.1.0-dev.91'
   '@types/node': '^25.5.2'

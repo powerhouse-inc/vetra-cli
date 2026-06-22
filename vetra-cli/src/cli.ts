@@ -43,6 +43,8 @@ import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
 import { createAttachmentCommands } from '@powerhousedao/ph-clint/powerhouse';
+import { attachmentJwtHandler as buildAttachmentJwtHandler } from './auth/attachment-jwt.js';
+import { CLOUD_RENOWN_URL } from './cloud/_cloud-client.js';
 
 export const cli = defineCli({
   name: CLI_NAME,
@@ -53,6 +55,11 @@ export const cli = defineCli({
   description: `${CLI_NAME} v${CLI_VERSION}`,
   configSchema,
   secretsSchema,
+  // Authenticate the embedded switchboard's HTTP attachment routes with the
+  // agent's owner-delegated Renown token. Without it, attachment reservations
+  // against the auth-enabled switchboard 401 and every agent invocation fails.
+  attachmentJwtHandler: ({ workdir, config }) =>
+    buildAttachmentJwtHandler(workdir, config.cloudRenownUrl ?? CLOUD_RENOWN_URL),
 
   // @clint:begin commands
   commands: [
