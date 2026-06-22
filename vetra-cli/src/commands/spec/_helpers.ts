@@ -857,23 +857,14 @@ function validateOperationSchemaSdl(
 }
 
 /* Collect every type/enum/input/interface/union name declared in the model's
- * state schema (global + local) — both already persisted on the doc and set by a
- * SET_STATE_SCHEMA in the current batch. Operation schemas may reference these
- * directly. */
+ * state schema (global + local), which operation schemas may reference directly.
+ * A SET_STATE_SCHEMA in the current batch REPLACES the persisted schema for its
+ * scope (latest in the batch wins), so a type removed by the batch is no longer
+ * considered declared — matching the state the result will actually have. */
 function collectStateDeclaredTypes(
   doc: PHDocument,
   batch: ActionInput[],
 ): Set<string> {
-  const names = new Set<string>();
-  const add = (sdl?: string | null) => {
-    if (!sdl || !sdl.trim()) return;
-    for (const n of collectDeclaredTypes(stripSdlComments(sdl))) names.add(n);
-  };
-
-  for (const a of batch) {
-    if (a.type === "SET_STATE_SCHEMA") add(strVal(asRecord(a.input).schema));
-  }
-
   const latest = (
     doc.state as {
       global?: {
@@ -886,9 +877,27 @@ function collectStateDeclaredTypes(
       };
     }
   ).global?.specifications?.at(-1);
-  add(latest?.state?.global?.schema);
-  add(latest?.state?.local?.schema);
 
+  // Effective per-scope state SDL: persisted, overridden by any batch
+  // SET_STATE_SCHEMA for that scope.
+  const effective: { global?: string | null; local?: string | null } = {
+    global: latest?.state?.global?.schema,
+    local: latest?.state?.local?.schema,
+  };
+  for (const a of batch) {
+    if (a.type !== "SET_STATE_SCHEMA") continue;
+    const input = asRecord(a.input);
+    const scope = strVal(input.scope) ?? "global";
+    if (scope === "global" || scope === "local") {
+      effective[scope] = strVal(input.schema);
+    }
+  }
+
+  const names = new Set<string>();
+  for (const sdl of [effective.global, effective.local]) {
+    if (!sdl || !sdl.trim()) continue;
+    for (const n of collectDeclaredTypes(stripSdlComments(sdl))) names.add(n);
+  }
   return names;
 }
 

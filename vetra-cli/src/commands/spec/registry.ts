@@ -285,7 +285,16 @@ export function applyActions(doc: PHDocument, actions: ActionInput[]): PHDocumen
     const duplicates = findDuplicateTypeDefinitions(current);
     if (duplicates.length > 0) {
       const details = duplicates
-        .map((d) => `"${d.name}" is defined in ${d.sites.join(" and ")}`)
+        .map((d) => {
+          // Collapse repeated sites (e.g. a name defined twice in one schema)
+          // into "<site> (N times)" so the message reads cleanly.
+          const counts = new Map<string, number>();
+          for (const s of d.sites) counts.set(s, (counts.get(s) ?? 0) + 1);
+          const where = [...counts.entries()]
+            .map(([site, n]) => (n > 1 ? `${site} (${n} times)` : site))
+            .join(" and ");
+          return `"${d.name}" is defined in ${where}`;
+        })
         .join("; ");
       throw new Error(
         `Duplicate type/enum name(s) in this document model: ${details}. ` +

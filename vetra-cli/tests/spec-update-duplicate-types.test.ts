@@ -166,6 +166,70 @@ describe("spec-update — duplicate type/enum name validation (Sentry #917)", ()
   );
 
   it(
+    "rejects the same enum declared in two different operation schemas",
+    async () => {
+      const workdir = await setupProject();
+      try {
+        let r = await run(
+          { workdir },
+          "spec-update",
+          "--name",
+          "Employment Details",
+          "--actions",
+          JSON.stringify([
+            {
+              type: "SET_STATE_SCHEMA",
+              input: {
+                scope: "global",
+                schema: "type EmploymentDetailsState { name: String }",
+              },
+            },
+            { type: "ADD_MODULE", input: { id: "contracts", name: "Contracts" } },
+          ]),
+        );
+        expect(r.code).toBe(0);
+
+        // Two operations each declaring `enum Priority` -> duplicate across ops.
+        r = await run(
+          { workdir },
+          "spec-update",
+          "--name",
+          "Employment Details",
+          "--actions",
+          JSON.stringify([
+            {
+              type: "ADD_OPERATION",
+              input: {
+                moduleId: "contracts",
+                id: "opA",
+                name: "OP_A",
+                schema:
+                  "input OpAInput { priority: Priority } enum Priority { LOW HIGH }",
+              },
+            },
+            {
+              type: "ADD_OPERATION",
+              input: {
+                moduleId: "contracts",
+                id: "opB",
+                name: "OP_B",
+                schema:
+                  "input OpBInput { priority: Priority } enum Priority { LOW HIGH }",
+              },
+            },
+          ]),
+        );
+        expect(r.code).not.toBe(0);
+        expect(r.stderr).toMatch(/[Dd]uplicate/);
+        expect(r.stderr).toMatch(/Priority/);
+      } finally {
+        rmSync(workdir, { recursive: true, force: true });
+      }
+    },
+    TIMEOUT,
+  );
+
+  it(
     "accepts an operation schema that references (not redefines) a state enum",
     async () => {
       const workdir = await setupProject();
