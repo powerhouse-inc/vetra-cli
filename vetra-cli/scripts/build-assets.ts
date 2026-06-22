@@ -64,3 +64,23 @@ await buildManifest({
   outDir: path.join(PROJECT_ROOT, 'dist'),
   cli,
 });
+
+// ph-clint (now bundled) spawns `node <its dir>/connect-server.js` for the studio
+// static server; bundled, that dir is dist/, so copy the node-builtins-only script in.
+function copyConnectServer(): void {
+  const rel = path.join('dist', 'integrations', 'powerhouse', 'connect-server.js');
+  const candidates = [
+    path.join(PROJECT_ROOT, 'node_modules', '@powerhousedao', 'ph-clint', rel),
+    path.join(PROJECT_ROOT, '..', 'node_modules', '@powerhousedao', 'ph-clint', rel),
+  ];
+  const src = candidates.find((p) => fs.existsSync(p));
+  const dest = path.join(PROJECT_ROOT, 'dist', 'connect-server.js');
+  if (!src) {
+    console.warn('build-assets: ph-clint connect-server.js not found; studio static server will be missing');
+    return;
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+  console.log('build-assets: copied connect-server.js -> dist/');
+}
+copyConnectServer();

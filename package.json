@@ -5,8 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@11.5.0",
   "scripts": {
-    "build": "pnpm --filter @powerhousedao/vetra-cloud-client build && pnpm --filter vetra-app build && pnpm --filter vetra-app build:connect && pnpm --filter vetra-cli build",
-    "test": "pnpm --filter @powerhousedao/vetra-cloud-client build && pnpm -r run test",
+    "build": "pnpm --filter vetra-app build && pnpm --filter vetra-app build:connect && pnpm --filter vetra-cli build",
+    "test": "pnpm -r run test",
     "dev": "pnpm --filter vetra-cli dev",
     "dev:reset": "pnpm --filter vetra-cli dev:reset",
     "start": "pnpm --filter vetra-cli start",
