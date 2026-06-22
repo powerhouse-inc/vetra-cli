@@ -124,8 +124,8 @@ RUN set -eu; \
  # build, so the real reclaim is ~1.24 GiB rootfs / ~130 MiB compressed — a naive
  # `du` double-counts the shared CAS bytes and overstates it (~2.68 GiB).
  # Validated head-to-head (trim vs untrimmed same-base vs stock dev.23): behavior
- # is byte-identical — spec-generate PASSES (codegen plugins resolve via NODE_PATH
- # through links/); reactor-project-init is unchanged (it hits a pre-existing
+ # is byte-identical — spec-generate PASSES (codegen runs in the reactor-project
+ # via `ph generate`); reactor-project-init is unchanged (it hits a pre-existing
  # offline pglite gap present in stock dev.23 too, independent of this trim). The
  # trim regresses nothing. index.db (~30 MiB) is kept.
  && rm -rf "$(pnpm store path)/files" /home/clint/.cache/pnpm/v11
@@ -136,6 +136,10 @@ ENV VETRA_REACTOR_PROJECT_CLONE_PATH=${REACTOR_TEMPLATE_DIR}/reactor-template
 # vendor (warm-hit on the reseeded .ph-vendor). Must match the baked include
 # set — do NOT also set PH_CONNECT_VENDOR_EXTRA, or the digest mismatches.
 ENV VETRA_CONNECT_EXTERNALIZE_VENDOR=1
+
+# Apollo Gateway (reactor-api's GraphQL gateway adapter) phones anonymous usage
+# telemetry home on every boot and pulls in an OTel-1.x meter provider; disable it.
+ENV APOLLO_TELEMETRY_DISABLED=true
 
 # Observability consent is supplied at runtime via VETRA_TELEMETRY_CONSENT
 # (the observability `telemetryConsent` config key), which is authoritative and
@@ -164,19 +168,6 @@ RUN printf '%s\n' \
       'fi' \
       'if [ -n "${SERVICE_ANNOUNCE_URL:-}" ]; then' \
       '  echo "==> vetra-cli: SERVICE_ANNOUNCE_URL is configured"' \
-      'fi' \
-      '# Global virtual store: pnpm hoists deps to <install>/.pnpm/node_modules but' \
-      '# does not put it on NODE_PATH for a global bin shim. graphql-codegen plugins' \
-      '# (e.g. graphql-codegen-typescript-validation-schema) require @graphql-codegen/' \
-      '# typescript without declaring it, so the in-process codegen needs that hoisted' \
-      '# dir on NODE_PATH to resolve them.' \
-      'VETRA_SHIM="$(command -v vetra || true)"' \
-      'if [ -n "$VETRA_SHIM" ]; then' \
-      '  SEG="$(grep -oE "global/v11/[^/]+/node_modules" "$VETRA_SHIM" | head -1)"' \
-      '  if [ -n "$SEG" ]; then' \
-      '    NODE_PATH="$(dirname "$VETRA_SHIM")/../$SEG/.pnpm/node_modules"' \
-      '    export NODE_PATH' \
-      '  fi' \
       'fi' \
       '# Hosted image requires a key by default; set VETRA_REQUIRE_API_KEY=false to opt out.' \
       ': "${VETRA_REQUIRE_API_KEY:=true}"' \

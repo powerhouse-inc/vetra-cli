@@ -3,7 +3,7 @@ import {
   CLOUD_BASE_DOMAIN,
   type EnvironmentSummary,
   type VetraCloudEnvironmentGlobalState,
-} from "../../cloud/_cloud-client.js";
+} from "@powerhousedao/vetra-cloud-client";
 import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
 import {
   findMyEnvironment,
