@@ -27,12 +27,6 @@ export const configSchema = z.object({
   cloudRenownUrl: z.string().optional().describe('Renown identity service URL for the cloud login flow (defaults to https://www.renown.id)'),
   // @clint:end framework-config
 
-  cloudSwitchboardUrl: z
-    .string()
-    .optional()
-    .describe(
-      'Cloud switchboard GraphQL URL hosting the vetra-github-auth subgraph (env VETRA_CLOUD_SWITCHBOARD_URL)',
-    ),
   githubAppSlug: z
     .string()
     .default('vetra-studio')

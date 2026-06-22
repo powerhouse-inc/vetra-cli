@@ -48,8 +48,9 @@ async function gql<T>(
   }
   const body = (await res.json()) as GqlResponse<T>;
   const err = body.errors?.[0];
-  const code = err?.extensions?.code ?? err?.message;
-  if (code) throw new GithubAuthError(code);
+  if (err) {
+    throw new GithubAuthError(err.extensions?.code ?? 'GRAPHQL_ERROR', err.message);
+  }
   if (!body.data) throw new GithubAuthError('NO_DATA', 'GraphQL response had no data');
   return body.data;
 }
