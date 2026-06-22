@@ -1,5 +1,6 @@
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { Kind, parse } from "graphql";
 import {
   getDocumentModels as getBuiltinModels,
   getDocumentModelSchema as getBuiltinSchema,
@@ -184,9 +185,86 @@ export async function getSpecDocuments(
   return out;
 }
 
+const DOCUMENT_MODEL_TYPE = "powerhouse/document-model";
+
+/* Type-system definition kinds that GraphQL requires to be uniquely named. A
+ * name defined twice across a document model's scopes produces duplicate
+ * subgraph SDL that crashes the federated gateway (Sentry #917). */
+const TYPE_DEFINITION_KINDS = new Set<string>([
+  Kind.OBJECT_TYPE_DEFINITION,
+  Kind.ENUM_TYPE_DEFINITION,
+  Kind.INPUT_OBJECT_TYPE_DEFINITION,
+  Kind.INTERFACE_TYPE_DEFINITION,
+  Kind.UNION_TYPE_DEFINITION,
+  Kind.SCALAR_TYPE_DEFINITION,
+]);
+
+/** Find type/enum/input/interface/union/scalar names defined in more than one
+ * place across the latest specification of a document-model document — global
+ * state schema, local state schema, and every operation schema. References are
+ * not definitions, so legitimately-referenced types do not false-positive;
+ * unparseable SDL (a still-in-progress scope) is skipped, not treated as an
+ * error. */
+export function findDuplicateTypeDefinitions(
+  doc: PHDocument,
+): { name: string; sites: string[] }[] {
+  const dmState = (
+    doc.state as {
+      global?: {
+        specifications?: {
+          state?: {
+            global?: { schema?: string | null };
+            local?: { schema?: string | null };
+          };
+          modules?: {
+            operations?: { name?: string | null; schema?: string | null }[];
+          }[];
+        }[];
+      };
+    }
+  ).global;
+  const latest = dmState?.specifications?.at(-1);
+  if (!latest) return [];
+
+  const sources: { label: string; sdl?: string | null }[] = [
+    { label: "the global state schema", sdl: latest.state?.global?.schema },
+    { label: "the local state schema", sdl: latest.state?.local?.schema },
+  ];
+  for (const mod of latest.modules ?? []) {
+    for (const op of mod.operations ?? []) {
+      sources.push({
+        label: `operation "${op.name ?? "?"}"`,
+        sdl: op.schema,
+      });
+    }
+  }
+
+  const sites = new Map<string, string[]>();
+  for (const { label, sdl } of sources) {
+    if (!sdl || !sdl.trim()) continue;
+    let ast;
+    try {
+      ast = parse(sdl);
+    } catch {
+      continue;
+    }
+    for (const def of ast.definitions) {
+      if (!TYPE_DEFINITION_KINDS.has(def.kind)) continue;
+      const name = (def as { name?: { value: string } }).name?.value;
+      if (!name) continue;
+      sites.set(name, [...(sites.get(name) ?? []), label]);
+    }
+  }
+
+  return [...sites.entries()]
+    .filter(([, s]) => s.length > 1)
+    .map(([name, s]) => ({ name, sites: s }));
+}
+
 /** Validate then apply actions in order via the type's reducer. On any invalid
  * action throws an aggregated error (with `.failures`) and leaves `doc`
- * untouched. */
+ * untouched. For document models, also rejects a result that defines the same
+ * type/enum name in more than one place (Sentry #917) before it can be saved. */
 export function applyActions(doc: PHDocument, actions: ActionInput[]): PHDocument {
   const entry = resolveSpecEntry(doc.header.documentType);
   const built = validateAndBuildActions(entry, actions);
@@ -202,6 +280,22 @@ export function applyActions(doc: PHDocument, actions: ActionInput[]): PHDocumen
       ]);
     }
   }
+
+  if (entry.documentType === DOCUMENT_MODEL_TYPE) {
+    const duplicates = findDuplicateTypeDefinitions(current);
+    if (duplicates.length > 0) {
+      const details = duplicates
+        .map((d) => `"${d.name}" is defined in ${d.sites.join(" and ")}`)
+        .join("; ");
+      throw new Error(
+        `Duplicate type/enum name(s) in this document model: ${details}. ` +
+          `Every type, enum, input, interface, and union name must be unique across the global state schema, ` +
+          `the local state schema, and all operation schemas. Reference the existing type by name instead of ` +
+          `redefining it, or rename one (e.g. OrderStatus vs MenuItemStatus).`,
+      );
+    }
+  }
+
   return current;
 }
 

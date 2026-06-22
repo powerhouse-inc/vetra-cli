@@ -650,6 +650,8 @@ export function normalizeSpecActions(
   if (!isDocModel) return { actions: filled, minted };
   const modelName = resolveModelName(doc, filled);
   const modelSlug = modelName ? kebabCase(modelName) : "<model>";
+  // Types declared in the state schema may be referenced by operation schemas.
+  const stateTypes = collectStateDeclaredTypes(doc, filled);
   for (const a of filled) {
     if (a.type === "SET_STATE_SCHEMA") {
       const schema = strVal(asRecord(a.input).schema);
@@ -658,14 +660,22 @@ export function normalizeSpecActions(
       const input = asRecord(a.input);
       const schema = strVal(input.schema);
       if (schema)
-        validateOperationSchemaSdl(schema, strVal(input.name) ?? "<operation>");
+        validateOperationSchemaSdl(
+          schema,
+          strVal(input.name) ?? "<operation>",
+          stateTypes,
+        );
     } else if (a.type === "SET_OPERATION_SCHEMA") {
       const input = asRecord(a.input);
       const schema = strVal(input.schema);
       // `id` here is the agent-supplied operation reference (name or id),
       // resolved to a concrete id later — good enough as a label.
       if (schema)
-        validateOperationSchemaSdl(schema, strVal(input.id) ?? "<operation>");
+        validateOperationSchemaSdl(
+          schema,
+          strVal(input.id) ?? "<operation>",
+          stateTypes,
+        );
     }
     rejectInlineReducerBody(a, modelSlug);
   }
@@ -809,20 +819,31 @@ function scalarsHint(): string {
   );
 }
 
-/* The codegen loads each operation's input SDL as its own GraphQL fragment.
- * A reference to a symbol that is neither a built-in, an injected custom
- * scalar, nor a type declared in the same fragment makes `@graphql-tools/load`
- * fail at `spec-generate` with an opaque "Unexpected schema type" / "Failed to
- * load schema from scalar Unknown". Catch it here with an actionable error so
- * the agent self-corrects. */
-function validateOperationSchemaSdl(schema: string, opLabel: string): void {
+/* The codegen loads each operation's input SDL together with the model's state
+ * schema, so an operation may reference a type/enum DECLARED in the state schema
+ * directly — and it MUST NOT redefine it (a redefinition produces a duplicate
+ * type in the assembled subgraph SDL and crashes the federated gateway, Sentry
+ * #917; `findDuplicateTypeDefinitions` rejects that separately). A reference to a
+ * symbol that is neither a built-in, an injected custom scalar, a type declared
+ * in the same fragment, nor a type declared in the state schema is a genuine
+ * dangling reference (typo / missing declaration) that fails `@graphql-tools/load`
+ * at `spec-generate`; catch it here so the agent self-corrects. `stateTypes`
+ * carries the state-declared names so referencing a state enum (the documented
+ * pattern) is allowed rather than forcing the agent to redefine it. */
+function validateOperationSchemaSdl(
+  schema: string,
+  opLabel: string,
+  stateTypes: Set<string> = new Set(),
+): void {
   const stripped = stripSdlComments(schema);
   if (!looksLikeSdl(stripped)) return;
 
   const declared = collectDeclaredTypes(stripped);
   const referenced = collectReferencedTypes(stripped);
 
-  const dangling = [...referenced].filter((n) => !knownTypeName(n, declared));
+  const dangling = [...referenced].filter(
+    (n) => !knownTypeName(n, declared) && !stateTypes.has(n),
+  );
   if (dangling.length === 0) return;
 
   throw new Error(
@@ -830,9 +851,45 @@ function validateOperationSchemaSdl(schema: string, opLabel: string): void {
       `${dangling.length === 1 ? "type" : "types"} ` +
       `\`${dangling.join("`, `")}\`. ` +
       scalarsHint() +
-      " Declare the missing type in this operation's `schema`, or use a " +
-      "supported scalar.",
+      " Reference a type declared in the state schema, declare the missing " +
+      "type in this operation's `schema`, or use a supported scalar.",
   );
+}
+
+/* Collect every type/enum/input/interface/union name declared in the model's
+ * state schema (global + local) — both already persisted on the doc and set by a
+ * SET_STATE_SCHEMA in the current batch. Operation schemas may reference these
+ * directly. */
+function collectStateDeclaredTypes(
+  doc: PHDocument,
+  batch: ActionInput[],
+): Set<string> {
+  const names = new Set<string>();
+  const add = (sdl?: string | null) => {
+    if (!sdl || !sdl.trim()) return;
+    for (const n of collectDeclaredTypes(stripSdlComments(sdl))) names.add(n);
+  };
+
+  for (const a of batch) {
+    if (a.type === "SET_STATE_SCHEMA") add(strVal(asRecord(a.input).schema));
+  }
+
+  const latest = (
+    doc.state as {
+      global?: {
+        specifications?: {
+          state?: {
+            global?: { schema?: string | null };
+            local?: { schema?: string | null };
+          };
+        }[];
+      };
+    }
+  ).global?.specifications?.at(-1);
+  add(latest?.state?.global?.schema);
+  add(latest?.state?.local?.schema);
+
+  return names;
 }
 
 function validateStateSchemaSdl(
