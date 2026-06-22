@@ -8,7 +8,7 @@ import {
 } from "@powerhousedao/vetra/codegen/spec";
 import { baseLoadFromFile, baseSaveToFile } from "document-model/node";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
-import { documentModels as vetraAppModels } from "vetra-app";
+import { documentModels as vetraAppModels } from "../../vetra-app-models.js";
 
 /* The codegen package owns a private registry of five Powerhouse builder spec
  * types (document-model, editor, app, processor, subgraph) and resolves every
