@@ -21,7 +21,7 @@ export const githubPush = defineCommand({
     if (!BRANCH_PATTERN.test(branch)) {
       throw new Error(`Invalid branch name "${branch}".`);
     }
-    const { token, repoFullName, remoteUrl } = await resolveRepoRemote(config);
+    const { token, repoFullName, remoteUrl } = await resolveRepoRemote({ workdir, config });
 
     const slug = config.githubAppSlug;
     const botUserId = await fetchBotUserId(slug);

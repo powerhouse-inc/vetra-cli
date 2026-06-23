@@ -1,3 +1,11 @@
+import { getBearerToken } from '../auth/renown.js';
+import { resolveCloudConfig } from '../cloud/config.js';
+
+const NOT_AUTHORIZED =
+  "Not authorized — the agent can't act as the user until they connect their " +
+  "Renown identity to it. Ask the user to click 'Authorize agent' in the top bar " +
+  'of Vetra Studio and approve in their wallet, then retry.';
+
 type GqlResponse<T> = {
   data?: T;
   errors?: { message?: string; extensions?: { code?: string } }[];
@@ -114,15 +122,6 @@ export async function fetchBotUserId(slug: string): Promise<number> {
   return body.id;
 }
 
-/** The Renown bearer the agent authenticates with, from `VETRA_USER_BEARER`. */
-export function resolveUserBearer(): Promise<string> {
-  const bearer = process.env.VETRA_USER_BEARER;
-  if (!bearer) {
-    return Promise.reject(new Error('VETRA_USER_BEARER is not set.'));
-  }
-  return Promise.resolve(bearer);
-}
-
 /** POSIX shell single-quote a value so it is safe to embed in a command. */
 export function shq(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -138,28 +137,25 @@ export type RepoRemote = {
  * Resolve the environment's connected repo and a fresh installation token as a
  * tokenized HTTPS git remote URL, usable for both fetch/pull and push.
  */
-export async function resolveRepoRemote(config: {
-  environmentId?: string;
-  cloudSwitchboardUrl?: string;
-  githubAppSlug?: string;
+export async function resolveRepoRemote(ctx: {
+  workdir: string;
+  config: { environmentId?: string; cloudSwitchboardUrl?: string; cloudRenownUrl?: string };
 }): Promise<RepoRemote> {
-  const environmentId = config.environmentId;
+  const environmentId = ctx.config.environmentId;
   if (!environmentId) {
     throw new Error('No environment id configured (set VETRA_ENVIRONMENT_ID).');
   }
-  const switchboardUrl = config.cloudSwitchboardUrl;
-  if (!switchboardUrl) {
-    throw new Error('No cloud switchboard URL configured (set VETRA_CLOUD_SWITCHBOARD_URL).');
-  }
-  const bearer = await resolveUserBearer();
-  const status = await fetchConnection(switchboardUrl, environmentId, bearer);
+  const { renownUrl, graphqlEndpoint } = resolveCloudConfig(ctx.config);
+  const bearer = await getBearerToken(ctx.workdir, renownUrl);
+  if (!bearer) throw new Error(NOT_AUTHORIZED);
+  const status = await fetchConnection(graphqlEndpoint, environmentId, bearer);
   if (!status.connected || !status.connection) {
     throw new Error(
       'This studio is not connected to GitHub yet — connect a repository from the Vetra dashboard first.',
     );
   }
   const repoFullName = status.connection.repoFullName;
-  const { token } = await fetchPushToken(switchboardUrl, environmentId, bearer).catch(
+  const { token } = await fetchPushToken(graphqlEndpoint, environmentId, bearer).catch(
     (error: unknown) => {
       if (error instanceof GithubAuthError && error.code === 'REINSTALL_REQUIRED') {
         throw new Error(

@@ -17,7 +17,7 @@ export const githubPull = defineCommand({
     if (!BRANCH_PATTERN.test(branch)) {
       throw new Error(`Invalid branch name "${branch}".`);
     }
-    const { token, repoFullName, remoteUrl } = await resolveRepoRemote(config);
+    const { token, repoFullName, remoteUrl } = await resolveRepoRemote({ workdir, config });
 
     const steps: { label: string; command: string }[] = [
       { label: 'git-init', command: 'git init -q' },

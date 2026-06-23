@@ -1,14 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
-import { githubPush } from "../../src/commands/github/push.js";
-import { githubPull } from "../../src/commands/github/pull.js";
-import { githubClone } from "../../src/commands/github/clone.js";
 import { makeCtx, makeWorkdir } from "../spec/_fixtures.js";
 
-const SWITCHBOARD_URL = "http://localhost:5555/graphql";
 const ENV_ID = "env-1";
 const SLUG = "vetra-studio";
 const REPO = "alice/widget";
+
+const getBearerToken = jest.fn<
+  (workdir: string, renownUrl: string) => Promise<string | null>
+>(async () => "user_bearer");
+
+jest.unstable_mockModule("../../src/auth/renown.js", () => ({ getBearerToken }));
+jest.unstable_mockModule("../../src/cloud/config.js", () => ({
+  resolveCloudConfig: () => ({
+    switchboardUrl: "http://localhost:5555",
+    renownUrl: "http://localhost:5555/renown",
+    graphqlEndpoint: "http://localhost:5555/graphql",
+  }),
+}));
+
+const { githubPush } = await import("../../src/commands/github/push.js");
+const { githubPull } = await import("../../src/commands/github/pull.js");
+const { githubClone } = await import("../../src/commands/github/clone.js");
 
 type RunProcessFn = (
   command: string,
@@ -23,9 +36,10 @@ function ctx(workdir: string, runProcess: unknown) {
   return {
     ...makeCtx(workdir),
     config: {
-      cloudSwitchboardUrl: SWITCHBOARD_URL,
       environmentId: ENV_ID,
       githubAppSlug: SLUG,
+      cloudSwitchboardUrl: "http://localhost:5555",
+      cloudRenownUrl: "http://localhost:5555/renown",
     },
     runProcess,
   } as unknown as Parameters<typeof githubPush.execute>[1];
@@ -105,11 +119,11 @@ describe("github commands", () => {
   beforeEach(() => {
     ({ workdir, cleanup } = makeWorkdir());
     fetchSpy = jest.spyOn(globalThis, "fetch");
-    process.env.VETRA_USER_BEARER = "user_bearer";
+    getBearerToken.mockReset();
+    getBearerToken.mockImplementation(async () => "user_bearer");
   });
   afterEach(() => {
     fetchSpy.mockRestore();
-    delete process.env.VETRA_USER_BEARER;
     cleanup();
   });
 
@@ -157,6 +171,15 @@ describe("github commands", () => {
           !c.includes("ghs_token"),
       ),
     ).toBe(true);
+  });
+
+  it("errors when the agent is not authorized for the user", async () => {
+    getBearerToken.mockResolvedValueOnce(null);
+    const runProcess = fakeRun({ success: true, output: "" });
+    await expect(
+      githubPush.execute({ branch: "main", message: "x" }, ctx(workdir, runProcess)),
+    ).rejects.toThrow(/not authorized/i);
+    expect(runProcess).not.toHaveBeenCalled();
   });
 
   it("errors when the environment is not connected", async () => {

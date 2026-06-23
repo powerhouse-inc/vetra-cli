@@ -10,7 +10,7 @@ export const githubClone = defineCommand({
     'Clone the GitHub repo connected to this studio environment into the workspace, for a fresh (non-persisted) environment.',
   inputSchema,
   execute: async (_input, { workdir, config, runProcess }) => {
-    const { token, repoFullName, remoteUrl } = await resolveRepoRemote(config);
+    const { token, repoFullName, remoteUrl } = await resolveRepoRemote({ workdir, config });
     const cleanUrl = `https://github.com/${repoFullName}.git`;
 
     const steps: { label: string; command: string }[] = [
