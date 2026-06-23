@@ -11,6 +11,7 @@ import {
   buildPreviewDriveRootPath,
   driveRemoteUrl,
   findPreviewByName,
+  getPreviewAuthToken,
   resolveAppEditorId,
   resolvePreviewEndpoint,
   setDrivePreferredEditor,
@@ -116,6 +117,8 @@ export const specPreviewShow = defineCommand({
       );
     }
 
+    const token = await getPreviewAuthToken(context.workdir, context.config);
+
     if (input.drive) {
       // Re-assert the app binding AFTER populate: adding documents to a drive
       // wipes its header.meta.preferredEditor, so set it again here (this is the
@@ -127,6 +130,7 @@ export const specPreviewShow = defineCommand({
           switchboardUrl,
           input.drive,
           editorId,
+          token,
         );
       }
       // Append the drive's remote URL so Connect registers it via addRemoteDrive
@@ -155,7 +159,7 @@ export const specPreviewShow = defineCommand({
     }
 
     const driveId = defaultDriveId;
-    const row = await findPreviewByName(switchboardUrl, driveId, input.name);
+    const row = await findPreviewByName(switchboardUrl, driveId, input.name, token);
     const docPath = buildPreviewDocPath(driveId, row.slug ?? row.id);
     const previewUrl = context.proxy
       ? `${context.proxy.url}${REACTOR_PROJECT_CONNECT_PROXY_PATH}${docPath}`

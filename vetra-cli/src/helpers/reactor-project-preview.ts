@@ -14,6 +14,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
+import { getBearerToken } from "../auth/renown.js";
+import { resolveCloudConfig } from "../cloud/config.js";
+import type { Config } from "../framework.js";
 import { formatLines, unknownValueError } from "./cli-errors.js";
 
 const PREVIEW_DRIVE_PREFIX = "preview";
@@ -99,6 +102,25 @@ export function resolvePreviewEndpoint(
 }
 
 /**
+ * Mint a bearer token for the preview reactor from the agent's authorized Renown
+ * identity, or undefined when the agent isn't authorized. The token's address is
+ * the user's wallet (delegated via the studio "Authorize agent" button), so an
+ * auth-enabled preview reactor accepts the write when that wallet is an admin or
+ * has a grant. Undefined → caller hits the reactor anonymously, which only works
+ * when the preview reactor runs without auth.
+ *
+ * Mint from the daemon `workdir`, NOT the reactor-project path: the credential
+ * is keyed to the daemon's identity (`<workdir>/.ph/.renown.json`).
+ */
+export async function getPreviewAuthToken(
+  workdir: string,
+  config: Pick<Config, "cloudSwitchboardUrl" | "cloudRenownUrl">,
+): Promise<string | undefined> {
+  const { renownUrl } = resolveCloudConfig(config);
+  return (await getBearerToken(workdir, renownUrl)) ?? undefined;
+}
+
+/**
  * Enumerate the reactor-project instances currently running, labelled by
  * workdir basename (what `--project` accepts). Returns undefined when none are
  * live so the caller's leading message stands alone.
@@ -140,10 +162,15 @@ async function gqlRequest<T>(
   url: string,
   query: string,
   variables: Record<string, unknown>,
+  token?: string,
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ query, variables }),
   });
   if (!response.ok) {
@@ -285,11 +312,13 @@ const FIND_DRIVES_QUERY = /* GraphQL */ `
 export async function listPreviewDocuments(
   switchboardUrl: string,
   driveId: string,
+  token?: string,
 ): Promise<PreviewDocumentRow[]> {
   const data = await gqlRequest<{ findDocuments: { items: PreviewDocumentRow[] } }>(
     switchboardUrl,
     FIND_DOCUMENTS_QUERY,
     { search: { parentId: driveId } },
+    token,
   );
   return data.findDocuments.items;
 }
@@ -298,10 +327,11 @@ export async function listPreviewDocuments(
 export async function getPreviewDocument(
   switchboardUrl: string,
   identifier: string,
+  token?: string,
 ): Promise<PreviewDocumentFull | null> {
   const data = await gqlRequest<{
     document: { document: PreviewDocumentFull } | null;
-  }>(switchboardUrl, GET_DOCUMENT_QUERY, { identifier });
+  }>(switchboardUrl, GET_DOCUMENT_QUERY, { identifier }, token);
   return data.document?.document ?? null;
 }
 
@@ -319,16 +349,19 @@ export async function createEmptyPreviewDocument(
   driveId: string,
   documentType: string,
   name: string,
+  token?: string,
 ): Promise<PreviewDocumentFull> {
   const created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
     switchboardUrl,
     CREATE_EMPTY_DOCUMENT_MUTATION,
     { documentType, parentIdentifier: driveId },
+    token,
   );
   const renamed = await gqlRequest<{ renameDocument: PreviewDocumentFull }>(
     switchboardUrl,
     RENAME_DOCUMENT_MUTATION,
     { documentIdentifier: created.createEmptyDocument.id, name },
+    token,
   );
   return renamed.renameDocument;
 }
@@ -348,6 +381,7 @@ export async function mutatePreviewDocument(
   switchboardUrl: string,
   documentIdentifier: string,
   actions: ReadonlyArray<Record<string, unknown>>,
+  token?: string,
 ): Promise<PreviewDocumentFull> {
   const nowIso = new Date().toISOString();
   const stamped = actions.map((a) => ({
@@ -363,6 +397,7 @@ export async function mutatePreviewDocument(
     switchboardUrl,
     MUTATE_DOCUMENT_MUTATION,
     { documentIdentifier, actions: stamped },
+    token,
   );
   return data.mutateDocument;
 }
@@ -371,11 +406,13 @@ export async function mutatePreviewDocument(
 export async function deletePreviewDocument(
   switchboardUrl: string,
   identifier: string,
+  token?: string,
 ): Promise<boolean> {
   const data = await gqlRequest<{ deleteDocument: boolean }>(
     switchboardUrl,
     DELETE_DOCUMENT_MUTATION,
     { identifier },
+    token,
   );
   return data.deleteDocument;
 }
@@ -389,8 +426,9 @@ export async function findPreviewByName(
   switchboardUrl: string,
   driveId: string,
   name: string,
+  token?: string,
 ): Promise<PreviewDocumentRow> {
-  const items = await listPreviewDocuments(switchboardUrl, driveId);
+  const items = await listPreviewDocuments(switchboardUrl, driveId, token);
   /* Match priority: name → slug → id. First non-empty match set wins so a
    * name collision with a slug doesn't surface as ambiguity. Empty slugs
    * (rare; defensive) are skipped so a caller passing `""` can't match. */
@@ -471,13 +509,19 @@ export async function setDrivePreferredEditor(
   switchboardUrl: string,
   driveId: string,
   preferredEditor: string,
+  token?: string,
 ): Promise<string | null> {
   const data = await gqlRequest<{
     setPreferredEditor: { preferredEditor: string | null };
-  }>(switchboardUrl, SET_PREFERRED_EDITOR_MUTATION, {
-    documentIdentifier: driveId,
-    preferredEditor,
-  });
+  }>(
+    switchboardUrl,
+    SET_PREFERRED_EDITOR_MUTATION,
+    {
+      documentIdentifier: driveId,
+      preferredEditor,
+    },
+    token,
+  );
   return data.setPreferredEditor.preferredEditor ?? null;
 }
 
@@ -523,20 +567,23 @@ export async function createPreviewDrive(
   switchboardUrl: string,
   name: string,
   preferredEditor?: string,
+  token?: string,
 ): Promise<{ id: string; name: string; preferredEditor: string | null }> {
   const created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
     switchboardUrl,
     CREATE_EMPTY_DOCUMENT_MUTATION,
     { documentType: "powerhouse/document-drive", parentIdentifier: null },
+    token,
   );
   const driveId = created.createEmptyDocument.id;
   const renamed = await gqlRequest<{ renameDocument: PreviewDocumentFull }>(
     switchboardUrl,
     RENAME_DOCUMENT_MUTATION,
     { documentIdentifier: driveId, name },
+    token,
   );
   const resolvedEditor = preferredEditor
-    ? await setDrivePreferredEditor(switchboardUrl, driveId, preferredEditor)
+    ? await setDrivePreferredEditor(switchboardUrl, driveId, preferredEditor, token)
     : null;
   return {
     id: driveId,
@@ -558,11 +605,13 @@ export async function createPreviewDrive(
 export async function findPreviewDriveByPreferredEditor(
   switchboardUrl: string,
   preferredEditor: string,
+  token?: string,
 ): Promise<PreviewDriveRow | null> {
   const data = await gqlRequest<{ findDocuments: { items: PreviewDriveRow[] } }>(
     switchboardUrl,
     FIND_DRIVES_QUERY,
     { search: { type: "powerhouse/document-drive" } },
+    token,
   );
   const drives = data.findDocuments.items;
   const match = drives.find((d) => d.preferredEditor === preferredEditor);

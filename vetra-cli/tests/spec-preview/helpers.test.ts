@@ -3,11 +3,13 @@ import crypto from "node:crypto";
 
 import {
   buildPreviewDriveRootPath,
+  createEmptyPreviewDocument,
   createPreviewDrive,
   driveRemoteUrl,
   findPreviewByName,
   findPreviewDriveByPreferredEditor,
   getPreviewDriveId,
+  listPreviewDocuments,
   resolvePreviewEndpoint,
 } from "../../src/helpers/reactor-project-preview.js";
 
@@ -276,6 +278,66 @@ describe("createPreviewDrive (mutation ordering)", () => {
     const r = await createPreviewDrive(SWITCHBOARD_URL, "X");
     expect(ops).toEqual(["create", "rename"]);
     expect(r.preferredEditor).toBeNull();
+  });
+});
+
+describe("gqlRequest auth header", () => {
+  const driveId = "preview-abcd1234";
+
+  function authHeaderOf(call: unknown): string | null {
+    const init = (call as [unknown, RequestInit])[1];
+    const headers = init.headers as Record<string, string>;
+    return headers.Authorization ?? headers.authorization ?? null;
+  }
+
+  let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
+
+  function mockOk(data: Record<string, unknown>) {
+    fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ data }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+  }
+
+  afterEach(() => fetchSpy?.mockRestore());
+
+  it("attaches a Bearer token to every request when one is provided", async () => {
+    const doc = {
+      id: "doc-1",
+      slug: "d",
+      name: "Doc",
+      documentType: "x",
+      preferredEditor: null,
+      state: {},
+      revisionsList: [],
+    };
+    mockOk({ createEmptyDocument: doc, renameDocument: doc });
+
+    await createEmptyPreviewDocument(
+      SWITCHBOARD_URL,
+      driveId,
+      "x",
+      "Doc",
+      "tok-123",
+    );
+
+    // createEmptyDocument + renameDocument = two requests, both authed.
+    expect(fetchSpy.mock.calls.length).toBe(2);
+    for (const call of fetchSpy.mock.calls) {
+      expect(authHeaderOf(call)).toBe("Bearer tok-123");
+    }
+  });
+
+  it("sends no Authorization header when no token is provided", async () => {
+    mockOk({ findDocuments: { items: [] } });
+
+    await listPreviewDocuments(SWITCHBOARD_URL, driveId);
+
+    expect(authHeaderOf(fetchSpy.mock.calls[0])).toBeNull();
   });
 });
 
