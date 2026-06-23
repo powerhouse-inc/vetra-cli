@@ -17,6 +17,23 @@ import {
 const STUDIO_LINE = /Vetra Studio:\s*(http:\/\/\S+)/;
 const BOOT_TIMEOUT_MS = 180_000;
 
+/** Studio boot command: default runs from source via tsx;
+ * VETRA_E2E_BOOT_CMD=vetra boots the globally-installed `vetra` bin. */
+function bootSpec(workdir: string): {
+  command: string;
+  args: string[];
+  cwd?: string;
+} {
+  if (process.env.VETRA_E2E_BOOT_CMD === "vetra") {
+    return { command: "vetra", args: ["--workdir", workdir] };
+  }
+  return {
+    command: "pnpm",
+    args: ["exec", "tsx", "src/main.ts", "--workdir", workdir],
+    cwd: CLI_DIR,
+  };
+}
+
 /** Boot a self-contained REPLAY studio (isolated HOME, auto-assigned ports) and
  * record baseUrl + driveId in RUN_FILE; VETRA_E2E_BASE_URL attaches instead. */
 export default async function globalSetup(_config: FullConfig): Promise<void> {
@@ -38,8 +55,9 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   // throwaway tree so the run never touches the developer's real ~/.ph.
   const phHome = phHomeFor(workdir);
   mkdirSync(phHome, { recursive: true });
-  const child = spawn("pnpm", ["exec", "tsx", "src/main.ts", "--workdir", workdir], {
-    cwd: CLI_DIR,
+  const boot = bootSpec(workdir);
+  const child = spawn(boot.command, boot.args, {
+    cwd: boot.cwd,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
