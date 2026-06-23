@@ -63,7 +63,7 @@
     "generate": "ph-cli generate",
     "connect": "ph-cli connect",
     "build": "pnpm typecheck && ph-cli build",
-    "build:connect": "ph-cli connect build --outDir dist/connect --default-drives-url http://__ph_drive_url__ --dynamic-base",
+    "build:connect": "ph-cli connect build --outDir dist/connect --default-drives-url http://__ph_drive_url__ --dynamic-base --renown-namespace vetra-studio",
     "reactor": "ph-cli reactor",
     "service": "ph-cli service",
     "vetra": "ph-cli vetra",

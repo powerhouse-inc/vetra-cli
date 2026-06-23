@@ -59,3 +59,13 @@ describe('reactor-project --base', () => {
     initHook(undefined);
   });
 });
+
+describe('reactor-project --renown-namespace', () => {
+  it('shares the Studio Renown namespace with the preview Connect', () => {
+    const { command } = reactorProject;
+    if (typeof command !== 'function')
+      throw new Error('expected command function');
+    const cmd = command({ config: {} } as unknown as Parameters<typeof command>[0]);
+    expect(cmd).toContain('--renown-namespace vetra-studio');
+  });
+});
