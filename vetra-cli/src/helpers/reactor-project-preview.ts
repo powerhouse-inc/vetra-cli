@@ -154,6 +154,38 @@ interface GraphQLResponse<T> {
 }
 
 /**
+ * Turn a reactor "Forbidden: insufficient permissions" GraphQL error into chat
+ * guidance the agent can relay verbatim. The reactor enforces auth only when
+ * launched with it on (it's off by default), so this fires reactively — the
+ * caller hits the reactor and we translate only when it actually rejects.
+ *
+ * Branches on whether a token was attached: no token → the agent isn't
+ * authorized (the actionable fix); token present → the authorized identity
+ * simply lacks rights on the drive.
+ */
+function authGuidance(rawMessages: string, token: string | undefined): string {
+  if (token) {
+    return (
+      "The preview reactor rejected this request: the authorized identity " +
+      "lacks permission on this drive. It must be an admin (in the launch " +
+      "ADMINS list) or be granted write access. Verify the authorized wallet, " +
+      "then retry."
+    );
+  }
+  return (
+    "The preview reactor requires authorization and the agent is not " +
+    "authorized to act for the user. Ask the user to click \"Authorize " +
+    "agent\" in the Vetra Studio header and approve with their wallet, then " +
+    "retry this step. " +
+    `(reactor said: ${rawMessages})`
+  );
+}
+
+function isPermissionError(messages: string): boolean {
+  return /forbidden|insufficient permissions/i.test(messages);
+}
+
+/**
  * Execute a GraphQL operation against the reactor-project Switchboard.
  * Throws on transport failure or GraphQL errors — the operation is the unit of
  * work, so partial success isn't useful here.
@@ -182,6 +214,9 @@ async function gqlRequest<T>(
   const payload = (await response.json()) as GraphQLResponse<T>;
   if (payload.errors && payload.errors.length > 0) {
     const messages = payload.errors.map((e) => e.message).join("; ");
+    if (isPermissionError(messages)) {
+      throw new Error(authGuidance(messages, token));
+    }
     throw new Error(`GraphQL error: ${messages}`);
   }
   if (payload.data === undefined) {

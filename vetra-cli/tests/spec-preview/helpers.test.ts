@@ -341,6 +341,44 @@ describe("gqlRequest auth header", () => {
   });
 });
 
+describe("gqlRequest auth-failure guidance", () => {
+  let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
+
+  function mockGraphqlError(message: string) {
+    fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ errors: [{ message }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+  }
+
+  afterEach(() => fetchSpy?.mockRestore());
+
+  it("turns an anonymous Forbidden into 'Authorize agent' guidance", async () => {
+    mockGraphqlError("Forbidden: insufficient permissions to write to this document");
+    await expect(
+      listPreviewDocuments(SWITCHBOARD_URL, "preview-x"),
+    ).rejects.toThrow(/authorize agent/i);
+  });
+
+  it("explains a permission gap when a token was already attached", async () => {
+    mockGraphqlError("Forbidden: insufficient permissions to write to this document");
+    await expect(
+      listPreviewDocuments(SWITCHBOARD_URL, "preview-x", "tok-123"),
+    ).rejects.toThrow(/admin/i);
+  });
+
+  it("leaves non-permission GraphQL errors unchanged", async () => {
+    mockGraphqlError("Variable \"$x\" is not defined");
+    await expect(
+      listPreviewDocuments(SWITCHBOARD_URL, "preview-x"),
+    ).rejects.toThrow(/is not defined/);
+  });
+});
+
 describe("preview drive URL builders", () => {
   it("driveRemoteUrl swaps /graphql for /d/<id>", () => {
     expect(driveRemoteUrl("http://localhost:4001/graphql", "abc")).toBe("http://localhost:4001/d/abc");
