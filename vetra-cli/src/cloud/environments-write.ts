@@ -15,12 +15,12 @@ import {
   type CloudServiceType,
   type EnvironmentChanges,
   type VetraCloudEnvironmentGlobalState,
-} from "./_cloud-client.js";
+} from "@powerhousedao/vetra-cloud-client";
 import { getBearerToken, getRenown } from "../auth/renown.js";
 import { resolveCloudConfig } from "./config.js";
 import { NOT_AUTHENTICATED, type ReadContext } from "./environments-read.js";
 
-export type { EnvironmentChanges, EnvironmentTransition } from "./_cloud-client.js";
+export type { EnvironmentChanges, EnvironmentTransition } from "@powerhousedao/vetra-cloud-client";
 
 interface WriteSession {
   signer: ISigner;

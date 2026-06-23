@@ -1,6 +1,6 @@
 {
   "name": "vetra-app",
-  "version": "0.0.1-dev.27",
+  "version": "0.0.1-dev.29",
   "license": "AGPL-3.0-only",
   "publishConfig": {
     "access": "public",
@@ -90,7 +90,7 @@
     "@powerhousedao/document-engineering": "1.40.5",
     "@powerhousedao/ph-cli": "catalog:",
     "@powerhousedao/reactor": "catalog:",
-    "@powerhousedao/reactor-attachments": "6.2.0-dev.6",
+    "@powerhousedao/reactor-attachments": "catalog:",
     "@powerhousedao/reactor-browser": "catalog:",
     "@powerhousedao/shared": "catalog:",
     "@powerhousedao/vetra-cloud-client": "workspace:*",

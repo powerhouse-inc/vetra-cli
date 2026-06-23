@@ -10,7 +10,7 @@ import {
   CLOUD_RENOWN_URL,
   CLOUD_SWITCHBOARD_URL,
   cloudGraphqlEndpoint,
-} from "./_cloud-client.js";
+} from "@powerhousedao/vetra-cloud-client";
 
 /** Resolve the cloud endpoints from config, defaulting to the shared constants. */
 export function resolveCloudConfig(

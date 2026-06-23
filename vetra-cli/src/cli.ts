@@ -11,7 +11,7 @@ import { z } from 'zod';
 import path from 'node:path';
 import { CLI_NAME, CLI_VERSION, CLI_ROOT } from './config.js';
 import { configSchema, secretsSchema } from './framework.js';
-import { documentModels } from 'vetra-app';
+import { documentModels } from './vetra-app-models.js';
 import { documentModels as vetraModels } from '@powerhousedao/vetra';
 import { documentModels as extModels } from '@powerhousedao/clint-common';
 import { createAgent } from './agents/agent.js';
@@ -44,6 +44,13 @@ import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
 import { createAttachmentCommands } from '@powerhousedao/ph-clint/powerhouse';
 import { githubCommands } from './commands/github/index.js';
+import { existsSync } from 'node:fs';
+
+// Connect SPA dir: vetra-cli's own dist when built/published, else the
+// workspace vetra-app (dev, no build step). Lets vetra-app be a devDep.
+const CONNECT_ASSETS_ROOT = existsSync(path.join(CLI_ROOT, 'dist', 'connect', 'index.html'))
+  ? CLI_ROOT
+  : path.resolve(CLI_ROOT, '..', 'vetra-app');
 
 export const cli = defineCli({
   name: CLI_NAME,
@@ -248,10 +255,10 @@ export const cli = defineCli({
     genGuard(),
     tsCheck(),
     connectDriveUrlOnSwitchboardReady({
-      vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
+      vetraAppDir: CONNECT_ASSETS_ROOT,
     }),
     connectExternalPackagesLayerOrder({
-      vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
+      vetraAppDir: CONNECT_ASSETS_ROOT,
     }),
     // Outermost wrap: thrown tool errors keep their message through JSON
     // serialization to the model. Must stay last to catch inner hooks' throws.
@@ -303,6 +310,10 @@ cli.configureReactor({
   connect: {
     enabled: true,
     portRange: 20,
+    // Set both so ph-clint skips its vetra-app Node-resolution (a devDep, not
+    // installed in prod); the studio serves this static bundle directly.
+    workdir: CONNECT_ASSETS_ROOT,
+    assetsDir: path.join(CONNECT_ASSETS_ROOT, 'dist', 'connect'),
     // Forwarded to Connect's vite as PH_CONNECT_PACKAGES_REGISTRY.
     ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
