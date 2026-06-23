@@ -16,12 +16,13 @@ import {
   summarizeDiagnostics,
   type GenDiagnostic,
 } from "../../helpers/project-checks.js";
+import { DOCUMENT_MODEL_TYPE } from "./document-model.js";
 import { loadByName } from "./_helpers.js";
 
 type Project = Parameters<typeof generateDocumentModelFromDocument>[1];
 
 const DOC_TYPES = {
-  documentModel: "powerhouse/document-model",
+  documentModel: DOCUMENT_MODEL_TYPE,
   editor: "powerhouse/document-editor",
   app: "powerhouse/app",
   processor: "powerhouse/processor",

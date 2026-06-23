@@ -1,6 +1,5 @@
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { Kind, parse } from "graphql";
 import {
   getDocumentModels as getBuiltinModels,
   getDocumentModelSchema as getBuiltinSchema,
@@ -10,6 +9,13 @@ import {
 import { baseLoadFromFile, baseSaveToFile } from "document-model/node";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { documentModels as vetraAppModels } from "vetra-app";
+import {
+  DOCUMENT_MODEL_TYPE,
+  batchTouchesTypeDefinitions,
+  declaredTypeNames,
+  latestSpecification,
+  parseSdl,
+} from "./document-model.js";
 
 /* The codegen package owns a private registry of five Powerhouse builder spec
  * types (document-model, editor, app, processor, subgraph) and resolves every
@@ -185,45 +191,19 @@ export async function getSpecDocuments(
   return out;
 }
 
-const DOCUMENT_MODEL_TYPE = "powerhouse/document-model";
-
-/* Type-system definition kinds that GraphQL requires to be uniquely named. A
- * name defined twice across a document model's scopes produces duplicate
- * subgraph SDL that crashes the federated gateway (Sentry #917). */
-const TYPE_DEFINITION_KINDS = new Set<string>([
-  Kind.OBJECT_TYPE_DEFINITION,
-  Kind.ENUM_TYPE_DEFINITION,
-  Kind.INPUT_OBJECT_TYPE_DEFINITION,
-  Kind.INTERFACE_TYPE_DEFINITION,
-  Kind.UNION_TYPE_DEFINITION,
-  Kind.SCALAR_TYPE_DEFINITION,
-]);
+export type DuplicateTypeDefinition = { name: string; sites: string[] };
 
 /** Find type/enum/input/interface/union/scalar names defined in more than one
  * place across the latest specification of a document-model document — global
  * state schema, local state schema, and every operation schema. References are
  * not definitions, so legitimately-referenced types do not false-positive;
  * unparseable SDL (a still-in-progress scope) is skipped, not treated as an
- * error. */
+ * error. Accepts the materialized `state` object so it serves both on-disk docs
+ * and the reactor-returned preview state. */
 export function findDuplicateTypeDefinitions(
-  doc: PHDocument,
-): { name: string; sites: string[] }[] {
-  const dmState = (
-    doc.state as {
-      global?: {
-        specifications?: {
-          state?: {
-            global?: { schema?: string | null };
-            local?: { schema?: string | null };
-          };
-          modules?: {
-            operations?: { name?: string | null; schema?: string | null }[];
-          }[];
-        }[];
-      };
-    }
-  ).global;
-  const latest = dmState?.specifications?.at(-1);
+  state: unknown,
+): DuplicateTypeDefinition[] {
+  const latest = latestSpecification(state);
   if (!latest) return [];
 
   const sources: { label: string; sdl?: string | null }[] = [
@@ -241,17 +221,9 @@ export function findDuplicateTypeDefinitions(
 
   const sites = new Map<string, string[]>();
   for (const { label, sdl } of sources) {
-    if (!sdl || !sdl.trim()) continue;
-    let ast;
-    try {
-      ast = parse(sdl);
-    } catch {
-      continue;
-    }
-    for (const def of ast.definitions) {
-      if (!TYPE_DEFINITION_KINDS.has(def.kind)) continue;
-      const name = (def as { name?: { value: string } }).name?.value;
-      if (!name) continue;
+    const ast = parseSdl(sdl);
+    if (!ast) continue;
+    for (const name of declaredTypeNames(ast)) {
       sites.set(name, [...(sites.get(name) ?? []), label]);
     }
   }
@@ -261,10 +233,48 @@ export function findDuplicateTypeDefinitions(
     .map(([name, s]) => ({ name, sites: s }));
 }
 
+/** Duplicate type names present in `after` that were not already duplicated in
+ * `before` — i.e. the ones this batch of actions introduced. Pre-existing
+ * duplicates (authored before this guard, or via the preview path) don't block
+ * an unrelated edit; the batch is only rejected for the duplicates it creates. */
+export function newDuplicateTypeDefinitions(
+  before: unknown,
+  after: unknown,
+): DuplicateTypeDefinition[] {
+  const had = new Set(findDuplicateTypeDefinitions(before).map((d) => d.name));
+  return findDuplicateTypeDefinitions(after).filter((d) => !had.has(d.name));
+}
+
+/** Agent-actionable error for duplicate type definitions, or null if none. */
+export function formatDuplicateTypeError(
+  duplicates: DuplicateTypeDefinition[],
+): Error | null {
+  if (duplicates.length === 0) return null;
+  const details = duplicates
+    .map((d) => {
+      // Collapse repeated sites (e.g. a name defined twice in one schema)
+      // into "<site> (N times)" so the message reads cleanly.
+      const counts = new Map<string, number>();
+      for (const s of d.sites) counts.set(s, (counts.get(s) ?? 0) + 1);
+      const where = [...counts.entries()]
+        .map(([site, n]) => (n > 1 ? `${site} (${n} times)` : site))
+        .join(" and ");
+      return `"${d.name}" is defined in ${where}`;
+    })
+    .join("; ");
+  return new Error(
+    `Duplicate type/enum name(s) in this document model: ${details}. ` +
+      `Every type, enum, input, interface, and union name must be unique across the global state schema, ` +
+      `the local state schema, and all operation schemas. Reference the existing type by name instead of ` +
+      `redefining it, or rename one (e.g. OrderStatus vs MenuItemStatus).`,
+  );
+}
+
 /** Validate then apply actions in order via the type's reducer. On any invalid
  * action throws an aggregated error (with `.failures`) and leaves `doc`
- * untouched. For document models, also rejects a result that defines the same
- * type/enum name in more than one place (Sentry #917) before it can be saved. */
+ * untouched. For document models, also rejects a result whose batch introduces
+ * a type/enum name defined in more than one place (Sentry #917) before it can
+ * be saved. */
 export function applyActions(doc: PHDocument, actions: ActionInput[]): PHDocument {
   const entry = resolveSpecEntry(doc.header.documentType);
   const built = validateAndBuildActions(entry, actions);
@@ -281,28 +291,14 @@ export function applyActions(doc: PHDocument, actions: ActionInput[]): PHDocumen
     }
   }
 
-  if (entry.documentType === DOCUMENT_MODEL_TYPE) {
-    const duplicates = findDuplicateTypeDefinitions(current);
-    if (duplicates.length > 0) {
-      const details = duplicates
-        .map((d) => {
-          // Collapse repeated sites (e.g. a name defined twice in one schema)
-          // into "<site> (N times)" so the message reads cleanly.
-          const counts = new Map<string, number>();
-          for (const s of d.sites) counts.set(s, (counts.get(s) ?? 0) + 1);
-          const where = [...counts.entries()]
-            .map(([site, n]) => (n > 1 ? `${site} (${n} times)` : site))
-            .join(" and ");
-          return `"${d.name}" is defined in ${where}`;
-        })
-        .join("; ");
-      throw new Error(
-        `Duplicate type/enum name(s) in this document model: ${details}. ` +
-          `Every type, enum, input, interface, and union name must be unique across the global state schema, ` +
-          `the local state schema, and all operation schemas. Reference the existing type by name instead of ` +
-          `redefining it, or rename one (e.g. OrderStatus vs MenuItemStatus).`,
-      );
-    }
+  if (
+    entry.documentType === DOCUMENT_MODEL_TYPE &&
+    batchTouchesTypeDefinitions(actions)
+  ) {
+    const error = formatDuplicateTypeError(
+      newDuplicateTypeDefinitions(doc.state, current.state),
+    );
+    if (error) throw error;
   }
 
   return current;

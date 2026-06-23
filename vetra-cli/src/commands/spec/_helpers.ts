@@ -7,6 +7,14 @@ import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
 import { suggestNames } from "../../helpers/suggestions.js";
 import { applyJsonPath, encodeValue, type OutputFormat } from "./projection.js";
 import {
+  DOCUMENT_MODEL_TYPE,
+  declaredTypeNames,
+  documentModelState,
+  latestSpecification,
+  parseSdl,
+  referencedTypeNames,
+} from "./document-model.js";
+import {
   getSpecSchema,
   listSpecTypes,
   loadSpecDocument,
@@ -443,8 +451,6 @@ export function enrichActionValidationError(
   throw enriched;
 }
 
-const DOCUMENT_MODEL_TYPE = "powerhouse/document-model";
-
 /* Input fields that reference an existing module or operation by id. A bare
  * `id` field means a different entity per operation (the module on
  * SET_MODULE_*, the operation on SET_OPERATION_*, but an *error* on
@@ -511,13 +517,10 @@ function collectEntities(
 ): { modules: EntityIndex; operations: EntityIndex } {
   const modules: EntityIndex = { ids: new Set(), byName: new Map() };
   const operations: EntityIndex = { ids: new Set(), byName: new Map() };
-  const specs = (doc.state as { global?: { specifications?: unknown[] } }).global
-    ?.specifications;
-  const latest = Array.isArray(specs) ? specs.at(-1) : undefined;
-  const mods = (latest as { modules?: unknown[] } | undefined)?.modules ?? [];
-  for (const m of mods as Array<{ id?: unknown; name?: unknown; operations?: unknown[] }>) {
+  const mods = latestSpecification(doc.state)?.modules ?? [];
+  for (const m of mods) {
     addEntity(modules, m?.id, m?.name);
-    for (const op of (m?.operations ?? []) as Array<{ id?: unknown; name?: unknown }>) {
+    for (const op of m?.operations ?? []) {
       addEntity(operations, op?.id, op?.name);
     }
   }
@@ -697,8 +700,7 @@ function resolveModelName(
       if (n) return n;
     }
   }
-  const global = (doc.state as { global?: Record<string, unknown> }).global;
-  return strVal(global?.name);
+  return strVal(documentModelState(doc.state)?.name);
 }
 
 /* The codegen derives the expected state type name from the model name by
@@ -713,7 +715,7 @@ function expectedStateTypeName(modelName: string): string {
     .filter(Boolean);
   if (parts.length === 0) return "State";
   const pascal = parts
-    .map((w) => w[0]!.toUpperCase() + w.slice(1).toLowerCase())
+    .map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
     .join("");
   return `${pascal}State`;
 }
@@ -760,44 +762,12 @@ const INJECTED_SCALARS = new Set([
   "Upload",
 ]);
 
-/* Strip line + block comments so a `#`/`"""..."""` mention of a type name
- * neither declares nor references it. */
+/* Strip line + block comments so a `#`/`"""..."""` mention of the State type
+ * name doesn't trip the regex-based model-name check. */
 function stripSdlComments(schema: string): string {
   return schema
     .replace(/"""[\s\S]*?"""/g, "")
     .replace(/(^|\n)\s*#[^\n]*/g, "$1");
-}
-
-/* Collect every type name DECLARED in an SDL fragment (object/input/enum/
- * scalar/interface/union, with or without `extend`). */
-function collectDeclaredTypes(stripped: string): Set<string> {
-  const declared = new Set<string>();
-  const re =
-    /\b(?:extend\s+)?(?:type|input|enum|scalar|interface|union)\s+([A-Za-z_]\w*)/g;
-  for (const m of stripped.matchAll(re)) declared.add(m[1]!);
-  return declared;
-}
-
-/* Collect every type name REFERENCED by a field/argument in an SDL fragment:
- * the identifier after a `:`, allowing list/non-null wrappers
- * (`[Foo!]!`, `Bar`). Skips the leading field/arg name before the colon.
- * Only references to declared type names are kept (Pascal/uppercase first
- * letter); lowercase identifiers are field/scalar primitives, never refs. */
-function collectReferencedTypes(stripped: string): Set<string> {
-  const refs = new Set<string>();
-  const re = /:\s*\[?\s*([A-Za-z_]\w*)/g;
-  for (const m of stripped.matchAll(re)) {
-    const name = m[1]!;
-    if (/^[A-Z]/.test(name)) refs.add(name);
-  }
-  return refs;
-}
-
-/* Whether the fragment is well-formed enough for a reference check. TS pseudo-
- * SDL (`type X = { ... }`) is not valid GraphQL; let it fall through to the
- * codegen parse error rather than mis-reporting it as a dangling reference. */
-function looksLikeSdl(stripped: string): boolean {
-  return !/\b(?:type|input|enum|interface|union)\s+\w+\s*=/.test(stripped);
 }
 
 /* Names every SDL fragment may reference without declaring. */
@@ -835,13 +805,11 @@ function validateOperationSchemaSdl(
   opLabel: string,
   stateTypes: Set<string> = new Set(),
 ): void {
-  const stripped = stripSdlComments(schema);
-  if (!looksLikeSdl(stripped)) return;
+  const ast = parseSdl(schema);
+  if (!ast) return;
 
-  const declared = collectDeclaredTypes(stripped);
-  const referenced = collectReferencedTypes(stripped);
-
-  const dangling = [...referenced].filter(
+  const declared = declaredTypeNames(ast, { includeExtensions: true });
+  const dangling = [...referencedTypeNames(ast)].filter(
     (n) => !knownTypeName(n, declared) && !stateTypes.has(n),
   );
   if (dangling.length === 0) return;
@@ -865,18 +833,7 @@ function collectStateDeclaredTypes(
   doc: PHDocument,
   batch: ActionInput[],
 ): Set<string> {
-  const latest = (
-    doc.state as {
-      global?: {
-        specifications?: {
-          state?: {
-            global?: { schema?: string | null };
-            local?: { schema?: string | null };
-          };
-        }[];
-      };
-    }
-  ).global?.specifications?.at(-1);
+  const latest = latestSpecification(doc.state);
 
   // Effective per-scope state SDL: persisted, overridden by any batch
   // SET_STATE_SCHEMA for that scope.
@@ -895,8 +852,11 @@ function collectStateDeclaredTypes(
 
   const names = new Set<string>();
   for (const sdl of [effective.global, effective.local]) {
-    if (!sdl || !sdl.trim()) continue;
-    for (const n of collectDeclaredTypes(stripSdlComments(sdl))) names.add(n);
+    const ast = parseSdl(sdl);
+    if (!ast) continue;
+    for (const n of declaredTypeNames(ast, { includeExtensions: true })) {
+      names.add(n);
+    }
   }
   return names;
 }
@@ -905,27 +865,29 @@ function validateStateSchemaSdl(
   schema: string,
   modelName: string | undefined,
 ): void {
-  // Strip line + block comments so a commented mention of a type doesn't trip
-  // either the type-name check or the dangling-reference check.
+  // Strip line + block comments so a commented mention of the State type name
+  // doesn't trip the model-name check below.
   const stripped = stripSdlComments(schema);
 
   // Same dangling-reference guard as operations: a state schema referencing an
   // undeclared symbol fails codegen the same opaque way. Skip non-SDL (TS
-  // pseudo-syntax) so it falls through to the codegen parse error.
-  const declared = collectDeclaredTypes(stripped);
-  const dangling = looksLikeSdl(stripped)
-    ? [...collectReferencedTypes(stripped)].filter(
-        (n) => !knownTypeName(n, declared),
-      )
-    : [];
-  if (dangling.length > 0) {
-    throw new Error(
-      "SET_STATE_SCHEMA: state schema references undeclared " +
-        `${dangling.length === 1 ? "type" : "types"} ` +
-        `\`${dangling.join("`, `")}\`. ` +
-        scalarsHint() +
-        " Declare the missing type in this schema, or use a supported scalar.",
+  // pseudo-syntax / still-in-progress) so it falls through to the codegen parse
+  // error rather than being mis-reported here.
+  const ast = parseSdl(schema);
+  if (ast) {
+    const declared = declaredTypeNames(ast, { includeExtensions: true });
+    const dangling = [...referencedTypeNames(ast)].filter(
+      (n) => !knownTypeName(n, declared),
     );
+    if (dangling.length > 0) {
+      throw new Error(
+        "SET_STATE_SCHEMA: state schema references undeclared " +
+          `${dangling.length === 1 ? "type" : "types"} ` +
+          `\`${dangling.join("`, `")}\`. ` +
+          scalarsHint() +
+          " Declare the missing type in this schema, or use a supported scalar.",
+      );
+    }
   }
 
   if (!modelName) {
@@ -948,7 +910,7 @@ function validateStateSchemaSdl(
   // the alternative names it likely tried.
   const otherStateTypes = Array.from(
     stripped.matchAll(/\btype\s+(\w*State)\b/g),
-    (m) => m[1]!,
+    (m) => m[1],
   ).filter((n) => n !== expected);
   const extending = /\bextend\s+type\s+State\b/.test(stripped);
 
