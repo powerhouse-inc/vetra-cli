@@ -58,6 +58,7 @@ container (the same image the prod-close leg builds), which namespaces ports + H
 | Env | Default | Meaning |
 | --- | --- | --- |
 | `VETRA_FIXTURE` | `todo-list` | Fixture under `e2e/fixtures/` (`<name>.json` + `<name>.replay.json`) |
+| `VETRA_E2E_BOOT_CMD` | _(unset)_ | `vetra` boots the globally-installed bin (`vetra --workdir …`) instead of `pnpm exec tsx src/main.ts`; used by the CI global-install leg |
 | `VETRA_E2E_BASE_URL` | _(unset)_ | Attach to a studio you started yourself (already in replay mode); skips boot |
 | `VETRA_BASE_URL` + `VETRA_DRIVE_ID` | _(unset)_ | Point the test at a known studio without `.cache/run.json` |
 
@@ -99,3 +100,11 @@ readiness signal — it also confirms the test is driving *this* run's instance.
 `fail-fast` cancels the in-progress sibling on the first failure, so the fast source
 check aborts the slow docker build when it trips. On failure the source leg uploads
 the Playwright report + `studio.log`.
+
+A separate `global-install` job (matrix `[npm, pnpm]`, `fail-fast: false`) runs this
+same seeded replay against a **globally-installed** `vetra` on a vanilla `node:24`
+container: it global-installs the packed tarball with the matrix PM and runs the
+suite with `VETRA_E2E_BOOT_CMD=vetra` so the studio under test is the global bin.
+The container pins the inner reactor-project's pnpm to 11.5.0
+(`COREPACK_DEFAULT_TO_LATEST=0`) — a newer pnpm's lockfile supply-chain verifier
+rejects freshly-published `@powerhousedao` dev.N entries on `minimumReleaseAge`.
