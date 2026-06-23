@@ -75,6 +75,8 @@ export const reactorProjectInit = defineCommand({
       throw new Error(formatProcessFailure('ph init failed', command, workdir, output));
     }
 
+    fs.rmSync(path.join(projectPath, '.git'), { recursive: true, force: true });
+
     const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
     const hasConfig = fs.existsSync(path.join(projectPath, 'powerhouse.config.json'));
     if (hasPackageJson && hasConfig) {
