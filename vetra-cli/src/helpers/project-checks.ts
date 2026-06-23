@@ -142,18 +142,115 @@ function parseEslintOutput(
   return out;
 }
 
-/**
- * Build the eslint path arguments for a scope. Returns `null` when a scoped run
- * has nothing to lint (so the caller can skip rather than invoke eslint with a
- * pattern that matches no files).
- */
+interface OxlintDiagnostic {
+  message: string;
+  code: string;
+  severity: string;
+  filename: string;
+  labels?: Array<{ span?: { line?: number; column?: number } }>;
+}
+
+/* oxlint `code` is `<plugin>(<rule-or-TScode>)`; inner `TS\d+` is a tsc
+ * compiler diagnostic, anything else is a lint rule. */
+const OXLINT_CODE = /^(\w+)\((.+)\)$/;
+const TS_CODE = /^TS\d+$/;
+
+function parseOxlintOutput(
+  output: string,
+  base: string,
+  scope: CheckScope,
+): GenDiagnostic[] {
+  // oxlint --format json prints one object `{ "diagnostics": [...] }` (plus
+  // trailing summary keys); extract from first `{` to last `}`.
+  const start = output.indexOf("{");
+  const end = output.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return [];
+  let parsed: { diagnostics?: OxlintDiagnostic[] };
+  try {
+    parsed = JSON.parse(output.slice(start, end + 1)) as {
+      diagnostics?: OxlintDiagnostic[];
+    };
+  } catch {
+    return [];
+  }
+  const out: GenDiagnostic[] = [];
+  for (const d of parsed.diagnostics ?? []) {
+    const m = OXLINT_CODE.exec(d.code);
+    const inner = m ? m[2] : d.code;
+    const source: GenDiagnostic["source"] = TS_CODE.test(inner)
+      ? "tsc"
+      : "eslint";
+    const span = d.labels?.[0]?.span;
+    const abs = path.resolve(base, d.filename);
+    if (!inScope(abs, scope)) continue;
+    out.push({
+      source,
+      file: toRel(base, abs),
+      line: span?.line ?? 0,
+      column: span?.column ?? 0,
+      severity: d.severity === "warning" ? "warning" : "error",
+      code: inner,
+      message: d.message,
+    });
+  }
+  return out;
+}
+
+function globsFor(base: string, dirs: string[]): string {
+  return dirs
+    .flatMap((d) => [`"${base}/${d}/**/*.ts"`, `"${base}/${d}/**/*.tsx"`])
+    .join(" ");
+}
+
+/* Eslint path args: `.ts`/`.tsx` globs for present module dirs (`.` for `all`).
+ * `null` if `module` finds none. */
 function eslintTargets(base: string, scope: CheckScope): string | null {
   if (scope === "all") return ".";
   const present = MODULE_DIRS.filter((d) => fs.existsSync(path.join(base, d)));
   if (present.length === 0) return null;
-  return present
-    .flatMap((d) => [`"${base}/${d}/**/*.ts"`, `"${base}/${d}/**/*.tsx"`])
-    .join(" ");
+  return globsFor(base, present);
+}
+
+/* oxlint targets: present module dirs for `module`, `.` for `all`.
+ * `null` if `module` finds none. */
+function oxlintTargets(base: string, scope: CheckScope): string | null {
+  if (scope === "all") return ".";
+  const present = MODULE_DIRS.filter((d) => fs.existsSync(path.join(base, d)));
+  if (present.length === 0) return null;
+  return present.join(" ");
+}
+
+/* Single oxlint pass replacing tsc+eslint when the project has it installed.
+ * Always runs --type-check + --type-aware, then drops sources per skip flags. */
+async function runOxlint(
+  oxlint: string,
+  base: string,
+  runProcess: RunProcess,
+  opts: { scope: CheckScope; skipTypecheck?: boolean; skipLint?: boolean },
+): Promise<CheckOutcome> {
+  const diagnostics: GenDiagnostic[] = [];
+  const notes: string[] = [];
+  const targets = oxlintTargets(base, opts.scope);
+  if (targets === null) {
+    notes.push("checks skipped: no module directories present to check");
+    return { diagnostics, notes };
+  }
+  const tsconfig = path.join(base, "tsconfig.json");
+  const tsconfigArg = fs.existsSync(tsconfig) ? ` --tsconfig "${tsconfig}"` : "";
+  const { success, output } = await runProcess(
+    `"${oxlint}" --type-aware --type-check --format json${tsconfigArg} ${targets}`,
+    { cwd: base, timeout: 120_000, env: { NODE_OPTIONS: checkNodeOptions() } },
+  );
+  let found = parseOxlintOutput(output, base, opts.scope);
+  if (opts.skipTypecheck) found = found.filter((d) => d.source !== "tsc");
+  if (opts.skipLint) found = found.filter((d) => d.source !== "eslint");
+  diagnostics.push(...found);
+  // oxlint exits non-zero when it reports findings (expected); a non-zero exit
+  // with nothing parsed means the run itself failed.
+  if (!success && found.length === 0) {
+    notes.push(`checks failed to run: ${tailOutput(output)}`);
+  }
+  return { diagnostics, notes };
 }
 
 export async function runChecks(
@@ -168,6 +265,19 @@ export async function runChecks(
   const scope: CheckScope = opts.scope ?? "all";
   const diagnostics: GenDiagnostic[] = [];
   const notes: string[] = [];
+
+  if (opts.skipTypecheck && opts.skipLint) return { diagnostics, notes };
+
+  // oxlint (when installed) runs both lint + TS diagnostics in one pass; use it
+  // instead of the separate tsc+eslint passes. Falls back when absent.
+  const oxlint = binPath(base, "oxlint");
+  if (oxlint) {
+    return runOxlint(oxlint, base, runProcess, {
+      scope,
+      skipTypecheck: opts.skipTypecheck,
+      skipLint: opts.skipLint,
+    });
+  }
 
   if (!opts.skipTypecheck) {
     const tsc = binPath(base, "tsc");
