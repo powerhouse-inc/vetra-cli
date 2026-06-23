@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { defineCommand } from '../../framework.js';
 import { requireOption, formatProcessFailure } from '../../helpers/cli-errors.js';
+import { ensureWorkspaceGitignore } from '../../helpers/workspace-git.js';
 import { phInitNodeOptions } from '../../helpers/node-memory.js';
 import { DEFAULT_PH_VERSION } from '../../constants.js';
 
@@ -76,6 +77,21 @@ export const reactorProjectInit = defineCommand({
     }
 
     fs.rmSync(path.join(projectPath, '.git'), { recursive: true, force: true });
+
+    if (!fs.existsSync(path.join(workdir, '.git'))) {
+      const gitInit = await runProcess('git init -q', {
+        label: 'git-init',
+        cwd: workdir,
+        timeout: 30_000,
+      });
+      if (!gitInit.success) {
+        throw new Error(
+          formatProcessFailure('git init failed', 'git init -q', workdir, gitInit.output),
+        );
+      }
+    }
+
+    ensureWorkspaceGitignore(workdir);
 
     const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
     const hasConfig = fs.existsSync(path.join(projectPath, 'powerhouse.config.json'));

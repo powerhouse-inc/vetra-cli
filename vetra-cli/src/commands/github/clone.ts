@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { defineCommand } from '../../framework.js';
-import { resolveRepoRemote, shq } from '../../helpers/github.js';
+import { authedGit, GH_TOKEN_ENV, resolveRepoRemote, shq } from '../../helpers/github.js';
 
 const inputSchema = z.object({});
 
@@ -10,12 +10,11 @@ export const githubClone = defineCommand({
     'Clone the GitHub repo connected to this studio environment into the workspace, for a fresh (non-persisted) environment.',
   inputSchema,
   execute: async (_input, { workdir, config, runProcess }) => {
-    const { token, repoFullName, remoteUrl } = await resolveRepoRemote({ workdir, config });
-    const cleanUrl = `https://github.com/${repoFullName}.git`;
+    const { token, repoFullName, cleanUrl } = await resolveRepoRemote({ workdir, config });
+    const git = authedGit();
 
     const steps: { label: string; command: string }[] = [
-      { label: 'git-clone', command: `git clone ${shq(remoteUrl)} .` },
-      { label: 'git-remote', command: `git remote set-url origin ${shq(cleanUrl)}` },
+      { label: 'git-clone', command: `${git} clone ${shq(cleanUrl)} .` },
     ];
 
     for (const step of steps) {
@@ -23,6 +22,7 @@ export const githubClone = defineCommand({
         label: step.label,
         cwd: workdir,
         timeout: 300_000,
+        env: { [GH_TOKEN_ENV]: token },
       });
       if (!success) {
         const safe = output.split(token).join('***');

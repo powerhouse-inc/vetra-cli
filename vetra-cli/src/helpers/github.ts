@@ -127,10 +127,22 @@ export function shq(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+/** Env var the git credential helper reads the installation token from. */
+export const GH_TOKEN_ENV = 'VETRA_GH_TOKEN';
+
+/** A `git` invocation that authenticates via a credential helper reading the
+ * token from {@link GH_TOKEN_ENV} (username `x-access-token`). Pass the token to
+ * the process with `{ env: { [GH_TOKEN_ENV]: token } }`. */
+export function authedGit(): string {
+  const helper =
+    '!f() { echo username=x-access-token; echo "password=$' + GH_TOKEN_ENV + '"; }; f';
+  return `git -c credential.helper= -c credential.helper=${shq(helper)}`;
+}
+
 export type RepoRemote = {
   token: string;
   repoFullName: string;
-  remoteUrl: string;
+  cleanUrl: string;
 };
 
 /**
@@ -165,6 +177,6 @@ export async function resolveRepoRemote(ctx: {
       throw error;
     },
   );
-  const remoteUrl = `https://x-access-token:${token}@github.com/${repoFullName}.git`;
-  return { token, repoFullName, remoteUrl };
+  const cleanUrl = `https://github.com/${repoFullName}.git`;
+  return { token, repoFullName, cleanUrl };
 }

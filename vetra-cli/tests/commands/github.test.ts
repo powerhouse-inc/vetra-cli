@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { makeCtx, makeWorkdir } from "../spec/_fixtures.js";
 
@@ -127,7 +129,7 @@ describe("github commands", () => {
     cleanup();
   });
 
-  it("github-push commits as the bot and pushes with the token", async () => {
+  it("github-push commits as the bot and pushes with the token in the env", async () => {
     mockGithub(fetchSpy);
     const runProcess = fakeRun({ success: true, output: "" });
     const result = await githubPush.execute(
@@ -138,11 +140,23 @@ describe("github commands", () => {
     const commands = runProcess.mock.calls.map((c) => String(c[0]));
     expect(commands.some((c) => c.startsWith("git init"))).toBe(true);
     expect(commands.some((c) => c.includes("user.name='vetra-studio[bot]'"))).toBe(true);
-    expect(
-      commands.some(
-        (c) => c.includes("git push") && c.includes("ghs_token") && c.includes("alice/widget"),
-      ),
-    ).toBe(true);
+    const pushCall = runProcess.mock.calls.find((c) => String(c[0]).includes(" push "));
+    expect(pushCall).toBeDefined();
+    expect(String(pushCall?.[0])).toContain("github.com/alice/widget.git");
+    expect(String(pushCall?.[0])).not.toContain("ghs_token");
+    expect((pushCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN).toBe(
+      "ghs_token",
+    );
+  });
+
+  it("github-push keeps the agent's .ph dir out of the commit", async () => {
+    mockGithub(fetchSpy);
+    const runProcess = fakeRun({ success: true, output: "" });
+    await githubPush.execute({ branch: "main", message: "x" }, ctx(workdir, runProcess));
+    const gitignore = readFileSync(join(workdir, ".gitignore"), "utf8");
+    expect(gitignore).toContain(".ph/");
+    const commands = runProcess.mock.calls.map((c) => String(c[0]));
+    expect(commands.some((c) => c.includes("git add") && c.includes("(exclude).ph"))).toBe(true);
   });
 
   it("github-pull fast-forwards from the repo", async () => {
@@ -150,27 +164,28 @@ describe("github commands", () => {
     const runProcess = fakeRun({ success: true, output: "" });
     const result = await githubPull.execute({ branch: "main" }, ctx(workdir, runProcess));
     expect(result.text).toMatch(/Pulled alice\/widget/);
-    const commands = runProcess.mock.calls.map((c) => String(c[0]));
-    expect(
-      commands.some((c) => c.includes("git pull --ff-only") && c.includes("ghs_token")),
-    ).toBe(true);
+    const pullCall = runProcess.mock.calls.find((c) => String(c[0]).includes(" pull "));
+    expect(pullCall).toBeDefined();
+    expect(String(pullCall?.[0])).toContain("--ff-only");
+    expect(String(pullCall?.[0])).toContain("github.com/alice/widget.git");
+    expect(String(pullCall?.[0])).not.toContain("ghs_token");
+    expect((pullCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN).toBe(
+      "ghs_token",
+    );
   });
 
-  it("github-clone clones then strips the token from origin", async () => {
+  it("github-clone clones from a clean URL with the token in the env", async () => {
     mockGithub(fetchSpy);
     const runProcess = fakeRun({ success: true, output: "" });
     const result = await githubClone.execute({}, ctx(workdir, runProcess));
     expect(result.text).toMatch(/Cloned alice\/widget/);
-    const commands = runProcess.mock.calls.map((c) => String(c[0]));
-    expect(commands.some((c) => c.startsWith("git clone") && c.includes("ghs_token"))).toBe(true);
-    expect(
-      commands.some(
-        (c) =>
-          c.includes("git remote set-url origin") &&
-          c.includes("https://github.com/alice/widget.git") &&
-          !c.includes("ghs_token"),
-      ),
-    ).toBe(true);
+    const cloneCall = runProcess.mock.calls.find((c) => String(c[0]).includes(" clone "));
+    expect(cloneCall).toBeDefined();
+    expect(String(cloneCall?.[0])).toContain("github.com/alice/widget.git");
+    expect(String(cloneCall?.[0])).not.toContain("ghs_token");
+    expect((cloneCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN).toBe(
+      "ghs_token",
+    );
   });
 
   it("errors when the agent is not authorized for the user", async () => {

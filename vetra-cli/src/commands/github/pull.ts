@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { defineCommand } from '../../framework.js';
-import { resolveRepoRemote, shq } from '../../helpers/github.js';
+import { authedGit, GH_TOKEN_ENV, resolveRepoRemote, shq } from '../../helpers/github.js';
 
 const BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
@@ -17,13 +17,14 @@ export const githubPull = defineCommand({
     if (!BRANCH_PATTERN.test(branch)) {
       throw new Error(`Invalid branch name "${branch}".`);
     }
-    const { token, repoFullName, remoteUrl } = await resolveRepoRemote({ workdir, config });
+    const { token, repoFullName, cleanUrl } = await resolveRepoRemote({ workdir, config });
+    const git = authedGit();
 
     const steps: { label: string; command: string }[] = [
       { label: 'git-init', command: 'git init -q' },
       {
         label: 'git-pull',
-        command: `git pull --ff-only ${shq(remoteUrl)} ${shq(branch)}`,
+        command: `${git} pull --ff-only ${shq(cleanUrl)} ${shq(branch)}`,
       },
     ];
 
@@ -32,6 +33,7 @@ export const githubPull = defineCommand({
         label: step.label,
         cwd: workdir,
         timeout: 120_000,
+        env: { [GH_TOKEN_ENV]: token },
       });
       if (!success) {
         const safe = output.split(token).join('***');
