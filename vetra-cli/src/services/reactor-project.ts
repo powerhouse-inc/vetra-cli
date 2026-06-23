@@ -13,6 +13,7 @@ import { defineService } from '../framework.js';
 import {
   REACTOR_PROJECT_CONNECT_PROXY_PATH,
   REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH,
+  RENOWN_NAMESPACE,
 } from '../constants.js';
 import { reactorProjectNodeOptions } from '../helpers/node-memory.js';
 import { connectExternalizeVendorEnv } from '../helpers/connect-vendor.js';
@@ -135,6 +136,9 @@ export const reactorProject = defineService({
     // this base. Under a proxy subpath the base carries that prefix too, so
     // the captured upstream matches the path stripBase forwards.
     parts.push('--base', `${resolvedDeployBasePath}${REACTOR_PROJECT_CONNECT_PROXY_PATH}/`);
+    // Share the Studio's Renown localStorage namespace so the preview Connect
+    // reuses the owner's session instead of prompting a second login.
+    parts.push('--renown-namespace', RENOWN_NAMESPACE);
     // Bind the Vite Connect dev server to IPv4 loopback. Without this it binds
     // [::1] only; ph-clint builds the proxy upstream from the captured Local:
     // URL via new URL(), whose `localhost` host resolves IPv4-first to
