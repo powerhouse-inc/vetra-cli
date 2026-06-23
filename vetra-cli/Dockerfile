@@ -101,7 +101,10 @@ RUN set -eu; \
       --config.minimumReleaseAge=0 \
       "@powerhousedao/codegen@${PH_VERSION}" \
       "vite-plugin-externalize-dependencies@^1.0.1" \
- && printf '\nenableGlobalVirtualStore: true\nminimumReleaseAge: 0\n' >> pnpm-workspace.yaml \
+ # storeDir pins the clone's offline install to this baked store; without it pnpm
+ # picks a per-drive store on the workspace volume (empty) and fails offline. Only
+ # a pnpm-workspace.yaml storeDir survives the relocation, and the clone copies it.
+ && printf '\nenableGlobalVirtualStore: true\nminimumReleaseAge: 0\nstoreDir: %s\n' "$(pnpm store path)" >> pnpm-workspace.yaml \
  && rm -rf node_modules \
  && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0 \
  # Prebuild Connect's vendor bundle into the template's node_modules/.ph-vendor.
