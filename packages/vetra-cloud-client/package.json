@@ -1,0 +1,28 @@
+{
+  "name": "@powerhousedao/vetra-cloud-client",
+  "version": "0.0.1-dev.27",
+  "private": true,
+  "description": "Environment-agnostic Vetra Cloud communication: GraphQL reads, the VetraCloudEnvironment document-model controller, and signed mutation sequences. Source-only internal package: consumed by vetra-cli (Node) and vetra-app (browser), each of which bundles this source into its own build. Not published; each consumer injects its own bearer-token source and signer.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@powerhousedao/reactor-browser": "catalog:",
+    "document-model": "catalog:"
+  },
+  "dependencies": {
+    "@powerhousedao/vetra-cloud-package": "https://registry.dev.vetra.io/@powerhousedao/vetra-cloud-package/-/vetra-cloud-package-0.0.3-dev.93.tgz"
+  },
+  "devDependencies": {
+    "@powerhousedao/reactor-browser": "catalog:",
+    "@types/node": "catalog:",
+    "document-model": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -330,6 +330,66 @@ BUILD step payload shape: `{ projectId, documentId, title? }`. The
 scaffold resolves the iframe URL from the editor's project-state
 subscription; the agent does not construct Connect URLs.
 
+### Renown identity (agent authorization)
+
+**Renown is the identity/auth provider.** The user authorizes the agent with
+their Renown identity once; that authorization lets the agent act as the user
+across Vetra Cloud and other Renown-protected services. The `deploy-environment-*`
+tools are one consumer — they operate on the user's real Vetra Cloud environments
+at `switchboard.staging.vetra.io` (the same switchboard the vetra-app Studio
+Deploy section uses). The Node side lives in `vetra-cli/src/cloud/`.
+
+Two Renown identities are involved: the user's wallet identity (browser, on
+`renown.id`) and the agent's own `did:key` (backend). Authorizing the agent
+delegates the user's wallet to that `did:key`.
+
+- **Identity.** `@renown/sdk/node` `RenownBuilder` gives the agent a stable
+  `did:key`. The keypair persists to `<workdir>/.ph/.keypair.json` and the
+  delegated credential to `<workdir>/.ph/.renown.json` (workdir-scoped, like
+  the embedded reactor's state); `PH_RENOWN_PRIVATE_KEY` overrides the keypair
+  for pre-provisioned deployed agents. `src/auth/renown.ts` caches one
+  `IRenown` per workdir and exposes `getBearerToken` (no `aud` — the
+  switchboard's verifier rejects it), `getSigner`, the auth state machine
+  (`startAuth` / `getAuthState` / `confirmAuth` / `logoutAuth`), and
+  `getRenownStatus`. (The Vetra Cloud resource layer — switchboard URL,
+  environments, drive — stays under `src/cloud/`.)
+- **Authorization is the user's action, from the studio.** The agent has a
+  single read-only `whoami` tool (reports whether it's authorized, and as
+  which address); it cannot log in. The studio header renders an **Authorize
+  agent** button (`vetra-app/.../AgentAuthButton.tsx`, left of "Auto-follow
+  agent") that drives the console flow via the preview-server (the in-process
+  local API, sharing the same per-workdir `IRenown`): `POST /auth/start`
+  builds the `<renownUrl>/console?session=…&connect=<agentDid>` URL and opens
+  it; the user approves with their wallet on `renown.id`; `POST /auth/confirm`
+  polls `<renownUrl>/api/console/session/<id>` and runs `renown.login` to store
+  the credential; `GET /auth/status` and `POST /auth/logout` round it out. (An
+  in-app one-click authorize isn't possible — the wallet session and credential
+  publishing live on the
+  `renown.id` origin.) The Renown server URL defaults to
+  `https://www.renown.id` (`config.cloudRenownUrl` overrides); the switchboard
+  URL defaults to staging (`config.cloudSwitchboardUrl`).
+- **Publish path (live).** `reactor-project-publish` mints a registry-bound
+  bearer token from the agent's identity (`getRegistryToken` in
+  `src/auth/renown.ts` → `generateAccessToken(…, { aud: registryUrl })`, the
+  same mechanism as `ph publish`) and passes it to `npm publish` as the
+  ephemeral `_authToken`; `reactor-project-publish-status` reads the registry
+  packument over HTTP with the same token. No `npm login` — authorizing the
+  agent is the only prerequisite.
+- **Read path (live).** `deploy-environment-list` / `-get` query
+  `myEnvironments` over GraphQL with the bearer token
+  (`src/cloud/graphql.ts`) and trim to the caller's own environments
+  (`filterOwn`, mirroring the Studio).
+- **Write path (live).** `deploy-environment-create` / `-update` load (or
+  create) the `vetra-cloud-environment` document via a `RemoteDocumentController`
+  and push signer-signed actions against the cloud, mirroring the Studio
+  (`src/cloud/environments-write.ts`, delegating to
+  `@powerhousedao/vetra-cloud-client`).
+- **Wait.** `deploy-environment-wait` polls the read path every 5s (up to a
+  caller-set timeout — default 30s, max 60s) until the status leaves the
+  in-flight set (`CHANGES_*` / `DEPLOYING` / `TERMINATING`) and settles, so the
+  agent blocks in a single tool call instead of looping `deploy-environment-get`
+  (`src/commands/deploy/wait.ts`).
+
 ### Triggers
 
 Registered in `cli.ts`. Run as part of ph-clint's routine loop.
@@ -639,10 +699,15 @@ swaps. That whole chain remains in the source tree, gated by
 - `services/local-registry.ts` (Verdaccio supervisor service)
 - `triggers/publish-reload.ts` (SSE consumer + Switchboard/Connect
   reconciler)
-- `commands/reactor-project/publish.ts` (publish flow)
 - `LOCAL_REGISTRY_URL` / `LOCAL_REGISTRY_PORT` constants
 - `registryUrl` wiring in `cli.configureReactor`'s switchboard/connect
   options
+
+`commands/reactor-project/publish.ts` (and `publish-status.ts`) are **not**
+dormant — they are the live deploy-flow tools that publish a Reactor package
+to the remote registry via the agent's Renown token (see "Renown identity →
+Publish path" above). Only the local-registry preview wiring above is gated
+off.
 
 With the flag false, none of this runs. The code is retained as
 reference for future scenarios where dynamic package loading is the

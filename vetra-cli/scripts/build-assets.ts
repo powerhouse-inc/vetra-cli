@@ -64,3 +64,44 @@ await buildManifest({
   outDir: path.join(PROJECT_ROOT, 'dist'),
   cli,
 });
+
+// ph-clint (now bundled) spawns `node <its dir>/connect-server.js` for the studio
+// static server; bundled, that dir is dist/, so copy the node-builtins-only script in.
+function copyConnectServer(): void {
+  const rel = path.join('dist', 'integrations', 'powerhouse', 'connect-server.js');
+  const candidates = [
+    path.join(PROJECT_ROOT, 'node_modules', '@powerhousedao', 'ph-clint', rel),
+    path.join(PROJECT_ROOT, '..', 'node_modules', '@powerhousedao', 'ph-clint', rel),
+  ];
+  const src = candidates.find((p) => fs.existsSync(p));
+  const dest = path.join(PROJECT_ROOT, 'dist', 'connect-server.js');
+  if (!src) {
+    console.warn('build-assets: ph-clint connect-server.js not found; studio static server will be missing');
+    return;
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+  console.log('build-assets: copied connect-server.js -> dist/');
+}
+copyConnectServer();
+
+// Ship the prebuilt Connect SPA in vetra-cli's own dist (served from
+// CLI_ROOT/dist/connect) so vetra-app can be a devDep. Skips if already current.
+function copyConnectBundle(): void {
+  const src = path.join(PROJECT_ROOT, '..', 'vetra-app', 'dist', 'connect');
+  const dest = path.join(PROJECT_ROOT, 'dist', 'connect');
+  if (!fs.existsSync(path.join(src, 'index.html'))) {
+    console.warn('build-assets: vetra-app/dist/connect not found; run `pnpm --filter vetra-app build:connect` first');
+    return;
+  }
+  const destIndex = path.join(dest, 'index.html');
+  if (fs.existsSync(destIndex) &&
+      fs.statSync(destIndex).mtimeMs >= fs.statSync(path.join(src, 'index.html')).mtimeMs) {
+    console.log('build-assets: dist/connect already current; skipping copy');
+    return;
+  }
+  fs.rmSync(dest, { recursive: true, force: true });
+  fs.cpSync(src, dest, { recursive: true });
+  console.log('build-assets: copied vetra-app/dist/connect -> dist/connect');
+}
+copyConnectBundle();

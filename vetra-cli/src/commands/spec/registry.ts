@@ -5,10 +5,10 @@ import {
   getDocumentModelSchema as getBuiltinSchema,
   getSpecEntry as getBuiltinSpecEntry,
   listSpecDocumentTypes as listBuiltinTypes,
-} from "@powerhousedao/vetra/codegen";
+} from "@powerhousedao/vetra/codegen/spec";
 import { baseLoadFromFile, baseSaveToFile } from "document-model/node";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
-import { documentModels as vetraAppModels } from "vetra-app";
+import { documentModels as vetraAppModels } from "../../vetra-app-models.js";
 import {
   DOCUMENT_MODEL_TYPE,
   batchTouchesTypeDefinitions,
@@ -55,7 +55,7 @@ type SpecEntry = {
   documentType: string;
   subdir: string;
   reducer: (doc: PHDocument, action: unknown) => PHDocument;
-  utils: { fileExtension: string; createDocument: (state?: unknown) => PHDocument };
+  utils: { fileExtension: string };
   actions: ActionsModule;
   createDocument: (state?: unknown) => PHDocument;
   jsonSpec: JsonSpec;
@@ -74,7 +74,7 @@ const vetraAppEntries: Map<string, SpecEntry> = new Map(
   (vetraAppModels as unknown as ReadonlyArray<{
     reducer: SpecEntry["reducer"];
     actions: ActionsModule;
-    utils: SpecEntry["utils"];
+    utils: { fileExtension: string; createDocument: (state?: unknown) => PHDocument };
     documentModel: { global: JsonSpec };
   }>).map((mod) => {
     const jsonSpec = mod.documentModel.global;
@@ -82,7 +82,7 @@ const vetraAppEntries: Map<string, SpecEntry> = new Map(
       documentType: jsonSpec.id,
       subdir: jsonSpec.id.split("/").pop() || kebabCase(jsonSpec.name),
       reducer: mod.reducer,
-      utils: mod.utils,
+      utils: { fileExtension: mod.utils.fileExtension },
       actions: mod.actions,
       createDocument: mod.utils.createDocument,
       jsonSpec,

@@ -15,6 +15,8 @@ export async function startPreview(args: {
   services: ServiceManager;
   workdir: string;
   project: string;
+  /** Live public proxy origin; advertised as the base of the project's drive URLs. */
+  proxyPublicUrl?: string;
 }): Promise<StartResult> {
   let projectPath: string;
   try {
@@ -50,6 +52,9 @@ export async function startPreview(args: {
     const instanceId = await args.services.start("reactor-project", {
       workdir: projectPath,
       cwd: projectPath,
+      params: args.proxyPublicUrl
+        ? { proxyPublicUrl: args.proxyPublicUrl }
+        : undefined,
     });
     return {
       kind: "started",

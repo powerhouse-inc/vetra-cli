@@ -101,7 +101,7 @@ async function* iterateSpecFiles(
  * Use sparingly — it loads every doc into memory. For single-spec lookups,
  * prefer `findByName` which short-circuits via `iterateSpecFiles`.
  */
-async function getDocumentsWithPaths(
+export async function getDocumentsWithPaths(
   workdir: string,
 ): Promise<{ doc: PHDocument; path: string }[]> {
   const out: { doc: PHDocument; path: string }[] = [];

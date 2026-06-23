@@ -11,7 +11,7 @@ import { z } from 'zod';
 import path from 'node:path';
 import { CLI_NAME, CLI_VERSION, CLI_ROOT } from './config.js';
 import { configSchema, secretsSchema } from './framework.js';
-import { documentModels } from 'vetra-app';
+import { documentModels } from './vetra-app-models.js';
 import { documentModels as vetraModels } from '@powerhousedao/vetra';
 import { documentModels as extModels } from '@powerhousedao/clint-common';
 import { createAgent } from './agents/agent.js';
@@ -20,6 +20,8 @@ import { observability } from '@powerhousedao/ph-clint-observability';
 import { agentRun } from './commands/agent-run.js';
 import { specCommands } from './commands/spec/index.js';
 import { specPreviewCommands } from './commands/spec-preview/index.js';
+import { deployCommands } from './commands/deploy/index.js';
+import { authCommands } from './commands/auth/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject, proxyBasePathHook } from './services/reactor-project.js';
 import { localRegistry } from './services/local-registry.js';
@@ -41,6 +43,13 @@ import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
 import { createAttachmentCommands } from '@powerhousedao/ph-clint/powerhouse';
+import { existsSync } from 'node:fs';
+
+// Connect SPA dir: vetra-cli's own dist when built/published, else the
+// workspace vetra-app (dev, no build step). Lets vetra-app be a devDep.
+const CONNECT_ASSETS_ROOT = existsSync(path.join(CLI_ROOT, 'dist', 'connect', 'index.html'))
+  ? CLI_ROOT
+  : path.resolve(CLI_ROOT, '..', 'vetra-app');
 
 export const cli = defineCli({
   name: CLI_NAME,
@@ -56,6 +65,8 @@ export const cli = defineCli({
   commands: [
     ...specCommands,
     ...specPreviewCommands,
+    ...deployCommands,
+    ...authCommands,
     ...reactorProjectCommands,
     ...createAttachmentCommands(),
     agentRun,
@@ -88,7 +99,7 @@ export const cli = defineCli({
       'vetra-agent': {
         name: 'vetra-agent',
         sections: ['base.md', 'tools.md', 'workflow.md'],
-        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation'],
+        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation', 'deploy'],
       },
       'agent-document-model': {
         name: 'agent-document-model',
@@ -107,6 +118,19 @@ export const cli = defineCli({
       },
     },
     skills: {
+      'deploy': {
+        description: 'Build, publish, and deploy a Reactor package to a Vetra Cloud environment — reuse or create an environment, install the package, return the live links, and answer deployment status questions (is the package published, installed, or the environment ready).',
+        inputSchema: z.object({
+          mode: z
+            .enum(['expert', 'discovery', 'one-shot'])
+            .default('expert')
+            .describe(
+              'Expert: align technical design decisions between fellow experts. Discovery: explain the process and guide non-expert users to decisions. One-shot: make all design decisions autonomously and execute without asking',
+            ),
+        }),
+        instructionTemplate:
+          'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
+      },
       'reactor-project-management': {
         description: 'Initialize, build, and publish Reactor Package projects',
         inputSchema: z.object({
@@ -229,10 +253,10 @@ export const cli = defineCli({
     genGuard(),
     tsCheck(),
     connectDriveUrlOnSwitchboardReady({
-      vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
+      vetraAppDir: CONNECT_ASSETS_ROOT,
     }),
     connectExternalPackagesLayerOrder({
-      vetraAppDir: path.resolve(CLI_ROOT, '..', 'vetra-app'),
+      vetraAppDir: CONNECT_ASSETS_ROOT,
     }),
     // Outermost wrap: thrown tool errors keep their message through JSON
     // serialization to the model. Must stay last to catch inner hooks' throws.
@@ -276,15 +300,19 @@ cli.configureReactor({
     }),
   switchboard: {
     enabled: true,
-    // Wire the local-registry's URL into the embedded switchboard so the
-    // `Packages` GraphQL subgraph picks it up — required for the
-    // publish-reload trigger's install/uninstall mutations.
+    // Scan up from the derived default so a parallel studio gets a free port.
+    portRange: 20,
+    // Local-registry URL for the `Packages` subgraph (publish-reload trigger).
     ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
   connect: {
     enabled: true,
-    // Forwarded to Connect's vite config as PH_CONNECT_PACKAGES_REGISTRY so
-    // the browser fetches Powerhouse package bundles from the local registry.
+    portRange: 20,
+    // Set both so ph-clint skips its vetra-app Node-resolution (a devDep, not
+    // installed in prod); the studio serves this static bundle directly.
+    workdir: CONNECT_ASSETS_ROOT,
+    assetsDir: path.join(CONNECT_ASSETS_ROOT, 'dist', 'connect'),
+    // Forwarded to Connect's vite as PH_CONNECT_PACKAGES_REGISTRY.
     ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
 });

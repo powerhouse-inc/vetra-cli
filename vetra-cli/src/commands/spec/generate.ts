@@ -1,12 +1,3 @@
-import {
-  generateAppFromDocument,
-  generateDocumentModelFromDocument,
-  generateEditorFromDocument,
-  generateProcessorFromDocument,
-  generateSubgraphFromDocument,
-  getDocuments,
-} from "@powerhousedao/vetra/codegen";
-import { buildTsMorphProject } from "@powerhousedao/codegen/utils";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
@@ -17,29 +8,35 @@ import {
   type GenDiagnostic,
 } from "../../helpers/project-checks.js";
 import { DOCUMENT_MODEL_TYPE } from "./document-model.js";
-import { loadByName } from "./_helpers.js";
+import { withProjectCodegenLock } from "../../helpers/project-lock.js";
+import { phBuildNodeOptions } from "../../helpers/node-memory.js";
+import { findByName, getDocumentsWithPaths } from "./_helpers.js";
 
-type Project = Parameters<typeof generateDocumentModelFromDocument>[1];
+// documentType → `ph generate <subcommand>`. The five builder types each map to
+// a subcommand; domain (vetra-app product) spec types have no codegen path.
+const GENERATE_SUBCOMMAND: Record<string, string> = {
+  [DOCUMENT_MODEL_TYPE]: "document-model",
+  "powerhouse/document-editor": "editor",
+  "powerhouse/app": "app",
+  "powerhouse/processor": "processor",
+  "powerhouse/subgraph": "subgraph",
+};
 
-const DOC_TYPES = {
-  documentModel: DOCUMENT_MODEL_TYPE,
-  editor: "powerhouse/document-editor",
-  app: "powerhouse/app",
-  processor: "powerhouse/processor",
-  subgraph: "powerhouse/subgraph",
-} as const;
+type RunProcess = (
+  command: string,
+  opts?: {
+    label?: string;
+    cwd?: string;
+    timeout?: number;
+    env?: Record<string, string>;
+  },
+) => Promise<{ success: boolean; output: string }>;
 
-/* `@graphql-tools/load` inlines the entire failing SDL into `err.message`, so
- * the real cause is buried in a wall of type definitions. These patterns pull
- * the meaningful diagnostic back out — the actual GraphQLError, not the SDL. */
+// `@graphql-tools/load` inlines the failing SDL into the subprocess output;
+// these patterns pull the real GraphQLError back out of the wall of types.
 const DIAGNOSTIC_PATTERNS = [
-  // Syntax/validation failures the loader wraps explicitly.
   /Failed to parse the GraphQL document\.[^\n]*/,
-  // Duplicate-graphql realm mismatch: a type built by one graphql instance is
-  // checked by another (e.g. top-level graphql vs a nested copy under
-  // @graphql-tools). instanceOf fails — surfaces as this, not an SDL error.
   /Cannot use [A-Za-z]+ "[^"]+" from another module or realm\.?/,
-  // Undeclared types/scalars/directives in the operation or state SDL.
   /Unknown type[:]? "?[^"\n]+"?/,
   /Unknown directive "?[^"\n]+"?/,
   /Type "[^"]+" not found/,
@@ -59,22 +56,29 @@ function trimGenerateError(message: string): string {
   return message;
 }
 
-async function generateOne(doc: PHDocument, project: Project): Promise<void> {
-  switch (doc.header.documentType) {
-    case DOC_TYPES.documentModel:
-      return generateDocumentModelFromDocument(doc as never, project);
-    case DOC_TYPES.editor:
-      return generateEditorFromDocument(doc as never, project);
-    case DOC_TYPES.app:
-      return generateAppFromDocument(doc as never, project);
-    case DOC_TYPES.processor:
-      return generateProcessorFromDocument(doc as never, project);
-    case DOC_TYPES.subgraph:
-      return generateSubgraphFromDocument(doc as never, project);
-    default:
-      throw new Error(
-        `Unsupported document type for code generation: ${doc.header.documentType}`,
-      );
+// Run `ph generate <subcommand> --document <specFilePath>` in the reactor
+// project. The subprocess owns codegen; vetra-cli no longer generates in-process.
+async function generateOne(
+  doc: PHDocument,
+  specFilePath: string,
+  base: string,
+  runProcess: RunProcess,
+): Promise<void> {
+  const subcommand = GENERATE_SUBCOMMAND[doc.header.documentType];
+  if (!subcommand) {
+    throw new Error(
+      `Unsupported document type for code generation: ${doc.header.documentType}`,
+    );
+  }
+  const command = `ph generate ${subcommand} --document "${specFilePath}"`;
+  const { success, output } = await runProcess(command, {
+    label: "ph-generate",
+    timeout: 120_000,
+    cwd: base,
+    env: { FORCE_COLOR: "1", NODE_OPTIONS: phBuildNodeOptions() },
+  });
+  if (!success) {
+    throw new Error(output);
   }
 }
 
@@ -99,102 +103,107 @@ export const specGenerate = defineCommand({
   }),
   execute: async (input, { workdir, runProcess }) => {
     const base = await resolveReactorProjectPath(workdir, input.project);
-    /* `@powerhousedao/codegen` and `@powerhousedao/vetra` resolve to two
-     * physical copies of `ts-morph` (same version, different install paths), so
-     * TS treats their `Project` types as distinct. Cast bridges the structural
-     * gap; identical at runtime. */
-    const tsProject = buildTsMorphProject(base);
+    // codegen rewrites shared barrels/manifest from the project's view, so
+    // concurrent runs clobber each other; serialize per reactor project.
+    return withProjectCodegenLock(base, async () => {
+      // Each target carries the doc plus its on-disk spec file, passed to
+      // `ph generate --document`.
+      // Real on-disk path only (never a recomputed specPath): the saved filename
+      // uses a different kebab than specPath derives, so a recompute can miss.
+      const targets: { doc: PHDocument; path: string }[] = input.name
+        ? [await findByName(base, input.name)]
+        : await getDocumentsWithPaths(base);
 
-    const docs = input.name
-      ? [await loadByName(base, input.name)]
-      : await getDocuments(base);
+      if (targets.length === 0) {
+        return { text: "(no specs to generate)" };
+      }
 
-    if (docs.length === 0) {
-      return { text: "(no specs to generate)" };
-    }
+      const generated: { name: string; type: string }[] = [];
+      const skipped: { name: string; type: string; reason: string }[] = [];
 
-    const generated: { name: string; type: string }[] = [];
-    const skipped: { name: string; type: string; reason: string }[] = [];
+      for (const { doc, path } of targets) {
+        const type = doc.header.documentType;
+        if (!GENERATE_SUBCOMMAND[type]) {
+          if (input.name) {
+            throw new Error(
+              `${type} — ${doc.header.name}: (no codegen for ${type})`,
+            );
+          }
+          skipped.push({
+            name: doc.header.name,
+            type,
+            reason: `(no codegen for ${type})`,
+          });
+          continue;
+        }
+        try {
+          await generateOne(doc, path, base, runProcess);
+          generated.push({ name: doc.header.name, type });
+        } catch (err) {
+          const reason = trimGenerateError(
+            err instanceof Error ? err.message : String(err),
+          );
+          if (input.name) {
+            throw new Error(`${type} — ${doc.header.name}: ${reason}`);
+          }
+          skipped.push({ name: doc.header.name, type, reason });
+        }
+      }
 
-    for (const doc of docs) {
-      try {
-        await generateOne(doc, tsProject);
-        generated.push({
-          name: doc.header.name,
-          type: doc.header.documentType,
-        });
-      } catch (err) {
-        const reason = trimGenerateError(
-          err instanceof Error ? err.message : String(err),
+      let diagnostics: GenDiagnostic[] = [];
+      const checkNotes: string[] = [];
+      if (!input.skipChecks && generated.length > 0) {
+        const outcome = await runChecks(base, runProcess, { scope: "module" });
+        diagnostics = outcome.diagnostics;
+        checkNotes.push(...outcome.notes);
+      }
+      const summary = summarizeDiagnostics(diagnostics);
+
+      if (input.name && summary.errors > 0) {
+        const head = diagnostics
+          .filter((d) => d.severity === "error")
+          .slice(0, 5)
+          .map(
+            (d) =>
+              `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
+          )
+          .join("\n  ");
+        throw new Error(
+          `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
         );
-        if (input.name) {
-          throw new Error(
-            `${doc.header.documentType} — ${doc.header.name}: ${reason}`,
+      }
+
+      const lines = [
+        `Generated ${generated.length} module(s)` +
+          (skipped.length > 0 ? `, skipped ${skipped.length}` : "") +
+          ".",
+      ];
+      for (const g of generated) {
+        lines.push(`  ✓ ${g.type} — ${g.name}`);
+      }
+      for (const s of skipped) {
+        lines.push(`  ✗ ${s.type} — ${s.name}: ${s.reason}`);
+      }
+      if (diagnostics.length > 0) {
+        lines.push(
+          `Generated-file checks: ${summary.errors} error(s), ${summary.warnings} warning(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}).`,
+        );
+        for (const d of diagnostics.slice(0, 20)) {
+          lines.push(
+            `  ${d.severity === "error" ? "✗" : "!"} [${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
           );
         }
-        skipped.push({
-          name: doc.header.name,
-          type: doc.header.documentType,
-          reason,
-        });
+        if (diagnostics.length > 20) {
+          lines.push(`  … ${diagnostics.length - 20} more`);
+        }
       }
-    }
-
-    await tsProject.save();
-
-    let diagnostics: GenDiagnostic[] = [];
-    const checkNotes: string[] = [];
-    if (!input.skipChecks && generated.length > 0) {
-      const outcome = await runChecks(base, runProcess, { scope: "module" });
-      diagnostics = outcome.diagnostics;
-      checkNotes.push(...outcome.notes);
-    }
-    const summary = summarizeDiagnostics(diagnostics);
-
-    if (input.name && summary.errors > 0) {
-      const head = diagnostics
-        .filter((d) => d.severity === "error")
-        .slice(0, 5)
-        .map(
-          (d) =>
-            `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
-        )
-        .join("\n  ");
-      throw new Error(
-        `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
-      );
-    }
-
-    const lines = [
-      `Generated ${generated.length} module(s)` +
-        (skipped.length > 0 ? `, skipped ${skipped.length}` : "") +
-        ".",
-    ];
-    for (const g of generated) {
-      lines.push(`  ✓ ${g.type} — ${g.name}`);
-    }
-    for (const s of skipped) {
-      lines.push(`  ✗ ${s.type} — ${s.name}: ${s.reason}`);
-    }
-    if (diagnostics.length > 0) {
-      lines.push(
-        `Generated-file checks: ${summary.errors} error(s), ${summary.warnings} warning(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}).`,
-      );
-      for (const d of diagnostics.slice(0, 20)) {
-        lines.push(
-          `  ${d.severity === "error" ? "✗" : "!"} [${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
-        );
+      for (const note of checkNotes) {
+        lines.push(`  · ${note}`);
       }
-      if (diagnostics.length > 20) {
-        lines.push(`  … ${diagnostics.length - 20} more`);
-      }
-    }
-    for (const note of checkNotes) {
-      lines.push(`  · ${note}`);
-    }
 
-    return {
-      text: lines.join("\n"),
-    };
+      return {
+        text: lines.join("\n"),
+      };
+    });
   },
 });
