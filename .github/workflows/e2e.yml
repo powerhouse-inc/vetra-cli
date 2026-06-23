@@ -1,12 +1,15 @@
 name: e2e
 
-# Two end-to-end checks run in parallel as matrix legs of one job:
+# e2e job — two checks run in parallel as matrix legs:
 #   source — from-source seeded Playwright e2e (boots the studio via tsx, drives
 #            the chat UI, asserts the generated editor renders). Fast tripwire.
 #   docker — prod-close: publish + build the clint-agent image the prod way and
 #            assert the studio HTTP contract (lab/ci/run-prodclose-e2e.sh).
 # fail-fast (matrix default) cancels the in-progress sibling on the first
 # failure, so a broken source check aborts the slow docker build early.
+#
+# global-install job — lighter coverage of the plain global-install path on a
+# vanilla node:24 image (npm + pnpm matrix). See the job for details.
 on:
   pull_request:
     paths:
@@ -130,3 +133,96 @@ jobs:
       - name: Dump studio logs on failure
         if: failure() && matrix.leg == 'docker'
         run: docker logs vetra-studio-prodclose 2>&1 | tail -200 || true
+
+  # Lighter alternative to the docker leg: prove the published package installs
+  # as a plain global install on a vanilla node image and the `vetra` bin runs.
+  # vetra-cli's runtime deps are public (the @powerhousedao/* entries are catalog:
+  # pins to versions on public npm; pnpm pack inlines catalog: -> concrete), so
+  # vetra-cli itself is the only non-public package — packing it yields a tarball
+  # whose whole closure resolves from public npm, no lab registry needed.
+  # Build + pack run on the host runner (needs the pnpm workspace); the global
+  # install + smoke run inside a basic node:24 container (NOT the custom prod
+  # Dockerfile). Scope is bin-level: install resolution + `vetra --version`/`--help`.
+  # fail-fast: false so an npm failure doesn't mask a pnpm one (or vice versa).
+  global-install:
+    name: global-install (${{ matrix.pm }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        pm: [npm, pnpm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      # build:assets bundles vetra-app/dist/connect into vetra-cli/dist, so the
+      # studio SPA ships in the tarball — build vetra-app first (matches the
+      # source leg order).
+      - name: Build vetra-app (studio + connect)
+        run: |
+          pnpm --filter vetra-app build
+          pnpm --filter vetra-app build:connect
+
+      - name: Build vetra-cli
+        run: pnpm --filter vetra-cli build
+
+      # pnpm pack inlines catalog: -> concrete and workspace:* -> a real version,
+      # so the tarball's deps are all public.
+      - name: Pack vetra-cli
+        run: |
+          cd vetra-cli
+          TARBALL=$(pnpm pack | tail -1)
+          cp "$TARBALL" "$GITHUB_WORKSPACE/vetra-cli.tgz"
+          echo "packed $TARBALL"
+
+      # ph-cmd (the `ph` bin) is installed up front so the ensure-ph lifecycle
+      # hook — which runs on every command's onInit and would otherwise shell out
+      # to `pnpm add -g` — is a no-op. Pin matches DEFAULT_PH_VERSION.
+      - name: Resolve ph version
+        id: ph
+        run: |
+          PH_VERSION=$(node -p "require('fs').readFileSync('vetra-cli/src/ph-version.gen.ts','utf8').match(/'([^']+)'/)[1]")
+          echo "version=$PH_VERSION" >> "$GITHUB_OUTPUT"
+          echo "ph version: $PH_VERSION"
+
+      - name: Global install + smoke (${{ matrix.pm }}) on node:24
+        env:
+          PM: ${{ matrix.pm }}
+          PH_VERSION: ${{ steps.ph.outputs.version }}
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/vetra-cli.tgz:/t.tgz:ro" \
+            -e PM -e PH_VERSION \
+            node:24 sh -eu -c '
+              echo "=== node $(node --version) / pm=$PM ==="
+              if [ "$PM" = npm ]; then
+                # npm has no exotic-subdep gate; just install the tarball + ph-cmd.
+                npm install -g "ph-cmd@$PH_VERSION" /t.tgz
+              else
+                corepack enable
+                corepack prepare pnpm@11.5.0 --activate
+                export PNPM_HOME=/root/.pnpm-global
+                mkdir -p "$PNPM_HOME"
+                pnpm config set global-bin-dir "$PNPM_HOME"
+                export PATH="$PNPM_HOME:$PATH"
+                # blockExoticSubdeps=false: closure hits a URL subdep via viem -> ox.
+                # minimumReleaseAge=0: pnpm 11 defaults to 24h; pins are fresh dev.N.
+                pnpm add -g "ph-cmd@$PH_VERSION" /t.tgz \
+                  --config.blockExoticSubdeps=false --config.minimumReleaseAge=0
+              fi
+              command -v ph
+              command -v vetra
+              ph --version
+              vetra --version
+              vetra --help | head -20
+            '
