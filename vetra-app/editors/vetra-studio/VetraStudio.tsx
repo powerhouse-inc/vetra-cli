@@ -19,6 +19,7 @@ import { DeploySection } from "./DeploySection.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
+import { VersionBadge } from "./VersionBadge.js";
 import {
   followAction,
   latestTouchedNavigable,
@@ -475,7 +476,9 @@ function AutoNavToggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-end gap-3 border-b border-vetra-border bg-vetra-card px-4 py-1.5 min-h-10">
+    <div className="flex shrink-0 items-center gap-3 border-b border-vetra-border bg-vetra-card px-4 py-1.5 min-h-10">
+      <VersionBadge />
+      <div className="flex-1" />
       <AgentAuthButton />
       {enabled && paused ? (
         <span className="text-[11px] text-vetra-muted-fg">
