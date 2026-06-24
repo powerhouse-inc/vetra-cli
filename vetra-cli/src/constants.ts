@@ -39,6 +39,14 @@ export const PREVIEW_SERVER_URL_PLACEHOLDER = 'http://__ph_preview_server_url__'
 export const REACTOR_PROJECT_CONNECT_PROXY_PATH = "/reactor-project/vetra-studio";
 
 /**
+ * Shared Renown localStorage namespace. Both the Studio Connect and the
+ * preview reactor's Connect use this so the preview iframe reuses the owner's
+ * already-established Renown session instead of prompting a second login.
+ * Must match the literal in vetra-app's `build:connect` script.
+ */
+export const RENOWN_NAMESPACE = "vetra-studio";
+
+/**
  * Proxy path prefix for a reactor-project's Switchboard. Routes registered by
  * `reactor-project-start` mirror the embedded `/switchboard/*` scheme
  * (`/d/`-aligned shape so X-Forwarded-Prefix lets the switchboard announce

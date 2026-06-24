@@ -7,6 +7,7 @@ import {
 } from "../../helpers/project.js";
 import {
   createEmptyPreviewDocument,
+  getPreviewAuthToken,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
 
@@ -47,11 +48,13 @@ export const specPreviewCreate = defineCommand({
       input.project ?? ".",
     );
     const driveId = input.drive ?? defaultDriveId;
+    const token = await getPreviewAuthToken(context.workdir, context.config);
     const created = await createEmptyPreviewDocument(
       switchboardUrl,
       driveId,
       input.type,
       input.name,
+      token,
     );
     return {
       text: `Created ${created.documentType} "${created.name}"  id: ${created.id}  (drive ${driveId})`,

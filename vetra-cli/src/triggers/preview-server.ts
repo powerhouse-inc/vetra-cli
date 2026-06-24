@@ -21,6 +21,8 @@ import {
   type PreviewServerHandle,
 } from "../preview-server/index.js";
 import { resolveCloudConfig } from "../cloud/config.js";
+import { DEFAULT_PH_VERSION } from "../ph-version.gen.js";
+import { VETRA_CLI_VERSION } from "../version-banner.js";
 
 interface TriggerState {
   handle: PreviewServerHandle | undefined;
@@ -58,6 +60,7 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         renownUrl,
         port: DEFAULT_PREVIEW_SERVER_PORT,
         proxyPublicUrl: ctx.commandContext.proxy?.url,
+        versions: { vetraCli: VETRA_CLI_VERSION, ph: DEFAULT_PH_VERSION },
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),
