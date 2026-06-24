@@ -15,6 +15,9 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 import type { ServiceManager } from "@powerhousedao/ph-clint";
 import { PREVIEW_SERVER_HOST } from "./config.js";
 import { createSseBroadcaster } from "./events.js";
+import { readProjectPackage } from "./package-info.js";
+import { publishProjectForDeploy } from "./publish-project.js";
+import { checkReleaseStatus } from "./release-status.js";
 import { resolvePreview } from "./resolver.js";
 import { startPreview } from "./starter.js";
 import {
@@ -31,6 +34,9 @@ interface PreviewServerDeps {
   workdir: string;
   /** Renown server URL the /auth endpoints authenticate against. */
   renownUrl: string;
+  /** Configured registry default (config.registryUrl); `resolveRegistryUrl`
+   * applies the rest of the precedence (env > project config > built-in). */
+  registryUrl?: string;
   port: number;
   /** Live public proxy origin, forwarded to reactor-project starts. */
   proxyPublicUrl?: string;
@@ -69,8 +75,16 @@ function parseQuery(url: string): URLSearchParams {
 export async function startPreviewServer(
   deps: PreviewServerDeps,
 ): Promise<PreviewServerHandle> {
-  const { services, subscribe, workdir, renownUrl, port, proxyPublicUrl, log } =
-    deps;
+  const {
+    services,
+    subscribe,
+    workdir,
+    renownUrl,
+    registryUrl,
+    port,
+    proxyPublicUrl,
+    log,
+  } = deps;
   const broadcaster = createSseBroadcaster({ subscribe });
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -105,6 +119,45 @@ export async function startPreviewServer(
           drive: q.get("drive") ?? undefined,
         });
         writeJson(res, 200, result);
+        return;
+      }
+
+      if (path === "/project-package" && method === "GET") {
+        const q = parseQuery(url);
+        const result = await readProjectPackage(workdir, q.get("project") ?? "");
+        writeJson(res, 200, result);
+        return;
+      }
+
+      if (path === "/release-status" && method === "GET") {
+        const q = parseQuery(url);
+        const result = await checkReleaseStatus({
+          workdir,
+          project: q.get("project") ?? "",
+          registryUrl: q.get("registry") ?? registryUrl,
+          renownUrl,
+        });
+        writeJson(res, 200, result);
+        return;
+      }
+
+      if (path === "/publish" && method === "POST") {
+        const q = parseQuery(url);
+        const result = await publishProjectForDeploy({
+          workdir,
+          project: q.get("project") ?? "",
+          registryUrl: q.get("registry") ?? registryUrl,
+          renownUrl,
+        });
+        const status =
+          result.kind === "unknown-project" || result.kind === "no-package"
+            ? 404
+            : result.kind === "auth-required"
+              ? 401
+              : result.kind === "failed"
+                ? 500
+                : 200;
+        writeJson(res, status, result);
         return;
       }
 

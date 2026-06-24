@@ -200,6 +200,34 @@ so it gets the framework's `ServiceManager` + event-bus access via
   the live preview URL or a state code (`no-target`,
   `unknown-project`, `project-stopped`, `starting`, `ready`). The
   editor calls this on every relevant state change.
+- `GET /project-package?project=<label>` — read-only. Returns the
+  project's package identity (`{ kind: "ok", name, version }`) read from
+  `<workdir>/<label>/package.json`, or `unknown-project` / `no-package`.
+  The Deploy section's read-only package display calls this.
+- `GET /release-status?project=<label>&registry=<url>` — read-only. Compares
+  the project's current source content hash
+  (`helpers/project-fingerprint.ts`) against the hash embedded in the latest
+  published version on the registry (full packument via
+  `cloud/registry-packument.ts`), returning `{ kind: "ok", upToDate,
+  needsRelease, localVersion, publishedVersion, reason }` or
+  `unknown-project` / `no-package` / `unknown`. `reactor-project-publish`
+  embeds the hash at `package.json` → `powerhouse.contentHash`. The Deploy
+  section's "up to date / needs release" indicator calls this.
+- `POST /publish?project=<label>&registry=<url>` — build + publish the
+  project's package for the Deploy flow (`preview-server/publish-project.ts`).
+  Skips publishing when the source already matches the latest published
+  version (same content hash); otherwise picks a free version and runs the
+  **same publish sequence the agent's `reactor-project-publish` uses** —
+  `publishReactorProject` in `commands/reactor-project/publish-core.ts` (embed
+  content hash, `reactor-project/build.ts`, `npm publish --registry` with a
+  token minted from the agent's Renown identity). The shared core bump-and-
+  retries a registry version conflict (`bumpOnConflict`) so a stale packument
+  can't surface a 409 to the UI. Returns `{ kind: "ok", packageName, version,
+  registry, published }` (`published: false` = skipped, install the existing
+  version) or `unknown-project` / `no-package` / `auth-required` / `failed`.
+  The browser then installs that exact version into the target cloud
+  environment (env-document edit + approve, signed by the user). This is the
+  publish half of the Deploy section's per-environment Deploy/Update action.
 - `POST /start?project=<label>` — idempotent. If an instance for
   the project's workdir is already `starting`/`ready`, returns
   `already-running`; otherwise spawns one via

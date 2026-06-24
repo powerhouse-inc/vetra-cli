@@ -100,6 +100,91 @@ export async function fetchResolve(args: {
   return result;
 }
 
+export type ProjectPackageResult =
+  | { kind: "ok"; project: string; name: string; version: string }
+  | { kind: "unknown-project"; project: string; error: string }
+  | { kind: "no-package"; project: string; error: string };
+
+/** Read a project's package identity (name + version) from its package.json. */
+export async function fetchProjectPackage(args: {
+  project: string;
+  signal?: AbortSignal;
+}): Promise<ProjectPackageResult> {
+  const params = new URLSearchParams({ project: args.project });
+  const res = await fetch(`${BASE}/project-package?${params}`, {
+    signal: args.signal,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `preview-server /project-package: ${res.status} ${res.statusText}`,
+    );
+  }
+  return (await res.json()) as ProjectPackageResult;
+}
+
+export type ReleaseStatusResult =
+  | {
+      kind: "ok";
+      project: string;
+      packageName: string;
+      localVersion: string | null;
+      publishedVersion: string | null;
+      upToDate: boolean;
+      needsRelease: boolean;
+      reason: string;
+    }
+  | { kind: "unknown-project"; project: string; error: string }
+  | { kind: "no-package"; project: string; error: string }
+  | { kind: "unknown"; project: string; error: string };
+
+/** Whether a project's current source is already published (up to date) or
+ * needs a new release, by comparing its content hash to the registry. */
+export async function fetchReleaseStatus(args: {
+  project: string;
+  signal?: AbortSignal;
+}): Promise<ReleaseStatusResult> {
+  const params = new URLSearchParams({ project: args.project });
+  const res = await fetch(`${BASE}/release-status?${params}`, {
+    signal: args.signal,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `preview-server /release-status: ${res.status} ${res.statusText}`,
+    );
+  }
+  return (await res.json()) as ReleaseStatusResult;
+}
+
+export type PublishProjectResult =
+  | {
+      kind: "ok";
+      project: string;
+      packageName: string;
+      version: string;
+      registry: string;
+      published: boolean;
+    }
+  | { kind: "unknown-project"; project: string; error: string }
+  | { kind: "no-package"; project: string; error: string }
+  | { kind: "auth-required"; project: string; error: string }
+  | { kind: "failed"; project: string; error: string };
+
+/** Build + publish a project's package to the registry (skipped server-side
+ * when the source is already the latest published version). Returns the
+ * published name + version to install into an environment. All outcomes carry a
+ * discriminated body, so this doesn't throw on non-2xx. */
+export async function publishProject(args: {
+  project: string;
+  signal?: AbortSignal;
+}): Promise<PublishProjectResult> {
+  const params = new URLSearchParams({ project: args.project });
+  const res = await fetch(`${BASE}/publish?${params}`, {
+    method: "POST",
+    signal: args.signal,
+  });
+  return (await res.json()) as PublishProjectResult;
+}
+
 export async function fetchStart(args: {
   project: string;
   signal?: AbortSignal;

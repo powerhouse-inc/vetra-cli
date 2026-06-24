@@ -1,13 +1,8 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
-import { npmPublish, resolveRegistryUrl } from '@powerhousedao/shared/registry';
 import { defineCommand } from '../../framework.js';
-import { getRegistryToken } from '../../auth/renown.js';
 import { resolveCloudConfig } from '../../cloud/config.js';
 import { resolveReactorProjectPath } from '../../helpers/project.js';
-import { formatProcessFailure } from '../../helpers/cli-errors.js';
-import { runBuild } from './build.js';
+import { publishReactorProject } from './publish-core.js';
 
 const publishInputSchema = z.object({
   name: z.string().optional().describe('Project directory name (relative to workdir).'),
@@ -50,97 +45,41 @@ login is required.`,
     { workdir, config, stdout },
   ) => {
     const projectPath = await resolveReactorProjectPath(workdir, name);
-    const packageJsonPath = path.join(projectPath, 'package.json');
+    const { renownUrl } = resolveCloudConfig(config);
 
-    if (!fs.existsSync(packageJsonPath)) {
-      return {
-        text: `**Error:** No package.json found in \`${projectPath}\`. Ensure this is a valid npm package.`,
-      };
-    }
-
-    const packageJson = JSON.parse(
-      fs.readFileSync(packageJsonPath, 'utf-8'),
-    ) as { name?: string; version?: string };
-
-    if (version) {
-      packageJson.version = version;
-      fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
-    }
-
-    const registryUrl = resolveRegistryUrl({
-      registry: registry || config.registryUrl,
+    const result = await publishReactorProject({
       projectPath,
+      workdir,
+      renownUrl,
+      registry: registry || config.registryUrl,
+      version,
+      tag,
+      skipBuild,
+      dryRun,
+      log: log ? stdout : undefined,
     });
 
-    if (!skipBuild) {
-      const buildResult = await runBuild(projectPath, (stdoutChunk) => {
-        if (log) {
-          stdout(stdoutChunk);
-        }
-      });
-      if (!buildResult.success) {
-        throw new Error(
-          formatProcessFailure(
-            'ph build failed; publish aborted',
-            'ph build',
-            projectPath,
-            buildResult.output,
-          ),
-        );
-      }
+    if (result.kind === 'no-package' || result.kind === 'auth-required') {
+      return { text: `**Error:** ${result.error}` };
     }
-
-    const { renownUrl } = resolveCloudConfig(config);
-    const authToken = await getRegistryToken(workdir, renownUrl, registryUrl);
-    if (!authToken) {
+    if (result.kind === 'failed') {
       return {
-        text: `**Error:** Agent not authorized. Publishing uses the user's Renown identity — authorize the agent first (the studio "Authorize agent" button, or \`ph login\` from the CLI), then retry.`,
+        text: ['**Publish failed**', '', '```', result.error, '```'].join('\n'),
       };
     }
 
-    const extraArgs: string[] = [];
-    if (tag) extraArgs.push('--tag', tag);
-    if (dryRun) extraArgs.push('--dry-run');
+    const lines = [
+      dryRun ? '**Dry run complete**' : '**Published successfully**',
+      '',
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| Package | \`${result.packageName}\` |`,
+      `| Version | \`${result.version}\` |`,
+      `| Registry | \`${result.registry}\` |`,
+      tag ? `| Tag | \`${tag}\` |` : null,
+      dryRun ? `| Mode | dry-run |` : null,
+    ].filter((l) => l !== null);
 
-    try {
-      const result = await npmPublish({
-        registryUrl,
-        cwd: projectPath,
-        args: extraArgs,
-        authToken,
-      });
-
-      const lines = [
-        dryRun ? '**Dry run complete**' : '**Published successfully**',
-        '',
-        `| Field | Value |`,
-        `|-------|-------|`,
-        packageJson.name ? `| Package | \`${packageJson.name}\` |` : null,
-        packageJson.version ? `| Version | \`${packageJson.version}\` |` : null,
-        `| Registry | \`${registryUrl}\` |`,
-        tag ? `| Tag | \`${tag}\` |` : null,
-        dryRun ? `| Mode | dry-run |` : null,
-      ].filter((l) => l !== null);
-
-      const output = result.stdout.trim();
-      if (output && log) {
-        stdout(output);
-      }
-
-      return { text: lines.join('\n') };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        text: [
-          '**Publish failed**',
-          '',
-          `Registry: \`${registryUrl}\``,
-          '',
-          '```',
-          message,
-          '```',
-        ].join('\n'),
-      };
-    }
+    return { text: lines.join('\n') };
   },
 });
