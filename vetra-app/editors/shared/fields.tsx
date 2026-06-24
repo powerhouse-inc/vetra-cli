@@ -6,9 +6,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
  * display text (titles, sentence fragments): borderless until hover/focus.
  */
 const FIELD =
-  "rounded border border-vetra-border bg-vetra-card px-2 py-1 outline-none transition-colors focus:border-vetra-muted-fg focus:ring-1 focus:ring-vetra-border";
+  "rounded border border-border bg-card px-2 py-1 outline-none transition-colors focus:border-muted-foreground focus:ring-1 focus:ring-border";
 const PLAIN =
-  "rounded border border-transparent bg-transparent px-1 py-0.5 outline-none transition-colors hover:border-vetra-border focus:border-vetra-muted-fg focus:bg-vetra-card";
+  "rounded border border-transparent bg-transparent px-1 py-0.5 outline-none transition-colors hover:border-border focus:border-muted-foreground focus:bg-card";
 
 export type FieldVariant = "field" | "plain";
 
@@ -28,7 +28,7 @@ export function Section({
     <section>
       <div className="mb-2 flex items-center justify-between">
         <h4
-          className={`text-xs font-semibold uppercase tracking-wide ${accent ? "text-vetra-primary" : "text-vetra-muted-fg"}`}
+          className={`text-xs font-semibold uppercase tracking-wide ${accent ? "text-vetra-primary" : "text-muted-foreground"}`}
         >
           {title}
         </h4>
@@ -54,7 +54,7 @@ export function LinkButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="text-sm text-vetra-fg underline-offset-2 hover:underline disabled:opacity-40"
+      className="text-sm text-foreground underline-offset-2 hover:underline disabled:opacity-40"
     >
       {children}
     </button>
@@ -76,9 +76,16 @@ export function ClearButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-vetra-fg hover:border-vetra-border hover:bg-vetra-accent disabled:opacity-40"
+      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-foreground hover:border-border hover:bg-accent disabled:opacity-40"
     >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
         <rect x="3" y="3" width="18" height="18" rx="2" />
         <path d="M15 9l-6 6M9 9l6 6" />
       </svg>
@@ -102,9 +109,16 @@ export function AddButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-vetra-fg hover:border-vetra-border hover:bg-vetra-accent disabled:opacity-40"
+      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-foreground hover:border-border hover:bg-accent disabled:opacity-40"
     >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
         <rect x="3" y="3" width="18" height="18" rx="2" />
         <path d="M12 8v8M8 12h8" />
       </svg>
@@ -126,7 +140,7 @@ export function RemoveButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="text-vetra-border hover:text-vetra-destructive"
+      className="text-border hover:text-destructive"
     >
       ×
     </button>
@@ -135,7 +149,7 @@ export function RemoveButton({
 
 /** Faint placeholder line for empty collections. */
 export function EmptyHint({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-vetra-muted-fg">{children}</p>;
+  return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 
 /** Read-only chip used to render enum values / tags. */
@@ -148,12 +162,12 @@ export function Pill({
 }) {
   const toneClass =
     tone === "prefer"
-      ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+      ? "bg-success/10 text-success"
       : tone === "avoid"
-        ? "bg-rose-50 text-rose-800 dark:bg-rose-950/30 dark:text-rose-300"
+        ? "bg-destructive/10 text-destructive"
         : tone === "info"
-          ? "bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-300"
-          : "bg-vetra-muted text-vetra-muted-fg";
+          ? "bg-info/10 text-info"
+          : "bg-muted text-muted-foreground";
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${toneClass}`}
@@ -385,7 +399,7 @@ export function Select<T extends string>({
         const next = normalized.find((o) => o.value === e.target.value);
         if (next) onChange(next.value);
       }}
-      className={`rounded border border-vetra-border bg-vetra-card px-1.5 py-1 text-sm outline-none transition-colors focus:border-vetra-muted-fg focus:ring-1 focus:ring-vetra-border ${className}`}
+      className={`rounded border border-border bg-card px-1.5 py-1 text-sm outline-none transition-colors focus:border-muted-foreground focus:ring-1 focus:ring-border ${className}`}
     >
       {normalized.map((o) => (
         <option key={o.value} value={o.value}>
@@ -427,10 +441,10 @@ export function ChipList({
 
   const toneClass =
     tone === "prefer"
-      ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+      ? "bg-success/10 text-success"
       : tone === "avoid"
-        ? "bg-rose-50 text-rose-800 dark:bg-rose-950/30 dark:text-rose-300"
-        : "bg-vetra-muted text-vetra-fg";
+        ? "bg-destructive/10 text-destructive"
+        : "bg-muted text-foreground";
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -462,7 +476,7 @@ export function ChipList({
             add();
           }
         }}
-        className="min-w-28 flex-1 rounded border border-vetra-border bg-vetra-card px-1.5 py-0.5 text-xs outline-none transition-colors focus:border-vetra-muted-fg focus:ring-1 focus:ring-vetra-border"
+        className="min-w-28 flex-1 rounded border border-border bg-card px-1.5 py-0.5 text-xs outline-none transition-colors focus:border-muted-foreground focus:ring-1 focus:ring-border"
       />
     </div>
   );
@@ -496,8 +510,8 @@ export function EnumChips<T extends string>({
             }
             className={`rounded-full px-2 py-0.5 text-xs ${
               on
-                ? "bg-vetra-fg text-vetra-bg"
-                : "bg-vetra-muted text-vetra-muted-fg hover:bg-vetra-border/40"
+                ? "bg-foreground text-background"
+                : "bg-muted text-muted-foreground hover:bg-border/40"
             }`}
           >
             {titleCase(opt)}
@@ -518,7 +532,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
+      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
       {children}
@@ -535,9 +549,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div
-      className={`rounded-lg border border-vetra-border bg-vetra-card p-4 ${className}`}
-    >
+    <div className={`rounded-lg border border-border bg-card p-4 ${className}`}>
       {children}
     </div>
   );

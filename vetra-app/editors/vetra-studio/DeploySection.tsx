@@ -102,16 +102,16 @@ function AuthGate({
   onLogin: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-vetra-border bg-vetra-card px-6 py-24 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-border bg-card px-6 py-24 text-center">
       <Rocket size={28} className="text-vetra-primary" />
-      <h2 className="text-lg font-semibold text-vetra-fg">
+      <h2 className="text-lg font-semibold text-foreground">
         Deploy to vetra.io
       </h2>
       {loading ? (
-        <p className="text-sm text-vetra-muted-fg">Checking sign-in…</p>
+        <p className="text-sm text-muted-foreground">Checking sign-in…</p>
       ) : (
         <>
-          <p className="max-w-md text-sm text-vetra-muted-fg">
+          <p className="max-w-md text-sm text-muted-foreground">
             Sign in with Renown to see and manage your cloud environments.
           </p>
           <button

@@ -117,9 +117,7 @@ export async function fetchStart(args: {
 export type VersionInfo = { vetraCli: string; ph: string };
 
 /** Fetch the daemon's vetra-cli + ph versions (served from /version). */
-export async function fetchVersion(
-  signal?: AbortSignal,
-): Promise<VersionInfo> {
+export async function fetchVersion(signal?: AbortSignal): Promise<VersionInfo> {
   const res = await fetch(`${BASE}/version`, { signal });
   if (!res.ok) {
     throw new Error(`preview-server /version: ${res.status} ${res.statusText}`);

@@ -51,8 +51,8 @@ export function PhaseCycle({
             onClick={open}
             className={`group relative flex items-center justify-between overflow-hidden rounded-xl border px-6 py-6 text-left transition ${
               open
-                ? "border-vetra-border bg-vetra-card hover:border-vetra-primary hover:shadow-sm"
-                : "cursor-default border-vetra-border/50 bg-vetra-muted"
+                ? "border-border bg-card hover:border-vetra-primary hover:shadow-sm"
+                : "cursor-default border-border/50 bg-muted"
             }`}
           >
             {open ? (
@@ -64,9 +64,11 @@ export function PhaseCycle({
             <span className="flex items-center gap-2.5">
               <Icon
                 size={15}
-                className={open ? "text-vetra-primary" : "text-vetra-muted-fg"}
+                className={
+                  open ? "text-vetra-primary" : "text-muted-foreground"
+                }
               />
-              <span className="text-xs font-semibold tracking-widest text-vetra-muted-fg">
+              <span className="text-xs font-semibold tracking-widest text-muted-foreground">
                 {phase.label}
               </span>
             </span>
@@ -74,7 +76,7 @@ export function PhaseCycle({
               className={`rounded-lg px-3 py-1 text-sm font-medium ${
                 open
                   ? "bg-vetra-primary/10 text-vetra-primary"
-                  : "bg-vetra-muted/80 text-vetra-muted-fg"
+                  : "bg-muted/80 text-muted-foreground"
               }`}
             >
               {phase.note}

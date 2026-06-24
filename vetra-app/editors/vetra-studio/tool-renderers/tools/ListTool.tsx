@@ -32,11 +32,11 @@ export function ListTool(props: ToolRenderProps) {
           {chips.map((c) => (
             <span
               key={c.label}
-              className="inline-flex items-center gap-1 rounded bg-vetra-muted px-1.5 py-0.5 text-[11px]"
+              className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px]"
             >
-              <span className="text-vetra-muted-fg">{c.label}</span>
+              <span className="text-muted-foreground">{c.label}</span>
               {c.value && (
-                <span className="font-mono text-vetra-fg">{c.value}</span>
+                <span className="font-mono text-foreground">{c.value}</span>
               )}
             </span>
           ))}
@@ -59,17 +59,19 @@ function FileTree({ text }: { text: string }) {
 
   if (nodes.length === 0) {
     return (
-      <div className="text-xs italic text-vetra-muted-fg">empty directory</div>
+      <div className="text-xs italic text-muted-foreground">
+        empty directory
+      </div>
     );
   }
 
   return (
     <div>
-      <div className="max-h-72 overflow-auto rounded bg-vetra-muted p-2 font-mono text-xs leading-relaxed">
+      <div className="max-h-72 overflow-auto rounded bg-muted p-2 font-mono text-xs leading-relaxed">
         <TreeRows nodes={nodes} prefix="" keyBase="" />
       </div>
       {summary && (
-        <div className="mt-1 text-[11px] text-vetra-muted-fg">{summary}</div>
+        <div className="mt-1 text-[11px] text-muted-foreground">{summary}</div>
       )}
     </div>
   );
@@ -95,13 +97,13 @@ function TreeRows({
         return (
           <Fragment key={key}>
             <div className="whitespace-pre">
-              <span className="text-vetra-muted-fg">
+              <span className="text-muted-foreground">
                 {prefix}
                 {connector}
               </span>
               <span
                 className={
-                  isDir ? "font-medium text-vetra-primary" : "text-vetra-fg"
+                  isDir ? "font-medium text-vetra-primary" : "text-foreground"
                 }
               >
                 {node.name}

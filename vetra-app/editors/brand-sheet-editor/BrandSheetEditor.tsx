@@ -22,7 +22,7 @@ export function BrandSheetEditor({
 }) {
   const state = document.state.global;
   return (
-    <div className="flex flex-col gap-8 text-vetra-fg">
+    <div className="flex flex-col gap-8 text-foreground">
       <BrandHeader state={state} dispatch={dispatch} />
       <ConceptSection state={state} dispatch={dispatch} />
       <LogoConcept state={state} dispatch={dispatch} />

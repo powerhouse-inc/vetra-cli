@@ -41,19 +41,19 @@ export function VersionBadge() {
         onClick={() => setOpen((v) => !v)}
         title="Version info"
         aria-label="Version info"
-        className="flex h-5 w-5 items-center justify-center rounded-full text-vetra-muted-fg opacity-60 hover:bg-vetra-accent hover:opacity-100"
+        className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground opacity-60 hover:bg-accent hover:opacity-100"
       >
         <InfoIcon />
       </button>
       {open ? (
-        <div className="absolute left-0 top-7 z-10 whitespace-nowrap rounded-md border border-vetra-border bg-vetra-card px-3 py-2 text-[11px] shadow-md">
+        <div className="absolute left-0 top-7 z-10 whitespace-nowrap rounded-md border border-border bg-card px-3 py-2 text-[11px] shadow-md">
           <div className="flex justify-between gap-4">
-            <span className="text-vetra-muted-fg">vetra-cli</span>
-            <span className="font-mono text-vetra-fg">{info.vetraCli}</span>
+            <span className="text-muted-foreground">vetra-cli</span>
+            <span className="font-mono text-foreground">{info.vetraCli}</span>
           </div>
           <div className="flex justify-between gap-4">
-            <span className="text-vetra-muted-fg">ph</span>
-            <span className="font-mono text-vetra-fg">{info.ph}</span>
+            <span className="text-muted-foreground">ph</span>
+            <span className="font-mono text-foreground">{info.ph}</span>
           </div>
         </div>
       ) : null}

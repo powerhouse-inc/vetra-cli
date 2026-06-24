@@ -48,8 +48,10 @@ export function CreateEnvironmentForm({
   }
 
   return (
-    <div className="flex flex-col gap-5 rounded-xl border border-vetra-border bg-vetra-card p-6">
-      <h3 className="text-base font-semibold text-vetra-fg">New environment</h3>
+    <div className="flex flex-col gap-5 rounded-xl border border-border bg-card p-6">
+      <h3 className="text-base font-semibold text-foreground">
+        New environment
+      </h3>
 
       <TextInput
         name="name"
@@ -61,7 +63,7 @@ export function CreateEnvironmentForm({
         autoFocus
       />
 
-      {error ? <p className="text-sm text-vetra-destructive">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <div className="flex items-center gap-3">
         <button
@@ -76,7 +78,7 @@ export function CreateEnvironmentForm({
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="text-sm text-vetra-muted-fg hover:text-vetra-fg"
+          className="text-sm text-muted-foreground hover:text-foreground"
         >
           Cancel
         </button>

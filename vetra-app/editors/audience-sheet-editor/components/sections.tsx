@@ -79,7 +79,7 @@ function SegmentCard({
             onCommit={(name) =>
               dispatch(actions.updateSegment({ id: segment.id, name }))
             }
-            className="text-lg font-semibold text-vetra-fg"
+            className="text-lg font-semibold text-foreground"
           />
           <EditableText
             value={segment.description}
@@ -89,7 +89,7 @@ function SegmentCard({
             onCommit={(description) =>
               dispatch(actions.updateSegment({ id: segment.id, description }))
             }
-            className="text-sm text-vetra-muted-fg"
+            className="text-sm text-muted-foreground"
           />
         </div>
         <RemoveButton
@@ -172,7 +172,7 @@ function RoleRow({
             actions.updateSegmentRoleSnippet({ id: role.id, segmentId, name }),
           )
         }
-        className="flex-1 text-sm text-vetra-fg"
+        className="flex-1 text-sm text-foreground"
       />
       <RemoveButton
         onClick={() =>
@@ -213,9 +213,9 @@ function OutcomePriorities({
         />
       }
     >
-      <div className="overflow-hidden rounded border border-vetra-border">
+      <div className="overflow-hidden rounded border border-border">
         <table className="w-full text-sm">
-          <thead className="bg-vetra-accent text-left text-xs uppercase tracking-wide text-vetra-muted-fg">
+          <thead className="bg-accent text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-3 py-1.5 font-medium">Outcome</th>
               <th className="px-2 py-1.5 font-medium">Imp.</th>
@@ -230,7 +230,7 @@ function OutcomePriorities({
               <tr>
                 <td
                   colSpan={6}
-                  className="px-3 py-3 text-sm text-vetra-muted-fg"
+                  className="px-3 py-3 text-sm text-muted-foreground"
                 >
                   No outcome priorities scored.
                 </td>
@@ -262,8 +262,8 @@ function PriorityRow({
   dispatch: Dispatch;
 }) {
   return (
-    <tr className="border-t border-vetra-border/40 align-middle">
-      <td className="px-3 py-1.5 text-vetra-fg">
+    <tr className="border-t border-border/40 align-middle">
+      <td className="px-3 py-1.5 text-foreground">
         {priority.outcome.statement || priority.outcome.objectId}
       </td>
       <td className="px-2 py-1.5">
@@ -300,7 +300,7 @@ function PriorityRow({
           className="w-12"
         />
       </td>
-      <td className="px-2 py-1.5 text-xs text-vetra-muted-fg">
+      <td className="px-2 py-1.5 text-xs text-muted-foreground">
         {priority.opportunity.toFixed(1)}
       </td>
       <td className="px-2 py-1.5">
@@ -412,7 +412,7 @@ function EvidenceRow({
             }),
           )
         }
-        className="flex-1 text-sm text-vetra-fg"
+        className="flex-1 text-sm text-foreground"
       />
       <RemoveButton
         onClick={() =>
@@ -439,7 +439,7 @@ function SubBlock({
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between">
-        <h5 className="text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
+        <h5 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {title}
         </h5>
         {adder}
@@ -495,20 +495,20 @@ function RefAdder({
           value={name}
           placeholder="name"
           onChange={(e) => setName(e.target.value)}
-          className="w-28 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+          className="w-28 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
         />
       ) : null}
       <input
         value={documentId}
         placeholder="document id"
         onChange={(e) => setDocumentId(e.target.value)}
-        className="w-40 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="w-40 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
       <input
         value={objectId}
         placeholder="object id"
         onChange={(e) => setObjectId(e.target.value)}
-        className="w-28 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="w-28 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
       <LinkButton onClick={commit}>Add</LinkButton>
       <LinkButton onClick={() => setOpen(false)}>Cancel</LinkButton>
@@ -561,21 +561,21 @@ function PriorityAdder({
         value={statement}
         placeholder="outcome statement"
         onChange={(e) => setStatement(e.target.value)}
-        className="w-44 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="w-44 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
       <input
         value={documentId}
         placeholder="document id"
         onChange={(e) => setDocumentId(e.target.value)}
-        className="w-36 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="w-36 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
       <input
         value={objectId}
         placeholder="object id"
         onChange={(e) => setObjectId(e.target.value)}
-        className="w-24 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="w-24 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
-      <label className="flex items-center gap-1 text-vetra-muted-fg">
+      <label className="flex items-center gap-1 text-muted-foreground">
         imp
         <input
           type="number"
@@ -583,10 +583,10 @@ function PriorityAdder({
           max={10}
           value={importance}
           onChange={(e) => setImportance(Number(e.target.value))}
-          className="w-12 rounded border border-vetra-border px-1.5 py-0.5 text-right outline-none focus:border-vetra-muted-fg"
+          className="w-12 rounded border border-border px-1.5 py-0.5 text-right outline-none focus:border-muted-foreground"
         />
       </label>
-      <label className="flex items-center gap-1 text-vetra-muted-fg">
+      <label className="flex items-center gap-1 text-muted-foreground">
         sat
         <input
           type="number"
@@ -594,7 +594,7 @@ function PriorityAdder({
           max={10}
           value={satisfaction}
           onChange={(e) => setSatisfaction(Number(e.target.value))}
-          className="w-12 rounded border border-vetra-border px-1.5 py-0.5 text-right outline-none focus:border-vetra-muted-fg"
+          className="w-12 rounded border border-border px-1.5 py-0.5 text-right outline-none focus:border-muted-foreground"
         />
       </label>
       <Select value={source} options={SOURCES} onChange={setSource} />
@@ -629,7 +629,7 @@ function EvidenceAdder({
         value={content}
         placeholder="evidence"
         onChange={(e) => setContent(e.target.value)}
-        className="w-56 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="w-56 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
       <Select value={source} options={SOURCES} onChange={setSource} />
       <LinkButton onClick={commit}>Add</LinkButton>

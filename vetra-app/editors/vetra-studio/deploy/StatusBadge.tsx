@@ -4,59 +4,59 @@ type StatusConfig = { label: string; dot: string; badge: string };
 const STATUS: Record<string, StatusConfig> = {
   DRAFT: {
     label: "Draft",
-    dot: "bg-vetra-muted-fg",
-    badge: "bg-vetra-muted text-vetra-muted-fg",
+    dot: "bg-muted-foreground",
+    badge: "bg-muted text-muted-foreground",
   },
   CHANGES_PENDING: {
     label: "Changes pending",
-    dot: "bg-vetra-warning",
-    badge: "bg-vetra-warning/15 text-vetra-warning",
+    dot: "bg-warning",
+    badge: "bg-warning/15 text-warning",
   },
   CHANGES_APPROVED: {
     label: "Approved",
-    dot: "bg-vetra-info",
-    badge: "bg-vetra-info/15 text-vetra-info",
+    dot: "bg-info",
+    badge: "bg-info/15 text-info",
   },
   CHANGES_PUSHED: {
     label: "Deploying",
-    dot: "bg-vetra-warning",
-    badge: "bg-vetra-warning/15 text-vetra-warning",
+    dot: "bg-warning",
+    badge: "bg-warning/15 text-warning",
   },
   DEPLOYING: {
     label: "Deploying",
-    dot: "bg-vetra-warning",
-    badge: "bg-vetra-warning/15 text-vetra-warning",
+    dot: "bg-warning",
+    badge: "bg-warning/15 text-warning",
   },
   // Note: the model enum spells this `DEPLOYMENt_FAILED`.
   DEPLOYMENt_FAILED: {
     label: "Failed",
-    dot: "bg-vetra-destructive",
-    badge: "bg-vetra-destructive/15 text-vetra-destructive",
+    dot: "bg-destructive",
+    badge: "bg-destructive/15 text-destructive",
   },
   READY: {
     label: "Ready",
-    dot: "bg-vetra-success",
-    badge: "bg-vetra-success/15 text-vetra-success",
+    dot: "bg-success",
+    badge: "bg-success/15 text-success",
   },
   TERMINATING: {
     label: "Terminating",
-    dot: "bg-vetra-warning",
-    badge: "bg-vetra-warning/15 text-vetra-warning",
+    dot: "bg-warning",
+    badge: "bg-warning/15 text-warning",
   },
   DESTROYED: {
     label: "Destroyed",
-    dot: "bg-vetra-destructive",
-    badge: "bg-vetra-destructive/15 text-vetra-destructive",
+    dot: "bg-destructive",
+    badge: "bg-destructive/15 text-destructive",
   },
   ARCHIVED: {
     label: "Archived",
-    dot: "bg-vetra-muted-fg",
-    badge: "bg-vetra-muted text-vetra-muted-fg",
+    dot: "bg-muted-foreground",
+    badge: "bg-muted text-muted-foreground",
   },
   STOPPED: {
     label: "Stopped",
-    dot: "bg-vetra-muted-fg",
-    badge: "bg-vetra-muted text-vetra-muted-fg",
+    dot: "bg-muted-foreground",
+    badge: "bg-muted text-muted-foreground",
   },
 };
 
@@ -64,8 +64,8 @@ function configFor(status: string): StatusConfig {
   return (
     STATUS[status] ?? {
       label: status.replace(/_/g, " "),
-      dot: "bg-vetra-muted-fg",
-      badge: "bg-vetra-muted text-vetra-muted-fg",
+      dot: "bg-muted-foreground",
+      badge: "bg-muted text-muted-foreground",
     }
   );
 }
@@ -86,7 +86,7 @@ export function StatusBadge({ status }: { status: string }) {
 export function StatusDot({ status }: { status: string }) {
   const { label, dot } = configFor(status);
   return (
-    <span className="flex items-center gap-1.5 text-xs font-medium text-vetra-muted-fg">
+    <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
       <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
       {label}
     </span>

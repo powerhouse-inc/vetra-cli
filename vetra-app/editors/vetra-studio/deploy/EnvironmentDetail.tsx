@@ -59,14 +59,16 @@ export function EnvironmentDetail({
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (isLoading) {
-    return <p className="text-sm text-vetra-muted-fg">Loading environment…</p>;
+    return (
+      <p className="text-sm text-muted-foreground">Loading environment…</p>
+    );
   }
   if (error) {
-    return <p className="text-sm text-vetra-destructive">{error.message}</p>;
+    return <p className="text-sm text-destructive">{error.message}</p>;
   }
   if (!controller || !state) {
     return (
-      <p className="text-sm text-vetra-muted-fg">Environment not found.</p>
+      <p className="text-sm text-muted-foreground">Environment not found.</p>
     );
   }
 
@@ -93,10 +95,10 @@ export function EnvironmentDetail({
     <div className="flex flex-col gap-6">
       <Header state={state} documentId={documentId} />
       {actionError ? (
-        <p className="text-sm text-vetra-destructive">{actionError}</p>
+        <p className="text-sm text-destructive">{actionError}</p>
       ) : null}
       {readOnly ? (
-        <p className="text-sm text-vetra-muted-fg">
+        <p className="text-sm text-muted-foreground">
           This environment is {state.status.replace(/_/g, " ").toLowerCase()}{" "}
           and can't be edited right now.
         </p>
@@ -126,17 +128,17 @@ function Header({
       ? `${state.genericSubdomain}.${state.genericBaseDomain}`
       : state.genericSubdomain;
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-vetra-border bg-vetra-card p-5">
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
-            <h2 className="truncate text-lg font-semibold text-vetra-fg">
+            <h2 className="truncate text-lg font-semibold text-foreground">
               {state.label?.trim() || host || "Environment"}
             </h2>
             <StatusBadge status={state.status} />
           </div>
           {host ? (
-            <span className="font-mono text-sm text-vetra-muted-fg">
+            <span className="font-mono text-sm text-muted-foreground">
               {host}
             </span>
           ) : null}
@@ -145,14 +147,14 @@ function Header({
           href={`${VETRA_CLOUD_APP_URL}/user/environments/${documentId}`}
           target="_blank"
           rel="noreferrer"
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-vetra-border px-3 py-1.5 text-sm font-medium text-vetra-fg hover:border-vetra-primary hover:text-vetra-primary"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:border-vetra-primary hover:text-vetra-primary"
         >
           <ExternalLink size={14} />
           Open in Vetra Cloud
         </a>
       </div>
       {state.owner ? (
-        <span className="font-mono text-xs text-vetra-muted-fg">
+        <span className="font-mono text-xs text-muted-foreground">
           owner {state.owner}
         </span>
       ) : null}
@@ -218,32 +220,32 @@ function ServicesSection({
               key={type}
               className={`flex items-center justify-between gap-3 rounded-xl border p-4 ${
                 enabled
-                  ? "border-vetra-success/40 bg-vetra-success/5"
-                  : "border-vetra-border bg-vetra-card"
+                  ? "border-success/40 bg-success/5"
+                  : "border-border bg-card"
               }`}
             >
               <div className="flex min-w-0 items-center gap-3">
                 <span
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                     enabled
-                      ? "bg-vetra-success/15 text-vetra-success"
-                      : "bg-vetra-muted text-vetra-muted-fg"
+                      ? "bg-success/15 text-success"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   <Icon size={16} />
                 </span>
                 <div className="flex min-w-0 flex-col">
-                  <span className="flex items-center gap-2 text-sm font-medium text-vetra-fg">
+                  <span className="flex items-center gap-2 text-sm font-medium text-foreground">
                     {meta.name}
                     {!enabled ? (
-                      <span className="rounded bg-vetra-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase text-vetra-muted-fg">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
                         Off
                       </span>
                     ) : null}
                   </span>
                   {host ? (
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate font-mono text-xs text-vetra-muted-fg">
+                      <span className="truncate font-mono text-xs text-muted-foreground">
                         {host}
                       </span>
                       <CopyButton value={`https://${host}`} />
@@ -282,21 +284,23 @@ function PackagesSection({
     <Section title="Packages">
       <div className="flex flex-col gap-3">
         {state.packages.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-vetra-border px-4 py-6 text-center text-sm text-vetra-muted-fg">
+          <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
             No packages installed yet — add one to extend Switchboard or
             Connect.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-vetra-border bg-vetra-card">
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
             {state.packages.map((pkg) => (
               <div
                 key={pkg.name}
-                className="flex items-center justify-between border-b border-vetra-border/40 px-4 py-2.5 last:border-b-0"
+                className="flex items-center justify-between border-b border-border/40 px-4 py-2.5 last:border-b-0"
               >
-                <span className="truncate font-mono text-sm text-vetra-fg">
+                <span className="truncate font-mono text-sm text-foreground">
                   {pkg.name}
                   {pkg.version ? (
-                    <span className="text-vetra-muted-fg">@{pkg.version}</span>
+                    <span className="text-muted-foreground">
+                      @{pkg.version}
+                    </span>
                   ) : null}
                 </span>
                 <button
@@ -305,7 +309,7 @@ function PackagesSection({
                   onClick={() =>
                     mutate((c) => c.removePackage({ packageName: pkg.name }))
                   }
-                  className="text-vetra-muted-fg hover:text-vetra-destructive"
+                  className="text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 size={15} />
                 </button>
@@ -373,14 +377,14 @@ function StatusActions({
             Approve changes
           </button>
         ) : (
-          <span className="text-sm text-vetra-muted-fg">
+          <span className="text-sm text-muted-foreground">
             No pending changes to approve.
           </span>
         )}
         <button
           type="button"
           onClick={() => mutate((c) => c.terminateEnvironment({}))}
-          className="rounded-lg border border-vetra-destructive px-4 py-2 text-sm font-medium text-vetra-destructive hover:bg-vetra-destructive/10"
+          className="rounded-lg border border-destructive px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10"
         >
           Terminate
         </button>
@@ -403,7 +407,7 @@ function Toggle({
       aria-checked={checked}
       onClick={onChange}
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-        checked ? "bg-vetra-success" : "bg-vetra-muted"
+        checked ? "bg-success" : "bg-muted"
       }`}
     >
       <span
@@ -426,7 +430,7 @@ function CopyButton({ value }: { value: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="shrink-0 text-vetra-muted-fg hover:text-vetra-fg"
+      className="shrink-0 text-muted-foreground hover:text-foreground"
     >
       {copied ? <Check size={13} /> : <Copy size={13} />}
     </button>
@@ -442,7 +446,7 @@ function Section({
 }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold text-vetra-fg">{title}</h3>
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       {children}
     </section>
   );

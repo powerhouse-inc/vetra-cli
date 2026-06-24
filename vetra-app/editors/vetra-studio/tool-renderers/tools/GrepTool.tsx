@@ -34,11 +34,11 @@ export function GrepTool(props: ToolRenderProps) {
           {chips.map((c) => (
             <span
               key={c.label}
-              className="inline-flex items-center gap-1 rounded bg-vetra-muted px-1.5 py-0.5 text-[11px]"
+              className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px]"
             >
-              <span className="text-vetra-muted-fg">{c.label}</span>
+              <span className="text-muted-foreground">{c.label}</span>
               {c.value && (
-                <span className="font-mono text-vetra-fg">{c.value}</span>
+                <span className="font-mono text-foreground">{c.value}</span>
               )}
             </span>
           ))}
@@ -74,21 +74,21 @@ type ParsedGrep = {
 function GrepResult({ parsed }: { parsed: ParsedGrep }) {
   return (
     <div className="space-y-2">
-      <div className="text-xs text-vetra-muted-fg">
+      <div className="text-xs text-muted-foreground">
         {parsed.total === 0
           ? "No matches found"
           : `${count(parsed.total, "match", "matches")} in ${count(parsed.fileCount, "file", "files")}` +
             (parsed.truncated ? " (truncated)" : "")}
       </div>
       {parsed.files.length > 0 && (
-        <div className="max-h-72 space-y-2 overflow-auto rounded bg-vetra-muted p-2">
+        <div className="max-h-72 space-y-2 overflow-auto rounded bg-muted p-2">
           {parsed.files.map((file) => (
             <div key={file.path}>
               <div className="flex items-baseline gap-2">
                 <span className="truncate font-mono text-xs font-medium text-vetra-primary">
                   {file.path}
                 </span>
-                <span className="shrink-0 text-[11px] text-vetra-muted-fg">
+                <span className="shrink-0 text-[11px] text-muted-foreground">
                   {file.matches.filter((m) => !m.isContext).length}
                 </span>
               </div>
@@ -98,12 +98,14 @@ function GrepResult({ parsed }: { parsed: ParsedGrep }) {
                     key={`${m.line}-${i}`}
                     className="flex gap-2 whitespace-pre-wrap break-words"
                   >
-                    <span className="shrink-0 select-none text-right text-vetra-muted-fg">
+                    <span className="shrink-0 select-none text-right text-muted-foreground">
                       {m.line}
                     </span>
                     <span
                       className={
-                        m.isContext ? "text-vetra-muted-fg" : "text-vetra-fg"
+                        m.isContext
+                          ? "text-muted-foreground"
+                          : "text-foreground"
                       }
                     >
                       {m.text}
@@ -116,7 +118,7 @@ function GrepResult({ parsed }: { parsed: ParsedGrep }) {
         </div>
       )}
       {parsed.extra.map((line, i) => (
-        <div key={i} className="text-[11px] italic text-vetra-muted-fg">
+        <div key={i} className="text-[11px] italic text-muted-foreground">
           {line}
         </div>
       ))}

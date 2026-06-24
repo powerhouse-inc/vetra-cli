@@ -28,7 +28,9 @@ export function EnvironmentList({
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-vetra-fg">Environments</h3>
+        <h3 className="text-base font-semibold text-foreground">
+          Environments
+        </h3>
         <button
           type="button"
           onClick={onCreate}
@@ -40,8 +42,8 @@ export function EnvironmentList({
       </div>
 
       {state.status === "error" ? (
-        <div className="flex flex-col items-start gap-2 rounded-xl border border-vetra-border bg-vetra-card px-4 py-6">
-          <p className="text-sm text-vetra-destructive">{state.error}</p>
+        <div className="flex flex-col items-start gap-2 rounded-xl border border-border bg-card px-4 py-6">
+          <p className="text-sm text-destructive">{state.error}</p>
           <button
             type="button"
             onClick={onRetry}
@@ -51,11 +53,11 @@ export function EnvironmentList({
           </button>
         </div>
       ) : state.status === "loading" ? (
-        <div className="rounded-xl border border-vetra-border bg-vetra-card px-4 py-6 text-sm text-vetra-muted-fg">
+        <div className="rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
           Loading environments…
         </div>
       ) : state.items.length === 0 ? (
-        <div className="rounded-xl border border-vetra-border bg-vetra-card px-4 py-6 text-sm text-vetra-muted-fg">
+        <div className="rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
           No environments yet. Create one to deploy your product to the cloud.
         </div>
       ) : (
@@ -121,11 +123,11 @@ function EnvironmentCard({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-vetra-border bg-vetra-card p-5 transition-shadow hover:shadow-sm">
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2">
-          <Server size={16} className="shrink-0 text-vetra-muted-fg" />
-          <span className="truncate text-base font-semibold text-vetra-fg">
+          <Server size={16} className="shrink-0 text-muted-foreground" />
+          <span className="truncate text-base font-semibold text-foreground">
             {label}
           </span>
         </span>
@@ -133,10 +135,10 @@ function EnvironmentCard({
       </div>
 
       {host ? (
-        <span className="truncate text-xs text-vetra-muted-fg">{host}</span>
+        <span className="truncate text-xs text-muted-foreground">{host}</span>
       ) : null}
 
-      {error ? <p className="text-xs text-vetra-destructive">{error}</p> : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
       {confirming ? (
         <div className="flex items-center gap-2">
@@ -144,7 +146,7 @@ function EnvironmentCard({
             type="button"
             disabled={deleting}
             onClick={() => void handleDelete()}
-            className="flex-1 rounded-lg bg-vetra-destructive px-4 py-2 text-sm font-medium text-white hover:bg-vetra-destructive/90 disabled:opacity-50"
+            className="flex-1 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
           >
             {deleting ? "Deleting…" : "Delete environment"}
           </button>
@@ -152,7 +154,7 @@ function EnvironmentCard({
             type="button"
             disabled={deleting}
             onClick={() => setConfirming(false)}
-            className="rounded-lg border border-vetra-border px-3 py-2 text-sm text-vetra-muted-fg hover:text-vetra-fg"
+            className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
           >
             Cancel
           </button>
@@ -170,7 +172,7 @@ function EnvironmentCard({
             type="button"
             aria-label={`Delete ${label}`}
             onClick={() => setConfirming(true)}
-            className="rounded-lg border border-vetra-border p-2 text-vetra-muted-fg hover:border-vetra-destructive hover:text-vetra-destructive"
+            className="rounded-lg border border-border p-2 text-muted-foreground hover:border-destructive hover:text-destructive"
           >
             <Trash2 size={16} />
           </button>
