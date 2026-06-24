@@ -5,6 +5,7 @@ import {
   resolveReactorProjectPath,
 } from "../../helpers/project.js";
 import {
+  getPreviewAuthToken,
   listPreviewDocuments,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
@@ -30,7 +31,8 @@ export const specPreviewList = defineCommand({
       base,
       input.project ?? ".",
     );
-    const items = await listPreviewDocuments(switchboardUrl, driveId);
+    const token = await getPreviewAuthToken(context.workdir, context.config);
+    const items = await listPreviewDocuments(switchboardUrl, driveId, token);
     const filtered = input.type
       ? items.filter((d) => d.documentType === input.type)
       : items;

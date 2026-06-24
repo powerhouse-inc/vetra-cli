@@ -7,6 +7,7 @@ import {
 import {
   deletePreviewDocument,
   findPreviewByName,
+  getPreviewAuthToken,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
 
@@ -29,8 +30,9 @@ export const specPreviewDelete = defineCommand({
       base,
       input.project ?? ".",
     );
-    const row = await findPreviewByName(switchboardUrl, driveId, input.name);
-    const success = await deletePreviewDocument(switchboardUrl, row.id);
+    const token = await getPreviewAuthToken(context.workdir, context.config);
+    const row = await findPreviewByName(switchboardUrl, driveId, input.name, token);
+    const success = await deletePreviewDocument(switchboardUrl, row.id, token);
     return {
       text: success
         ? `Deleted "${row.name}" (${row.id}) from preview drive ${driveId}`

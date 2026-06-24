@@ -5,6 +5,7 @@
  *   GET  /resolve?project=&doc=   read-only; returns JSON `ResolveResult`.
  *   POST /start?project=          idempotent start; returns JSON `StartResult`.
  *   GET  /events                  SSE stream of reactor-project events.
+ *   GET  /version                 running vetra-cli + ph versions.
  *   GET  /healthz                 liveness check.
  *
  * Listens on 127.0.0.1 only. CORS is permissive (`*`) for localhost dev —
@@ -40,6 +41,8 @@ interface PreviewServerDeps {
   port: number;
   /** Live public proxy origin, forwarded to reactor-project starts. */
   proxyPublicUrl?: string;
+  /** Running versions surfaced to the studio UI via `GET /version`. */
+  versions: { vetraCli: string; ph: string };
   log?: {
     info: (m: string) => void;
     error: (m: string) => void;
@@ -83,6 +86,7 @@ export async function startPreviewServer(
     registryUrl,
     port,
     proxyPublicUrl,
+    versions,
     log,
   } = deps;
   const broadcaster = createSseBroadcaster({ subscribe });
@@ -106,6 +110,11 @@ export async function startPreviewServer(
     try {
       if (path === "/healthz" && method === "GET") {
         writeJson(res, 200, { ok: true });
+        return;
+      }
+
+      if (path === "/version" && method === "GET") {
+        writeJson(res, 200, versions);
         return;
       }
 

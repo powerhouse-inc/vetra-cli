@@ -198,6 +198,20 @@ export async function fetchStart(args: {
   return (await res.json()) as StartResult;
 }
 
+/** Running versions of the vetra-cli daemon serving this studio. */
+export type VersionInfo = { vetraCli: string; ph: string };
+
+/** Fetch the daemon's vetra-cli + ph versions (served from /version). */
+export async function fetchVersion(
+  signal?: AbortSignal,
+): Promise<VersionInfo> {
+  const res = await fetch(`${BASE}/version`, { signal });
+  if (!res.ok) {
+    throw new Error(`preview-server /version: ${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as VersionInfo;
+}
+
 /** Renown auth state served by the daemon's /auth endpoints. `pending`
  * is set while a Renown console login is awaiting browser approval. */
 export type AuthState = {

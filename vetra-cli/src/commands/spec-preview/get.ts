@@ -6,6 +6,7 @@ import {
 } from "../../helpers/project.js";
 import {
   findPreviewByName,
+  getPreviewAuthToken,
   getPreviewDocument,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
@@ -44,8 +45,9 @@ export const specPreviewGet = defineCommand({
       base,
       input.project ?? ".",
     );
-    const row = await findPreviewByName(switchboardUrl, driveId, input.name);
-    const doc = await getPreviewDocument(switchboardUrl, row.id);
+    const token = await getPreviewAuthToken(context.workdir, context.config);
+    const row = await findPreviewByName(switchboardUrl, driveId, input.name, token);
+    const doc = await getPreviewDocument(switchboardUrl, row.id, token);
     if (!doc) {
       throw new Error(
         `Preview document "${row.name}" (${row.id}) vanished between list and fetch.`,

@@ -6,6 +6,7 @@ import {
 } from "../../helpers/project.js";
 import {
   findPreviewByName,
+  getPreviewAuthToken,
   mutatePreviewDocument,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
@@ -63,14 +64,15 @@ export const specPreviewUpdate = defineCommand({
       input.project ?? ".",
     );
     const driveId = input.drive ?? defaultDriveId;
-    const row = await findPreviewByName(switchboardUrl, driveId, input.name);
+    const token = await getPreviewAuthToken(context.workdir, context.config);
+    const row = await findPreviewByName(switchboardUrl, driveId, input.name, token);
     const actions = await resolveActionsInput({
       actions: input.actions,
       from: input.from,
     });
     let next: Awaited<ReturnType<typeof mutatePreviewDocument>>;
     try {
-      next = await mutatePreviewDocument(switchboardUrl, row.id, actions);
+      next = await mutatePreviewDocument(switchboardUrl, row.id, actions, token);
     } catch (err) {
       enrichActionValidationError(err, row.documentType);
     }
