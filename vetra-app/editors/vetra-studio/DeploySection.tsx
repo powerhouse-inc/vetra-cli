@@ -1,6 +1,8 @@
 import { useRenown } from "@powerhousedao/reactor-browser";
 import { Rocket } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { DeployTarget } from "./hooks/useSessionDeployTarget.js";
+import { resolveDeployProject } from "./deploy/resolveDeployProject.js";
 import { Breadcrumb, type Crumb } from "./Breadcrumb.js";
 import { useCloudAuth } from "./deploy/cloudAuth.js";
 import { getAuthToken, setAuthTokenProvider } from "./deploy/cloudClient.js";
@@ -88,9 +90,13 @@ function buildDeployData(args: {
 export function DeploySection({
   productName,
   onExitToHome,
+  focus,
 }: {
   productName: string;
   onExitToHome: () => void;
+  /** Auto-nav target: the project the agent is deploying. Applied once per
+   * deploy (keyed by callId); null when nothing is being followed. */
+  focus?: DeployTarget | null;
 }) {
   const renown = useRenown();
   const auth = useCloudAuth();
@@ -128,6 +134,30 @@ export function DeploySection({
     setAuthTokenProvider(() => getAuthToken(renown));
     return () => setAuthTokenProvider(null);
   }, [renown]);
+
+  // Auto-nav focus: open the deploy detail for the project the agent is
+  // deploying. Applied once per focus (keyed by callId) so navigating within
+  // Deploy isn't overridden until the next deploy; retried across renders
+  // while projects/packages are still resolving, then given up if the target
+  // never matches (e.g. an external package) so we neither loop nor strand.
+  const appliedFocusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focus || focus.callId === appliedFocusRef.current) return;
+    const project = resolveDeployProject(
+      focus,
+      projects,
+      pkgs.status === "ready" ? pkgs.byProject : undefined,
+    );
+    if (project) {
+      setView({ kind: "deploy", project });
+      appliedFocusRef.current = focus.callId;
+      return;
+    }
+    const settled =
+      (focus.project ? projects.length > 0 : true) &&
+      (focus.packageName ? pkgs.status !== "loading" : true);
+    if (settled) appliedFocusRef.current = focus.callId;
+  }, [focus, projects, pkgs]);
 
   const atRoot = view.kind === "list";
   const goToList = () => setView({ kind: "list" });

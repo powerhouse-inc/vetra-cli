@@ -123,6 +123,15 @@ export function previewFollowAction(
 }
 
 /**
+ * The DEPLOY follow track reuses the preview track's decision verbatim — both
+ * are "a new tool call surfaced for this session → navigate, seeded per
+ * session, mark advances when suppressed". Aliased (not duplicated) so the
+ * deploy call site reads honestly while sharing one tested implementation.
+ */
+export const deployFollowAction = previewFollowAction;
+export type DeployMark = PreviewMark;
+
+/**
  * The navigable document most recently created-or-modified. Returns `null` when
  * the drive has no navigable documents. On ties the later entry in `docs` wins
  * (documents are appended in creation order, so this prefers the newest).

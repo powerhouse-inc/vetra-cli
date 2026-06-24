@@ -1,7 +1,4 @@
-import {
-  isChatSessionDocument,
-  type ChatSessionDocument,
-} from "@powerhousedao/clint-common/document-models/chat-session";
+import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
   useDocumentSafe,
   type DocumentDispatch,
@@ -21,10 +18,12 @@ import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
 import { VersionBadge } from "./VersionBadge.js";
 import {
+  deployFollowAction,
   followAction,
   latestTouchedNavigable,
   previewFollowAction,
   sectionForDocumentType,
+  type DeployMark,
   type FollowMark,
   type PreviewMark,
 } from "./auto-nav.js";
@@ -32,6 +31,10 @@ import type { OpenTarget } from "./ideation/types.js";
 import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
+import {
+  useSessionDeployTarget,
+  type DeployTarget,
+} from "./hooks/useSessionDeployTarget.js";
 
 const CHAT_WIDTH_STORAGE_KEY = "vetra-studio:chat-pane-width";
 /**
@@ -256,10 +259,11 @@ export function VetraStudio({
   const sessionDocument =
     sessionState.status === "success" &&
     isChatSessionDocument(sessionState.data)
-      ? (sessionState.data as ChatSessionDocument)
+      ? sessionState.data
       : undefined;
   const previewTarget = useSessionPreviewTarget(sessionDocument ?? undefined);
   const preview = useResolvedPreview(previewTarget);
+  const deployTarget = useSessionDeployTarget(sessionDocument ?? undefined);
 
   // ── Auto-navigation: follow the preview the agent surfaces ──
   // A spec-preview-show is the agent explicitly showing the user something —
@@ -290,6 +294,40 @@ export function VetraStudio({
     userPinned,
     openDocument,
   ]);
+
+  // ── Auto-navigation: follow the project the agent is deploying ──
+  // Same per-session new-callId decision as the preview-follow (shared via
+  // `deployFollowAction`), but the signal is the agent's own deploy commands
+  // — there's no explicit "show". A new deploy call switches to DEPLOY and
+  // hands the target down to DeploySection, which resolves it to a project.
+  const deployMarkRef = useRef<DeployMark | null>(null);
+  const [deployFocus, setDeployFocus] = useState<DeployTarget | null>(null);
+  useEffect(() => {
+    const { mark, navigate } = deployFollowAction(
+      {
+        sessionId: sessionDocument?.header.id ?? null,
+        callId: deployTarget?.callId ?? null,
+      },
+      deployMarkRef.current,
+      { autoNavEnabled, userPinned },
+    );
+    if (mark) deployMarkRef.current = mark;
+    if (navigate && deployTarget) {
+      // Clear any auto-opened doc so openDoc and section stay in lockstep.
+      openDocument(null, { pinned: false });
+      setSection("deploy");
+      setDeployFocus(deployTarget);
+    }
+  }, [sessionDocument, deployTarget, autoNavEnabled, userPinned, openDocument]);
+
+  // Drop a consumed deploy focus once we leave DEPLOY. DeploySection's
+  // applied-once guard is component-local and resets when it unmounts, so a
+  // lingering focus would re-open the last deployed project when the user
+  // returns to DEPLOY manually. A fresh deploy re-sets focus in the same batch
+  // as section="deploy", so this never clears the target we just navigated to.
+  useEffect(() => {
+    if (section !== "deploy") setDeployFocus(null);
+  }, [section]);
 
   // Manual open (a user click) — pins the view against auto-nav.
   const handleUserOpen = useCallback(
@@ -441,6 +479,7 @@ export function VetraStudio({
             <DeploySection
               productName={productName}
               onExitToHome={handleExitToHome}
+              focus={deployFocus}
             />
           </div>
         ) : (
