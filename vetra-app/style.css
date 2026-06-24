@@ -21,33 +21,9 @@
 @source "./node_modules/@powerhousedao/document-engineering/dist/**/*.js";
 
 @theme {
-  /* Vetra design system palette (light) */
+  /* Vetra brand color. Every other color comes from the design-system theme's
+     semantic tokens (background, foreground, border, muted, accent, card,
+     destructive, warning, info, success), which already handle light/dark. */
   --color-vetra-primary: #04c161;
   --color-vetra-primary-fg: #ffffff;
-  --color-vetra-bg: #fcfcfc;
-  --color-vetra-fg: #343839;
-  --color-vetra-border: #d7d8d9;
-  --color-vetra-muted: #efefef;
-  --color-vetra-muted-fg: #9ea0a1;
-  --color-vetra-accent: #f3f5f7;
-  --color-vetra-card: #fcfcfc;
-  --color-vetra-destructive: #ea4335;
-  --color-vetra-warning: #ffa132;
-  --color-vetra-info: #329dff;
-  --color-vetra-success: #4fc86f;
-}
-
-/* Dark values for the vetra tokens, aligned with the design-system slate
-   scale Connect uses for dark mode (literals: Tailwind only emits theme
-   variables it sees used, so var(--color-slate-N) references here could
-   dangle). Every vetra-token bg/text/border utility flips automatically;
-   components don't need dark: pairs for these. */
-.dark {
-  --color-vetra-bg: hsl(195 9% 9%); /* slate-800 */
-  --color-vetra-fg: hsl(210 20% 99%); /* slate-50 */
-  --color-vetra-border: hsl(207 8% 21%); /* slate-500 */
-  --color-vetra-muted: hsl(204 9% 11%); /* slate-700 */
-  --color-vetra-muted-fg: hsl(210 9% 63%); /* slate-400 */
-  --color-vetra-accent: hsl(195 9% 9%); /* slate-800 */
-  --color-vetra-card: hsl(210 9% 13%); /* slate-600 */
 }
