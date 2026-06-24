@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
-import { extractDeployTarget } from "./useSessionDeployTarget.js";
+import {
+  extractDeployTarget,
+  latestDeployResultId,
+} from "./useSessionDeployTarget.js";
 
 type Message = ChatSessionDocument["state"]["global"]["messages"][number];
 type ContentPart = Message["content"][number];
@@ -61,6 +64,21 @@ const publish = (id: string, args: Record<string, unknown>) =>
   toolCall("reactor-project-publish", id, args);
 const envUpdate = (id: string, args: Record<string, unknown>) =>
   toolCall("deploy-environment-update", id, args);
+
+function toolResult(
+  toolName: string,
+  toolCallId: string,
+  opts?: { isError?: boolean },
+): ContentPart {
+  return part({
+    id: `res-${toolCallId}`,
+    type: "TOOL_RESULT",
+    toolCallId,
+    toolName,
+    result: "{}",
+    isError: opts?.isError ?? false,
+  });
+}
 
 describe("extractDeployTarget", () => {
   it("returns undefined for an empty session", () => {
@@ -169,5 +187,44 @@ describe("extractDeployTarget", () => {
       ]),
     ]);
     expect(extractDeployTarget(session)).toBeUndefined();
+  });
+});
+
+describe("latestDeployResultId", () => {
+  it("returns null when there are no deploy results", () => {
+    expect(latestDeployResultId(makeSession([]))).toBeNull();
+    const onlyCalls = makeSession([
+      msg("ASSISTANT", [envUpdate("c1", { addPackage: ["@a/b@1.0.0"] })]),
+    ]);
+    // A call without its result doesn't count — we refresh on completion.
+    expect(latestDeployResultId(onlyCalls)).toBeNull();
+  });
+
+  it("returns the newest completed deploy command result id", () => {
+    const session = makeSession([
+      msg("TOOL", [toolResult("reactor-project-publish", "c1")]),
+      msg("TOOL", [toolResult("deploy-environment-update", "c2")]),
+      msg("TOOL", [toolResult("deploy-environment-wait", "c3")]),
+    ]);
+    expect(latestDeployResultId(session)).toBe("c3");
+  });
+
+  it("ignores results from read-only / unrelated tools", () => {
+    const session = makeSession([
+      msg("TOOL", [toolResult("deploy-environment-update", "c1")]),
+      msg("TOOL", [toolResult("reactor-project-publish-status", "c2")]),
+      msg("TOOL", [toolResult("deploy-environment-get", "c3")]),
+    ]);
+    expect(latestDeployResultId(session)).toBe("c1");
+  });
+
+  it("skips errored results", () => {
+    const session = makeSession([
+      msg("TOOL", [toolResult("deploy-environment-update", "c1")]),
+      msg("TOOL", [
+        toolResult("deploy-environment-wait", "c2", { isError: true }),
+      ]),
+    ]);
+    expect(latestDeployResultId(session)).toBe("c1");
   });
 });

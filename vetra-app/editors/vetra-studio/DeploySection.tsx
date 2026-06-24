@@ -91,12 +91,17 @@ export function DeploySection({
   productName,
   onExitToHome,
   focus,
+  deployActivity,
 }: {
   productName: string;
   onExitToHome: () => void;
   /** Auto-nav target: the project the agent is deploying. Applied once per
    * deploy (keyed by callId); null when nothing is being followed. */
   focus?: DeployTarget | null;
+  /** Id of the newest completed deploy command in the chat. Advances when an
+   * agent deploy finishes; we re-fetch the once-loaded install/release data so
+   * the view doesn't keep showing stale "Not deployed here". */
+  deployActivity?: string | null;
 }) {
   const renown = useRenown();
   const auth = useCloudAuth();
@@ -158,6 +163,25 @@ export function DeploySection({
       (focus.packageName ? pkgs.status !== "loading" : true);
     if (settled) appliedFocusRef.current = focus.callId;
   }, [focus, projects, pkgs]);
+
+  // Re-fetch the once-loaded install/release/package data when an agent deploy
+  // finishes in the chat (its env writes happen outside the UI, so the cards
+  // would otherwise keep showing pre-deploy state). Same refresh the UI's own
+  // Deploy button triggers via onDeployed. Seeded per mount so the initial
+  // fetch isn't immediately redone; a remount re-fetches on its own.
+  const seenActivityRef = useRef<string | null>(null);
+  const activitySeededRef = useRef(false);
+  useEffect(() => {
+    if (!activitySeededRef.current) {
+      activitySeededRef.current = true;
+      seenActivityRef.current = deployActivity ?? null;
+      return;
+    }
+    if (!deployActivity || deployActivity === seenActivityRef.current) return;
+    seenActivityRef.current = deployActivity;
+    setReloadNonce((n) => n + 1);
+    refresh();
+  }, [deployActivity, refresh]);
 
   const atRoot = view.kind === "list";
   const goToList = () => setView({ kind: "list" });

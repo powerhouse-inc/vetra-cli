@@ -32,6 +32,7 @@ import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
 import {
+  useSessionDeployActivity,
   useSessionDeployTarget,
   type DeployTarget,
 } from "./hooks/useSessionDeployTarget.js";
@@ -264,6 +265,7 @@ export function VetraStudio({
   const previewTarget = useSessionPreviewTarget(sessionDocument ?? undefined);
   const preview = useResolvedPreview(previewTarget);
   const deployTarget = useSessionDeployTarget(sessionDocument ?? undefined);
+  const deployActivity = useSessionDeployActivity(sessionDocument ?? undefined);
 
   // ── Auto-navigation: follow the preview the agent surfaces ──
   // A spec-preview-show is the agent explicitly showing the user something —
@@ -480,6 +482,7 @@ export function VetraStudio({
               productName={productName}
               onExitToHome={handleExitToHome}
               focus={deployFocus}
+              deployActivity={deployActivity}
             />
           </div>
         ) : (

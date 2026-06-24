@@ -21,14 +21,32 @@
  * (so a deploy already in the transcript at load doesn't yank the view) lives
  * in the watcher via `deployFollowAction`.
  *
- * Pure extraction (`extractDeployTarget`) is exported separately so it can be
- * unit-tested without a React renderer — mirroring `useSessionPreviewTarget`.
+ * This module also exposes `useSessionDeployActivity` — a *refresh* signal
+ * keyed on the newest completed deploy command (the TOOL_RESULT, not the call).
+ * The DEPLOY view's install/release data is fetched once (no subscription), so
+ * an agent deploy run from chat leaves it stale ("Not deployed here"); the view
+ * re-fetches when this signal advances.
+ *
+ * Pure extraction (`extractDeployTarget` / `latestDeployResultId`) is exported
+ * separately so it can be unit-tested without a React renderer — mirroring
+ * `useSessionPreviewTarget`.
  */
 import { useMemo } from "react";
 import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 
 const PUBLISH_TOOL = "reactor-project-publish";
 const ENV_UPDATE_TOOL = "deploy-environment-update";
+
+/** Deploy commands whose completion can change what the DEPLOY view shows:
+ * publish → release/version, env-create → a new environment, env-update →
+ * installed packages/services, env-wait → the settled (READY) state. Read-only
+ * commands (publish-status, env-get/list) don't mutate and are excluded. */
+const DEPLOY_RESULT_TOOLS: ReadonlySet<string> = new Set([
+  PUBLISH_TOOL,
+  "deploy-environment-create",
+  ENV_UPDATE_TOOL,
+  "deploy-environment-wait",
+]);
 
 export interface DeployTarget {
   /** Studio project (folder) name, when the signal names it directly. */
@@ -88,6 +106,36 @@ export function extractDeployTarget(
     }
   }
   return undefined;
+}
+
+export function useSessionDeployActivity(
+  session: ChatSessionDocument | undefined,
+): string | null {
+  return useMemo(() => latestDeployResultId(session), [session?.state]);
+}
+
+/**
+ * The toolCallId of the newest non-error deploy command RESULT in the session,
+ * or `null` if none. Identifies "a deploy step just finished" so a consumer can
+ * re-fetch — a new id means new completed work. Pure; unit-tested.
+ */
+export function latestDeployResultId(
+  session: ChatSessionDocument | undefined,
+): string | null {
+  if (!session) return null;
+  const messages = session.state.global.messages;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    for (let j = msg.content.length - 1; j >= 0; j--) {
+      const part = msg.content[j];
+      if (part.type !== "TOOL_RESULT") continue;
+      if (part.isError) continue;
+      if (!part.toolCallId) continue;
+      if (!part.toolName || !DEPLOY_RESULT_TOOLS.has(part.toolName)) continue;
+      return part.toolCallId;
+    }
+  }
+  return null;
 }
 
 /** "name@version" → "name". A leading "@" (scoped pkg) is preserved; only the
