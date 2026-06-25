@@ -58,6 +58,7 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         subscribe: (event, handler) => on(event, handler),
         workdir,
         renownUrl,
+        registryUrl: ctx.context.config.registryUrl,
         port: DEFAULT_PREVIEW_SERVER_PORT,
         proxyPublicUrl: ctx.commandContext.proxy?.url,
         versions: { vetraCli: VETRA_CLI_VERSION, ph: DEFAULT_PH_VERSION },

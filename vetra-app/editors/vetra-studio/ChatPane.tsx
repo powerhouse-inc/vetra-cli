@@ -91,6 +91,12 @@ export function ChatPane({
     return createRemoteAttachmentService({ remoteUrl });
   }, [driveRemoteUrl, defaultDrivesUrl]);
 
+  const { creating, createSession } = useCreateSession(
+    document.header.id,
+    sessions.length,
+    onSelectSession,
+  );
+
   if (selectedSessionId) {
     const knownSession = sessions.find((s) => s.id === selectedSessionId);
     return (
@@ -103,9 +109,24 @@ export function ChatPane({
           >
             ← Sessions
           </button>
-          <span className="ml-1 truncate text-sm font-medium text-vetra-fg">
+          <span className="ml-1 min-w-0 truncate text-sm font-medium text-vetra-fg">
             {knownSession?.name ?? ""}
           </span>
+          <button
+            type="button"
+            onClick={() => void createSession()}
+            disabled={creating}
+            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg bg-vetra-primary px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {creating ? (
+              <span aria-hidden>…</span>
+            ) : (
+              <>
+                <PlusIcon />
+                <span>New</span>
+              </>
+            )}
+          </button>
         </header>
         <div className="flex-1 overflow-hidden">
           <Suspense fallback={<SessionLoading />}>
@@ -130,6 +151,36 @@ export function ChatPane({
   );
 }
 
+// Create a chat-session document and route to it. Shared by the list header,
+// the empty state, and the session-detail header.
+function useCreateSession(
+  driveId: string,
+  sessionCount: number,
+  onCreated: (sessionId: string) => void,
+) {
+  const [creating, setCreating] = useState(false);
+  const toast = usePHToast();
+
+  async function createSession() {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const name = `Session ${sessionCount + 1}`;
+      const node = await addDocument(driveId, name, CHAT_SESSION_DOCUMENT_TYPE);
+      onCreated(node.id);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to create session";
+      toast?.(message, { type: "error" });
+      console.error("Failed to create chat session", err);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return { creating, createSession };
+}
+
 type SessionListProps = {
   driveId: string;
   sessions: FileNode[];
@@ -137,9 +188,6 @@ type SessionListProps = {
 };
 
 function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
-  const [creating, setCreating] = useState(false);
-  const toast = usePHToast();
-
   const [, startTransition] = useTransition();
   const [pendingSessionId, setPendingSessionId] = useState<string | undefined>(
     undefined,
@@ -152,22 +200,11 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
     });
   }
 
-  async function handleNewSession() {
-    if (creating) return;
-    setCreating(true);
-    try {
-      const name = `Session ${sessions.length + 1}`;
-      const node = await addDocument(driveId, name, CHAT_SESSION_DOCUMENT_TYPE);
-      selectSession(node.id);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to create session";
-      toast?.(message, { type: "error" });
-      console.error("Failed to create chat session", err);
-    } finally {
-      setCreating(false);
-    }
-  }
+  const { creating, createSession } = useCreateSession(
+    driveId,
+    sessions.length,
+    selectSession,
+  );
 
   return (
     <div className="flex h-full flex-col bg-vetra-card">
@@ -184,7 +221,7 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
         </div>
         <button
           type="button"
-          onClick={() => void handleNewSession()}
+          onClick={() => void createSession()}
           disabled={creating}
           className="inline-flex items-center gap-1 rounded-lg bg-vetra-primary px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -200,7 +237,7 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
       </header>
       {sessions.length === 0 ? (
         <EmptyState
-          onNewSession={() => void handleNewSession()}
+          onNewSession={() => void createSession()}
           creating={creating}
         />
       ) : (

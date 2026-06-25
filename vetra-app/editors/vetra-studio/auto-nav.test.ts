@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   IDEATION_TYPES,
+  deployFollowAction,
   followAction,
   latestTouchedNavigable,
   previewFollowAction,
@@ -323,5 +324,12 @@ describe("previewFollowAction", () => {
     expect(
       previewFollowAction(next, prev, { ...view, userPinned: true }),
     ).toEqual({ mark: { sessionId: "s1", callId: "c2" }, navigate: false });
+  });
+});
+
+describe("deployFollowAction", () => {
+  it("is the shared session-call follow decision (aliases previewFollowAction)", () => {
+    // The deploy track is intentionally the same logic; guard against drift.
+    expect(deployFollowAction).toBe(previewFollowAction);
   });
 });

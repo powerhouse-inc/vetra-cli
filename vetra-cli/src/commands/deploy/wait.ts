@@ -32,9 +32,9 @@ export const deployEnvironmentWait = defineCommand({
       .number()
       .int()
       .min(5)
-      .max(60)
+      .max(300)
       .default(30)
-      .describe("Max seconds to block while polling (default 30, max 60). Polls every 5s."),
+      .describe("Max seconds to block while polling (default 30, max 300). Polls every 5s."),
   }),
   execute: async (input, { workdir, config }) => {
     const ctx = { workdir, config };
