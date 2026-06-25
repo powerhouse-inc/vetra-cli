@@ -70,6 +70,11 @@ export const specCreate = defineCommand({
     }
     return {
       text: `Created ${doc.header.documentType} "${doc.header.name}"  id: ${doc.header.id}\n${path}`,
+      data: {
+        documentId: doc.header.id,
+        documentType: doc.header.documentType,
+        name: doc.header.name,
+      },
     };
   },
 });

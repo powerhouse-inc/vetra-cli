@@ -19,17 +19,17 @@ import { SpecifySection } from "./specify/SpecifySection.js";
 import { VersionBadge } from "./VersionBadge.js";
 import {
   deployFollowAction,
-  followAction,
-  latestTouchedNavigable,
+  editFollowAction,
   previewFollowAction,
   sectionForDocumentType,
   type DeployMark,
-  type FollowMark,
+  type EditMark,
   type PreviewMark,
 } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
+import { useSessionEditedDocument } from "./hooks/useSessionEditedDocument.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
 import {
   useSessionDeployActivity,
@@ -203,40 +203,10 @@ export function VetraStudio({
     return () => window.removeEventListener("popstate", onPopState);
   }, [openDocument]);
 
-  // ── Auto-navigation: follow the doc the agent is working on ──
-  // useDriveDocuments is reactive (re-renders when the agent creates or edits
-  // a doc — lastModifiedAtUtcIso bumps) and self-heals documents whose node
-  // synced before their content. We track the newest touch we've processed
-  // (high-water mark) and open the doc whenever a more recent touch lands on
-  // a doc that isn't in view — `followAction` holds the decision rules. Seed
-  // on first observation so we never jump to a pre-existing doc on mount.
+  // Reactive drive documents — restores `?doc=` once the drive hydrates and
+  // gates the session-scoped edit-follow on local sync (see below).
+  // `undefined` until the drive loads (ChatPane reads it as `driveLoaded`).
   const documents = useDriveDocuments();
-  const lastTouchedRef = useRef<FollowMark | null>(null);
-  const seededRef = useRef(false);
-  useEffect(() => {
-    if (documents === undefined) return; // drive not loaded yet
-    const latest = latestTouchedNavigable(documents);
-    // Seed once the drive has loaded — even when empty — so a doc that
-    // existed at mount isn't auto-opened, but the first doc created
-    // afterwards is.
-    if (!seededRef.current) {
-      lastTouchedRef.current = latest ? { id: latest.id, ts: latest.ts } : null;
-      seededRef.current = true;
-      return;
-    }
-    const { mark, open } = followAction(latest, lastTouchedRef.current, {
-      autoNavEnabled,
-      userPinned,
-      openDocId: openDoc?.id ?? null,
-    });
-    if (mark) lastTouchedRef.current = mark;
-    if (open) {
-      openDocument(
-        { id: open.id, documentType: open.documentType, name: open.name },
-        { pinned: false },
-      );
-    }
-  }, [documents, autoNavEnabled, userPinned, openDoc, openDocument]);
 
   // Restore `?doc=` once the drive hydrates: the initializer resolves against
   // the node list, which may be empty on first render (nodes arrive after
@@ -266,6 +236,59 @@ export function VetraStudio({
   const preview = useResolvedPreview(previewTarget);
   const deployTarget = useSessionDeployTarget(sessionDocument ?? undefined);
   const deployActivity = useSessionDeployActivity(sessionDocument ?? undefined);
+
+  // ── Auto-navigation: follow the doc the SELECTED session's agent edits ──
+  // Derived from that session's transcript (spec-create/spec-update results),
+  // so an edit in another session never moves the view. A new edit (keyed by
+  // the tool-result callId) opens its doc; `editFollowAction` holds the rules
+  // and seeds per session so switching sessions doesn't yank. We park the
+  // target and open only once the doc has synced into the drive — the
+  // transcript can name a doc before reactor-browser syncs it, and opening
+  // early crashes the editor host ("Document not found").
+  const editTarget = useSessionEditedDocument(sessionDocument ?? undefined);
+  const editMarkRef = useRef<EditMark | null>(null);
+  const [pendingEditFollow, setPendingEditFollow] = useState<OpenTarget | null>(
+    null,
+  );
+  useEffect(() => {
+    const { mark, open } = editFollowAction(
+      {
+        sessionId: sessionDocument?.header.id ?? null,
+        callId: editTarget?.callId ?? null,
+        target: editTarget
+          ? {
+              id: editTarget.id,
+              documentType: editTarget.documentType,
+              name: editTarget.name,
+            }
+          : null,
+      },
+      editMarkRef.current,
+      { autoNavEnabled, userPinned, openDocId: openDoc?.id ?? null },
+    );
+    if (mark) editMarkRef.current = mark;
+    if (open) setPendingEditFollow(open);
+  }, [sessionDocument, editTarget, autoNavEnabled, userPinned, openDoc]);
+
+  // Open the parked edit-follow target once the doc is local; re-check guards
+  // at open time (the user may have pinned or toggled off while it synced).
+  useEffect(() => {
+    if (!pendingEditFollow) return;
+    if (!documents?.some((d) => d.header.id === pendingEditFollow.id)) return;
+    if (!autoNavEnabled || userPinned || pendingEditFollow.id === openDoc?.id) {
+      setPendingEditFollow(null);
+      return;
+    }
+    openDocument(pendingEditFollow, { pinned: false });
+    setPendingEditFollow(null);
+  }, [
+    documents,
+    pendingEditFollow,
+    autoNavEnabled,
+    userPinned,
+    openDoc,
+    openDocument,
+  ]);
 
   // ── Auto-navigation: follow the preview the agent surfaces ──
   // A spec-preview-show is the agent explicitly showing the user something —
