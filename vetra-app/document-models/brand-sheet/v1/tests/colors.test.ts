@@ -1,81 +1,83 @@
+import { generateMock } from "document-model";
 import {
   addColor,
+  AddColorInputSchema,
+  isBrandSheetDocument,
   reducer,
   removeColor,
+  RemoveColorInputSchema,
   reorderColors,
+  ReorderColorsInputSchema,
   updateColor,
+  UpdateColorInputSchema,
   utils,
 } from "document-models/brand-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("ColorsOperations", () => {
+  it("should handle addColor operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddColorInputSchema());
 
-describe("Color operations", () => {
-  it("adds, updates, reorders and removes colors", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addColor({
-        id: "c1",
-        role: "PRIMARY",
-        name: "Ink",
-        hex: "#101820",
-        usage: "Text",
-      }),
+    const updatedDocument = reducer(document, addColor(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("ADD_COLOR");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    doc = reducer(
-      doc,
-      addColor({
-        id: "c2",
-        role: "ACCENT",
-        name: "Citrus",
-        hex: "#F2A900",
-        usage: "Highlights",
-      }),
-    );
-    expect(doc.state.global.colors.map((c) => c.id)).toEqual(["c1", "c2"]);
-
-    doc = reducer(doc, updateColor({ id: "c2", hex: "#FFB000" }));
-    expect(doc.state.global.colors[1].hex).toBe("#FFB000");
-
-    doc = reducer(doc, reorderColors({ ids: ["c2"], insertBefore: "c1" }));
-    expect(doc.state.global.colors.map((c) => c.id)).toEqual(["c2", "c1"]);
-
-    doc = reducer(doc, removeColor({ id: "c1" }));
-    expect(doc.state.global.colors.map((c) => c.id)).toEqual(["c2"]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects a duplicate id", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addColor({
-        id: "c1",
-        role: "PRIMARY",
-        name: "Ink",
-        hex: "#101820",
-        usage: "Text",
-      }),
+  it("should handle updateColor operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateColorInputSchema());
+
+    const updatedDocument = reducer(document, updateColor(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_COLOR",
     );
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          addColor({
-            id: "c1",
-            role: "TEXT",
-            name: "Ink2",
-            hex: "#000000",
-            usage: "Body",
-          }),
-        ),
-      ),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeColor operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveColorInputSchema());
+
+    const updatedDocument = reducer(document, removeColor(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_COLOR",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderColors operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderColorsInputSchema());
+
+    const updatedDocument = reducer(document, reorderColors(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_COLORS",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

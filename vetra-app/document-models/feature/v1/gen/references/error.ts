@@ -38,7 +38,10 @@ export class WbsNotSetError extends Error implements ReducerError {
 
 export const errors = {
   UpdateRoleSnippet: { RoleNotSetError },
+
   UpdateRelatedStepSnippet: { RelatedStepNotSetError },
+
   UpdateParentFeatureSnippet: { ParentFeatureNotSetError },
+
   UpdateWbsSnippet: { WbsNotSetError },
 };

@@ -1,6 +1,6 @@
 import type { FeatureLifecycleOperations } from "document-models/feature/v1";
-import type { FeatureStatus } from "../../gen/types.js";
 import { InvalidStatusTransitionError } from "../../gen/lifecycle/error.js";
+import type { FeatureStatus } from "../../gen/types.js";
 
 function assertSource(
   current: FeatureStatus,

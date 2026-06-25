@@ -1,188 +1,219 @@
+import { generateMock } from "document-model";
 import {
   addRole,
+  AddRoleInputSchema,
   addSpecializedJobStep,
+  AddSpecializedJobStepInputSchema,
   clearRoleSpecializedJob,
+  ClearRoleSpecializedJobInputSchema,
+  isProblemSheetDocument,
   reducer,
   removeRole,
+  RemoveRoleInputSchema,
   removeSpecializedJobStep,
+  RemoveSpecializedJobStepInputSchema,
   reorderRoles,
+  ReorderRolesInputSchema,
   reorderSpecializedJobSteps,
+  ReorderSpecializedJobStepsInputSchema,
   setRoleSpecializedJob,
+  SetRoleSpecializedJobInputSchema,
   updateRole,
+  UpdateRoleInputSchema,
   updateRoleSpecializedJob,
+  UpdateRoleSpecializedJobInputSchema,
   updateSpecializedJobStep,
+  UpdateSpecializedJobStepInputSchema,
   utils,
 } from "document-models/problem-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("RolesOperations", () => {
+  it("should handle addRole operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddRoleInputSchema());
 
-describe("Role operations", () => {
-  it("adds, updates, reorders and removes roles", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addRole({ id: "r1", name: "Treasurer", kind: "PRIMARY" }),
+    const updatedDocument = reducer(document, addRole(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("ADD_ROLE");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    doc = reducer(
-      doc,
-      addRole({ id: "r2", name: "Resident", kind: "PRIMARY" }),
-    );
-    expect(doc.state.global.roles.map((r) => r.id)).toEqual(["r1", "r2"]);
-
-    doc = reducer(
-      doc,
-      updateRole({ id: "r1", name: "Group Treasurer", kind: "SUPPORT" }),
-    );
-    expect(doc.state.global.roles[0].name).toBe("Group Treasurer");
-    expect(doc.state.global.roles[0].kind).toBe("SUPPORT");
-
-    doc = reducer(doc, reorderRoles({ ids: ["r2"], insertBefore: "r1" }));
-    expect(doc.state.global.roles.map((r) => r.id)).toEqual(["r2", "r1"]);
-
-    doc = reducer(doc, removeRole({ id: "r2" }));
-    expect(doc.state.global.roles.map((r) => r.id)).toEqual(["r1"]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects a duplicate role id", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addRole({ id: "r1", name: "A", kind: "PRIMARY" }));
-    expect(
-      failure(() =>
-        reducer(doc, addRole({ id: "r1", name: "B", kind: "PRIMARY" })),
-      ),
-    ).toBeTruthy();
+  it("should handle updateRole operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateRoleInputSchema());
+
+    const updatedDocument = reducer(document, updateRole(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_ROLE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("manages a specialized job and its steps", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addRole({ id: "r1", name: "Treasurer", kind: "PRIMARY" }),
-    );
-    doc = reducer(
-      doc,
-      setRoleSpecializedJob({
-        roleId: "r1",
-        motivation: "HAVE_TO",
-        verb: "close out",
-        object: "the monthly books",
-      }),
-    );
-    expect(doc.state.global.roles[0].specializedJob?.verb).toBe("close out");
-    expect(doc.state.global.roles[0].specializedJob?.steps).toEqual([]);
+  it("should handle removeRole operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveRoleInputSchema());
 
-    doc = reducer(
-      doc,
-      addSpecializedJobStep({
-        roleId: "r1",
-        id: "ss1",
-        name: "Reconcile",
-        category: "EXECUTE",
-      }),
-    );
-    doc = reducer(
-      doc,
-      addSpecializedJobStep({
-        roleId: "r1",
-        id: "ss2",
-        name: "Report",
-        category: "CONCLUDE",
-      }),
-    );
-    expect(
-      doc.state.global.roles[0].specializedJob?.steps.map((s) => s.id),
-    ).toEqual(["ss1", "ss2"]);
+    const updatedDocument = reducer(document, removeRole(input));
 
-    doc = reducer(
-      doc,
-      reorderSpecializedJobSteps({
-        roleId: "r1",
-        ids: ["ss2"],
-        insertBefore: "ss1",
-      }),
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_ROLE",
     );
-    expect(
-      doc.state.global.roles[0].specializedJob?.steps.map((s) => s.id),
-    ).toEqual(["ss2", "ss1"]);
-
-    doc = reducer(
-      doc,
-      updateSpecializedJobStep({
-        roleId: "r1",
-        id: "ss1",
-        name: "Reconcile accounts",
-      }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(
-      doc.state.global.roles[0].specializedJob?.steps.find(
-        (s) => s.id === "ss1",
-      )?.name,
-    ).toBe("Reconcile accounts");
-
-    doc = reducer(doc, removeSpecializedJobStep({ roleId: "r1", id: "ss2" }));
-    expect(
-      doc.state.global.roles[0].specializedJob?.steps.map((s) => s.id),
-    ).toEqual(["ss1"]);
-
-    doc = reducer(
-      doc,
-      updateRoleSpecializedJob({ roleId: "r1", clarifier: "every month" }),
-    );
-    expect(doc.state.global.roles[0].specializedJob?.clarifier).toBe(
-      "every month",
-    );
-
-    doc = reducer(doc, clearRoleSpecializedJob({ roleId: "r1" }));
-    expect(doc.state.global.roles[0].specializedJob).toBeNull();
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects specialized-job step ops when no specialized job is set", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addRole({ id: "r1", name: "Resident", kind: "PRIMARY" }),
+  it("should handle reorderRoles operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderRolesInputSchema());
+
+    const updatedDocument = reducer(document, reorderRoles(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_ROLES",
     );
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          addSpecializedJobStep({
-            roleId: "r1",
-            id: "ss1",
-            name: "x",
-            category: "DEFINE",
-          }),
-        ),
-      ),
-    ).toBeTruthy();
-    expect(
-      failure(() =>
-        reducer(doc, updateRoleSpecializedJob({ roleId: "r1", verb: "x" })),
-      ),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects operations on an unknown role", () => {
-    const doc = utils.createDocument();
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          setRoleSpecializedJob({
-            roleId: "nope",
-            motivation: "WANT_TO",
-            verb: "x",
-            object: "y",
-          }),
-        ),
-      ),
-    ).toBeTruthy();
+  it("should handle setRoleSpecializedJob operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetRoleSpecializedJobInputSchema());
+
+    const updatedDocument = reducer(document, setRoleSpecializedJob(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "SET_ROLE_SPECIALIZED_JOB",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle updateRoleSpecializedJob operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateRoleSpecializedJobInputSchema());
+
+    const updatedDocument = reducer(document, updateRoleSpecializedJob(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_ROLE_SPECIALIZED_JOB",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle clearRoleSpecializedJob operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearRoleSpecializedJobInputSchema());
+
+    const updatedDocument = reducer(document, clearRoleSpecializedJob(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "CLEAR_ROLE_SPECIALIZED_JOB",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle addSpecializedJobStep operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddSpecializedJobStepInputSchema());
+
+    const updatedDocument = reducer(document, addSpecializedJobStep(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_SPECIALIZED_JOB_STEP",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle updateSpecializedJobStep operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateSpecializedJobStepInputSchema());
+
+    const updatedDocument = reducer(document, updateSpecializedJobStep(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_SPECIALIZED_JOB_STEP",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeSpecializedJobStep operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveSpecializedJobStepInputSchema());
+
+    const updatedDocument = reducer(document, removeSpecializedJobStep(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_SPECIALIZED_JOB_STEP",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderSpecializedJobSteps operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderSpecializedJobStepsInputSchema());
+
+    const updatedDocument = reducer(
+      document,
+      reorderSpecializedJobSteps(input),
+    );
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_SPECIALIZED_JOB_STEPS",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

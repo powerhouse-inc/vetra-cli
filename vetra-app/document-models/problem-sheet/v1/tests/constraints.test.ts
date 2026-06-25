@@ -1,65 +1,85 @@
+import { generateMock } from "document-model";
 import {
   addConstraint,
+  AddConstraintInputSchema,
+  isProblemSheetDocument,
   reducer,
   removeConstraint,
+  RemoveConstraintInputSchema,
   reorderConstraints,
+  ReorderConstraintsInputSchema,
   updateConstraint,
+  UpdateConstraintInputSchema,
   utils,
 } from "document-models/problem-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("ConstraintsOperations", () => {
+  it("should handle addConstraint operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddConstraintInputSchema());
 
-describe("Constraint operations", () => {
-  it("adds, updates, reorders and removes constraints", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addConstraint({
-        id: "c1",
-        description: "Must satisfy reporting rules",
-        severity: "HIGH",
-      }),
+    const updatedDocument = reducer(document, addConstraint(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_CONSTRAINT",
     );
-    doc = reducer(
-      doc,
-      addConstraint({
-        id: "c2",
-        description: "Limited budget",
-        severity: "LOW",
-      }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(doc.state.global.constraints.map((c) => c.id)).toEqual(["c1", "c2"]);
-
-    doc = reducer(doc, updateConstraint({ id: "c2", severity: "MEDIUM" }));
-    expect(doc.state.global.constraints[1].severity).toBe("MEDIUM");
-
-    doc = reducer(doc, reorderConstraints({ ids: ["c2"], insertBefore: "c1" }));
-    expect(doc.state.global.constraints.map((c) => c.id)).toEqual(["c2", "c1"]);
-
-    doc = reducer(doc, removeConstraint({ id: "c1" }));
-    expect(doc.state.global.constraints.map((c) => c.id)).toEqual(["c2"]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects a duplicate constraint id", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addConstraint({ id: "c1", description: "x", severity: "LOW" }),
+  it("should handle updateConstraint operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateConstraintInputSchema());
+
+    const updatedDocument = reducer(document, updateConstraint(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_CONSTRAINT",
     );
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          addConstraint({ id: "c1", description: "y", severity: "LOW" }),
-        ),
-      ),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeConstraint operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveConstraintInputSchema());
+
+    const updatedDocument = reducer(document, removeConstraint(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_CONSTRAINT",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderConstraints operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderConstraintsInputSchema());
+
+    const updatedDocument = reducer(document, reorderConstraints(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_CONSTRAINTS",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

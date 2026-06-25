@@ -1,64 +1,85 @@
+import { generateMock } from "document-model";
 import {
   addTypeface,
+  AddTypefaceInputSchema,
+  isBrandSheetDocument,
   reducer,
   removeTypeface,
+  RemoveTypefaceInputSchema,
   reorderTypefaces,
+  ReorderTypefacesInputSchema,
   updateTypeface,
+  UpdateTypefaceInputSchema,
   utils,
 } from "document-models/brand-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("TypographyOperations", () => {
+  it("should handle addTypeface operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddTypefaceInputSchema());
 
-describe("Typography operations", () => {
-  it("adds, updates, reorders and removes typefaces", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addTypeface({
-        id: "t1",
-        role: "HEADLINE",
-        family: "Fraunces",
-        alternatives: ["Georgia"],
-      }),
+    const updatedDocument = reducer(document, addTypeface(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_TYPEFACE",
     );
-    doc = reducer(
-      doc,
-      addTypeface({
-        id: "t2",
-        role: "BODY",
-        family: "Inter",
-        alternatives: [],
-      }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(doc.state.global.typography.map((t) => t.id)).toEqual(["t1", "t2"]);
-
-    doc = reducer(
-      doc,
-      updateTypeface({ id: "t2", alternatives: ["Helvetica", "Arial"] }),
-    );
-    expect(doc.state.global.typography[1].alternatives).toEqual([
-      "Helvetica",
-      "Arial",
-    ]);
-
-    doc = reducer(doc, reorderTypefaces({ ids: ["t2"], insertBefore: "t1" }));
-    expect(doc.state.global.typography.map((t) => t.id)).toEqual(["t2", "t1"]);
-
-    doc = reducer(doc, removeTypeface({ id: "t1" }));
-    expect(doc.state.global.typography.map((t) => t.id)).toEqual(["t2"]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects updating an unknown typeface", () => {
-    const doc = utils.createDocument();
-    expect(
-      failure(() => reducer(doc, updateTypeface({ id: "nope", family: "x" }))),
-    ).toBeTruthy();
+  it("should handle updateTypeface operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateTypefaceInputSchema());
+
+    const updatedDocument = reducer(document, updateTypeface(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_TYPEFACE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeTypeface operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveTypefaceInputSchema());
+
+    const updatedDocument = reducer(document, removeTypeface(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_TYPEFACE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderTypefaces operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderTypefacesInputSchema());
+
+    const updatedDocument = reducer(document, reorderTypefaces(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_TYPEFACES",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

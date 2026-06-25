@@ -119,15 +119,26 @@ export class TaskSessionNotSetError extends Error implements ReducerError {
 
 export const errors = {
   AddTask: { DuplicateTaskIdError },
+
   UpdateTask: { TaskNotFoundError },
+
   MoveTask: { TaskPackageNotFoundError },
+
   UpdateTaskTargetSpecSnippet: { TaskTargetSpecNotSetError },
+
   UpdateTaskParentFeatureSnippet: { TaskParentFeatureNotSetError },
+
   UpdateTaskPlannedInSnippet: { TaskPlannedInNotSetError },
+
   AddTaskOutcomeRef: { DuplicateTaskOutcomeRefIdError },
+
   UpdateTaskOutcomeRefSnippet: { TaskOutcomeRefNotFoundError },
+
   AddTaskDependency: { DuplicateTaskDependencyIdError, DependencyCycleError },
+
   UpdateTaskDependencySnippet: { TaskDependencyNotFoundError },
+
   AssignTask: { InvalidTaskTransitionError },
+
   UpdateTaskSessionSnippet: { TaskSessionNotSetError },
 };

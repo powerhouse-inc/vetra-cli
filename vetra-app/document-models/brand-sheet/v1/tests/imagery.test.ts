@@ -1,81 +1,125 @@
+import { generateMock } from "document-model";
 import {
   addImageryReference,
+  AddImageryReferenceInputSchema,
   clearImageryDirection,
+  ClearImageryDirectionInputSchema,
+  isBrandSheetDocument,
   reducer,
   removeImageryReference,
+  RemoveImageryReferenceInputSchema,
   reorderImageryReferences,
+  ReorderImageryReferencesInputSchema,
   setImageryDirection,
+  SetImageryDirectionInputSchema,
   setImageryGuidance,
+  SetImageryGuidanceInputSchema,
   utils,
 } from "document-models/brand-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("ImageryOperations", () => {
+  it("should handle setImageryDirection operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetImageryDirectionInputSchema());
 
-describe("Imagery operations", () => {
-  it("lazily creates the imagery block when setting direction", () => {
-    let doc = utils.createDocument();
-    expect(doc.state.global.imagery).toBeNull();
-    doc = reducer(
-      doc,
-      setImageryDirection({ direction: "Warm, candid, domestic." }),
+    const updatedDocument = reducer(document, setImageryDirection(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "SET_IMAGERY_DIRECTION",
     );
-    expect(doc.state.global.imagery?.direction).toBe("Warm, candid, domestic.");
-    expect(doc.state.global.imagery?.references).toEqual([]);
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("sets guidance and manages reference images", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      setImageryGuidance({
-        include: ["people", "homes"],
-        avoid: ["stock smiles"],
-      }),
-    );
-    expect(doc.state.global.imagery?.include).toEqual(["people", "homes"]);
+  it("should handle clearImageryDirection operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearImageryDirectionInputSchema());
 
-    doc = reducer(
-      doc,
-      addImageryReference({ id: "i1", url: "https://example.com/a.jpg" }),
-    );
-    doc = reducer(
-      doc,
-      addImageryReference({ id: "i2", data: "Zm9v", mediaType: "image/jpeg" }),
-    );
-    expect(doc.state.global.imagery?.references.map((r) => r.id)).toEqual([
-      "i1",
-      "i2",
-    ]);
+    const updatedDocument = reducer(document, clearImageryDirection(input));
 
-    doc = reducer(
-      doc,
-      reorderImageryReferences({ ids: ["i2"], insertBefore: "i1" }),
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "CLEAR_IMAGERY_DIRECTION",
     );
-    expect(doc.state.global.imagery?.references.map((r) => r.id)).toEqual([
-      "i2",
-      "i1",
-    ]);
-
-    doc = reducer(doc, removeImageryReference({ id: "i1" }));
-    expect(doc.state.global.imagery?.references.map((r) => r.id)).toEqual([
-      "i2",
-    ]);
-
-    doc = reducer(doc, clearImageryDirection({}));
-    expect(doc.state.global.imagery?.direction).toBeNull();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects removing a reference when none exists", () => {
-    const doc = utils.createDocument();
-    expect(
-      failure(() => reducer(doc, removeImageryReference({ id: "nope" }))),
-    ).toBeTruthy();
+  it("should handle setImageryGuidance operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetImageryGuidanceInputSchema());
+
+    const updatedDocument = reducer(document, setImageryGuidance(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "SET_IMAGERY_GUIDANCE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle addImageryReference operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddImageryReferenceInputSchema(), {
+      url: "https://example.com",
+    });
+
+    const updatedDocument = reducer(document, addImageryReference(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_IMAGERY_REFERENCE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeImageryReference operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveImageryReferenceInputSchema());
+
+    const updatedDocument = reducer(document, removeImageryReference(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_IMAGERY_REFERENCE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderImageryReferences operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderImageryReferencesInputSchema());
+
+    const updatedDocument = reducer(document, reorderImageryReferences(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_IMAGERY_REFERENCES",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

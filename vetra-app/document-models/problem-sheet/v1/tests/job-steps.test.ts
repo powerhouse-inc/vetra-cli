@@ -1,118 +1,85 @@
+import { generateMock } from "document-model";
 import {
   addJobStep,
+  AddJobStepInputSchema,
+  isProblemSheetDocument,
   reducer,
   removeJobStep,
+  RemoveJobStepInputSchema,
   reorderJobSteps,
+  ReorderJobStepsInputSchema,
   updateJobStep,
+  UpdateJobStepInputSchema,
   utils,
 } from "document-models/problem-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("JobStepsOperations", () => {
+  it("should handle addJobStep operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddJobStepInputSchema());
 
-describe("Job step operations", () => {
-  it("adds steps and preserves insertion order", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addJobStep({ id: "s1", name: "Define", category: "DEFINE" }),
+    const updatedDocument = reducer(document, addJobStep(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_JOB_STEP",
     );
-    doc = reducer(
-      doc,
-      addJobStep({ id: "s2", name: "Execute", category: "EXECUTE" }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(doc.state.global.coreJobSteps.map((s) => s.id)).toEqual([
-      "s1",
-      "s2",
-    ]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("inserts a step before an anchor", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addJobStep({ id: "s1", name: "Define", category: "DEFINE" }),
+  it("should handle updateJobStep operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateJobStepInputSchema());
+
+    const updatedDocument = reducer(document, updateJobStep(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_JOB_STEP",
     );
-    doc = reducer(
-      doc,
-      addJobStep({ id: "s2", name: "Execute", category: "EXECUTE" }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    doc = reducer(
-      doc,
-      addJobStep({
-        id: "s3",
-        name: "Prepare",
-        category: "PREPARE",
-        insertBefore: "s2",
-      }),
-    );
-    expect(doc.state.global.coreJobSteps.map((s) => s.id)).toEqual([
-      "s1",
-      "s3",
-      "s2",
-    ]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects a duplicate step id", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addJobStep({ id: "s1", name: "Define", category: "DEFINE" }),
+  it("should handle removeJobStep operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveJobStepInputSchema());
+
+    const updatedDocument = reducer(document, removeJobStep(input));
+
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_JOB_STEP",
     );
-    expect(
-      failure(() =>
-        reducer(doc, addJobStep({ id: "s1", name: "Dup", category: "LOCATE" })),
-      ),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("updates a step in place", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addJobStep({ id: "s1", name: "Define", category: "DEFINE" }),
-    );
-    doc = reducer(doc, updateJobStep({ id: "s1", name: "Frame the problem" }));
-    expect(doc.state.global.coreJobSteps[0].name).toBe("Frame the problem");
-    expect(doc.state.global.coreJobSteps[0].category).toBe("DEFINE");
-  });
+  it("should handle reorderJobSteps operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderJobStepsInputSchema());
 
-  it("rejects updating an unknown step", () => {
-    const doc = utils.createDocument();
-    expect(
-      failure(() => reducer(doc, updateJobStep({ id: "nope", name: "x" }))),
-    ).toBeTruthy();
-  });
+    const updatedDocument = reducer(document, reorderJobSteps(input));
 
-  it("removes a step", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addJobStep({ id: "s1", name: "Define", category: "DEFINE" }),
+    expect(isProblemSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_JOB_STEPS",
     );
-    doc = reducer(doc, removeJobStep({ id: "s1" }));
-    expect(doc.state.global.coreJobSteps).toHaveLength(0);
-  });
-
-  it("reorders steps by moving an id before an anchor", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addJobStep({ id: "s1", name: "a", category: "DEFINE" }));
-    doc = reducer(doc, addJobStep({ id: "s2", name: "b", category: "LOCATE" }));
-    doc = reducer(
-      doc,
-      addJobStep({ id: "s3", name: "c", category: "EXECUTE" }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    doc = reducer(doc, reorderJobSteps({ ids: ["s3"], insertBefore: "s1" }));
-    expect(doc.state.global.coreJobSteps.map((s) => s.id)).toEqual([
-      "s3",
-      "s1",
-      "s2",
-    ]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

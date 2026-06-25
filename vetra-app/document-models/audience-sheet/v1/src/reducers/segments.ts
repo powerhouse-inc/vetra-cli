@@ -1,5 +1,4 @@
 import type { AudienceSheetSegmentsOperations } from "document-models/audience-sheet/v1";
-import type { AudienceSheetGlobalState, Segment } from "../../gen/types.js";
 import {
   DuplicateEvidenceIdError,
   DuplicateOutcomePriorityIdError,
@@ -10,6 +9,7 @@ import {
   SegmentNotFoundError,
   SegmentRoleNotFoundError,
 } from "../../gen/segments/error.js";
+import type { AudienceSheetGlobalState, Segment } from "../../gen/types.js";
 import { insertItem, opportunity, reorderById } from "../reorder.js";
 
 function findSegment(

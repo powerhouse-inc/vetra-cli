@@ -33,6 +33,7 @@ export class SuggestionAlreadyResolvedError
 
 export const errors = {
   AddSuggestion: { DuplicateSuggestionIdError },
+
   ResolveSuggestion: {
     SuggestionNotFoundError,
     SuggestionAlreadyResolvedError,

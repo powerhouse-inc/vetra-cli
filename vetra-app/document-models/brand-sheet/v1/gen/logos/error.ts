@@ -20,5 +20,6 @@ export class LogoNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddLogo: { DuplicateLogoIdError },
+
   UpdateLogo: { LogoNotFoundError },
 };

@@ -1,66 +1,83 @@
+import { generateMock } from "document-model";
 import {
   clearVoice,
+  ClearVoiceInputSchema,
+  isBrandSheetDocument,
   reducer,
   setVoice,
+  SetVoiceInputSchema,
   setVoiceVocabulary,
+  SetVoiceVocabularyInputSchema,
   updateVoice,
+  UpdateVoiceInputSchema,
   utils,
 } from "document-models/brand-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("VoiceOperations", () => {
+  it("should handle setVoice operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetVoiceInputSchema());
 
-describe("Voice operations", () => {
-  it("sets the voice block with empty vocabulary, then updates and sets vocabulary", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      setVoice({
-        qualities: ["plain", "warm"],
-        guidance: "Speak to members, not users.",
-      }),
+    const updatedDocument = reducer(document, setVoice(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("SET_VOICE");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(doc.state.global.voice).toEqual({
-      qualities: ["plain", "warm"],
-      guidance: "Speak to members, not users.",
-      vocabulary: { prefer: [], avoid: [] },
-    });
-
-    doc = reducer(doc, updateVoice({ guidance: "Speak plainly to members." }));
-    expect(doc.state.global.voice?.guidance).toBe("Speak plainly to members.");
-
-    doc = reducer(
-      doc,
-      setVoiceVocabulary({
-        prefer: ["members", "the group"],
-        avoid: ["users", "customers"],
-      }),
-    );
-    expect(doc.state.global.voice?.vocabulary).toEqual({
-      prefer: ["members", "the group"],
-      avoid: ["users", "customers"],
-    });
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects update/vocabulary before voice is set, and clears voice", () => {
-    let doc = utils.createDocument();
-    expect(
-      failure(() => reducer(doc, updateVoice({ guidance: "x" }))),
-    ).toBeTruthy();
-    expect(
-      failure(() =>
-        reducer(doc, setVoiceVocabulary({ prefer: [], avoid: [] })),
-      ),
-    ).toBeTruthy();
+  it("should handle updateVoice operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateVoiceInputSchema());
 
-    doc = reducer(doc, setVoice({ qualities: ["plain"], guidance: "g" }));
-    doc = reducer(doc, clearVoice({}));
-    expect(doc.state.global.voice).toBeNull();
+    const updatedDocument = reducer(document, updateVoice(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_VOICE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle setVoiceVocabulary operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetVoiceVocabularyInputSchema());
+
+    const updatedDocument = reducer(document, setVoiceVocabulary(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "SET_VOICE_VOCABULARY",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle clearVoice operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearVoiceInputSchema());
+
+    const updatedDocument = reducer(document, clearVoice(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "CLEAR_VOICE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

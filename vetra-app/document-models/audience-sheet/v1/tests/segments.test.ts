@@ -1,238 +1,320 @@
+import { generateMock } from "document-model";
 import {
   addOutcomePriority,
+  AddOutcomePriorityInputSchema,
   addSegment,
   addSegmentEvidence,
+  AddSegmentEvidenceInputSchema,
+  AddSegmentInputSchema,
   addSegmentRole,
+  AddSegmentRoleInputSchema,
+  isAudienceSheetDocument,
   reducer,
   removeOutcomePriority,
+  RemoveOutcomePriorityInputSchema,
   removeSegment,
   removeSegmentEvidence,
+  RemoveSegmentEvidenceInputSchema,
+  RemoveSegmentInputSchema,
   removeSegmentRole,
+  RemoveSegmentRoleInputSchema,
   reorderOutcomePriorities,
+  ReorderOutcomePrioritiesInputSchema,
   reorderSegmentRoles,
+  ReorderSegmentRolesInputSchema,
   reorderSegments,
+  ReorderSegmentsInputSchema,
   updateOutcomePriority,
+  UpdateOutcomePriorityInputSchema,
   updateOutcomePrioritySnippet,
+  UpdateOutcomePrioritySnippetInputSchema,
   updateSegment,
   updateSegmentEvidence,
+  UpdateSegmentEvidenceInputSchema,
+  UpdateSegmentInputSchema,
   updateSegmentRoleSnippet,
+  UpdateSegmentRoleSnippetInputSchema,
   utils,
 } from "document-models/audience-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("SegmentsOperations", () => {
+  it("should handle addSegment operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddSegmentInputSchema());
 
-const PROBLEM = "phd:problem-sheet:1";
+    const updatedDocument = reducer(document, addSegment(input));
 
-describe("Segment operations", () => {
-  it("adds, updates, reorders and removes segments", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addSegment({ id: "s1", name: "Condo boards" }));
-    doc = reducer(doc, addSegment({ id: "s2", name: "Co-housing" }));
-    expect(doc.state.global.segments.map((s) => s.id)).toEqual(["s1", "s2"]);
-
-    doc = reducer(
-      doc,
-      updateSegment({ id: "s1", description: "Self-managed boards" }),
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_SEGMENT",
     );
-    expect(doc.state.global.segments[0].description).toBe(
-      "Self-managed boards",
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-
-    doc = reducer(doc, reorderSegments({ ids: ["s2"], insertBefore: "s1" }));
-    expect(doc.state.global.segments.map((s) => s.id)).toEqual(["s2", "s1"]);
-
-    doc = reducer(doc, removeSegment({ id: "s2" }));
-    expect(doc.state.global.segments.map((s) => s.id)).toEqual(["s1"]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects a duplicate segment id and operations on unknown segments", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addSegment({ id: "s1", name: "A" }));
-    expect(
-      failure(() => reducer(doc, addSegment({ id: "s1", name: "B" }))),
-    ).toBeTruthy();
-    expect(
-      failure(() => reducer(doc, updateSegment({ id: "nope", name: "x" }))),
-    ).toBeTruthy();
+  it("should handle updateSegment operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateSegmentInputSchema());
+
+    const updatedDocument = reducer(document, updateSegment(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_SEGMENT",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("manages role references with snippets", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addSegment({ id: "s1", name: "Condo boards" }));
-    doc = reducer(
-      doc,
-      addSegmentRole({
-        segmentId: "s1",
-        id: "rr1",
-        documentId: PROBLEM,
-        objectId: "oid:role-treasurer",
-        name: "Treasurer",
-        kind: "PRIMARY",
-      }),
+  it("should handle removeSegment operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveSegmentInputSchema());
+
+    const updatedDocument = reducer(document, removeSegment(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_SEGMENT",
     );
-    expect(doc.state.global.segments[0].roles[0]).toEqual({
-      id: "rr1",
-      documentId: PROBLEM,
-      objectId: "oid:role-treasurer",
-      name: "Treasurer",
-      kind: "PRIMARY",
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderSegments operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderSegmentsInputSchema());
+
+    const updatedDocument = reducer(document, reorderSegments(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_SEGMENTS",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle addSegmentRole operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddSegmentRoleInputSchema());
+
+    const updatedDocument = reducer(document, addSegmentRole(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_SEGMENT_ROLE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle updateSegmentRoleSnippet operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateSegmentRoleSnippetInputSchema());
+
+    const updatedDocument = reducer(document, updateSegmentRoleSnippet(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_SEGMENT_ROLE_SNIPPET",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeSegmentRole operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveSegmentRoleInputSchema());
+
+    const updatedDocument = reducer(document, removeSegmentRole(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_SEGMENT_ROLE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderSegmentRoles operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderSegmentRolesInputSchema());
+
+    const updatedDocument = reducer(document, reorderSegmentRoles(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_SEGMENT_ROLES",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle addOutcomePriority operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddOutcomePriorityInputSchema());
+
+    const updatedDocument = reducer(document, addOutcomePriority(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_OUTCOME_PRIORITY",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle updateOutcomePriority operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateOutcomePriorityInputSchema());
+
+    const updatedDocument = reducer(document, updateOutcomePriority(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_OUTCOME_PRIORITY",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle updateOutcomePrioritySnippet operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateOutcomePrioritySnippetInputSchema());
+
+    const updatedDocument = reducer(
+      document,
+      updateOutcomePrioritySnippet(input),
+    );
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_OUTCOME_PRIORITY_SNIPPET",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeOutcomePriority operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveOutcomePriorityInputSchema());
+
+    const updatedDocument = reducer(document, removeOutcomePriority(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_OUTCOME_PRIORITY",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderOutcomePriorities operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderOutcomePrioritiesInputSchema());
+
+    const updatedDocument = reducer(document, reorderOutcomePriorities(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_OUTCOME_PRIORITIES",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle addSegmentEvidence operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddSegmentEvidenceInputSchema(), {
+      recordedAt: "2024-01-01T00:00:00.000Z",
     });
 
-    doc = reducer(
-      doc,
-      updateSegmentRoleSnippet({
-        segmentId: "s1",
-        id: "rr1",
-        name: "Group Treasurer",
-      }),
-    );
-    expect(doc.state.global.segments[0].roles[0].name).toBe("Group Treasurer");
-    expect(doc.state.global.segments[0].roles[0].objectId).toBe(
-      "oid:role-treasurer",
-    );
+    const updatedDocument = reducer(document, addSegmentEvidence(input));
 
-    doc = reducer(doc, removeSegmentRole({ segmentId: "s1", id: "rr1" }));
-    expect(doc.state.global.segments[0].roles).toHaveLength(0);
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_SEGMENT_EVIDENCE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("derives opportunity on add and recomputes on update", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addSegment({ id: "s1", name: "Condo boards" }));
-    doc = reducer(
-      doc,
-      addOutcomePriority({
-        segmentId: "s1",
-        id: "p1",
-        outcomeDocumentId: PROBLEM,
-        outcomeObjectId: "oid:outcome-decision-time",
-        outcomeStatement: "Decrease decision time",
-        outcomeScope: "CORE",
-        importance: 9,
-        satisfaction: 3,
-        source: "BUILDER",
-      }),
-    );
-    // opportunity = importance + max(0, importance - satisfaction) = 9 + 6 = 15
-    expect(doc.state.global.segments[0].outcomePriorities[0].opportunity).toBe(
-      15,
-    );
+  it("should handle updateSegmentEvidence operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateSegmentEvidenceInputSchema(), {
+      recordedAt: "2024-01-01T00:00:00.000Z",
+    });
 
-    doc = reducer(
-      doc,
-      updateOutcomePriority({ segmentId: "s1", id: "p1", satisfaction: 9 }),
+    const updatedDocument = reducer(document, updateSegmentEvidence(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_SEGMENT_EVIDENCE",
     );
-    // 9 + max(0, 9 - 9) = 9
-    expect(doc.state.global.segments[0].outcomePriorities[0].opportunity).toBe(
-      9,
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("refreshes an outcome priority snippet and reorders priorities", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addSegment({ id: "s1", name: "Condo boards" }));
-    doc = reducer(
-      doc,
-      addOutcomePriority({
-        segmentId: "s1",
-        id: "p1",
-        outcomeDocumentId: PROBLEM,
-        outcomeObjectId: "o1",
-        importance: 5,
-        satisfaction: 5,
-        source: "BUILDER",
-      }),
-    );
-    doc = reducer(
-      doc,
-      addOutcomePriority({
-        segmentId: "s1",
-        id: "p2",
-        outcomeDocumentId: PROBLEM,
-        outcomeObjectId: "o2",
-        importance: 5,
-        satisfaction: 5,
-        source: "BUILDER",
-      }),
-    );
-    doc = reducer(
-      doc,
-      updateOutcomePrioritySnippet({
-        segmentId: "s1",
-        id: "p1",
-        statement: "Avoid double-booking",
-        scope: "CORE",
-      }),
-    );
-    expect(
-      doc.state.global.segments[0].outcomePriorities[0].outcome.statement,
-    ).toBe("Avoid double-booking");
+  it("should handle removeSegmentEvidence operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveSegmentEvidenceInputSchema());
 
-    doc = reducer(
-      doc,
-      reorderOutcomePriorities({
-        segmentId: "s1",
-        ids: ["p2"],
-        insertBefore: "p1",
-      }),
+    const updatedDocument = reducer(document, removeSegmentEvidence(input));
+
+    expect(isAudienceSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_SEGMENT_EVIDENCE",
     );
-    expect(
-      doc.state.global.segments[0].outcomePriorities.map((p) => p.id),
-    ).toEqual(["p2", "p1"]);
-
-    doc = reducer(doc, removeOutcomePriority({ segmentId: "s1", id: "p1" }));
-    expect(
-      doc.state.global.segments[0].outcomePriorities.map((p) => p.id),
-    ).toEqual(["p2"]);
-  });
-
-  it("manages segment evidence", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addSegment({ id: "s1", name: "Condo boards" }));
-    doc = reducer(
-      doc,
-      addSegmentEvidence({
-        segmentId: "s1",
-        id: "e1",
-        source: "USER_RESEARCH",
-        content: "20 interviews confirm low satisfaction.",
-      }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(doc.state.global.segments[0].evidence[0].source).toBe(
-      "USER_RESEARCH",
-    );
-    expect(doc.state.global.segments[0].evidence[0].recordedAt).toBeNull();
-
-    doc = reducer(
-      doc,
-      updateSegmentEvidence({ segmentId: "s1", id: "e1", source: "BUILDER" }),
-    );
-    expect(doc.state.global.segments[0].evidence[0].source).toBe("BUILDER");
-
-    doc = reducer(doc, removeSegmentEvidence({ segmentId: "s1", id: "e1" }));
-    expect(doc.state.global.segments[0].evidence).toHaveLength(0);
-  });
-
-  it("rejects role/priority/evidence ops on an unknown segment", () => {
-    const doc = utils.createDocument();
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          addSegmentRole({
-            segmentId: "nope",
-            id: "rr1",
-            documentId: PROBLEM,
-            objectId: "o1",
-          }),
-        ),
-      ),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

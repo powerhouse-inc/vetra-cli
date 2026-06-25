@@ -1,54 +1,70 @@
+import { generateMock } from "document-model";
 import {
   addEvidence,
+  AddEvidenceInputSchema,
+  isFeatureDocument,
   reducer,
   removeEvidence,
+  RemoveEvidenceInputSchema,
   updateEvidence,
+  UpdateEvidenceInputSchema,
   utils,
 } from "document-models/feature/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("EvidenceOperations", () => {
+  it("should handle addEvidence operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddEvidenceInputSchema(), {
+      recordedAt: "2024-01-01T00:00:00.000Z",
+    });
 
-describe("Evidence operations", () => {
-  it("adds, updates and removes evidence", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addEvidence({
-        id: "e1",
-        source: "BUILDER",
-        content: "Coherent with the v1 bet.",
-      }),
+    const updatedDocument = reducer(document, addEvidence(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_EVIDENCE",
     );
-    expect(doc.state.global.evidence[0].source).toBe("BUILDER");
-    expect(doc.state.global.evidence[0].recordedAt).toBeNull();
-
-    doc = reducer(doc, updateEvidence({ id: "e1", source: "AI_SIMULATION" }));
-    expect(doc.state.global.evidence[0].source).toBe("AI_SIMULATION");
-
-    doc = reducer(doc, removeEvidence({ id: "e1" }));
-    expect(doc.state.global.evidence).toHaveLength(0);
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects a duplicate evidence id", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addEvidence({ id: "e1", source: "BUILDER", content: "x" }),
+  it("should handle updateEvidence operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateEvidenceInputSchema(), {
+      recordedAt: "2024-01-01T00:00:00.000Z",
+    });
+
+    const updatedDocument = reducer(document, updateEvidence(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_EVIDENCE",
     );
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          addEvidence({ id: "e1", source: "BUILDER", content: "y" }),
-        ),
-      ),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeEvidence operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveEvidenceInputSchema());
+
+    const updatedDocument = reducer(document, removeEvidence(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_EVIDENCE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

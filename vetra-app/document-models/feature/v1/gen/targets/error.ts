@@ -25,5 +25,6 @@ export class OutcomeTargetNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddOutcomeTarget: { DuplicateOutcomeTargetIdError },
+
   UpdateOutcomeTarget: { OutcomeTargetNotFoundError },
 };
