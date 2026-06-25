@@ -43,6 +43,7 @@ import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
 import { createAttachmentCommands } from '@powerhousedao/ph-clint/powerhouse';
+import { githubCommands } from './commands/github/index.js';
 import { existsSync } from 'node:fs';
 
 // Connect SPA dir: vetra-cli's own dist when built/published, else the
@@ -73,6 +74,7 @@ export const cli = defineCli({
     // claude-login / claude-logout / claude-status — Claude.ai subscription
     // auth (user scope: one login shared across workdirs).
     ...createClaudeAuthCommands({ cliName: CLI_NAME }),
+    ...githubCommands,
   ],
   // @clint:end commands
 

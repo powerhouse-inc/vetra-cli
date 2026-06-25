@@ -19,6 +19,8 @@ export default tseslint.config(
       "@typescript-eslint/require-await": "off",
       // Fires on destructured helper exports that don't depend on `this`.
       "@typescript-eslint/unbound-method": "off",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unnecessary-type-assertion": "warn",
     },
   },
   {
