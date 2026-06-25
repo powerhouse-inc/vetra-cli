@@ -1,9 +1,9 @@
 import type { BrandSheetImageryOperations } from "document-models/brand-sheet/v1";
-import type { BrandSheetGlobalState, Imagery } from "../../gen/types.js";
 import {
   DuplicateImageReferenceIdError,
   ImageReferenceNotFoundError,
 } from "../../gen/imagery/error.js";
+import type { BrandSheetGlobalState, Imagery } from "../../gen/types.js";
 import { insertItem, reorderById } from "../reorder.js";
 
 function getOrCreateImagery(state: BrandSheetGlobalState): Imagery {

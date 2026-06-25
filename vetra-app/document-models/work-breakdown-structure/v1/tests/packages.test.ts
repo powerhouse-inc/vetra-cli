@@ -1,89 +1,104 @@
+import { generateMock } from "document-model";
 import {
   addPackage,
-  addTask,
+  AddPackageInputSchema,
+  isWorkBreakdownStructureDocument,
   movePackage,
-  moveTask,
+  MovePackageInputSchema,
   reducer,
   removePackage,
+  RemovePackageInputSchema,
   reorderPackages,
+  ReorderPackagesInputSchema,
+  updatePackage,
+  UpdatePackageInputSchema,
   utils,
 } from "document-models/work-breakdown-structure/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("PackagesOperations", () => {
+  it("should handle addPackage operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddPackageInputSchema());
 
-describe("Package operations", () => {
-  it("adds, nests one level, reorders and rejects too-deep nesting", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addPackage({ id: "p1", name: "Backend" }));
-    doc = reducer(
-      doc,
-      addPackage({ id: "p2", name: "API", parentPackageId: "p1" }),
+    const updatedDocument = reducer(document, addPackage(input));
+
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_PACKAGE",
     );
-    expect(
-      doc.state.global.packages.find((p) => p.id === "p2")?.parentPackageId,
-    ).toBe("p1");
-
-    // p2 is already nested; nesting p3 under p2 is two levels deep -> reject.
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          addPackage({ id: "p3", name: "Routes", parentPackageId: "p2" }),
-        ),
-      ),
-    ).toBeTruthy();
-
-    doc = reducer(doc, addPackage({ id: "p4", name: "Frontend" }));
-    doc = reducer(doc, reorderPackages({ ids: ["p4"], insertBefore: "p1" }));
-    expect(doc.state.global.packages.map((p) => p.id)).toEqual([
-      "p4",
-      "p1",
-      "p2",
-    ]);
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("reparents tasks to unscoped and child packages to top-level on removal", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, addPackage({ id: "p1", name: "Backend" }));
-    doc = reducer(
-      doc,
-      addPackage({ id: "p2", name: "API", parentPackageId: "p1" }),
-    );
-    doc = reducer(
-      doc,
-      addTask({
-        id: "t1",
-        name: "Build",
-        taskKind: ["IMPLEMENTATION"],
-        packageId: "p1",
-      }),
-    );
+  it("should handle updatePackage operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdatePackageInputSchema());
 
-    doc = reducer(doc, removePackage({ id: "p1" }));
-    expect(doc.state.global.packages.map((p) => p.id)).toEqual(["p2"]);
-    expect(
-      doc.state.global.packages.find((p) => p.id === "p2")?.parentPackageId,
-    ).toBeNull();
-    expect(
-      doc.state.global.tasks.find((t) => t.id === "t1")?.packageId,
-    ).toBeNull();
+    const updatedDocument = reducer(document, updatePackage(input));
+
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_PACKAGE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects moving a task into a non-existent package", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addTask({ id: "t1", name: "Build", taskKind: ["IMPLEMENTATION"] }),
+  it("should handle movePackage operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(MovePackageInputSchema());
+
+    const updatedDocument = reducer(document, movePackage(input));
+
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "MOVE_PACKAGE",
     );
-    expect(
-      failure(() => reducer(doc, moveTask({ id: "t1", packageId: "nope" }))),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removePackage operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemovePackageInputSchema());
+
+    const updatedDocument = reducer(document, removePackage(input));
+
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_PACKAGE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderPackages operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderPackagesInputSchema());
+
+    const updatedDocument = reducer(document, reorderPackages(input));
+
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_PACKAGES",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

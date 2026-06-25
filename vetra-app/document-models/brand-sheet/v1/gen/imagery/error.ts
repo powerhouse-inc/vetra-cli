@@ -25,5 +25,6 @@ export class ImageReferenceNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddImageryReference: { DuplicateImageReferenceIdError },
+
   RemoveImageryReference: { ImageReferenceNotFoundError },
 };

@@ -22,5 +22,6 @@ export class ConstraintNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddConstraint: { DuplicateConstraintIdError },
+
   UpdateConstraint: { ConstraintNotFoundError },
 };

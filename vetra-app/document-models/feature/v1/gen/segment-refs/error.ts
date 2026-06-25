@@ -22,5 +22,6 @@ export class SegmentRefNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddSegmentRef: { DuplicateSegmentRefIdError },
+
   UpdateSegmentRefSnippet: { SegmentRefNotFoundError },
 };

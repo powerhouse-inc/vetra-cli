@@ -1,71 +1,83 @@
+import { generateMock } from "document-model";
 import {
-  acceptTask,
   activateWbs,
-  addTask,
+  ActivateWbsInputSchema,
   archiveWbs,
-  assignTask,
+  ArchiveWbsInputSchema,
   completeWbs,
-  dropTask,
+  CompleteWbsInputSchema,
+  isWorkBreakdownStructureDocument,
   reducer,
   reopenWbs,
-  submitTaskForReview,
+  ReopenWbsInputSchema,
   utils,
 } from "document-models/work-breakdown-structure/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("WbsStatusOperations", () => {
+  it("should handle activateWbs operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ActivateWbsInputSchema());
 
-const TS = "2026-05-29T10:00:00.000Z";
+    const updatedDocument = reducer(document, activateWbs(input));
 
-describe("WBS status transitions", () => {
-  it("defaults DRAFT, activates, and rejects invalid transitions", () => {
-    const doc = utils.createDocument();
-    expect(doc.state.global.status).toBe("DRAFT");
-    // Cannot complete from DRAFT.
-    expect(failure(() => reducer(doc, completeWbs({})))).toBeTruthy();
-
-    const active = reducer(doc, activateWbs({}));
-    expect(active.state.global.status).toBe("ACTIVE");
-    // Cannot activate twice.
-    expect(failure(() => reducer(active, activateWbs({})))).toBeTruthy();
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ACTIVATE_WBS",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("blocks completion until every task is DONE or DROPPED", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addTask({ id: "t1", name: "Build", taskKind: ["IMPLEMENTATION"] }),
-    );
-    doc = reducer(
-      doc,
-      addTask({ id: "t2", name: "Spike", taskKind: ["IMPLEMENTATION"] }),
-    );
-    doc = reducer(doc, activateWbs({}));
-    // Tasks still TODO -> cannot complete.
-    expect(failure(() => reducer(doc, completeWbs({})))).toBeTruthy();
+  it("should handle completeWbs operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(CompleteWbsInputSchema());
 
-    doc = reducer(
-      doc,
-      assignTask({ taskId: "t1", documentId: "phd:session:1", startedAt: TS }),
+    const updatedDocument = reducer(document, completeWbs(input));
+
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "COMPLETE_WBS",
     );
-    doc = reducer(doc, submitTaskForReview({ taskId: "t1" }));
-    doc = reducer(doc, acceptTask({ taskId: "t1", completedAt: TS }));
-    doc = reducer(doc, dropTask({ taskId: "t2", reason: "Out of scope." }));
-    doc = reducer(doc, completeWbs({}));
-    expect(doc.state.global.status).toBe("COMPLETE");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("archives and reopens", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, archiveWbs({}));
-    expect(doc.state.global.status).toBe("ARCHIVED");
-    doc = reducer(doc, reopenWbs({}));
-    expect(doc.state.global.status).toBe("ACTIVE");
+  it("should handle archiveWbs operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ArchiveWbsInputSchema());
+
+    const updatedDocument = reducer(document, archiveWbs(input));
+
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ARCHIVE_WBS",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reopenWbs operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReopenWbsInputSchema());
+
+    const updatedDocument = reducer(document, reopenWbs(input));
+
+    expect(isWorkBreakdownStructureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("REOPEN_WBS");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

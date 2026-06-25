@@ -20,5 +20,6 @@ export class JobStepNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddJobStep: { DuplicateJobStepIdError },
+
   UpdateJobStep: { JobStepNotFoundError },
 };

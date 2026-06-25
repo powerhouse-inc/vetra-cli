@@ -1,9 +1,4 @@
 import type { WorkBreakdownStructureTasksOperations } from "document-models/work-breakdown-structure/v1";
-import type {
-  Task,
-  TaskStatus,
-  WorkBreakdownStructureGlobalState,
-} from "../../gen/types.js";
 import {
   DependencyCycleError,
   DuplicateTaskDependencyIdError,
@@ -19,6 +14,11 @@ import {
   TaskSessionNotSetError,
   TaskTargetSpecNotSetError,
 } from "../../gen/tasks/error.js";
+import type {
+  Task,
+  TaskStatus,
+  WorkBreakdownStructureGlobalState,
+} from "../../gen/types.js";
 import { insertItem, reorderById } from "../reorder.js";
 
 function findTask(

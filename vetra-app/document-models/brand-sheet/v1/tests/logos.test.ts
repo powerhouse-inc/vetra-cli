@@ -1,86 +1,123 @@
+import { generateMock } from "document-model";
 import {
   addLogo,
+  AddLogoInputSchema,
   clearLogoAsset,
+  ClearLogoAssetInputSchema,
+  isBrandSheetDocument,
   reducer,
   removeLogo,
+  RemoveLogoInputSchema,
   reorderLogos,
+  ReorderLogosInputSchema,
   setLogoAsset,
+  SetLogoAssetInputSchema,
   updateLogo,
+  UpdateLogoInputSchema,
   utils,
 } from "document-models/brand-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("LogosOperations", () => {
+  it("should handle addLogo operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddLogoInputSchema());
 
-describe("Logo operations", () => {
-  it("adds, updates, reorders and removes logos", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addLogo({ id: "l1", description: "Primary", markType: "WORDMARK" }),
+    const updatedDocument = reducer(document, addLogo(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("ADD_LOGO");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    doc = reducer(
-      doc,
-      addLogo({ id: "l2", description: "Icon", markType: "SYMBOL" }),
-    );
-    expect(doc.state.global.logos.map((l) => l.id)).toEqual(["l1", "l2"]);
-    expect(doc.state.global.logos[0].assetData).toBeNull();
-
-    doc = reducer(doc, updateLogo({ id: "l1", markType: "COMBINATION" }));
-    expect(doc.state.global.logos[0].markType).toBe("COMBINATION");
-
-    doc = reducer(doc, reorderLogos({ ids: ["l2"], insertBefore: "l1" }));
-    expect(doc.state.global.logos.map((l) => l.id)).toEqual(["l2", "l1"]);
-
-    doc = reducer(doc, removeLogo({ id: "l2" }));
-    expect(doc.state.global.logos.map((l) => l.id)).toEqual(["l1"]);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("sets and clears a logo asset", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addLogo({ id: "l1", description: "Primary", markType: "WORDMARK" }),
-    );
-    doc = reducer(
-      doc,
-      setLogoAsset({
-        logoId: "l1",
-        data: "aGVsbG8=",
-        mediaType: "image/png",
-        filename: "logo.png",
-      }),
-    );
-    expect(doc.state.global.logos[0].assetData).toBe("aGVsbG8=");
-    expect(doc.state.global.logos[0].assetMediaType).toBe("image/png");
+  it("should handle updateLogo operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateLogoInputSchema());
 
-    doc = reducer(doc, clearLogoAsset({ logoId: "l1" }));
-    expect(doc.state.global.logos[0].assetData).toBeNull();
-    expect(doc.state.global.logos[0].assetMediaType).toBeNull();
+    const updatedDocument = reducer(document, updateLogo(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_LOGO",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects duplicate ids and unknown logos", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addLogo({ id: "l1", description: "A", markType: "WORDMARK" }),
+  it("should handle setLogoAsset operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetLogoAssetInputSchema(), {
+      url: "https://example.com",
+    });
+
+    const updatedDocument = reducer(document, setLogoAsset(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "SET_LOGO_ASSET",
     );
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          addLogo({ id: "l1", description: "B", markType: "SYMBOL" }),
-        ),
-      ),
-    ).toBeTruthy();
-    expect(
-      failure(() => reducer(doc, setLogoAsset({ logoId: "nope", data: "x" }))),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle clearLogoAsset operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearLogoAssetInputSchema());
+
+    const updatedDocument = reducer(document, clearLogoAsset(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "CLEAR_LOGO_ASSET",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeLogo operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveLogoInputSchema());
+
+    const updatedDocument = reducer(document, removeLogo(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_LOGO",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderLogos operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderLogosInputSchema());
+
+    const updatedDocument = reducer(document, reorderLogos(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_LOGOS",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

@@ -30,6 +30,8 @@ export class PackageNestingTooDeepError extends Error implements ReducerError {
 
 export const errors = {
   AddPackage: { DuplicatePackageIdError },
+
   UpdatePackage: { PackageNotFoundError },
+
   MovePackage: { PackageNestingTooDeepError },
 };

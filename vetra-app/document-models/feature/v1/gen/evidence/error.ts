@@ -20,5 +20,6 @@ export class EvidenceNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddEvidence: { DuplicateEvidenceIdError },
+
   UpdateEvidence: { EvidenceNotFoundError },
 };

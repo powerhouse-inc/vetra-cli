@@ -20,5 +20,6 @@ export class TasksNotCompleteError extends Error implements ReducerError {
 
 export const errors = {
   ActivateWbs: { InvalidWbsTransitionError },
+
   CompleteWbs: { TasksNotCompleteError },
 };

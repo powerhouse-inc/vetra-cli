@@ -76,11 +76,18 @@ export class EvidenceNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddSegment: { DuplicateSegmentIdError },
+
   UpdateSegment: { SegmentNotFoundError },
+
   AddSegmentRole: { DuplicateSegmentRoleIdError },
+
   UpdateSegmentRoleSnippet: { SegmentRoleNotFoundError },
+
   AddOutcomePriority: { DuplicateOutcomePriorityIdError },
+
   UpdateOutcomePriority: { OutcomePriorityNotFoundError },
+
   AddSegmentEvidence: { DuplicateEvidenceIdError },
+
   UpdateSegmentEvidence: { EvidenceNotFoundError },
 };

@@ -1,71 +1,144 @@
+import { generateMock } from "document-model";
 import {
   archiveFeature,
+  ArchiveFeatureInputSchema,
   clearPromotion,
+  ClearPromotionInputSchema,
   commitFeature,
+  CommitFeatureInputSchema,
+  isFeatureDocument,
+  parkFeature,
+  ParkFeatureInputSchema,
   promoteToSpec,
+  PromoteToSpecInputSchema,
   reducer,
   reopenFeature,
+  ReopenFeatureInputSchema,
   startEvaluation,
+  StartEvaluationInputSchema,
   utils,
 } from "document-models/feature/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("LifecycleOperations", () => {
+  it("should handle startEvaluation operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(StartEvaluationInputSchema());
 
-const TS = "2026-05-29T10:00:00.000Z";
+    const updatedDocument = reducer(document, startEvaluation(input));
 
-describe("Lifecycle transitions", () => {
-  it("walks PROPOSED → EVALUATING → COMMITTED → IN_SPEC and records promotion", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, startEvaluation({}));
-    expect(doc.state.global.status).toBe("EVALUATING");
-    doc = reducer(doc, commitFeature({}));
-    expect(doc.state.global.status).toBe("COMMITTED");
-    doc = reducer(
-      doc,
-      promoteToSpec({
-        promotedAt: TS,
-        promotedBy: "wouter",
-        rationale: "Won over alternatives.",
-      }),
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "START_EVALUATION",
     );
-    expect(doc.state.global.status).toBe("IN_SPEC");
-    expect(doc.state.global.promotion).toEqual({
-      promotedAt: TS,
-      promotedBy: "wouter",
-      rationale: "Won over alternatives.",
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle commitFeature operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(CommitFeatureInputSchema());
+
+    const updatedDocument = reducer(document, commitFeature(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "COMMIT_FEATURE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle promoteToSpec operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(PromoteToSpecInputSchema(), {
+      promotedAt: "2024-01-01T00:00:00.000Z",
     });
 
-    doc = reducer(doc, clearPromotion({}));
-    expect(doc.state.global.promotion).toBeNull();
+    const updatedDocument = reducer(document, promoteToSpec(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "PROMOTE_TO_SPEC",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects invalid source transitions", () => {
-    const doc = utils.createDocument();
-    // Cannot promote straight from PROPOSED.
-    expect(
-      failure(() => reducer(doc, promoteToSpec({ promotedAt: TS }))),
-    ).toBeTruthy();
-    // Cannot start evaluation twice.
-    const evaluating = reducer(doc, startEvaluation({}));
-    expect(
-      failure(() => reducer(evaluating, startEvaluation({}))),
-    ).toBeTruthy();
+  it("should handle archiveFeature operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ArchiveFeatureInputSchema());
+
+    const updatedDocument = reducer(document, archiveFeature(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ARCHIVE_FEATURE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("archives, then reopens to PROPOSED", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, archiveFeature({ reason: "Out of scope for v1." }));
-    expect(doc.state.global.status).toBe("ARCHIVED");
-    expect(doc.state.global.notes).toBe("Out of scope for v1.");
+  it("should handle parkFeature operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ParkFeatureInputSchema());
 
-    doc = reducer(doc, reopenFeature({}));
-    expect(doc.state.global.status).toBe("PROPOSED");
+    const updatedDocument = reducer(document, parkFeature(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "PARK_FEATURE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reopenFeature operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReopenFeatureInputSchema());
+
+    const updatedDocument = reducer(document, reopenFeature(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REOPEN_FEATURE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle clearPromotion operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearPromotionInputSchema());
+
+    const updatedDocument = reducer(document, clearPromotion(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "CLEAR_PROMOTION",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

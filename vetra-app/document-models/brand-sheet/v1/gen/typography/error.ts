@@ -20,5 +20,6 @@ export class TypefaceNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddTypeface: { DuplicateTypefaceIdError },
+
   UpdateTypeface: { TypefaceNotFoundError },
 };

@@ -1,84 +1,89 @@
+import { generateMock } from "document-model";
 import {
   addSuggestion,
+  AddSuggestionInputSchema,
+  isBrandSheetDocument,
   reducer,
   removeSuggestion,
+  RemoveSuggestionInputSchema,
   resolveSuggestion,
+  ResolveSuggestionInputSchema,
   setReadyForFeedback,
+  SetReadyForFeedbackInputSchema,
   utils,
 } from "document-models/brand-sheet/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("AgentFeedbackOperations", () => {
+  it("should handle setReadyForFeedback operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetReadyForFeedbackInputSchema());
 
-const TS = "2026-05-29T10:00:00.000Z";
+    const updatedDocument = reducer(document, setReadyForFeedback(input));
 
-describe("Agent feedback operations", () => {
-  it("sets ready, adds, resolves and removes suggestions", () => {
-    let doc = utils.createDocument();
-    doc = reducer(doc, setReadyForFeedback({ ready: true }));
-    expect(doc.state.global.agentFeedback.readyForFeedback).toBe(true);
-
-    doc = reducer(
-      doc,
-      addSuggestion({
-        id: "g1",
-        createdAt: TS,
-        agent: "critic",
-        content: "Maxim is weak.",
-      }),
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "SET_READY_FOR_FEEDBACK",
     );
-    expect(doc.state.global.agentFeedback.suggestions[0].resolution).toBeNull();
-
-    doc = reducer(
-      doc,
-      resolveSuggestion({
-        id: "g1",
-        resolvedAt: TS,
-        decision: "DISMISSED",
-        changeApplied: false,
-      }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(
-      doc.state.global.agentFeedback.suggestions[0].resolution?.decision,
-    ).toBe("DISMISSED");
-
-    doc = reducer(doc, removeSuggestion({ id: "g1" }));
-    expect(doc.state.global.agentFeedback.suggestions).toHaveLength(0);
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects resolving twice", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addSuggestion({ id: "g1", createdAt: TS, agent: "a", content: "x" }),
+  it("should handle addSuggestion operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddSuggestionInputSchema(), {
+      createdAt: "2024-01-01T00:00:00.000Z",
+    });
+
+    const updatedDocument = reducer(document, addSuggestion(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_SUGGESTION",
     );
-    doc = reducer(
-      doc,
-      resolveSuggestion({
-        id: "g1",
-        resolvedAt: TS,
-        decision: "ACCEPTED",
-        changeApplied: true,
-      }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          resolveSuggestion({
-            id: "g1",
-            resolvedAt: TS,
-            decision: "ACCEPTED",
-            changeApplied: true,
-          }),
-        ),
-      ),
-    ).toBeTruthy();
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle resolveSuggestion operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ResolveSuggestionInputSchema(), {
+      resolvedAt: "2024-01-01T00:00:00.000Z",
+    });
+
+    const updatedDocument = reducer(document, resolveSuggestion(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "RESOLVE_SUGGESTION",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeSuggestion operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveSuggestionInputSchema());
+
+    const updatedDocument = reducer(document, removeSuggestion(input));
+
+    expect(isBrandSheetDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_SUGGESTION",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

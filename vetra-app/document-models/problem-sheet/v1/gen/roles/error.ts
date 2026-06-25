@@ -52,8 +52,12 @@ export class SpecializedJobStepNotFoundError
 
 export const errors = {
   AddRole: { DuplicateRoleIdError },
+
   UpdateRole: { RoleNotFoundError },
+
   UpdateRoleSpecializedJob: { SpecializedJobNotSetError },
+
   AddSpecializedJobStep: { DuplicateSpecializedJobStepIdError },
+
   UpdateSpecializedJobStep: { SpecializedJobStepNotFoundError },
 };

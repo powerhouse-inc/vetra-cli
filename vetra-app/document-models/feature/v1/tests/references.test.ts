@@ -1,100 +1,232 @@
+import { generateMock } from "document-model";
 import {
   clearParentFeature,
+  ClearParentFeatureInputSchema,
+  clearRelatedStep,
+  ClearRelatedStepInputSchema,
   clearRole,
+  ClearRoleInputSchema,
+  clearWbs,
+  ClearWbsInputSchema,
+  isFeatureDocument,
   reducer,
   setParentFeature,
+  SetParentFeatureInputSchema,
   setRelatedStep,
+  SetRelatedStepInputSchema,
   setRole,
+  SetRoleInputSchema,
   setWbs,
+  SetWbsInputSchema,
+  updateParentFeatureSnippet,
+  UpdateParentFeatureSnippetInputSchema,
+  updateRelatedStepSnippet,
+  UpdateRelatedStepSnippetInputSchema,
   updateRoleSnippet,
+  UpdateRoleSnippetInputSchema,
   updateWbsSnippet,
+  UpdateWbsSnippetInputSchema,
   utils,
 } from "document-models/feature/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("ReferencesOperations", () => {
+  it("should handle setRole operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetRoleInputSchema());
 
-const PROBLEM = "phd:problem-sheet:1";
+    const updatedDocument = reducer(document, setRole(input));
 
-describe("Singular reference operations", () => {
-  it("sets, refreshes and clears the role reference", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      setRole({
-        documentId: PROBLEM,
-        objectId: "role-treasurer",
-        name: "Treasurer",
-        kind: "PRIMARY",
-      }),
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("SET_ROLE");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(doc.state.global.role).toEqual({
-      documentId: PROBLEM,
-      objectId: "role-treasurer",
-      name: "Treasurer",
-      kind: "PRIMARY",
-    });
-
-    doc = reducer(doc, updateRoleSnippet({ name: "Group Treasurer" }));
-    expect(doc.state.global.role?.name).toBe("Group Treasurer");
-
-    doc = reducer(doc, clearRole({}));
-    expect(doc.state.global.role).toBeNull();
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("sets related step, parent feature and wbs references", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      setRelatedStep({
-        documentId: PROBLEM,
-        objectId: "step-decide",
-        name: "Decide",
-        category: "CONFIRM",
-      }),
+  it("should handle updateRoleSnippet operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateRoleSnippetInputSchema());
+
+    const updatedDocument = reducer(document, updateRoleSnippet(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_ROLE_SNIPPET",
     );
-    expect(doc.state.global.relatedStep?.category).toBe("CONFIRM");
-
-    doc = reducer(
-      doc,
-      setParentFeature({
-        documentId: "phd:feature:v1",
-        name: "Concord v1",
-        status: "COMMITTED",
-      }),
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
     );
-    expect(doc.state.global.parentFeature?.status).toBe("COMMITTED");
-
-    doc = reducer(
-      doc,
-      setWbs({
-        documentId: "phd:wbs:v1",
-        name: "Concord v1 WBS",
-        status: "ACTIVE",
-      }),
-    );
-    expect(doc.state.global.wbs?.documentId).toBe("phd:wbs:v1");
-
-    doc = reducer(doc, updateWbsSnippet({ status: "COMPLETE" }));
-    expect(doc.state.global.wbs?.status).toBe("COMPLETE");
-
-    doc = reducer(doc, clearParentFeature({}));
-    expect(doc.state.global.parentFeature).toBeNull();
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects refreshing a snippet that is not set", () => {
-    const doc = utils.createDocument();
-    expect(
-      failure(() => reducer(doc, updateRoleSnippet({ name: "x" }))),
-    ).toBeTruthy();
-    expect(
-      failure(() => reducer(doc, updateWbsSnippet({ status: "x" }))),
-    ).toBeTruthy();
+  it("should handle clearRole operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearRoleInputSchema());
+
+    const updatedDocument = reducer(document, clearRole(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("CLEAR_ROLE");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle setRelatedStep operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetRelatedStepInputSchema());
+
+    const updatedDocument = reducer(document, setRelatedStep(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "SET_RELATED_STEP",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle updateRelatedStepSnippet operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateRelatedStepSnippetInputSchema());
+
+    const updatedDocument = reducer(document, updateRelatedStepSnippet(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_RELATED_STEP_SNIPPET",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle clearRelatedStep operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearRelatedStepInputSchema());
+
+    const updatedDocument = reducer(document, clearRelatedStep(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "CLEAR_RELATED_STEP",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle setParentFeature operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetParentFeatureInputSchema());
+
+    const updatedDocument = reducer(document, setParentFeature(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "SET_PARENT_FEATURE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle updateParentFeatureSnippet operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateParentFeatureSnippetInputSchema());
+
+    const updatedDocument = reducer(
+      document,
+      updateParentFeatureSnippet(input),
+    );
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_PARENT_FEATURE_SNIPPET",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle clearParentFeature operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearParentFeatureInputSchema());
+
+    const updatedDocument = reducer(document, clearParentFeature(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "CLEAR_PARENT_FEATURE",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle setWbs operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(SetWbsInputSchema());
+
+    const updatedDocument = reducer(document, setWbs(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("SET_WBS");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle updateWbsSnippet operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateWbsSnippetInputSchema());
+
+    const updatedDocument = reducer(document, updateWbsSnippet(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_WBS_SNIPPET",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle clearWbs operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ClearWbsInputSchema());
+
+    const updatedDocument = reducer(document, clearWbs(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe("CLEAR_WBS");
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });

@@ -20,5 +20,6 @@ export class OutcomeNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddOutcome: { DuplicateOutcomeIdError },
+
   UpdateOutcome: { OutcomeNotFoundError },
 };

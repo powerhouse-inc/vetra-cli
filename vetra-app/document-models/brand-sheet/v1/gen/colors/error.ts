@@ -20,5 +20,6 @@ export class ColorNotFoundError extends Error implements ReducerError {
 
 export const errors = {
   AddColor: { DuplicateColorIdError },
+
   UpdateColor: { ColorNotFoundError },
 };

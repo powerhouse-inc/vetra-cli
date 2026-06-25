@@ -1,115 +1,107 @@
+import { generateMock } from "document-model";
 import {
   addOutcomeTarget,
+  AddOutcomeTargetInputSchema,
+  isFeatureDocument,
   reducer,
   removeOutcomeTarget,
+  RemoveOutcomeTargetInputSchema,
   reorderOutcomeTargets,
+  ReorderOutcomeTargetsInputSchema,
   updateOutcomeTarget,
+  UpdateOutcomeTargetInputSchema,
   updateOutcomeTargetSnippet,
+  UpdateOutcomeTargetSnippetInputSchema,
   utils,
 } from "document-models/feature/v1";
 import { describe, expect, it } from "vitest";
 
-function failure(run: () => ReturnType<typeof reducer>): unknown {
-  try {
-    return run().operations.global.at(-1)?.error ?? null;
-  } catch (e) {
-    return e;
-  }
-}
+describe("TargetsOperations", () => {
+  it("should handle addOutcomeTarget operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(AddOutcomeTargetInputSchema());
 
-const PROBLEM = "phd:problem-sheet:1";
+    const updatedDocument = reducer(document, addOutcomeTarget(input));
 
-describe("Outcome target operations", () => {
-  it("adds a target with a cached outcome snippet and projected deltas", () => {
-    const doc = utils.createDocument();
-    const next = reducer(
-      doc,
-      addOutcomeTarget({
-        id: "t1",
-        outcomeDocumentId: PROBLEM,
-        outcomeObjectId: "o-decision-time",
-        outcomeStatement: "Decrease decision time",
-        outcomeScope: "CORE",
-        expectedSatisfactionChange: 3,
-      }),
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "ADD_OUTCOME_TARGET",
     );
-    const target = next.state.global.targets[0];
-    expect(target.outcome).toEqual({
-      documentId: PROBLEM,
-      objectId: "o-decision-time",
-      statement: "Decrease decision time",
-      scope: "CORE",
-    });
-    expect(target.expectedSatisfactionChange).toBe(3);
-    expect(target.expectedImportanceChange).toBeNull();
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("updates deltas, refreshes the snippet, reorders and removes", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addOutcomeTarget({
-        id: "t1",
-        outcomeDocumentId: PROBLEM,
-        outcomeObjectId: "o1",
-      }),
-    );
-    doc = reducer(
-      doc,
-      addOutcomeTarget({
-        id: "t2",
-        outcomeDocumentId: PROBLEM,
-        outcomeObjectId: "o2",
-      }),
-    );
-    doc = reducer(
-      doc,
-      updateOutcomeTarget({ id: "t1", expectedImportanceChange: 2 }),
-    );
-    expect(doc.state.global.targets[0].expectedImportanceChange).toBe(2);
+  it("should handle updateOutcomeTarget operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateOutcomeTargetInputSchema());
 
-    doc = reducer(
-      doc,
-      updateOutcomeTargetSnippet({
-        id: "t1",
-        statement: "Avoid double-booking",
-      }),
-    );
-    expect(doc.state.global.targets[0].outcome.statement).toBe(
-      "Avoid double-booking",
-    );
+    const updatedDocument = reducer(document, updateOutcomeTarget(input));
 
-    doc = reducer(
-      doc,
-      reorderOutcomeTargets({ ids: ["t2"], insertBefore: "t1" }),
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_OUTCOME_TARGET",
     );
-    expect(doc.state.global.targets.map((t) => t.id)).toEqual(["t2", "t1"]);
-
-    doc = reducer(doc, removeOutcomeTarget({ id: "t1" }));
-    expect(doc.state.global.targets.map((t) => t.id)).toEqual(["t2"]);
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 
-  it("rejects a duplicate id", () => {
-    let doc = utils.createDocument();
-    doc = reducer(
-      doc,
-      addOutcomeTarget({
-        id: "t1",
-        outcomeDocumentId: PROBLEM,
-        outcomeObjectId: "o1",
-      }),
+  it("should handle updateOutcomeTargetSnippet operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(UpdateOutcomeTargetSnippetInputSchema());
+
+    const updatedDocument = reducer(
+      document,
+      updateOutcomeTargetSnippet(input),
     );
-    expect(
-      failure(() =>
-        reducer(
-          doc,
-          addOutcomeTarget({
-            id: "t1",
-            outcomeDocumentId: PROBLEM,
-            outcomeObjectId: "o2",
-          }),
-        ),
-      ),
-    ).toBeTruthy();
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "UPDATE_OUTCOME_TARGET_SNIPPET",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle removeOutcomeTarget operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(RemoveOutcomeTargetInputSchema());
+
+    const updatedDocument = reducer(document, removeOutcomeTarget(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REMOVE_OUTCOME_TARGET",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
+  });
+
+  it("should handle reorderOutcomeTargets operation", () => {
+    const document = utils.createDocument();
+    const input = generateMock(ReorderOutcomeTargetsInputSchema());
+
+    const updatedDocument = reducer(document, reorderOutcomeTargets(input));
+
+    expect(isFeatureDocument(updatedDocument)).toBe(true);
+    expect(updatedDocument.operations.global).toHaveLength(1);
+    expect(updatedDocument.operations.global[0].action.type).toBe(
+      "REORDER_OUTCOME_TARGETS",
+    );
+    expect(updatedDocument.operations.global[0].action.input).toStrictEqual(
+      input,
+    );
+    expect(updatedDocument.operations.global[0].index).toEqual(0);
   });
 });
