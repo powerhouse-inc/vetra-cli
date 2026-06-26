@@ -28,9 +28,8 @@ export default defineConfig({
   // build:assets writes dist/gen + manifest first; build wipes dist up front.
   clean: false,
   // Un-bundleable leaves kept external + vendored into dist/node_modules by
-  // scripts/vendor-deps.ts (otel stays a declared dep).
+  // scripts/vendor-deps.ts. otel bundles cleanly (no auto-instrumentation).
   external: [
-    /^@opentelemetry\//,
     "devcert",
     "libsql",
     "@datadog/pprof",
@@ -41,6 +40,7 @@ export default defineConfig({
     // Optional leaves of the bundled embedded Switchboard, absent by design
     // (knex uses pglite; codegen runs via `ph generate`; ink devtools unused).
     "@graphql-codegen/cli",
+    "@opentelemetry/exporter-jaeger",
     "better-sqlite3",
     "sqlite3",
     "mysql",
