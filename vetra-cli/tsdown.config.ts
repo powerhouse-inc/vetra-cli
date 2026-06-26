@@ -27,9 +27,18 @@ export default defineConfig({
   dts: false,
   // build:assets writes dist/gen + manifest first; build wipes dist up front.
   clean: false,
-  // OpenTelemetry + devcert do dynamic platform requires that don't survive
-  // bundling; keep them external (declared as deps) so they resolve at runtime.
-  external: [/^@opentelemetry\//, "devcert"],
+  // Un-bundleable leaves kept external + vendored into dist/node_modules by
+  // scripts/vendor-deps.ts (otel stays a declared dep).
+  external: [
+    /^@opentelemetry\//,
+    "devcert",
+    "libsql",
+    "@datadog/pprof",
+    "@electric-sql/pglite",
+    "@powerhousedao/pglite-fs",
+    "graphql",
+    "fsevents",
+  ],
   plugins: [dirnameShim],
   // bin/start/Dockerfile expect dist/main.js (ESM via package "type": "module").
   outputOptions: {
