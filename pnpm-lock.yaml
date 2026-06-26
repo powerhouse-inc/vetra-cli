@@ -229,12 +229,6 @@ importers:
 
   vetra-cli:
     dependencies:
-      '@datadog/pprof':
-        specifier: ^5.13.3
-        version: 5.13.3
-      '@electric-sql/pglite':
-        specifier: ^0.3.15
-        version: 0.3.15
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
@@ -265,25 +259,19 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: 2.1.0
         version: 2.1.0(@opentelemetry/api@1.9.1)
-      '@powerhousedao/pglite-fs':
-        specifier: 'catalog:'
-        version: 6.2.0-rc.3(@electric-sql/pglite@0.3.15)
       '@powerhousedao/switchboard':
         specifier: 'catalog:'
         version: 6.2.0-rc.3(@fastify/cors@11.2.0)(@fastify/formbody@8.0.2)(@fastify/middie@9.3.3)(@fastify/websocket@11.2.0)(@mercuriusjs/gateway@5.2.0(@fastify/websocket@11.2.0))(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@sentry/node-core@10.57.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.205.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.214.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.1.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(@types/node@25.8.0)(@types/react@19.2.14)(esbuild@0.28.0)(fastify@5.9.0)(graphql-tag@2.12.6(graphql@16.12.0))(graphql@16.12.0)(jiti@2.7.0)(mercurius@16.9.0(graphql@16.12.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(rolldown@1.0.2)(terser@5.48.0)(tsx@4.22.1)(typescript@6.0.3)(yaml@2.9.0)(zod@4.3.6)
-      devcert:
-        specifier: 1.2.3
-        version: 1.2.3
-      graphql:
-        specifier: 16.12.0
-        version: 16.12.0
-      libsql:
-        specifier: ^0.5.29
-        version: 0.5.29
     devDependencies:
       '@ai-sdk/anthropic':
         specifier: ^2.0.80
         version: 2.0.80(zod@4.3.6)
+      '@datadog/pprof':
+        specifier: ^5.13.3
+        version: 5.13.3
+      '@electric-sql/pglite':
+        specifier: ^0.3.15
+        version: 0.3.15
       '@jest/globals':
         specifier: ^30.2.0
         version: 30.4.1
@@ -305,6 +293,9 @@ importers:
       '@powerhousedao/clint-common':
         specifier: 'catalog:'
         version: 0.1.0-dev.98(47ac22879cd2bd838907e045f7de4ea1)
+      '@powerhousedao/pglite-fs':
+        specifier: 'catalog:'
+        version: 6.2.0-rc.3(@electric-sql/pglite@0.3.15)
       '@powerhousedao/ph-clint':
         specifier: 'catalog:'
         version: 0.1.0-dev.98(ff7274dfc12def4605b3031ffb385a47)
@@ -353,6 +344,9 @@ importers:
       chokidar:
         specifier: ^3.6.0
         version: 3.6.0
+      devcert:
+        specifier: 1.2.3
+        version: 1.2.3
       document-model:
         specifier: 'catalog:'
         version: 6.2.0-rc.3(@sentry/node-core@10.57.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.7.1(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.205.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.214.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.1.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.41.1))(rolldown@1.0.2)
@@ -365,6 +359,12 @@ importers:
       eslint-plugin-jest:
         specifier: ^29.15.2
         version: 29.15.2(@typescript-eslint/eslint-plugin@8.59.3(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3))(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3))(eslint@9.39.4(jiti@2.7.0))(jest@30.4.2(@types/node@25.8.0)(babel-plugin-macros@3.1.0))(typescript@6.0.3)
+      fsevents:
+        specifier: ^2.3.3
+        version: 2.3.3
+      graphql:
+        specifier: 16.12.0
+        version: 16.12.0
       jest:
         specifier: ^30.2.0
         version: 30.4.2(@types/node@25.8.0)(babel-plugin-macros@3.1.0)
@@ -377,6 +377,9 @@ importers:
       kysely-pglite-dialect:
         specifier: ^1.2.0
         version: 1.2.0(@electric-sql/pglite@0.3.15)(kysely@0.27.6)
+      libsql:
+        specifier: ^0.5.29
+        version: 0.5.29
       proper-lockfile:
         specifier: ^4.1.2
         version: 4.1.2
@@ -401,10 +404,6 @@ importers:
       zod:
         specifier: 4.3.6
         version: 4.3.6
-    optionalDependencies:
-      fsevents:
-        specifier: ^2.3.3
-        version: 2.3.3
 
 packages:
 
@@ -11270,8 +11269,8 @@ snapshots:
   '@babel/helper-define-polyfill-provider@0.6.8(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
-      '@babel/helper-compilation-targets': 7.28.6
-      '@babel/helper-plugin-utils': 7.28.6
+      '@babel/helper-compilation-targets': 7.29.7
+      '@babel/helper-plugin-utils': 7.29.7
       debug: 4.4.3
       lodash.debounce: 4.0.8
       resolve: 1.22.12
@@ -11547,7 +11546,7 @@ snapshots:
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-create-regexp-features-plugin': 7.29.7(@babel/core@7.29.0)
-      '@babel/helper-plugin-utils': 7.28.6
+      '@babel/helper-plugin-utils': 7.29.7
 
   '@babel/plugin-transform-arrow-functions@7.29.7(@babel/core@7.29.0)':
     dependencies:
@@ -11962,8 +11961,8 @@ snapshots:
   '@babel/preset-modules@0.1.6-no-external-plugins(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
-      '@babel/helper-plugin-utils': 7.28.6
-      '@babel/types': 7.29.0
+      '@babel/helper-plugin-utils': 7.29.7
+      '@babel/types': 7.29.7
       esutils: 2.0.3
 
   '@babel/runtime@7.29.2': {}
@@ -17064,9 +17063,9 @@ snapshots:
       graphql-type-json: 0.3.2(graphql@16.12.0)
       graphql-ws: 6.0.7(@fastify/websocket@11.2.0)(graphql@16.12.0)(ws@8.20.1)
       knex: 3.1.0(pg@8.18.0)
-      knex-pglite: 0.13.0(@electric-sql/pglite@0.3.15)(knex@3.1.0(pg@8.18.0))
+      knex-pglite: 0.13.0(@electric-sql/pglite@0.3.15)(knex@3.1.0(pg@8.21.0))
       kysely: 0.28.16
-      kysely-knex: 0.2.0(knex@3.1.0(pg@8.18.0))(kysely@0.28.16)
+      kysely-knex: 0.2.0(knex@3.1.0(pg@8.21.0))(kysely@0.28.16)
       mercurius: 16.9.0(graphql@16.12.0)
       path-to-regexp: 8.4.2
       pg: 8.18.0
@@ -20588,7 +20587,7 @@ snapshots:
   '@rollup/plugin-babel@6.1.0(@babel/core@7.29.0)(@types/babel__core@7.20.5)(rollup@4.62.2)':
     dependencies:
       '@babel/core': 7.29.0
-      '@babel/helper-module-imports': 7.28.6
+      '@babel/helper-module-imports': 7.29.7
       '@rollup/pluginutils': 5.4.0(rollup@4.62.2)
     optionalDependencies:
       '@types/babel__core': 7.20.5
@@ -21970,7 +21969,7 @@ snapshots:
 
   babel-plugin-polyfill-corejs2@0.4.17(@babel/core@7.29.0):
     dependencies:
-      '@babel/compat-data': 7.29.3
+      '@babel/compat-data': 7.29.7
       '@babel/core': 7.29.0
       '@babel/helper-define-polyfill-provider': 0.6.8(@babel/core@7.29.0)
       semver: 6.3.1
@@ -23677,8 +23676,7 @@ snapshots:
   fsevents@2.3.2:
     optional: true
 
-  fsevents@2.3.3:
-    optional: true
+  fsevents@2.3.3: {}
 
   function-bind@1.1.2: {}
 
@@ -24790,6 +24788,12 @@ snapshots:
       '@electric-sql/pglite': 0.3.15
       knex: 3.1.0(pg@8.18.0)
 
+  knex-pglite@0.13.0(@electric-sql/pglite@0.3.15)(knex@3.1.0(pg@8.21.0)):
+    dependencies:
+      '@electric-sql/pglite': 0.3.15
+      knex: 3.1.0(pg@8.21.0)
+    optional: true
+
   knex@3.1.0(pg@8.18.0):
     dependencies:
       colorette: 2.0.19
@@ -24836,6 +24840,12 @@ snapshots:
     dependencies:
       knex: 3.1.0(pg@8.18.0)
       kysely: 0.28.16
+
+  kysely-knex@0.2.0(knex@3.1.0(pg@8.21.0))(kysely@0.28.16):
+    dependencies:
+      knex: 3.1.0(pg@8.21.0)
+      kysely: 0.28.16
+    optional: true
 
   kysely-pglite-dialect@1.2.0(@electric-sql/pglite@0.3.15)(kysely@0.27.6):
     dependencies:

@@ -16,7 +16,8 @@
   "scripts": {
     "build:assets": "tsx scripts/build-assets.ts",
     "typecheck": "tsc --noEmit",
-    "build": "rm -rf dist && pnpm build:assets && pnpm typecheck && tsdown",
+    "build": "rm -rf dist && pnpm build:assets && pnpm typecheck && tsdown && pnpm vendor",
+    "vendor": "tsx scripts/vendor-deps.ts",
     "refresh:test-skills": "pnpm build:assets && rm -rf ../../vetra-test/.ph/vetra/.mastra/skills && cp -R gen/skills ../../vetra-test/.ph/vetra/.mastra/skills && echo '[refresh] vetra-test skills replaced; restart vetra for the change to take effect'",
     "dev": "tsx src/main.ts --workdir ../../vetra-test",
     "dev:reset": "bash scripts/dev-reset.sh",
@@ -33,8 +34,6 @@
     "telemetry:dev": "ph-telemetry-dev --cli-name=vetra"
   },
   "dependencies": {
-    "@datadog/pprof": "^5.13.3",
-    "@electric-sql/pglite": "^0.3.15",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/api-logs": "0.205.0",
     "@opentelemetry/exporter-logs-otlp-http": "0.205.0",
@@ -45,17 +44,17 @@
     "@opentelemetry/sdk-metrics": "2.1.0",
     "@opentelemetry/sdk-node": "0.205.0",
     "@opentelemetry/sdk-trace-base": "2.1.0",
-    "@powerhousedao/pglite-fs": "catalog:",
-    "@powerhousedao/switchboard": "catalog:",
-    "devcert": "1.2.3",
-    "graphql": "catalog:",
-    "libsql": "^0.5.29"
-  },
-  "optionalDependencies": {
-    "fsevents": "^2.3.3"
+    "@powerhousedao/switchboard": "catalog:"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^2.0.80",
+    "@datadog/pprof": "^5.13.3",
+    "@electric-sql/pglite": "^0.3.15",
+    "@powerhousedao/pglite-fs": "catalog:",
+    "devcert": "1.2.3",
+    "fsevents": "^2.3.3",
+    "graphql": "catalog:",
+    "libsql": "^0.5.29",
     "@jest/globals": "^30.2.0",
     "@mastra/core": "^1.41.0",
     "@mastra/libsql": "^1.12.1",
