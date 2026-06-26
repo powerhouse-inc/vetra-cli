@@ -38,6 +38,19 @@ export default defineConfig({
     "@powerhousedao/pglite-fs",
     "graphql",
     "fsevents",
+    // Optional leaves of the bundled embedded Switchboard, absent by design
+    // (knex uses pglite; codegen runs via `ph generate`; ink devtools unused).
+    "@graphql-codegen/cli",
+    "better-sqlite3",
+    "sqlite3",
+    "mysql",
+    "mysql2",
+    "oracledb",
+    "tedious",
+    "pg-query-stream",
+    "react-devtools-core",
+    /^@prettier\/plugin-/,
+    /prettier-plugin-/,
   ],
   plugins: [dirnameShim],
   // bin/start/Dockerfile expect dist/main.js (ESM via package "type": "module").

@@ -43,11 +43,11 @@
     "@opentelemetry/sdk-logs": "0.205.0",
     "@opentelemetry/sdk-metrics": "2.1.0",
     "@opentelemetry/sdk-node": "0.205.0",
-    "@opentelemetry/sdk-trace-base": "2.1.0",
-    "@powerhousedao/switchboard": "catalog:"
+    "@opentelemetry/sdk-trace-base": "2.1.0"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^2.0.80",
+    "@powerhousedao/switchboard": "catalog:",
     "@datadog/pprof": "^5.13.3",
     "@electric-sql/pglite": "^0.3.15",
     "@powerhousedao/pglite-fs": "catalog:",
