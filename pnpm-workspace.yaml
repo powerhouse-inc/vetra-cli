@@ -31,10 +31,10 @@ catalog:
   ph-cmd: '6.2.0-rc.2'
 
   # other shared deps
-  '@powerhousedao/clint-common': '0.1.0-dev.97'
-  '@powerhousedao/ph-clint': '0.1.0-dev.97'
-  '@powerhousedao/ph-clint-dev': '0.1.0-dev.97'
-  '@powerhousedao/ph-clint-observability': '0.1.0-dev.97'
+  '@powerhousedao/clint-common': '0.1.0-dev.98'
+  '@powerhousedao/ph-clint': '0.1.0-dev.98'
+  '@powerhousedao/ph-clint-dev': '0.1.0-dev.98'
+  '@powerhousedao/ph-clint-observability': '0.1.0-dev.98'
   '@types/node': '^25.5.2'
   eslint-config-prettier: '^10.1.8'
   graphql: '16.12.0'

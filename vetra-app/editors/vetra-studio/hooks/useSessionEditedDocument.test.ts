@@ -40,6 +40,8 @@ function msg(role: Message["role"], content: ContentPart[]): Message {
     stepIndex: null,
     createdAt: "2026-06-25T12:00:00.000Z",
     usage: null,
+    finishedAt: null,
+    finishReason: null,
   };
 }
 
