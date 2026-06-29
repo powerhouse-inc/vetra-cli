@@ -1,23 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   IDEATION_TYPES,
-  followAction,
-  latestTouchedNavigable,
+  deployFollowAction,
+  editFollowAction,
   previewFollowAction,
   sectionForDocumentType,
-  type DocLike,
-  type TouchedTarget,
+  type EditMark,
 } from "./auto-nav.js";
+import type { OpenTarget } from "./ideation/types.js";
 import { SPECIFY_TYPES } from "./specify/projects.js";
-
-function doc(
-  id: string,
-  documentType: string,
-  lastModifiedAtUtcIso: string | Date,
-  name = id,
-): DocLike {
-  return { header: { id, name, documentType, lastModifiedAtUtcIso } };
-}
 
 describe("sectionForDocumentType", () => {
   it("maps the five ideation sheet types to ideate", () => {
@@ -56,196 +47,109 @@ describe("sectionForDocumentType", () => {
   });
 });
 
-describe("latestTouchedNavigable", () => {
-  it("returns null for an empty drive", () => {
-    expect(latestTouchedNavigable([])).toBeNull();
-  });
-
-  it("returns null when no navigable docs exist", () => {
-    const docs = [
-      doc("a", "powerhouse/chat-session", "2026-06-04T10:00:00.000Z"),
-      doc("b", "custom/task", "2026-06-04T11:00:00.000Z"),
-    ];
-    expect(latestTouchedNavigable(docs)).toBeNull();
-  });
-
-  it("picks the most recently modified navigable doc", () => {
-    const docs = [
-      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
-      doc("b", "powerhouse/problem-sheet", "2026-06-04T12:00:00.000Z", "Prob"),
-      doc("c", "powerhouse/audience-sheet", "2026-06-04T11:00:00.000Z", "Aud"),
-    ];
-    expect(latestTouchedNavigable(docs)).toEqual({
-      id: "b",
-      documentType: "powerhouse/problem-sheet",
-      name: "Prob",
-      ts: new Date("2026-06-04T12:00:00.000Z").getTime(),
-      section: "ideate",
-    });
-  });
-
-  it("follows a document-model and reports section specify", () => {
-    const docs = [
-      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
-      doc("m", "powerhouse/document-model", "2026-06-04T23:00:00.000Z", "Task"),
-    ];
-    expect(latestTouchedNavigable(docs)).toEqual({
-      id: "m",
-      documentType: "powerhouse/document-model",
-      name: "Task",
-      ts: new Date("2026-06-04T23:00:00.000Z").getTime(),
-      section: "specify",
-    });
-  });
-
-  it("follows a document-editor and reports section specify", () => {
-    const docs = [
-      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
-      doc(
-        "e",
-        "powerhouse/document-editor",
-        "2026-06-04T23:00:00.000Z",
-        "MyEditor",
-      ),
-    ];
-    expect(latestTouchedNavigable(docs)).toEqual({
-      id: "e",
-      documentType: "powerhouse/document-editor",
-      name: "MyEditor",
-      ts: new Date("2026-06-04T23:00:00.000Z").getTime(),
-      section: "specify",
-    });
-  });
-
-  it("ignores non-navigable docs even if newer", () => {
-    const docs = [
-      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
-      doc("z", "powerhouse/chat-session", "2026-06-04T23:00:00.000Z"), // newest but not navigable
-    ];
-    expect(latestTouchedNavigable(docs)?.id).toBe("a");
-  });
-
-  it("accepts Date instances as well as ISO strings", () => {
-    const docs = [
-      doc("a", "powerhouse/feature", new Date("2026-06-04T10:00:00.000Z")),
-      doc("b", "powerhouse/feature", new Date("2026-06-04T13:00:00.000Z"), "B"),
-    ];
-    expect(latestTouchedNavigable(docs)?.id).toBe("b");
-  });
-
-  it("on equal timestamps prefers the later entry (newest appended)", () => {
-    const t = "2026-06-04T10:00:00.000Z";
-    const docs = [
-      doc("a", "powerhouse/brand-sheet", t),
-      doc("b", "powerhouse/problem-sheet", t),
-    ];
-    expect(latestTouchedNavigable(docs)?.id).toBe("b");
-  });
-
-  it("skips docs with an unparseable timestamp", () => {
-    const docs = [
-      doc("a", "powerhouse/brand-sheet", "2026-06-04T10:00:00.000Z", "Brand"),
-      doc("bad", "powerhouse/feature", "not-a-date"),
-    ];
-    expect(latestTouchedNavigable(docs)?.id).toBe("a");
-  });
-});
-
-function touched(id: string, ts: number): TouchedTarget {
-  return {
-    id,
-    documentType: "powerhouse/brand-sheet",
-    name: id,
-    ts,
-    section: "ideate",
-  };
+function target(
+  id: string,
+  documentType = "powerhouse/brand-sheet",
+): OpenTarget {
+  return { id, documentType, name: id };
 }
 
-const followingView = {
-  autoNavEnabled: true,
-  userPinned: false,
-  openDocId: null,
-};
+describe("editFollowAction", () => {
+  const view = { autoNavEnabled: true, userPinned: false, openDocId: null };
 
-describe("followAction", () => {
-  it("does nothing when there is no navigable doc", () => {
-    expect(followAction(null, null, followingView)).toEqual({
-      mark: null,
-      open: null,
-    });
-  });
-
-  it("does nothing when the newest touch is not newer than the mark", () => {
-    const latest = touched("x", 100);
-    expect(followAction(latest, { id: "x", ts: 100 }, followingView)).toEqual({
-      mark: null,
-      open: null,
-    });
-    expect(followAction(latest, { id: "y", ts: 200 }, followingView)).toEqual({
-      mark: null,
-      open: null,
-    });
-  });
-
-  it("opens a newer touch on a doc that is not in view", () => {
-    const latest = touched("x", 200);
-    expect(followAction(latest, { id: "y", ts: 100 }, followingView)).toEqual({
-      mark: { id: "x", ts: 200 },
-      open: latest,
-    });
-  });
-
-  it("does not re-open the doc already in view on a re-edit", () => {
-    const latest = touched("x", 200);
+  it("does nothing while no session is resolved", () => {
     expect(
-      followAction(
-        latest,
-        { id: "x", ts: 100 },
-        { ...followingView, openDocId: "x" },
+      editFollowAction(
+        { sessionId: null, callId: "c1", target: target("x") },
+        null,
+        view,
       ),
-    ).toEqual({ mark: { id: "x", ts: 200 }, open: null });
+    ).toEqual({ mark: null, open: null });
   });
 
-  it("re-opens a closed doc on its next touch", () => {
-    // The mark already points at x (it was followed, then closed) — a newer
-    // touch on x must bring it back even though it was the last doc touched.
-    const latest = touched("x", 200);
-    expect(followAction(latest, { id: "x", ts: 100 }, followingView)).toEqual({
-      mark: { id: "x", ts: 200 },
-      open: latest,
-    });
-  });
-
-  it("advances the mark without opening while the toggle is off", () => {
-    const latest = touched("x", 200);
+  it("seeds on first observation of a session without opening", () => {
     expect(
-      followAction(
-        latest,
-        { id: "y", ts: 100 },
-        { ...followingView, autoNavEnabled: false },
+      editFollowAction(
+        { sessionId: "s1", callId: "c1", target: target("x") },
+        null,
+        view,
       ),
-    ).toEqual({ mark: { id: "x", ts: 200 }, open: null });
+    ).toEqual({ mark: { sessionId: "s1", callId: "c1" }, open: null });
   });
 
-  it("advances the mark without opening while pinned", () => {
-    const latest = touched("x", 200);
+  it("re-seeds on session switch without opening", () => {
     expect(
-      followAction(
-        latest,
-        { id: "y", ts: 100 },
-        { ...followingView, userPinned: true },
+      editFollowAction(
+        { sessionId: "s2", callId: "c9", target: target("y") },
+        { sessionId: "s1", callId: "c1" },
+        view,
       ),
-    ).toEqual({ mark: { id: "x", ts: 200 }, open: null });
+    ).toEqual({ mark: { sessionId: "s2", callId: "c9" }, open: null });
   });
 
-  it("follows activity on a suppressed doc once re-armed", () => {
-    // While pinned the agent worked on x (mark advanced to x@200). After
-    // unpinning, a newer touch on x navigates — x is not the doc in view.
-    const latest = touched("x", 300);
-    expect(followAction(latest, { id: "x", ts: 200 }, followingView)).toEqual({
-      mark: { id: "x", ts: 300 },
-      open: latest,
-    });
+  it("does nothing while the session has no edit call", () => {
+    expect(
+      editFollowAction(
+        { sessionId: "s1", callId: null, target: null },
+        { sessionId: "s1", callId: null },
+        view,
+      ),
+    ).toEqual({ mark: null, open: null });
+  });
+
+  it("does nothing when the edit call was already processed", () => {
+    expect(
+      editFollowAction(
+        { sessionId: "s1", callId: "c1", target: target("x") },
+        { sessionId: "s1", callId: "c1" },
+        view,
+      ),
+    ).toEqual({ mark: null, open: null });
+  });
+
+  it("opens a navigable target on a new edit call", () => {
+    expect(
+      editFollowAction(
+        { sessionId: "s1", callId: "c2", target: target("x") },
+        { sessionId: "s1", callId: "c1" },
+        view,
+      ),
+    ).toEqual({ mark: { sessionId: "s1", callId: "c2" }, open: target("x") });
+  });
+
+  it("advances the mark but does not open a non-navigable type", () => {
+    expect(
+      editFollowAction(
+        {
+          sessionId: "s1",
+          callId: "c2",
+          target: target("x", "powerhouse/chat-session"),
+        },
+        { sessionId: "s1", callId: "c1" },
+        view,
+      ),
+    ).toEqual({ mark: { sessionId: "s1", callId: "c2" }, open: null });
+  });
+
+  it("does not re-open the doc already in view", () => {
+    expect(
+      editFollowAction(
+        { sessionId: "s1", callId: "c2", target: target("x") },
+        { sessionId: "s1", callId: "c1" },
+        { ...view, openDocId: "x" },
+      ),
+    ).toEqual({ mark: { sessionId: "s1", callId: "c2" }, open: null });
+  });
+
+  it("advances the mark without opening while suppressed", () => {
+    const next = { sessionId: "s1", callId: "c2", target: target("x") };
+    const prev: EditMark = { sessionId: "s1", callId: "c1" };
+    expect(
+      editFollowAction(next, prev, { ...view, autoNavEnabled: false }),
+    ).toEqual({ mark: { sessionId: "s1", callId: "c2" }, open: null });
+    expect(editFollowAction(next, prev, { ...view, userPinned: true })).toEqual(
+      { mark: { sessionId: "s1", callId: "c2" }, open: null },
+    );
   });
 });
 
@@ -323,5 +227,12 @@ describe("previewFollowAction", () => {
     expect(
       previewFollowAction(next, prev, { ...view, userPinned: true }),
     ).toEqual({ mark: { sessionId: "s1", callId: "c2" }, navigate: false });
+  });
+});
+
+describe("deployFollowAction", () => {
+  it("is the shared session-call follow decision (aliases previewFollowAction)", () => {
+    // The deploy track is intentionally the same logic; guard against drift.
+    expect(deployFollowAction).toBe(previewFollowAction);
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.34",
+  "version": "0.0.1-dev.35",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -80,6 +80,7 @@
     "@types/proper-lockfile": "^4.1.4",
     "chokidar": "^3.6.0",
     "document-model": "catalog:",
+    "eslint": "9.39.4",
     "eslint-config-prettier": "catalog:",
     "eslint-plugin-jest": "^29.15.2",
     "jest": "^30.2.0",

@@ -1,5 +1,5 @@
 /** Status display config. Class strings are literal so Tailwind keeps them. */
-type StatusConfig = { label: string; dot: string; badge: string };
+type StatusConfig = { label: string; dot: string };
 
 const STATUS: Record<string, StatusConfig> = {
   DRAFT: {
@@ -65,7 +65,6 @@ function configFor(status: string): StatusConfig {
     STATUS[status] ?? {
       label: status.replace(/_/g, " "),
       dot: "bg-muted-foreground",
-      badge: "bg-muted text-muted-foreground",
     }
   );
 }

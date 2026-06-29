@@ -6,12 +6,16 @@ import {
   findMyEnvironment,
   listMyEnvironments,
 } from "../../cloud/environments-read.js";
-import { describeEnvironmentSummary } from "./_helpers.js";
+import { loadEnvironmentState } from "../../cloud/environments-write.js";
+import {
+  describeEnvironmentState,
+  describeEnvironmentSummary,
+} from "./_helpers.js";
 
 export const deployEnvironmentGet = defineCommand({
   id: "deploy-environment-get",
   description:
-    "Show a Vetra Cloud deployment environment's details (live data; requires Renown authorization — check with whoami). Service/package detail comes with the write path.",
+    "Show a Vetra Cloud deployment environment's details — status, services, and installed packages with their versions (live data; requires Renown authorization — check with whoami). Read $.packages to see which package@version is installed when deciding whether a deploy is needed.",
   inputSchema: z.object({
     name: z
       .string()
@@ -50,9 +54,22 @@ export const deployEnvironmentGet = defineCommand({
         knownLabel: "Available environments",
       });
     }
+
+    // The summary (myEnvironments) carries no packages/services, so pull the
+    // full document. Fall back to the summary if the pull fails (e.g. the
+    // document can't be loaded) so a get never hard-fails.
+    const state = await loadEnvironmentState(ctx, env.id).catch(() => null);
+
     if (input.full || input.filter) {
-      return { text: renderProjected(env, input.filter ?? "$", input.format) };
+      // Project over the full state (so `$.packages`, `$.services` resolve),
+      // keeping the document id the summary carried.
+      const obj = state ? { ...state, id: env.id } : env;
+      return { text: renderProjected(obj, input.filter ?? "$", input.format) };
     }
-    return { text: describeEnvironmentSummary(env) };
+    return {
+      text: state
+        ? describeEnvironmentState(state, env.id)
+        : describeEnvironmentSummary(env),
+    };
   },
 });

@@ -1,15 +1,16 @@
 /**
  * Auto-navigation target selection (pure, unit-testable).
  *
- * The studio follows the document the agent is currently working on: as the
- * agent creates AND fills in ideation sheets, the view tracks whichever sheet
- * was most recently touched. We key off the document headers'
- * `lastModifiedAtUtcIso` (creation bumps it too), so a burst of fast creations
- * followed by spaced-out edits walks the view through each sheet as it fills in
- * — rather than jumping straight to the last-created one.
+ * Session-scoped follow decisions live here, all keyed on the selected chat
+ * session so activity in other sessions never yanks the view:
+ *   - `editFollowAction` — open the document the selected session's agent just
+ *     created/updated (ideation sheets → IDEATE; builder spec types → SPECIFY).
+ *   - `previewFollowAction` — switch to BUILD when the selected session surfaces
+ *     a preview via `spec-preview-show`.
+ *   - `deployFollowAction` — switch to DEPLOY on a new deploy call (aliased to
+ *     the preview decision; same per-session new-callId rule).
  *
- * Decision logic lives here so it can be tested without a React renderer —
- * mirroring `hooks/useSessionPreviewTarget.ts`.
+ * Decision logic lives here so it can be tested without a React renderer.
  */
 import type { OpenTarget } from "./ideation/types.js";
 import { SPECIFY_TYPES } from "./specify/projects.js";
@@ -37,59 +38,53 @@ export function sectionForDocumentType(
   return null;
 }
 
-/** Minimal structural shape of a resolved document we read (a subset of
- * PHDocument). `useDocumentsInSelectedDrive()` returns these. */
-export type DocLike = {
-  header: {
-    id: string;
-    name: string;
-    documentType: string;
-    lastModifiedAtUtcIso: string | Date;
-  };
-};
-
-/** An auto-nav candidate: an OpenTarget plus the modified-time (epoch ms) used
- * to decide whether it's newer than what we've already followed, and the
- * section the document opens in. */
-export type TouchedTarget = OpenTarget & {
-  ts: number;
-  section: "ideate" | "specify";
-};
-
-function toMs(value: string | Date): number {
-  return value instanceof Date ? value.getTime() : new Date(value).getTime();
-}
-
-/** High-water mark of the newest touch the watcher has processed. */
-export type FollowMark = { id: string; ts: number };
-
-/** What the user is currently looking at, as the watcher needs it. */
-export type FollowView = {
-  autoNavEnabled: boolean;
-  userPinned: boolean;
-  /** Id of the document open inline, or null when a list/home is shown. */
-  openDocId: string | null;
-};
+/** The agent edit the session-scoped doc watcher last processed, per session. */
+export type EditMark = { sessionId: string; callId: string | null };
 
 /**
- * Decide how the auto-follow watcher reacts to the newest touch. Returns the
- * mark to record (null = leave unchanged) and the target to open (null = stay
- * put). The mark advances even when navigation is suppressed (toggle off,
- * pinned) so re-arming follows future activity rather than replaying old
- * touches. Navigation is skipped only when the touched doc is the one
- * already open — a closed doc re-opens on its next touch.
+ * Decide whether the selected session's latest agent edit should open a
+ * document. Mirrors `previewFollowAction`'s per-session seeding (switching to
+ * or first observing a session never navigates — only a NEW edit does, keyed by
+ * the tool-result `callId`) and the open guards of the old timestamp watcher
+ * (toggle/pin suppress; a doc already in view doesn't re-jump). The mark
+ * advances even when navigation is suppressed, so re-arming follows future
+ * edits rather than replaying the last one. A non-navigable edited type
+ * advances the mark but opens nothing, so we never jump back to an older
+ * navigable doc.
  */
-export function followAction(
-  latest: TouchedTarget | null,
-  prev: FollowMark | null,
-  view: FollowView,
-): { mark: FollowMark | null; open: TouchedTarget | null } {
-  if (!latest) return { mark: null, open: null };
-  if (latest.ts <= (prev?.ts ?? -1)) return { mark: null, open: null };
-  const mark = { id: latest.id, ts: latest.ts };
+export function editFollowAction(
+  next: {
+    sessionId: string | null;
+    callId: string | null;
+    target: OpenTarget | null;
+  },
+  prev: EditMark | null,
+  view: {
+    autoNavEnabled: boolean;
+    userPinned: boolean;
+    openDocId: string | null;
+  },
+): { mark: EditMark | null; open: OpenTarget | null } {
+  if (!next.sessionId) return { mark: null, open: null };
+  if (!prev || prev.sessionId !== next.sessionId) {
+    return {
+      mark: { sessionId: next.sessionId, callId: next.callId },
+      open: null,
+    };
+  }
+  if (!next.callId || next.callId === prev.callId) {
+    return { mark: null, open: null };
+  }
+  const mark = { sessionId: next.sessionId, callId: next.callId };
   if (!view.autoNavEnabled || view.userPinned) return { mark, open: null };
-  if (latest.id === view.openDocId) return { mark, open: null };
-  return { mark, open: latest };
+  if (
+    !next.target ||
+    sectionForDocumentType(next.target.documentType) === null ||
+    next.target.id === view.openDocId
+  ) {
+    return { mark, open: null };
+  }
+  return { mark, open: next.target };
 }
 
 /** The spec-preview-show call the BUILD watcher last processed, per session. */
@@ -99,9 +94,9 @@ export type PreviewMark = { sessionId: string; callId: string | null };
  * Decide whether a session's preview target should switch the view to BUILD.
  * Keyed on the show call's toolCallId: a re-show of the same target is a new
  * call and navigates again. Seeds per session (a target already in the
- * transcript at load/session-switch doesn't navigate). Like `followAction`,
- * the mark advances when navigation is suppressed, so re-arming doesn't
- * replay an old show.
+ * transcript at load/session-switch doesn't navigate). Like `editFollowAction`,
+ * the mark advances when navigation is suppressed, so re-arming doesn't replay
+ * an old show.
  */
 export function previewFollowAction(
   next: { sessionId: string | null; callId: string | null },
@@ -123,29 +118,10 @@ export function previewFollowAction(
 }
 
 /**
- * The navigable document most recently created-or-modified. Returns `null` when
- * the drive has no navigable documents. On ties the later entry in `docs` wins
- * (documents are appended in creation order, so this prefers the newest).
+ * The DEPLOY follow track reuses the preview track's decision verbatim — both
+ * are "a new tool call surfaced for this session → navigate, seeded per
+ * session, mark advances when suppressed". Aliased (not duplicated) so the
+ * deploy call site reads honestly while sharing one tested implementation.
  */
-export function latestTouchedNavigable(
-  docs: readonly DocLike[],
-): TouchedTarget | null {
-  let best: TouchedTarget | null = null;
-  for (const doc of docs) {
-    const h = doc.header;
-    const section = sectionForDocumentType(h.documentType);
-    if (!section) continue;
-    const ts = toMs(h.lastModifiedAtUtcIso);
-    if (Number.isNaN(ts)) continue;
-    if (!best || ts >= best.ts) {
-      best = {
-        id: h.id,
-        documentType: h.documentType,
-        name: h.name,
-        ts,
-        section,
-      };
-    }
-  }
-  return best;
-}
+export const deployFollowAction = previewFollowAction;
+export type DeployMark = PreviewMark;

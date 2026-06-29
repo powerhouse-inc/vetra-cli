@@ -45,6 +45,24 @@ async function getWriteSession(ctx: ReadContext): Promise<WriteSession> {
   };
 }
 
+/** Load an environment's full document state (services, installed packages +
+ * versions, registry) without modifying it. The read path's `myEnvironments`
+ * summary lacks these, so reads that need package/service detail pull the
+ * document here. Requires the agent to be authorized (signer). */
+export async function loadEnvironmentState(
+  ctx: ReadContext,
+  documentId: string,
+): Promise<VetraCloudEnvironmentGlobalState> {
+  const session = await getWriteSession(ctx);
+  const controller = await loadEnvironmentController({
+    client: session.client,
+    documentId,
+    parentIdentifier: session.driveId,
+    signer: session.signer,
+  });
+  return controller.state.global;
+}
+
 /** Apply edits to an existing environment and push them. `documentId` is the
  * environment id from the read path (deploy-environment-list). Returns the
  * resulting global state. */

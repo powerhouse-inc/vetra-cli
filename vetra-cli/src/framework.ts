@@ -26,6 +26,17 @@ export const configSchema = z.object({
   cloudSwitchboardUrl: z.string().optional().describe('Vetra Cloud switchboard GraphQL base URL the deploy commands talk to (defaults to https://switchboard.staging.vetra.io)'),
   cloudRenownUrl: z.string().optional().describe('Renown identity service URL for the cloud login flow (defaults to https://www.renown.id)'),
   // @clint:end framework-config
+
+  githubAppSlug: z
+    .string()
+    .default('vetra-studio')
+    .describe('GitHub App slug; the bot commits as <slug>[bot] (env VETRA_GITHUB_APP_SLUG)'),
+  environmentId: z
+    .string()
+    .optional()
+    .describe(
+      'The studio environment document id used to scope the GitHub repo (env VETRA_ENVIRONMENT_ID)',
+    ),
 });
 
 export const secretsSchema = z.object({
