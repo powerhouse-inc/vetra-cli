@@ -403,7 +403,7 @@ export function VetraStudio({
           <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
         </div>
       </div>
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-accent">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <AutoNavToggle
           enabled={autoNavEnabled}
           paused={userPinned}
