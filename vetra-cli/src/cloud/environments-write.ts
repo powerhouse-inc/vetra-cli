@@ -10,15 +10,22 @@ import {
   applyEnvironmentUpdate as applyUpdateActions,
   createNewEnvironmentController,
   createReactorClient,
+  isStudioEnvironment,
   loadEnvironmentController,
   resolveCloudDriveId,
   type CloudServiceType,
   type EnvironmentChanges,
+  type EnvironmentSummary,
+  type ListScope,
   type VetraCloudEnvironmentGlobalState,
 } from "@powerhousedao/vetra-cloud-client";
 import { getBearerToken, getRenown } from "../auth/renown.js";
 import { resolveCloudConfig } from "./config.js";
-import { NOT_AUTHENTICATED, type ReadContext } from "./environments-read.js";
+import {
+  listMyEnvironments,
+  NOT_AUTHENTICATED,
+  type ReadContext,
+} from "./environments-read.js";
 
 export type { EnvironmentChanges, EnvironmentTransition } from "@powerhousedao/vetra-cloud-client";
 
@@ -63,9 +70,37 @@ export async function loadEnvironmentState(
   return controller.state.global;
 }
 
+export type EnvironmentSummaryWithStudio = EnvironmentSummary & {
+  /** This env runs Vetra Studio (has `vetra-cli` installed) — not a deploy
+   * target. */
+  isStudio: boolean;
+};
+
+/** List the caller's environments and flag the Vetra Studio ones. The summary
+ * query carries no packages, so each env's document is loaded to read its
+ * installed packages; a load failure leaves the env unflagged (the write path
+ * refuses package installs as the hard backstop, so a transient error can't let
+ * a deploy through). */
+export async function listEnvironmentsWithStudioFlag(
+  ctx: ReadContext,
+  scope: ListScope = "MINE",
+): Promise<EnvironmentSummaryWithStudio[]> {
+  const items = await listMyEnvironments(ctx, scope);
+  return Promise.all(
+    items.map(async (env) => {
+      const state = await loadEnvironmentState(ctx, env.id).catch(() => null);
+      const isStudio = state
+        ? isStudioEnvironment(state.packages.map((p) => p.name))
+        : false;
+      return { ...env, isStudio };
+    }),
+  );
+}
+
 /** Apply edits to an existing environment and push them. `documentId` is the
  * environment id from the read path (deploy-environment-list). Returns the
- * resulting global state. */
+ * resulting global state. Refuses to install packages into a Vetra Studio
+ * environment — those host the Studio itself. */
 export async function applyEnvironmentUpdate(
   ctx: ReadContext,
   documentId: string,
@@ -78,6 +113,18 @@ export async function applyEnvironmentUpdate(
     parentIdentifier: session.driveId,
     signer: session.signer,
   });
+  if (
+    (changes.addPackages?.length ?? 0) > 0 &&
+    isStudioEnvironment(controller.state.global.packages.map((p) => p.name))
+  ) {
+    const label = controller.state.global.label ?? documentId;
+    throw new Error(
+      `Cannot install packages into the Vetra Studio environment "${label}".
+This environment runs Vetra Studio and cannot be used as a deploy target. 
+Please select a different environment or create a new one for deployments.`,
+   
+    );
+  }
   applyUpdateActions(controller, changes);
   await controller.push();
   return controller.state.global;

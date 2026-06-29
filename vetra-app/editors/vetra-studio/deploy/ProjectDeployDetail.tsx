@@ -179,6 +179,37 @@ export function ProjectDeployDetail({
     pending.size === 0 &&
     environments.every((d) => d.state === "live-current");
 
+  // Where the project is already installed vs. the rest.
+  const deployedEnvs = environments.filter((d) => d.installed);
+  const otherEnvs = environments.filter((d) => !d.installed);
+
+  const renderEnvList = (envs: ProjectEnvDeployment[]) => (
+    <div className="rounded-xl border border-vetra-border bg-vetra-card">
+      {envs.map((d, i) => (
+        <EnvRow
+          key={d.env.id}
+          d={d}
+          release={release}
+          first={i === 0}
+          busyPhase={busy?.key === d.env.id ? busy.phase : null}
+          deploying={pending.has(d.env.id) || IN_FLIGHT.has(d.env.status ?? "")}
+          disabled={busy !== null}
+          onDeploy={() => {
+            void run(
+              {
+                kind: "existing",
+                envId: d.env.id,
+                alreadyInstalled: d.installed,
+              },
+              d.env.id,
+              d.env.name?.trim() || d.env.id,
+            );
+          }}
+        />
+      ))}
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
@@ -221,7 +252,9 @@ export function ProjectDeployDetail({
         <section className="flex flex-col gap-4">
           <div className="flex items-baseline justify-between">
             <h3 className="text-sm font-semibold text-vetra-fg">
-              Where it runs
+              {deployedEnvs.length > 0
+                ? "Deployed on:"
+                : "Available environments"}
             </h3>
             {pkg.status === "ready" ? (
               <span className="font-mono text-xs text-vetra-muted-fg">
@@ -235,33 +268,20 @@ export function ProjectDeployDetail({
               This app isn&apos;t running anywhere yet. Create an environment to
               put it online.
             </div>
+          ) : deployedEnvs.length === 0 ? (
+            renderEnvList(environments)
           ) : (
-            <div className="rounded-xl border border-vetra-border bg-vetra-card">
-              {environments.map((d, i) => (
-                <EnvRow
-                  key={d.env.id}
-                  d={d}
-                  release={release}
-                  first={i === 0}
-                  busyPhase={busy?.key === d.env.id ? busy.phase : null}
-                  deploying={
-                    pending.has(d.env.id) || IN_FLIGHT.has(d.env.status ?? "")
-                  }
-                  disabled={busy !== null}
-                  onDeploy={() => {
-                    void run(
-                      {
-                        kind: "existing",
-                        envId: d.env.id,
-                        alreadyInstalled: d.installed,
-                      },
-                      d.env.id,
-                      d.env.name?.trim() || d.env.id,
-                    );
-                  }}
-                />
-              ))}
-            </div>
+            <>
+              {renderEnvList(deployedEnvs)}
+              {otherEnvs.length > 0 ? (
+                <div className="flex flex-col gap-3">
+                  <h3 className="text-sm font-semibold text-vetra-fg">
+                    Other environments
+                  </h3>
+                  {renderEnvList(otherEnvs)}
+                </div>
+              ) : null}
+            </>
           )}
 
           {creating ? (
