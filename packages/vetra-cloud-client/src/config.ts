@@ -37,17 +37,19 @@ export function resolveCloudDriveId(address: string | undefined): string {
   return SHARED_DRIVE_ID;
 }
 
-/** Default host prefix per service. */
-export const SERVICE_PREFIXES: Record<CloudServiceType, string> = {
+/** Default host slug per service — the per-service segment woven into the
+ * environment host (`<subdomain>-<serviceSlug>.<base>`). Stored on the document
+ * as the service's `prefix` field (vetra-cloud-package's schema name). */
+export const SERVICE_SLUGS: Record<CloudServiceType, string> = {
   CONNECT: "connect",
   SWITCHBOARD: "switchboard",
   FUSION: "fusion",
 };
 
-/** Services the user can toggle, with their default prefix (mirrors the order
+/** Services the user can toggle, with their default slug (mirrors the order
  * the studio renders them). */
-export const MANAGEABLE_SERVICES: { type: CloudServiceType; prefix: string }[] = [
-  { type: "CONNECT", prefix: "connect" },
-  { type: "SWITCHBOARD", prefix: "switchboard" },
-  { type: "FUSION", prefix: "fusion" },
+export const MANAGEABLE_SERVICES: { type: CloudServiceType; serviceSlug: string }[] = [
+  { type: "CONNECT", serviceSlug: "connect" },
+  { type: "SWITCHBOARD", serviceSlug: "switchboard" },
+  { type: "FUSION", serviceSlug: "fusion" },
 ];

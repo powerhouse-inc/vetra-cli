@@ -10,6 +10,8 @@ import {
   applyEnvironmentUpdate as applyUpdateActions,
   createNewEnvironmentController,
   createReactorClient,
+  DEPLOY_SERVICES,
+  ensureServicesEnabled,
   isStudioEnvironment,
   loadEnvironmentController,
   resolveCloudDriveId,
@@ -120,10 +122,16 @@ export async function applyEnvironmentUpdate(
     const label = controller.state.global.label ?? documentId;
     throw new Error(
       `Cannot install packages into the Vetra Studio environment "${label}".
-This environment runs Vetra Studio and cannot be used as a deploy target. 
+This environment runs Vetra Studio and cannot be used as a deploy target.
 Please select a different environment or create a new one for deployments.`,
-   
+
     );
+  }
+  // Installing an app implies it must be reachable: Connect serves the UI,
+  // Switchboard the reactor/GraphQL backend. Force both on (idempotent) so a
+  // package-only update never lands a deploy that can't actually run.
+  if ((changes.addPackages?.length ?? 0) > 0) {
+    ensureServicesEnabled(controller, DEPLOY_SERVICES);
   }
   applyUpdateActions(controller, changes);
   await controller.push();
