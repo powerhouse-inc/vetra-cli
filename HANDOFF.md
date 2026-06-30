@@ -164,11 +164,16 @@ against.
     API and tool surface are designed so Mastra runners can plug in
     later without changing the editor contract.
 
-13. **Local-registry chain stays gated off.** `LOCAL_REGISTRY_ENABLED
-    = false` in `constants.ts` keeps `services/local-registry.ts`,
-    `triggers/publish-reload.ts`, the `registryUrl` wiring, and the
-    publish flow inert. Code stays as reference; do not extend it.
-    See ARCHITECTURE.md footnote.
+13. **Local-registry chain removed.** The Verdaccio
+    `services/local-registry.ts`, the `triggers/publish-reload.ts` SSE
+    reconciler, the `LOCAL_REGISTRY_*` constants, and the `registryUrl`
+    wiring on vetra-cli's embedded Switchboard/Connect are all deleted —
+    the preview path is reactor-project + Vite HMR. ph-clint keeps a
+    configurable `registryUrl` (Switchboard `Packages` subgraph +
+    `PH_CONNECT_PACKAGES_REGISTRY`), but its `connect-server.ts` no
+    longer hosts the `/__packages` live hot-reload channel. The live
+    deploy-flow publish (`commands/reactor-project/publish.ts`,
+    `publish-status.ts`) is separate and untouched.
 
 14. **All browser-facing endpoints route through the embedded proxy**
     (port pinned to 8090). Studio at `/` (explicit `proxyRoot` on the
@@ -296,8 +301,7 @@ Suggested order. Each step is independently demoable.
 
 - **Failure notifications to the agent.** Service crashes, workflow
   failures, reactor-project errors surface in the terminal log; the
-  agent doesn't see them. Same gap as the older `package:
-  reload-failed` issue. A `pushAgentNotice` primitive in ph-clint or
+  agent doesn't see them. A `pushAgentNotice` primitive in ph-clint or
   a per-turn pending-context queue closes it.
 
 - **Studio-mode parity for the embedded Connect.** N/A for the live
