@@ -48,12 +48,13 @@ try {
       2,
     ),
   );
-  // Flat (portable into the tarball) + all-platform natives; pnpm 11 reads
-  // these from pnpm-workspace.yaml.
+  // Flat + all-platform natives (pnpm 11 reads from pnpm-workspace.yaml).
+  // strictDepBuilds:false: never run dep builds, just copy bundled prebuilds.
   writeFileSync(
     join(tmp, "pnpm-workspace.yaml"),
     [
       "nodeLinker: hoisted",
+      "strictDepBuilds: false",
       "supportedArchitectures:",
       "  os: [darwin, linux, win32]",
       "  cpu: [x64, arm64]",
