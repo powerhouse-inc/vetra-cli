@@ -1,5 +1,6 @@
 export * from "./types.js";
 export * from "./config.js";
+export * from "./studio.js";
 export * from "./subdomain.js";
 export * from "./graphql.js";
 export * from "./client.js";

@@ -1,3 +1,4 @@
+import { isStudioEnvironment } from "@powerhousedao/vetra-cloud-client";
 import type { EnvironmentSummary } from "./cloudGraphql.js";
 import { CLOUD_BASE_DOMAIN } from "./config.js";
 import type { EnvInstall } from "./useInstalledPackages.js";
@@ -97,9 +98,12 @@ export function deriveEnvDeployments(args: {
   const { environments, byEnv, packageName, release } = args;
   const byId = new Map(byEnv.map((e) => [e.envId, e]));
 
-  return environments.map((env) => {
+  return environments.flatMap((env) => {
     const entry = byId.get(env.id);
     const installs = entry?.packages;
+    // Vetra Studio environments host the Studio itself — never deploy targets,
+    // and not shown in the deploy UI.
+    if (isStudioEnvironment(installs?.keys() ?? [])) return [];
     const installed = installs?.has(packageName) ?? false;
     const installedVersion = installs?.get(packageName) ?? null;
 
@@ -118,13 +122,15 @@ export function deriveEnvDeployments(args: {
       state = "live-current";
     }
 
-    return {
-      env,
-      url: envHost(env),
-      installed,
-      installedVersion,
-      state,
-      services: entry?.services ?? [],
-    };
+    return [
+      {
+        env,
+        url: envHost(env),
+        installed,
+        installedVersion,
+        state,
+        services: entry?.services ?? [],
+      },
+    ];
   });
 }

@@ -1,4 +1,7 @@
-import { applyCreateEnvironment } from "@powerhousedao/vetra-cloud-client";
+import {
+  applyCreateEnvironment,
+  isStudioEnvironment,
+} from "@powerhousedao/vetra-cloud-client";
 import type { ISigner } from "document-model";
 import { publishProject } from "../hooks/preview-server-client.js";
 import {
@@ -91,6 +94,14 @@ export async function deployProject(opts: {
     parentIdentifier: driveId,
     signer,
   });
+  if (
+    isStudioEnvironment(controller.state.global.packages.map((p) => p.name))
+  ) {
+    throw new Error(
+      "Cannot deploy to this environment: it is reserved for Vetra Studio itself. " +
+        "Please choose a different environment or create a new one for your project's deployment.",
+    );
+  }
   if (target.alreadyInstalled) {
     controller.setPackageVersion({ packageName, version });
   } else {
