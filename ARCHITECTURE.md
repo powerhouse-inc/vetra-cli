@@ -39,15 +39,15 @@ of the open work.
                   │  └────────┬─────────────────────────────────┘  │
                   └───────────┼────────────────────────────────────┘
                               │
-                ┌─────────────┼───────────────────────┐
-                │             │                       │
-                ▼             ▼                       ▼
-       ┌──────────────────┐  ┌─────────────────────┐  ┌──────────────────┐
-       │ Connect          │  │ reactor-project(s)  │  │ (dormant)        │
-       │ (static SPA      │  │ per-chat-session    │  │ local-registry   │
-       │ serving          │  │ ph vetra dev-mode   │  │ gated off; see   │
-       │ vetra-app)       │  │ Switchboard +       │  │ footnote         │
-       │ Drive editor =   │  │ Connect with Vite   │  └──────────────────┘
+                ┌─────────────┴───────────┐
+                │                         │
+                ▼                         ▼
+       ┌──────────────────┐  ┌─────────────────────┐
+       │ Connect          │  │ reactor-project(s)  │
+       │ (static SPA      │  │ per-chat-session    │
+       │ serving          │  │ ph vetra dev-mode   │
+       │ vetra-app)       │  │ Switchboard +       │
+       │ Drive editor =   │  │ Connect with Vite   │
        │ Vetra Studio     │  │ HMR. Preview docs   │
        │ port 27370       │  │ live here.          │
        └────────┬─────────┘  └─────────────────────┘
@@ -115,9 +115,9 @@ own. Exposes:
 - `/mcp` — Model Context Protocol endpoint.
 - `/d/:drive` — per-drive GraphQL endpoint.
 
-`PackagesSubgraph` is still registered (cheap, harmless), but the
-agent and editor no longer drive it; package installation is not part
-of the live path.
+The embedded Switchboard starts without a `registryUrl`, so the dynamic
+`Packages` install/uninstall subgraph is not registered. Package
+installation is not part of the live path.
 
 ### Embedded Connect (Vetra Studio)
 
@@ -460,9 +460,6 @@ present, `ctx.reactor()` returns the already-cached instance.
   `teardown()` closes it on daemon shutdown, `poll()` returns null
   (no work items — the trigger is purely a lifetime host for the
   server).
-- `publishReloadTrigger` — **dormant**; gated by
-  `LOCAL_REGISTRY_ENABLED = false` in `constants.ts`. Not registered
-  at runtime. See footnote.
 
 ### Services
 
@@ -470,8 +467,6 @@ present, `ctx.reactor()` returns the already-cached instance.
   Persistent state at `<workdir>/.ph/vetra-cli/services/reactor-project/
   <instance>.json` (read by `reactor-project-ls` and projected over
   the local API).
-- `local-registry` — **dormant**; gated by `LOCAL_REGISTRY_ENABLED`.
-  See footnote.
 
 ## Boot sequence
 
@@ -666,16 +661,14 @@ vetra-cli/
     ├── src/
     │   ├── cli.ts             ← defineCli + configureReactor
     │   ├── framework.ts       ← config + secrets schemas
-    │   ├── constants.ts       ← LOCAL_REGISTRY_* (dormant), API port
+    │   ├── constants.ts       ← API port, proxy paths, default PH version
     │   ├── agents/agent.ts    ← Mastra agent factory
     │   ├── preview-server/    ← vetra-cli local API (resolve/start/events)
     │   ├── commands/          ← spec-*, reactor-project-*, spec-preview-*
     │   ├── services/
-    │   │   ├── local-registry.ts   ← dormant
     │   │   └── reactor-project.ts
     │   ├── triggers/
     │   │   ├── preview-server.ts   ← hosts the local API
-    │   │   ├── publish-reload.ts   ← dormant
     │   │   ├── spec-sync.ts
     │   │   └── spec-fs-sync.ts
     │   └── workflows/         ← workflow registry; planned
@@ -705,41 +698,19 @@ These are limitations of the current direction; not bugs.
 - **Agent doesn't see runtime failures.** Service errors, workflow
   failures, and reactor-project crashes surface in the terminal via
   log handlers; the agent's input channels (chat session + Mastra
-  thread) don't yet receive them. Same gap as the older `package:
-  reload-failed` issue. A `pushAgentNotice(message)` primitive in
-  ph-clint, or a per-turn pending-context queue, would close it.
+  thread) don't yet receive them. A `pushAgentNotice(message)` primitive
+  in ph-clint, or a per-turn pending-context queue, would close it.
 
 - **Studio-mode parity.** Connect runs static in vetra-cli today
-  (vetra-app's prebuilt bundle exists). The dynamic-package-loading
-  endpoints in `connect-server.ts` (`/__packages` SSE, etc.) are
-  upstream and remain in place, but they're not exercised by
-  vetra-cli's live path anymore.
+  (vetra-app's prebuilt bundle exists). ph-clint's `connect-server.ts`
+  serves the static SPA and applies the dynamic-base substitution; it no
+  longer hosts a live package hot-reload channel. ph-clint still accepts
+  a `registryUrl` on its Switchboard/Connect config (the `Packages`
+  subgraph + `PH_CONNECT_PACKAGES_REGISTRY`), but vetra-cli does not set
+  it — the live preview path is reactor-project + Vite HMR, not dynamic
+  package loading.
 
-## Footnote: dormant local-registry path
-
-A previous iteration drove preview through a different mechanism:
-the agent published a Reactor package to a local Verdaccio-based
-registry, and a `publish-reload` trigger reconciled the embedded
-Switchboard + Connect's installed packages via SSE for dynamic bundle
-swaps. That whole chain remains in the source tree, gated by
-`LOCAL_REGISTRY_ENABLED = false` in `constants.ts`. Affected pieces:
-
-- `services/local-registry.ts` (Verdaccio supervisor service)
-- `triggers/publish-reload.ts` (SSE consumer + Switchboard/Connect
-  reconciler)
-- `LOCAL_REGISTRY_URL` / `LOCAL_REGISTRY_PORT` constants
-- `registryUrl` wiring in `cli.configureReactor`'s switchboard/connect
-  options
-
-`commands/reactor-project/publish.ts` (and `publish-status.ts`) are **not**
-dormant — they are the live deploy-flow tools that publish a Reactor package
-to the remote registry via the agent's Renown token (see "Renown identity →
-Publish path" above). Only the local-registry preview wiring above is gated
-off.
-
-With the flag false, none of this runs. The code is retained as
-reference for future scenarios where dynamic package loading is the
-right primitive (e.g. previewing a package against a real
-remote-registry deploy). The live path is the reactor-project + Vite
-HMR flow described above; do not extend the dormant chain unless the
-flag is being deliberately re-enabled.
+The live publish path — `commands/reactor-project/publish.ts` and
+`publish-status.ts` — is unaffected: those are the deploy-flow tools that
+publish a Reactor package to the remote registry via the agent's Renown
+token (see "Renown identity → Publish path" above).
