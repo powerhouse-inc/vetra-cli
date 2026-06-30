@@ -1,4 +1,4 @@
-import { Folder, Rocket, Server } from "lucide-react";
+import { ArrowRight, Folder, Server } from "lucide-react";
 import type { Project } from "../specify/projects.js";
 import type { ReleaseStatus } from "./useReleaseStatuses.js";
 
@@ -91,8 +91,8 @@ function ProjectCard({
         onClick={onDeploy}
         className="mt-auto flex items-center justify-center gap-1.5 rounded-lg bg-vetra-primary px-4 py-2 text-sm font-medium text-vetra-primary-fg hover:bg-vetra-primary/90"
       >
-        <Rocket size={15} />
-        Deploy
+        {deployed ? "Manage deployment" : "Set up deploy"}
+        <ArrowRight size={15} />
       </button>
     </div>
   );
