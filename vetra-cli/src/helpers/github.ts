@@ -24,7 +24,6 @@ export class GithubAuthError extends Error {
 
 export type GithubConnection = {
   environmentId: string;
-  installationId: string;
   repoFullName: string;
   repoUrl: string;
   createdAt: string;
@@ -76,7 +75,7 @@ export async function fetchConnection(
       VetraGithubAuth {
         myGithubConnection(environmentId: $environmentId) {
           connected
-          connection { environmentId installationId repoFullName repoUrl createdAt }
+          connection { environmentId repoFullName repoUrl createdAt }
         }
       }
     }`,
@@ -169,9 +168,10 @@ export async function resolveRepoRemote(ctx: {
   const repoFullName = status.connection.repoFullName;
   const { token } = await fetchPushToken(graphqlEndpoint, environmentId, bearer).catch(
     (error: unknown) => {
-      if (error instanceof GithubAuthError && error.code === 'REINSTALL_REQUIRED') {
+      if (error instanceof GithubAuthError && error.code === 'APP_NOT_INSTALLED') {
         throw new Error(
-          'The Vetra GitHub app was uninstalled — reconnect GitHub from the Vetra dashboard.',
+          "The Vetra GitHub app isn't installed on this repo yet — install it (and select " +
+            'this repo) on GitHub, then retry.',
         );
       }
       throw error;
