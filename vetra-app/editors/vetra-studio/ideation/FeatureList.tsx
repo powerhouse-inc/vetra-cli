@@ -2,6 +2,7 @@ import type {
   DocumentDriveDocument,
   FileNode,
 } from "@powerhousedao/shared/document-drive";
+import { FileText } from "lucide-react";
 import { useFeatureDocumentById } from "document-models/feature";
 import type { OpenTarget } from "./types.js";
 
@@ -91,9 +92,10 @@ function FeatureRow({
               name: wbs.name ?? "WBS",
             })
           }
-          className="ml-3 shrink-0 text-xs font-medium text-vetra-primary hover:underline"
+          className="ml-3 flex shrink-0 items-center gap-1 text-xs font-medium text-vetra-primary underline hover:text-vetra-fg"
         >
-          {wbs.name ?? "WBS"} →
+          <FileText size={13} />
+          {wbs.name ?? "WBS"}
         </button>
       ) : (
         <span className="ml-3 shrink-0 text-xs text-vetra-border">no WBS</span>
