@@ -16,7 +16,9 @@
  */
 import { createDocumentChangeTrigger } from "@powerhousedao/ph-clint";
 import path from "node:path";
+import { loadByName } from "../commands/spec/_helpers.js";
 import { listSpecTypes, saveSpec } from "../commands/spec/registry.js";
+import { withProjectCodegenLock } from "../helpers/project-lock.js";
 
 // Every spec type the `spec-*` tools can produce: the five codegen builder
 // specs plus vetra-app domain models (brand-sheet, feature, …). Mirroring all
@@ -48,15 +50,8 @@ interface OperationsClient {
   getOperations: (docId: string) => Promise<OperationsPage>;
 }
 
-/**
- * Reactor change events (and `client.get`) carry the current state with an
- * empty `operations` map — history lives in the reactor's own store. Pull it
- * back so the `.phd` we write preserves the operation history instead of
- * flattening to a state-only snapshot. Drains all pages, groups by action
- * scope, and drops the `document` scope (create ops) to keep the spec `.phd`'s
- * content-only shape — `applyFsChangesToReactor` re-materializes the document
- * separately and only replays content scopes.
- */
+// Pull full op history from the reactor store so the mirrored `.phd` preserves
+// every scope (incl. document-scope create ops), matching `spec-*` command writes.
 async function operationsByScope(
   client: OperationsClient,
   docId: string,
@@ -66,13 +61,24 @@ async function operationsByScope(
   while (page) {
     for (const op of page.results) {
       const scope = op.action?.scope ?? "global";
-      if (scope === "document") continue;
       (byScope[scope] ??= []).push(op);
     }
     page = page.next ? await page.next() : undefined;
   }
   for (const ops of Object.values(byScope)) ops.sort((a, b) => a.index - b.index);
   return byScope;
+}
+
+// Content-revision proxy: non-document op count (content scopes are append-only,
+// so higher = newer; document scope is constant, excluded to keep sides symmetric).
+export function specRevision(ops: Record<string, unknown[]> | undefined): number {
+  if (!ops) return 0;
+  let n = 0;
+  for (const [scope, list] of Object.entries(ops)) {
+    if (scope === "document") continue;
+    n += Array.isArray(list) ? list.length : 0;
+  }
+  return n;
 }
 
 /**
@@ -93,6 +99,57 @@ function projectDirForDoc(
   return folder ? path.join(workdir, folder.name) : workdir;
 }
 
+type SpecDoc = { header: { id: string; documentType: string; name: string } };
+
+// I/O the mirror decision depends on; injected so the decision is unit-testable
+// without a real filesystem, reactor, or lock.
+export interface SpecMirrorIo {
+  loadExisting: (
+    projectDir: string,
+    docId: string,
+  ) => Promise<{ operations?: Record<string, unknown[]> }>;
+  save: (doc: unknown, projectDir: string) => Promise<string>;
+  withLock: <T>(base: string, fn: () => Promise<T>) => Promise<T>;
+}
+
+const realSpecMirrorIo: SpecMirrorIo = {
+  loadExisting: (projectDir, docId) => loadByName(projectDir, docId),
+  save: (doc, projectDir) => saveSpec(doc as never, projectDir),
+  withLock: withProjectCodegenLock,
+};
+
+// Mirror one doc to its `.phd` under the codegen lock, skipping when the drive
+// revision isn't newer than disk. Keyed by doc id (not name) for an exact read.
+export async function mirrorSpecDoc(
+  doc: SpecDoc,
+  operations: Record<string, unknown[]>,
+  projectDir: string,
+  io: SpecMirrorIo,
+  log?: SpecLogger,
+): Promise<"written" | "skipped"> {
+  return io.withLock(projectDir, async () => {
+    const incoming = specRevision(operations);
+    let onDisk = -1;
+    try {
+      const existing = await io.loadExisting(projectDir, doc.header.id);
+      onDisk = specRevision(existing.operations);
+    } catch {
+      // No on-disk spec yet (first write) — proceed.
+    }
+    if (incoming <= onDisk) {
+      log?.debug(
+        `[spec-sync] skip "${doc.header.name}": drive rev ${incoming} <= disk rev ${onDisk}`,
+      );
+      return "skipped";
+    }
+    const written = await io.save({ ...doc, operations }, projectDir);
+    log?.debug(
+      `[spec-sync] wrote ${doc.header.documentType} "${doc.header.name}" → ${written}`,
+    );
+    return "written";
+  });
+}
+
 export async function syncSpecsToFs(
   docs: ReadonlyArray<{ header: { id: string; documentType: string; name: string } }>,
   workdir: string,
@@ -100,21 +157,26 @@ export async function syncSpecsToFs(
     nodes?: ReadonlyArray<DriveNode>;
     log?: SpecLogger;
     client?: OperationsClient;
+    io?: SpecMirrorIo;
   },
 ): Promise<void> {
   const nodes = opts?.nodes ?? [];
   const log = opts?.log;
+  const io = opts?.io ?? realSpecMirrorIo;
   for (const doc of docs) {
     try {
       const projectDir = projectDirForDoc(doc.header.id, workdir, nodes);
       // Re-attach the operation history the change event omits, so the `.phd`
       // is a full document and not a state-only snapshot.
-      const toWrite = opts?.client
-        ? { ...doc, operations: await operationsByScope(opts.client, doc.header.id) }
-        : doc;
-      const written = await saveSpec(toWrite as never, projectDir);
-      log?.debug(
-        `[spec-sync] wrote ${doc.header.documentType} "${doc.header.name}" → ${written}`,
+      const operations = opts?.client
+        ? await operationsByScope(opts.client, doc.header.id)
+        : ((doc as { operations?: Record<string, unknown[]> }).operations ?? {});
+      await mirrorSpecDoc(
+        doc,
+        operations as Record<string, unknown[]>,
+        projectDir,
+        io,
+        log,
       );
     } catch (err) {
       log?.warn(
@@ -126,6 +188,29 @@ export async function syncSpecsToFs(
   }
 }
 
+interface DriveReactor {
+  client: { get: (id: string) => Promise<unknown> };
+  personalDriveId?: string;
+  driveId?: string;
+}
+
+// Read the drive node tree for per-project routing. Returns [] (→ workdir-root
+// routing) when there's no reactor, no drive id, or the drive read fails.
+export async function resolveDriveNodes(
+  reactor: DriveReactor | undefined,
+): Promise<DriveNode[]> {
+  const driveId = reactor?.personalDriveId ?? reactor?.driveId;
+  if (!reactor || !driveId) return [];
+  try {
+    const drive = (await reactor.client.get(driveId)) as {
+      state?: { global?: { nodes?: DriveNode[] } };
+    };
+    return drive?.state?.global?.nodes ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export const specSyncTrigger = createDocumentChangeTrigger({
   id: "spec-sync",
   // Spec types aren't in the typed registry (which only knows ChatSession);
@@ -134,23 +219,8 @@ export const specSyncTrigger = createDocumentChangeTrigger({
   initialReconcile: false,
   async onChange(docs, ctx) {
     const reactor = await ctx.reactor?.();
-    const driveId =
-      (reactor as { personalDriveId?: string; driveId?: string } | undefined)
-        ?.personalDriveId ??
-      (reactor as { driveId?: string } | undefined)?.driveId;
-    let nodes: DriveNode[] = [];
-    if (reactor && driveId) {
-      try {
-        const drive = (await reactor.client.get(driveId)) as {
-          state?: { global?: { nodes?: DriveNode[] } };
-        };
-        nodes = drive?.state?.global?.nodes ?? [];
-      } catch {
-        // No drive nodes available — fall back to workdir-root routing.
-      }
-    }
     await syncSpecsToFs(docs, ctx.context.workdir, {
-      nodes,
+      nodes: await resolveDriveNodes(reactor as DriveReactor | undefined),
       log: ctx.context.log,
       client: reactor?.client as OperationsClient | undefined,
     });
