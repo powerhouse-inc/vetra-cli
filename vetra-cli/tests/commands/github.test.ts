@@ -54,7 +54,7 @@ function ctx(workdir: string, runProcess: unknown) {
  */
 function mockGithub(
   fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>,
-  opts: { connected?: boolean; repoFullName?: string } = {},
+  opts: { connected?: boolean; repoFullName?: string; pushTokenError?: string } = {},
 ) {
   const connected = opts.connected ?? true;
   const repoFullName = opts.repoFullName ?? REPO;
@@ -82,7 +82,6 @@ function mockGithub(
               connection: connected
                 ? {
                     environmentId: ENV_ID,
-                    installationId: "123",
                     repoFullName,
                     repoUrl: `https://github.com/${repoFullName}`,
                     createdAt: "2026-01-01",
@@ -94,6 +93,9 @@ function mockGithub(
       });
     }
     if (query.includes("getPushToken")) {
+      if (opts.pushTokenError) {
+        return json({ errors: [{ extensions: { code: opts.pushTokenError } }] });
+      }
       return json({
         data: { VetraGithubAuth: { getPushToken: { token: "ghs_token", expiresAt: "x" } } },
       });
@@ -203,6 +205,15 @@ describe("github commands", () => {
     await expect(
       githubPush.execute({ branch: "main", message: "x" }, ctx(workdir, runProcess)),
     ).rejects.toThrow(/not connected/i);
+    expect(runProcess).not.toHaveBeenCalled();
+  });
+
+  it("tells the user to install the app when it isn't installed on the repo yet", async () => {
+    mockGithub(fetchSpy, { pushTokenError: "APP_NOT_INSTALLED" });
+    const runProcess = fakeRun({ success: true, output: "" });
+    await expect(
+      githubPush.execute({ branch: "main", message: "x" }, ctx(workdir, runProcess)),
+    ).rejects.toThrow(/isn't installed/i);
     expect(runProcess).not.toHaveBeenCalled();
   });
 
