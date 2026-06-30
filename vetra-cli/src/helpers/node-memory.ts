@@ -2,7 +2,7 @@
  * Per-role Node heap caps for spawned processes.
  *
  * The agent forks several Node processes (reactor-project / ph vetra, ph init,
- * local registry, ph build). Without per-spawn caps a single high
+ * ph build). Without per-spawn caps a single high
  * `--max-old-space-size` is inherited by every child fork, multiplying rather
  * than bounding heap. Each role gets its own conservative cap here.
  *
@@ -14,7 +14,6 @@
  * Env knobs (megabytes):
  *   VETRA_MEM_REACTOR_PROJECT_MB  reactor-project / ph vetra   (default 2048)
  *   VETRA_MEM_PH_INIT_MB          ph init                      (default 2048)
- *   VETRA_MEM_REGISTRY_MB         local package registry       (default 512)
  *   VETRA_MEM_PH_BUILD_MB         ph build                     (default 2048)
  *   VETRA_MEM_CHECK_MB            tsc / eslint codegen checks   (default 1024)
  */
@@ -36,10 +35,6 @@ export function reactorProjectNodeOptions(): string {
 
 export function phInitNodeOptions(): string {
   return nodeOptions('VETRA_MEM_PH_INIT_MB', 2048);
-}
-
-export function localRegistryNodeOptions(): string {
-  return nodeOptions('VETRA_MEM_REGISTRY_MB', 512);
 }
 
 export function phBuildNodeOptions(): string {
