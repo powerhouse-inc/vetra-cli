@@ -1,5 +1,7 @@
 import {
   applyCreateEnvironment,
+  DEPLOY_SERVICES,
+  ensureServicesEnabled,
   isStudioEnvironment,
 } from "@powerhousedao/vetra-cloud-client";
 import type { ISigner } from "document-model";
@@ -76,6 +78,7 @@ export async function deployProject(opts: {
     applyCreateEnvironment(controller, {
       address: ownerAddress,
       label: target.label,
+      services: DEPLOY_SERVICES,
     });
     controller.addPackage({ packageName, version });
     controller.approveChanges({});
@@ -107,6 +110,7 @@ export async function deployProject(opts: {
   } else {
     controller.addPackage({ packageName, version });
   }
+  ensureServicesEnabled(controller, DEPLOY_SERVICES);
   controller.approveChanges({});
   await controller.push();
   return {
