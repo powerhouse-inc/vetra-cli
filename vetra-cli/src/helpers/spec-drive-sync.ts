@@ -7,13 +7,12 @@
  * to materialize-if-absent → replay content ops → attach the doc to the drive.
  * `spec-delete` calls `removeSpecFromDrive` to tear a doc back out.
  *
- * A spec `.phd` written by the `spec-*` tools is a snapshot: it carries
- * content-scope (`global` / `local`) operations but NO `document`-scope create
- * (`utils.createDocument()` records none). The reactor can't apply content ops
- * to a document it has never created, so the document is materialized separately
- * (`materializeIfAbsent`) and only the content scopes are replayed. Those ops
- * keep their file `action.id`s, so `loadBatch` dedups: re-feeding the same file
- * is a no-op and later edits ship as deltas.
+ * A spec `.phd` carries content-scope (`global` / `local`) ops plus the
+ * `document`-scope create ops `createDocument()` records. The reactor can't
+ * replay a create for a document it materializes itself, so the document is
+ * materialized separately (`materializeIfAbsent`) and only content scopes are
+ * replayed. Those ops keep their file `action.id`s, so `loadBatch` dedups:
+ * re-feeding the same file is a no-op and later edits ship as deltas.
  *
  * Drive attachment mirrors the per-project folder structure Vetra Studio reads
  * (`drive.state.global.nodes`): an ADD_FOLDER node per project, an ADD_FILE node
