@@ -29,6 +29,7 @@ export function ProjectDocuments({
             <button
               key={doc.id}
               type="button"
+              data-tour={`model-${doc.documentType.split("/")[1] ?? doc.documentType}`}
               onClick={() =>
                 onOpen({
                   id: doc.id,

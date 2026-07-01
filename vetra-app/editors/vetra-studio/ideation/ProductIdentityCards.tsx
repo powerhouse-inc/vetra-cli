@@ -75,10 +75,13 @@ function IdentityCard({
     }
   }
 
+  const tourAnchor = `model-${type.split("/")[1] ?? type}`;
+
   if (node) {
     return (
       <button
         type="button"
+        data-tour={tourAnchor}
         onClick={() =>
           onOpen({ id: node.id, documentType: type, name: node.name })
         }
@@ -93,6 +96,7 @@ function IdentityCard({
   return (
     <button
       type="button"
+      data-tour={tourAnchor}
       onClick={() => void create()}
       disabled={creating}
       className="flex h-28 flex-col items-center justify-center rounded-xl border border-dashed border-vetra-border bg-vetra-accent p-4 transition-colors hover:border-vetra-primary disabled:opacity-50"

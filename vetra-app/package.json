@@ -121,6 +121,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "driver.js": "^1.6.0",
     "lucide-react": "^1.17.0"
   }
 }

@@ -16,6 +16,7 @@ import { DeploySection } from "./DeploySection.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
+import { useProductTour } from "./tour/useProductTour.js";
 import { VersionBadge } from "./VersionBadge.js";
 import {
   deployFollowAction,
@@ -145,6 +146,8 @@ export function VetraStudio({
     const target = resolveDocFromUrl(document);
     return target ? sectionForOpenDoc(target) : "home";
   });
+  // "Meet the models" product tour, launched from the home overview.
+  const { startTour } = useProductTour(setSection);
   // userPinned: a manual open pins the view so auto-nav won't yank it away.
   // A doc restored from the URL counts as pinned (the user was looking at it).
   const [userPinned, setUserPinned] = useState<boolean>(
@@ -510,7 +513,7 @@ export function VetraStudio({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <PhaseCycle onOpen={setSection} />
+            <PhaseCycle onOpen={setSection} onStartTour={startTour} />
           </div>
         )}
       </main>

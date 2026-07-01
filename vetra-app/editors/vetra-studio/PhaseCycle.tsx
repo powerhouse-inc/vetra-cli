@@ -1,4 +1,4 @@
-import { FileText, Hammer, Lightbulb, Rocket } from "lucide-react";
+import { Compass, FileText, Hammer, Lightbulb, Rocket } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type PhaseId = "ideate" | "specify" | "build" | "deploy";
@@ -64,15 +64,29 @@ function isOpenablePhase(id: PhaseId): id is OpenablePhase {
  * four-phase product design flow as a numbered vertical timeline. */
 export function PhaseCycle({
   onOpen,
+  onStartTour,
 }: {
   onOpen: (phase: OpenablePhase) => void;
+  onStartTour?: () => void;
 }) {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-8 px-8 py-12">
       <div className="flex flex-col gap-4">
-        <h2 className="text-base font-semibold text-vetra-fg">
-          Product design flow
-        </h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-vetra-fg">
+            Product design flow
+          </h2>
+          {onStartTour ? (
+            <button
+              type="button"
+              onClick={onStartTour}
+              className="flex items-center gap-1.5 rounded-md border border-vetra-border bg-vetra-card px-2.5 py-1 text-xs font-medium text-vetra-fg transition-colors hover:border-vetra-primary hover:text-vetra-primary"
+            >
+              <Compass size={14} />
+              Take a tour
+            </button>
+          ) : null}
+        </div>
         <p className="rounded-lg border border-vetra-border bg-vetra-accent px-3 py-2 text-xs italic text-vetra-muted-fg">
           <span className="mr-1.5 font-semibold not-italic uppercase tracking-wide text-vetra-muted-fg/80">
             Example
@@ -81,7 +95,7 @@ export function PhaseCycle({
         </p>
       </div>
 
-      <ol className="flex flex-col">
+      <ol data-tour="flow" className="flex flex-col">
         {PHASES.map((phase, i) => {
           const { id, Icon } = phase;
           const open = isOpenablePhase(id) ? () => onOpen(id) : undefined;
@@ -90,6 +104,7 @@ export function PhaseCycle({
             <li key={id}>
               <button
                 type="button"
+                data-tour={`phase-${id}`}
                 disabled={!open}
                 onClick={open}
                 className={`group flex w-full items-stretch gap-4 text-left ${
