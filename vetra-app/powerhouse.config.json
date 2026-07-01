@@ -25,6 +25,9 @@
   "connect": {
     "renown": {
       "url": "https://www.renown.id/"
+    },
+    "app": {
+      "offline": false
     }
   }
 }
