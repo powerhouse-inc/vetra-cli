@@ -69,3 +69,25 @@ describe('reactor-project --renown-namespace', () => {
     expect(cmd).toContain('--renown-namespace vetra-studio');
   });
 });
+
+// ── reactorProject env — public preview reactor ────────────────────
+
+describe('reactor-project env — public preview reactor', () => {
+  it('disables auth so the preview reactor boots OPEN', () => {
+    const { env } = reactorProject;
+    if (typeof env !== 'function') throw new Error('expected env function');
+    const e = env({ params: { switchboardPort: 4001 } } as Parameters<typeof env>[0]);
+    expect(e.AUTH_ENABLED).toBe('false');
+    expect(e.DOCUMENT_PERMISSIONS_ENABLED).toBe('false');
+    expect(e.PORT).toBe('4001');
+  });
+
+  it('clears admin/credential/protection hygiene keys', () => {
+    const { env } = reactorProject;
+    if (typeof env !== 'function') throw new Error('expected env function');
+    const e = env({ params: { switchboardPort: 4001 } } as Parameters<typeof env>[0]);
+    expect(e.DEFAULT_PROTECTION).toBe('false');
+    expect(e.SKIP_CREDENTIAL_VERIFICATION).toBe('false');
+    expect(e.ADMINS).toBe('');
+  });
+});
