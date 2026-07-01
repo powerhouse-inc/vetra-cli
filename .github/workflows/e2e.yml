@@ -30,6 +30,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  deps-guard:
+    name: deps guard (zero runtime deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # node 24 strips TS types natively — no install needed.
+      - name: Assert vetra-cli declares no runtime deps
+        run: node vetra-cli/scripts/check-runtime-deps.ts
+
   e2e:
     name: e2e (${{ matrix.leg }})
     runs-on: ubuntu-latest
