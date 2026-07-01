@@ -41,7 +41,10 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
 
   if (process.env.VETRA_E2E_BASE_URL) {
     const baseUrl = process.env.VETRA_E2E_BASE_URL.replace(/\/$/, "");
-    const driveId = await discoverDriveId(baseUrl);
+    // VETRA_E2E_DRIVE_ID skips redirect discovery — the caller already knows the
+    // id (e.g. from the studio boot log), so attach doesn't need `/` -> 302.
+    const driveId =
+      process.env.VETRA_E2E_DRIVE_ID ?? (await discoverDriveId(baseUrl));
     writeFileSync(
       RUN_FILE,
       JSON.stringify({ baseUrl, driveId, pid: null, workdir: null }, null, 2),
