@@ -1,5 +1,6 @@
 import type { ISigner } from "document-model";
 import {
+  AlertTriangle,
   Check,
   ChevronDown,
   ExternalLink,
@@ -14,9 +15,16 @@ import type { Project } from "../specify/projects.js";
 import { CLOUD_BASE_DOMAIN } from "./config.js";
 import {
   deployProject,
+  DeployError,
   type DeployPhase,
   type DeployTarget,
 } from "./deployProject.js";
+import {
+  IN_FLIGHT,
+  isFailedStatus,
+  isLive,
+  isPendingApproval,
+} from "./envStatus.js";
 import type {
   DeployData,
   EnvServiceLink,
@@ -25,37 +33,43 @@ import type {
 } from "./projectDeployments.js";
 import { StatusDot } from "./StatusBadge.js";
 import type { ReleaseStatus } from "./useReleaseStatuses.js";
+import { errorMessage } from "./utils.js";
 
 /** Tracks the single in-flight deploy push: which target (env id or "new") and
  * which step it's on, so only that row shows progress and others disable. */
 type Busy = { key: string; phase: DeployPhase } | null;
 
-/** Env lifecycle statuses that mean a rollout is still in progress. */
-const IN_FLIGHT = new Set([
-  "CHANGES_PENDING",
-  "CHANGES_APPROVED",
-  "CHANGES_PUSHED",
-  "DEPLOYING",
-  "TERMINATING",
-]);
-
 /** Envs we just deployed to, awaiting the cloud rollout: the version pushed,
- * whether we've seen it go in-flight, and a poll count (safety cap). Keeps the
- * row in a "Deploying…" state until the environment is really live. */
+ * its label, whether we've seen it go in-flight, and a poll count (safety cap).
+ * Keeps the row in a "Deploying…" state until the environment is really live. */
 type Pending = Map<
   string,
-  { version: string; sawInFlight: boolean; polls: number }
+  { version: string; label: string; sawInFlight: boolean; polls: number }
 >;
+
+/** An env whose changes were staged but not approved (the approve was dropped);
+ * surfaced with a one-click recovery action. */
+type Stuck = { envId: string; label: string } | null;
+
+/** An actionable button rendered inside the error card (e.g. re-auth). */
+type ErrorAction = { label: string; onClick: () => void } | null;
 
 /** Secondary (outlined) button/link style, shared by Open and the Visit menu. */
 const OPEN_BTN =
   "flex shrink-0 items-center gap-1.5 rounded-lg border border-vetra-border px-3.5 py-2 text-sm font-medium text-vetra-fg hover:border-vetra-primary hover:text-vetra-primary";
 
+function phaseLabel(phase: DeployPhase): string {
+  if (phase === "publishing") return "Publishing…";
+  if (phase === "approving") return "Approving…";
+  return "Installing…";
+}
+
 /** Home > Deploy > <project>. Lists the user's environments and this project's
  * status in each, with one action per row: deploy (first time), update (a newer
- * version exists), or open (already current). Deploying publishes the latest
- * source if needed, installs that version, and approves the change; the row
- * stays in a loading state until the cloud reports the rollout done. */
+ * version exists), approve (changes staged but not live), or open (already
+ * current). Deploying publishes the latest source if needed, installs that
+ * version, and approves the change; the row stays in a loading state until the
+ * cloud reports the rollout done, and surfaces failures or a stuck approval. */
 export function ProjectDeployDetail({
   project,
   pkg,
@@ -82,7 +96,9 @@ export function ProjectDeployDetail({
 }) {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorAction, setErrorAction] = useState<ErrorAction>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [stuck, setStuck] = useState<Stuck>(null);
   const [creating, setCreating] = useState(false);
   const [newEnvName, setNewEnvName] = useState(project.name);
   const [pending, setPending] = useState<Pending>(new Map());
@@ -93,9 +109,23 @@ export function ProjectDeployDetail({
     .map((d) => `${d.env.id}:${d.env.status ?? ""}`)
     .join(",");
 
+  // Reset transient messages when switching to a different project (the parent
+  // reuses this component rather than remounting it).
+  useEffect(() => {
+    setBusy(null);
+    setError(null);
+    setErrorAction(null);
+    setDone(null);
+    setStuck(null);
+    setPending(new Map());
+    setCreating(false);
+    setNewEnvName(project.name);
+  }, [project.name]);
+
   // Hold each just-deployed env in "Deploying…" until the cloud rollout
-  // settles (seen in-flight then back to a terminal status), polling status
-  // meanwhile. Bounded by a poll cap so it can never spin forever.
+  // settles, polling status meanwhile, and land on the real outcome: live
+  // (success), failed (error), or stuck pending approval (recovery action).
+  // Bounded by a poll cap so it can never spin forever.
   useEffect(() => {
     if (pending.size === 0) return;
     const statusById = new Map(
@@ -104,13 +134,45 @@ export function ProjectDeployDetail({
     const next: Pending = new Map(pending);
     let mutated = false;
     for (const [id, info] of pending) {
-      const status = statusById.get(id);
-      const sawInFlight =
-        info.sawInFlight || (status ? IN_FLIGHT.has(status) : false);
-      const settled = !!status && !IN_FLIGHT.has(status);
-      const finished =
-        (settled && (sawInFlight || info.polls >= 3)) || info.polls >= 30;
-      if (finished) {
+      const status = statusById.get(id) ?? "";
+      const sawInFlight = info.sawInFlight || IN_FLIGHT.has(status);
+      // Only trust a terminal status once we've observed the rollout go
+      // in-flight (or after a few polls, for rollouts too fast to catch);
+      // otherwise a stale env list (the pre-deploy status) reads as a false
+      // result — e.g. an env that was READY before the deploy.
+      const trusted = sawInFlight || info.polls >= 3;
+      if (trusted && isLive(status)) {
+        next.delete(id);
+        mutated = true;
+        setError(null);
+        setErrorAction(null);
+        setStuck(null);
+        setDone(
+          `Deployed to ${info.label}${info.version ? ` · v${info.version}` : ""} — live.`,
+        );
+        continue;
+      }
+      if (trusted && isFailedStatus(status)) {
+        next.delete(id);
+        mutated = true;
+        setDone(null);
+        setStuck(null);
+        setError(
+          `Deployment to ${info.label} failed. Check the environment and try again.`,
+        );
+        continue;
+      }
+      // Approve never landed (deployProject already retried once): the env sits
+      // in CHANGES_PENDING and never goes in-flight. A couple of grace polls
+      // first, so a lagging env list doesn't false-trigger.
+      if (isPendingApproval(status) && info.polls >= 2) {
+        next.delete(id);
+        mutated = true;
+        setDone(null);
+        setStuck({ envId: id, label: info.label });
+        continue;
+      }
+      if (info.polls >= 30) {
         next.delete(id);
         mutated = true;
       } else if (sawInFlight !== info.sawInFlight) {
@@ -135,13 +197,20 @@ export function ProjectDeployDetail({
     // statusSig is the stable projection of `environments` this effect reads.
   }, [pending, statusSig, onRefresh]);
 
+  function clearMessages() {
+    setError(null);
+    setErrorAction(null);
+    setDone(null);
+    setStuck(null);
+  }
+
   async function run(target: DeployTarget, key: string, label: string) {
     if (!signer) {
       setError("Sign in with Renown to deploy.");
+      setErrorAction({ label: "Connect with Renown", onClick: onSignIn });
       return;
     }
-    setError(null);
-    setDone(null);
+    clearMessages();
     setBusy({ key, phase: "publishing" });
     try {
       const outcome = await deployProject({
@@ -153,22 +222,34 @@ export function ProjectDeployDetail({
       });
       setBusy(null);
       setCreating(false);
+      // The package landed; trust its version and refresh regardless of whether
+      // the approve stuck.
+      onDeployed(outcome.version);
+      if (isPendingApproval(outcome.status)) {
+        setStuck({ envId: outcome.envId, label });
+        return;
+      }
       setDone(
         outcome.published
-          ? `Published ${outcome.packageName}@${outcome.version} and deployed to ${label}.`
-          : `Deployed ${outcome.packageName}@${outcome.version} to ${label}.`,
+          ? `Published ${outcome.packageName}@${outcome.version} — deploying to ${label}…`
+          : `Deploying ${outcome.packageName}@${outcome.version} to ${label}…`,
       );
       setPending((prev) =>
         new Map(prev).set(outcome.envId, {
           version: outcome.version,
+          label,
           sawInFlight: false,
           polls: 0,
         }),
       );
-      onDeployed(outcome.version);
     } catch (err) {
       setBusy(null);
-      setError(err instanceof Error ? err.message : String(err));
+      if (err instanceof DeployError && err.kind === "auth-required") {
+        setError("Your Renown session expired. Sign in again to deploy.");
+        setErrorAction({ label: "Connect with Renown", onClick: onSignIn });
+        return;
+      }
+      setError(errorMessage(err));
     }
   }
 
@@ -177,6 +258,7 @@ export function ProjectDeployDetail({
     deploy.kind === "ready" &&
     environments.length > 0 &&
     pending.size === 0 &&
+    !stuck &&
     environments.every((d) => d.state === "live-current");
 
   // Where the project is already installed vs. the rest.
@@ -185,28 +267,33 @@ export function ProjectDeployDetail({
 
   const renderEnvList = (envs: ProjectEnvDeployment[]) => (
     <div className="rounded-xl border border-vetra-border bg-vetra-card">
-      {envs.map((d, i) => (
-        <EnvRow
-          key={d.env.id}
-          d={d}
-          release={release}
-          first={i === 0}
-          busyPhase={busy?.key === d.env.id ? busy.phase : null}
-          deploying={pending.has(d.env.id) || IN_FLIGHT.has(d.env.status ?? "")}
-          disabled={busy !== null}
-          onDeploy={() => {
-            void run(
-              {
-                kind: "existing",
-                envId: d.env.id,
-                alreadyInstalled: d.installed,
-              },
-              d.env.id,
-              d.env.name?.trim() || d.env.id,
-            );
-          }}
-        />
-      ))}
+      {envs.map((d, i) => {
+        const status = d.env.status ?? "";
+        const watching = pending.has(d.env.id);
+        return (
+          <EnvRow
+            key={d.env.id}
+            d={d}
+            release={release}
+            first={i === 0}
+            busyPhase={busy?.key === d.env.id ? busy.phase : null}
+            rollingOut={watching || IN_FLIGHT.has(status)}
+            needsApproval={!watching && isPendingApproval(status)}
+            disabled={busy !== null}
+            onDeploy={() => {
+              void run(
+                {
+                  kind: "existing",
+                  envId: d.env.id,
+                  alreadyInstalled: d.installed,
+                },
+                d.env.id,
+                d.env.name?.trim() || d.env.id,
+              );
+            }}
+          />
+        );
+      })}
     </div>
   );
 
@@ -227,6 +314,44 @@ export function ProjectDeployDetail({
           <pre className="whitespace-pre-wrap break-words font-sans">
             {error}
           </pre>
+          {errorAction ? (
+            <button
+              type="button"
+              onClick={errorAction.onClick}
+              className="mt-2 rounded-lg bg-vetra-primary px-3 py-1.5 text-xs font-medium text-vetra-primary-fg hover:bg-vetra-primary/90"
+            >
+              {errorAction.label}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {stuck ? (
+        <div className="flex flex-col items-start gap-2 rounded-lg border border-vetra-warning/40 bg-vetra-warning/5 px-4 py-3 text-sm text-vetra-warning">
+          <span className="flex items-center gap-2">
+            <AlertTriangle size={15} className="shrink-0" />
+            {project.name} isn&apos;t live on {stuck.label} yet — its changes
+            are staged but not approved. Approve to finish deploying.
+          </span>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => {
+              const env = environments.find((e) => e.env.id === stuck.envId);
+              void run(
+                {
+                  kind: "existing",
+                  envId: stuck.envId,
+                  alreadyInstalled: env?.installed ?? false,
+                },
+                stuck.envId,
+                stuck.label,
+              );
+            }}
+            className="flex items-center gap-1.5 rounded-lg bg-vetra-primary px-3.5 py-2 text-sm font-medium text-vetra-primary-fg hover:bg-vetra-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Rocket size={14} />
+            Approve &amp; deploy
+          </button>
         </div>
       ) : null}
       {done ? (
@@ -304,7 +429,7 @@ export function ProjectDeployDetail({
               type="button"
               disabled={busy !== null}
               onClick={() => {
-                setDone(null);
+                clearMessages();
                 setCreating(true);
               }}
               className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-dashed border-vetra-border px-4 py-2 text-sm font-medium text-vetra-fg hover:border-vetra-primary hover:text-vetra-primary disabled:cursor-not-allowed disabled:opacity-50"
@@ -324,7 +449,8 @@ function EnvRow({
   release,
   first,
   busyPhase,
-  deploying,
+  rollingOut,
+  needsApproval,
   disabled,
   onDeploy,
 }: {
@@ -332,7 +458,8 @@ function EnvRow({
   release: ReleaseStatus;
   first: boolean;
   busyPhase: DeployPhase | null;
-  deploying: boolean;
+  rollingOut: boolean;
+  needsApproval: boolean;
   disabled: boolean;
   onDeploy: () => void;
 }) {
@@ -357,13 +484,19 @@ function EnvRow({
         {d.url ? (
           <span className="truncate text-xs text-vetra-muted-fg">{d.url}</span>
         ) : null}
-        <ProjectStatusLine d={d} release={release} deploying={deploying} />
+        <ProjectStatusLine
+          d={d}
+          release={release}
+          rollingOut={rollingOut}
+          needsApproval={needsApproval}
+        />
       </div>
 
       <EnvAction
         d={d}
         busyPhase={busyPhase}
-        deploying={deploying}
+        rollingOut={rollingOut}
+        needsApproval={needsApproval}
         disabled={disabled}
         onDeploy={onDeploy}
       />
@@ -371,22 +504,32 @@ function EnvRow({
   );
 }
 
-/** Per-place freshness in plain language; a rollout in progress wins. */
+/** Per-place freshness in plain language; a rollout or pending approval wins. */
 function ProjectStatusLine({
   d,
   release,
-  deploying,
+  rollingOut,
+  needsApproval,
 }: {
   d: ProjectEnvDeployment;
   release: ReleaseStatus;
-  deploying: boolean;
+  rollingOut: boolean;
+  needsApproval: boolean;
 }) {
-  if (deploying) {
+  if (rollingOut) {
     return (
       <span className="text-xs text-vetra-muted-fg">
         {d.installedVersion
           ? `Rolling out v${d.installedVersion}…`
           : "Rolling out…"}
+      </span>
+    );
+  }
+  if (needsApproval) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs font-medium text-vetra-warning">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-vetra-warning" />
+        Changes pending approval
       </span>
     );
   }
@@ -422,13 +565,15 @@ function ProjectStatusLine({
 function EnvAction({
   d,
   busyPhase,
-  deploying,
+  rollingOut,
+  needsApproval,
   disabled,
   onDeploy,
 }: {
   d: ProjectEnvDeployment;
   busyPhase: DeployPhase | null;
-  deploying: boolean;
+  rollingOut: boolean;
+  needsApproval: boolean;
   disabled: boolean;
   onDeploy: () => void;
 }) {
@@ -436,16 +581,32 @@ function EnvAction({
     return (
       <span className="flex shrink-0 items-center gap-1.5 rounded-lg bg-vetra-primary px-3.5 py-2 text-sm font-medium text-vetra-primary-fg opacity-80">
         <Loader2 size={14} className="animate-spin" />
-        {busyPhase === "publishing" ? "Publishing…" : "Installing…"}
+        {phaseLabel(busyPhase)}
       </span>
     );
   }
-  if (deploying) {
+  if (rollingOut) {
     return (
       <span className="flex shrink-0 items-center gap-1.5 rounded-lg border border-vetra-border px-3.5 py-2 text-sm font-medium text-vetra-muted-fg">
         <Loader2 size={14} className="animate-spin" />
         Deploying…
       </span>
+    );
+  }
+  if (needsApproval) {
+    // The env has staged changes awaiting approval. Run the full deploy so this
+    // project's package is installed before we approve — approving alone would
+    // roll the env out without it.
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onDeploy}
+        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-vetra-primary px-3.5 py-2 text-sm font-medium text-vetra-primary-fg hover:bg-vetra-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Rocket size={14} />
+        Approve &amp; deploy
+      </button>
     );
   }
   if (d.state === "live-current") {
