@@ -180,13 +180,18 @@ against.
     embedded Connect capture), preview-server at `/preview` (static
     `proxyRoutes`), project Connect at `/reactor-project/vetra-studio`
     (service passes `ph vetra --base` so Vite emits self-contained
-    URLs). The `connect-drive-url` hook stamps absolute proxy URLs
-    into the prebuilt bundle for both the drive URL and the
-    preview-server base (`<proxy>/preview` over
-    `PREVIEW_SERVER_URL_PLACEHOLDER`); the client resolves the iframe
-    `proxiedUrl` against the stamped proxy origin. Vite-dev of
-    vetra-app falls back to the direct port via `import.meta.env.DEV`.
-    See ARCHITECTURE.md → "Embedded reverse proxy".
+    URLs). The `connect-drive-url` hook writes both live URLs into JSON
+    configs the SPA fetches at load — the drive URL into
+    `powerhouse.config.json` (`defaultDrives`), the preview-server base
+    (`<proxy>/preview`) into `studio.config.json`. No JS asset is
+    mutated: the served bundle stays byte-identical to the build, so the
+    image's precompressed (`.br`/`.gz`) siblings can't go stale against a
+    rewrite. The Dockerfile precompress pass excludes those two configs
+    (they're rewritten at boot and served uncompressed); the client reads
+    `studio.config.json` for the preview base and resolves the iframe
+    `proxiedUrl` against it. Vite-dev of vetra-app falls back to the
+    direct port via `import.meta.env.DEV`. See ARCHITECTURE.md →
+    "Embedded reverse proxy".
 
 ## Repositories touched
 
@@ -336,13 +341,13 @@ Suggested order. Each step is independently demoable.
 
 In order:
 
-1. Promote the preview-server URL to a shared constant. Today it's
-   hardcoded as `127.0.0.1:5180` in both
+1. Promote the preview-server URL to a shared constant. Today the
+   direct/dev-fallback `127.0.0.1:5180` is hardcoded in both
    `vetra-cli/src/preview-server/config.ts` and the browser-side
-   `vetra-app/editors/vetra-studio/hooks/preview-server-client.ts`.
-   When the port becomes configurable, the browser side will need
-   `import.meta.env.PH_PREVIEW_SERVER_URL` or similar baked at
-   build time.
+   `vetra-app/editors/vetra-studio/hooks/preview-server-client.ts`. The
+   live (proxied) URL is no longer a concern here — the browser reads it
+   from `studio.config.json` at load (see decision 14) — so only the
+   dev-fallback port needs sharing when the port becomes configurable.
 
 2. Tighten CORS once the embedded Connect's origin is known and
    stable — currently `*` for ease of dev.
