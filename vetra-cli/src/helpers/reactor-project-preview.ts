@@ -386,12 +386,32 @@ export async function createEmptyPreviewDocument(
   name: string,
   token?: string,
 ): Promise<PreviewDocumentFull> {
-  const created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
-    switchboardUrl,
-    CREATE_EMPTY_DOCUMENT_MUTATION,
-    { documentType, parentIdentifier: driveId },
-    token,
-  );
+  // createEmptyDocument can race the reactor's async load of a just-generated
+  // document-model package. Retry on "module not found for type" for up to 5s.
+  const deadline = Date.now() + 5_000;
+  let created: { createEmptyDocument: PreviewDocumentFull };
+  for (;;) {
+    try {
+      created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
+        switchboardUrl,
+        CREATE_EMPTY_DOCUMENT_MUTATION,
+        { documentType, parentIdentifier: driveId },
+        token,
+      );
+      break;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        !/Document model module not found for type/.test(msg) ||
+        Date.now() >= deadline
+      )
+        throw err;
+      console.warn(
+        `[spec-preview-create] ${documentType} not yet registered in the reactor; retrying (up to 5s)…`,
+      );
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
   const renamed = await gqlRequest<{ renameDocument: PreviewDocumentFull }>(
     switchboardUrl,
     RENAME_DOCUMENT_MUTATION,
