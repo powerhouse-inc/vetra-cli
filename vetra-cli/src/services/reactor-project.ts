@@ -170,6 +170,14 @@ export const reactorProject = defineService({
     // the long-lived Vite dev server never dep-optimizes them (~1 GB resident).
     // Off unless a vetra-cli-level signal is set. See connect-vendor.ts.
     ...connectExternalizeVendorEnv(),
+    // The preview reactor is a PUBLIC, no-login reactor. Override the auth env
+    // the pod injects (inherited via process.env) so this child boots OPEN.
+    // The main Studio switchboard is started in-process and keeps its auth.
+    AUTH_ENABLED: 'false',
+    DOCUMENT_PERMISSIONS_ENABLED: 'false', // required or reactor-api throws at boot
+    DEFAULT_PROTECTION: 'false',
+    SKIP_CREDENTIAL_VERIFICATION: 'false',
+    ADMINS: '',
   }),
   readiness: {
     patterns: [
