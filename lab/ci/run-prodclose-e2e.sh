@@ -108,8 +108,10 @@ BASE_IMAGE="${BASE_IMAGE}" \
 VETRA_VERSION="${VETRA_VERSION}" \
   ./publish-local-and-build.sh
 
-echo "==> run-prodclose: start the image + capture driveId"
-IMAGE_TAG="${IMAGE_TAG}" NAME="${STUDIO_NAME}" ./run-prodclose.sh "${IMAGE_TAG}"
+echo "==> run-prodclose: start the image (replay mode) + capture driveId"
+IMAGE_TAG="${IMAGE_TAG}" NAME="${STUDIO_NAME}" \
+VETRA_REPLAY_FIXTURE_HOST="${REPO_ROOT}/vetra-cli/e2e/fixtures/todo-list.replay.json" \
+  ./run-prodclose.sh "${IMAGE_TAG}"
 
 # run-prodclose.sh prints the validation; re-assert here so a contract miss is a
 # hard, logged failure (run-prodclose only fails if studio never starts).
@@ -171,6 +173,25 @@ if [ "${fail}" != "0" ]; then
   docker logs "${STUDIO_NAME}" 2>&1 | tail -80
   echo "--- routes ---"; echo "${routes}"
   exit 1
+fi
+
+# The HTTP contract above is a fast tripwire. The real functional gate is the
+# seeded Playwright replay driven against the prod-built studio: it drives the
+# recorded build (the container's agent is in replay mode) and asserts the
+# generated editor renders in the BUILD-pane iframe — exercising the whole
+# boot -> chat -> build -> codegen -> preview pipeline on the baked image.
+if [ "${RUN_REPLAY:-1}" = "1" ]; then
+  echo "==> seeded replay against the prod-close image (attach mode)"
+  ( cd "${REPO_ROOT}" && pnpm --filter vetra-cli exec playwright install --with-deps chromium )
+  if ! ( cd "${REPO_ROOT}" \
+      && VETRA_E2E_BASE_URL="http://localhost:8090" VETRA_E2E_DRIVE_ID="${DRIVE}" \
+         pnpm --filter vetra-cli test:e2e ); then
+    echo "!! seeded replay failed against the prod image — dumping studio logs" >&2
+    docker logs "${STUDIO_NAME}" 2>&1 | tail -120
+    exit 1
+  fi
+else
+  echo "!! WARNING: RUN_REPLAY=0 — skipped the seeded replay (contract-only run)" >&2
 fi
 
 echo
