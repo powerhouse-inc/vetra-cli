@@ -126,6 +126,7 @@ export async function startPreviewServer(
           project: q.get("project") ?? "",
           doc: q.get("doc") ?? "",
           drive: q.get("drive") ?? undefined,
+          proxyPublicUrl,
         });
         writeJson(res, 200, result);
         return;

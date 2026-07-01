@@ -193,6 +193,61 @@ describe("preview-server resolver", () => {
     });
   });
 
+  it("appends a proxy-routed driveUrl param when proxyPublicUrl is set", async () => {
+    const services = makeServices([
+      {
+        workdir: projectPath,
+        status: "ready",
+        endpoints: {
+          "vetra-studio": "http://localhost:3001",
+          "vetra-switchboard": "http://localhost:4001/graphql",
+        },
+      },
+    ]);
+    const result = await resolvePreview({
+      services,
+      workdir,
+      project: PROJECT,
+      doc: "",
+      drive: "app-drive-123",
+      proxyPublicUrl: "https://wise-hare.vetra.io",
+    });
+    expect(result.kind).toBe("ready");
+    const ready = result as Extract<typeof result, { kind: "ready" }>;
+    const driveUrl = encodeURIComponent(
+      "https://wise-hare.vetra.io/reactor-project/switchboard/d/app-drive-123",
+    );
+    expect(ready.proxiedUrl).toBe(
+      `${REACTOR_PROJECT_CONNECT_PROXY_PATH}/d/app-drive-123?embed=1&driveUrl=${driveUrl}`,
+    );
+  });
+
+  it("falls back to the switchboard origin for driveUrl without a proxy", async () => {
+    const services = makeServices([
+      {
+        workdir: projectPath,
+        status: "ready",
+        endpoints: {
+          "vetra-studio": "http://localhost:3001",
+          "vetra-switchboard": "http://localhost:4001/graphql",
+        },
+      },
+    ]);
+    const result = await resolvePreview({
+      services,
+      workdir,
+      project: PROJECT,
+      doc: "",
+      drive: "app-drive-123",
+    });
+    expect(result.kind).toBe("ready");
+    const ready = result as Extract<typeof result, { kind: "ready" }>;
+    const driveUrl = encodeURIComponent("http://localhost:4001/d/app-drive-123");
+    expect(ready.url).toBe(
+      `http://localhost:3001/d/app-drive-123?embed=1&driveUrl=${driveUrl}`,
+    );
+  });
+
   it("returns no-target when both doc and drive are empty", async () => {
     const services = makeServices([]);
     expect(
