@@ -16,7 +16,8 @@
   "scripts": {
     "build:assets": "tsx scripts/build-assets.ts",
     "typecheck": "tsc --noEmit",
-    "build": "rm -rf dist && pnpm build:assets && pnpm typecheck && tsdown && pnpm vendor",
+    "check:deps": "tsx scripts/check-runtime-deps.ts",
+    "build": "pnpm check:deps && rm -rf dist && pnpm build:assets && pnpm typecheck && tsdown && pnpm vendor",
     "vendor": "tsx scripts/vendor-deps.ts",
     "refresh:test-skills": "pnpm build:assets && rm -rf ../../vetra-test/.ph/vetra/.mastra/skills && cp -R gen/skills ../../vetra-test/.ph/vetra/.mastra/skills && echo '[refresh] vetra-test skills replaced; restart vetra for the change to take effect'",
     "dev": "tsx src/main.ts --workdir ../../vetra-test",

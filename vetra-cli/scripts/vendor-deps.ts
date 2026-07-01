@@ -12,23 +12,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { VENDOR } from "./vendor-list.ts";
 
 const pkgRoot = resolve(import.meta.dirname, "..");
 const workspaceRoot = resolve(pkgRoot, "..");
 const distNodeModules = join(pkgRoot, "dist", "node_modules");
 
-// Native/WASM/singleton leaves that can't be bundled. Versions are read from
-// the resolved install so the vendored copy matches what the bundle expects.
-const VENDOR = [
-  "libsql",
-  "@datadog/pprof",
-  "@electric-sql/pglite",
-  "@powerhousedao/pglite-fs",
-  "graphql",
-  "devcert",
-  "fsevents",
-];
-
+// Versions read from the resolved install so the vendored copy matches the bundle.
 function installedVersion(name: string): string {
   const p = join(pkgRoot, "node_modules", name, "package.json");
   if (!existsSync(p))
