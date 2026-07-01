@@ -13,19 +13,19 @@
  *     runtime config (`powerhouse.config.json` →
  *     `connect.drives.defaultDrives`), which Connect reads at load time.
  *   - preview-server URL — `<proxy>/preview` when available, else the
- *     direct loopback port. Baked as a literal placeholder into vetra-app's
- *     `preview-server-client.ts`, so it's string-replaced across the
- *     bundle's JS (a cache file tracks the last-applied value for later
- *     replacements).
+ *     direct loopback port. Written into `studio.config.json`, which
+ *     vetra-app's `preview-server-client.ts` fetches at load time. Both are
+ *     JSON configs the SPA reads at runtime — no JS asset is mutated, so the
+ *     served bundle stays byte-identical to the build (the image's
+ *     precompressed siblings exclude these two configs; see the Dockerfile).
  *
  * No rebuild, no toolchain, no install — so it works in a published,
  * source-less install where `ph-cli connect build` cannot run. The browser
  * needs a reload after a change for the new URLs to take effect.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { LifecycleHook } from "@powerhousedao/ph-clint";
-import { PREVIEW_SERVER_URL_PLACEHOLDER } from "../constants.js";
 import { DEFAULT_PREVIEW_SERVER_PORT } from "../preview-server/index.js";
 
 interface SwitchboardReadyEvent {
@@ -53,17 +53,6 @@ interface Log {
   info: (msg: string) => void;
   warn: (msg: string) => void;
   error: (msg: string) => void;
-}
-
-interface TokenStamp {
-  /** Human label for log lines. */
-  label: string;
-  /** Cache file inside the bundle holding the last-applied value. */
-  cacheFile: string;
-  /** Build-time placeholder replaced on first run. */
-  placeholder: string;
-  /** Live value to stamp. */
-  value: string;
 }
 
 export function connectDriveUrlOnSwitchboardReady(
@@ -97,16 +86,7 @@ export function connectDriveUrlOnSwitchboardReady(
           ctx.log.error(`[connect-drive-url] ${message}`);
         }
         try {
-          patchToken(
-            bundleDir,
-            {
-              label: "preview-server URL",
-              cacheFile: ".preview-server-url",
-              placeholder: PREVIEW_SERVER_URL_PLACEHOLDER,
-              value: previewServerUrl,
-            },
-            ctx.log,
-          );
+          writeStudioConfig(bundleDir, previewServerUrl, ctx.log);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           ctx.log.error(`[connect-drive-url] ${message}`);
@@ -158,50 +138,28 @@ function patchDefaultDrive(
   );
 }
 
-function patchToken(bundleDir: string, stamp: TokenStamp, log: Log): void {
-  const cacheFile = path.join(bundleDir, stamp.cacheFile);
-  const cached = existsSync(cacheFile)
-    ? readFileSync(cacheFile, "utf8").trim()
-    : "";
-
-  if (cached === stamp.value) {
-    log.debug(
-      `[connect-drive-url] Bundle already points at ${stamp.value}; skipping ${stamp.label}.`,
-    );
-    return;
-  }
-
-  const assetsDir = path.join(bundleDir, "assets");
-  if (!existsSync(assetsDir)) {
+// Writes the studio runtime config the Connect SPA fetches at load time. Kept
+// uncompressed in the served bundle (see Dockerfile precompress).
+function writeStudioConfig(
+  bundleDir: string,
+  previewServerUrl: string,
+  log: Log,
+): void {
+  if (!existsSync(bundleDir)) {
     throw new Error(`Connect bundle not found at ${bundleDir}`);
   }
+  const file = path.join(bundleDir, "studio.config.json");
+  const next = `${JSON.stringify({ previewServerUrl }, null, 2)}\n`;
 
-  // First run replaces the build-time placeholder; later runs replace the
-  // value we last wrote.
-  const search = cached || stamp.placeholder;
-
-  let patched = 0;
-  for (const name of readdirSync(assetsDir)) {
-    if (!name.endsWith(".js")) continue;
-    const file = path.join(assetsDir, name);
-    const content = readFileSync(file, "utf8");
-    if (!content.includes(search)) continue;
-    writeFileSync(file, content.split(search).join(stamp.value));
-    patched++;
-  }
-
-  if (patched === 0) {
-    log.warn(
-      `[connect-drive-url] No '${search}' token in ${bundleDir}; the bundle ` +
-        `may not be built with the ${stamp.label} placeholder. Leaving cache unchanged.`,
+  if (existsSync(file) && readFileSync(file, "utf8") === next) {
+    log.debug(
+      `[connect-drive-url] studio.config.json already points at ${previewServerUrl}; skipping.`,
     );
     return;
   }
 
-  writeFileSync(cacheFile, stamp.value);
+  writeFileSync(file, next);
   log.info(
-    `[connect-drive-url] Pointed ${stamp.label} at ${stamp.value} (${patched} file${
-      patched === 1 ? "" : "s"
-    }). Reload your browser to apply.`,
+    `[connect-drive-url] Wrote studio.config.json (preview-server ${previewServerUrl}). Reload your browser to apply.`,
   );
 }
