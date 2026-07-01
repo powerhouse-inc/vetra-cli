@@ -60,6 +60,18 @@ RUN pnpm add -g "vetra-cli@${CLINT_VERSION}" \
       --config.blockExoticSubdeps=false \
       --config.minimumReleaseAge=0
 
+# Precompress the Connect SPA into brotli/gzip siblings at build time. The bundle
+# is immutable in the image, so sirv serves them warm at runtime (precompress
+# config stays off) — no ~1.3 GiB cold-boot compression spike on the pod. q11
+# (build can afford it) for the smallest transfer; ~30s + ~1.5 GiB build memory.
+RUN set -eu; \
+    IDX=$(find -L "$(pnpm root -g)" -path "*/vetra-cli/dist/connect/index.html" -print -quit); \
+    test -n "$IDX" || { echo "connect bundle not found under global install" >&2; exit 1; }; \
+    DIST=$(dirname "$IDX"); \
+    CONNECT_SERVER="$(dirname "$DIST")/connect-server.js" VETRA_DIST="$DIST" \
+      node --input-type=module -e 'const {precompressAssets}=await import("file://"+process.env.CONNECT_SERVER);const r=await precompressAssets(process.env.VETRA_DIST,{brotliQuality:11});console.log("[precompress] "+r.count+" siblings in "+r.ms+"ms");' \
+ && test -n "$(find "$DIST" -name '*.br' -print -quit)"
+
 # Install ph-cmd separately so the `ph init` template prewarm below has the
 # --template-capable binary on PATH, and bake a scaffolded reactor-project
 # that runtime inits clone via `ph init --clone`. The cost of the install
