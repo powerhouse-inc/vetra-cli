@@ -5,6 +5,7 @@ import type { DeployTarget } from "./hooks/useSessionDeployTarget.js";
 import { resolveDeployProject } from "./deploy/resolveDeployProject.js";
 import { Breadcrumb, type Crumb } from "./Breadcrumb.js";
 import { useCloudAuth } from "./deploy/cloudAuth.js";
+import { GithubConnectCard } from "./deploy/GithubConnectCard.js";
 import { getAuthToken, setAuthTokenProvider } from "./deploy/cloudClient.js";
 import { resolveCloudDriveId } from "./deploy/config.js";
 import { ProjectDeployDetail } from "./deploy/ProjectDeployDetail.js";
@@ -297,10 +298,13 @@ export function DeploySection({
       ) : listLoading ? (
         <ProjectsLoading />
       ) : (
-        <ProjectDeployList
-          deployments={deployments}
-          onDeploy={(project) => setView({ kind: "deploy", project })}
-        />
+        <div className="flex flex-col gap-5">
+          <GithubConnectCard authorized={auth.authorized} />
+          <ProjectDeployList
+            deployments={deployments}
+            onDeploy={(project) => setView({ kind: "deploy", project })}
+          />
+        </div>
       )}
     </div>
   );

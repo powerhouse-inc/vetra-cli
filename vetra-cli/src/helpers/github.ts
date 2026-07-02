@@ -162,7 +162,7 @@ export async function resolveRepoRemote(ctx: {
   const status = await fetchConnection(graphqlEndpoint, environmentId, bearer);
   if (!status.connected || !status.connection) {
     throw new Error(
-      'This studio is not connected to GitHub yet — connect a repository from the Vetra dashboard first.',
+      "This studio is not connected to GitHub yet — connect a repository from the studio's Deploy tab first (optional).",
     );
   }
   const repoFullName = status.connection.repoFullName;
