@@ -30,7 +30,8 @@ import {
 } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
-import { useActivePhase } from "./hooks/useActivePhase.js";
+import { useActivePhase, useActiveEditType } from "./hooks/useActivePhase.js";
+import { LearnWhileYouWait } from "./LearnWhileYouWait.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionEditedDocument } from "./hooks/useSessionEditedDocument.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
@@ -275,13 +276,17 @@ export function VetraStudio({
 
   // The phase the selected session's agent is currently acting on — drives the
   // soft pulse on the home overview. Same follow signals as auto-nav below.
-  const activePhase = useActivePhase({
+  const phaseSignals = {
     messages: sessionDocument?.state.global.messages,
     editDocumentType: editTarget?.documentType,
     editCallId: editTarget?.callId ?? null,
     previewCallId: previewTarget?.callId ?? null,
     deployCallId: deployTarget?.callId ?? null,
-  });
+  };
+  const activePhase = useActivePhase(phaseSignals);
+  // The exact documentType the agent is editing — drives the contextual
+  // "learn while you wait" card.
+  const activeEditType = useActiveEditType(phaseSignals);
 
   const editMarkRef = useRef<EditMark | null>(null);
   const [pendingEditFollow, setPendingEditFollow] = useState<OpenTarget | null>(
@@ -504,7 +509,7 @@ export function VetraStudio({
           <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
         </div>
       </div>
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <AutoNavToggle
           enabled={autoNavEnabled}
           paused={userPinned}
@@ -555,6 +560,7 @@ export function VetraStudio({
             />
           </div>
         )}
+        <LearnWhileYouWait activeDocumentType={activeEditType} />
       </main>
       {isDragging ? (
         /* Catches mouse events that would otherwise route into the BUILD
