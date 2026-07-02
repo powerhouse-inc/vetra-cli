@@ -1,3 +1,5 @@
+import { useTheme } from "@powerhousedao/reactor-browser";
+import { useMemo } from "react";
 import { Breadcrumb, type Crumb } from "./Breadcrumb.js";
 import { PreviewStatusChip } from "./PreviewStatusChip.js";
 import type { ResolvedPreview } from "./hooks/useResolvedPreview.js";
@@ -34,10 +36,24 @@ export function BuildSection({
 }
 
 function PreviewBody({ preview }: { preview: ResolvedPreview }) {
-  if (preview.kind === "ready") {
+  const { theme } = useTheme();
+  const url = preview.kind === "ready" ? preview.url : undefined;
+
+  /* Carry the Studio theme into the preview so its boot script can theme the
+   * first paint. Keyed on src: toggling re-mounts the iframe with the new
+   * param (live sync without reload lands with upstream storage-event sync). */
+  const src = useMemo(() => {
+    if (!url) return undefined;
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set("theme", theme);
+    return u.toString();
+  }, [url, theme]);
+
+  if (src) {
     return (
       <iframe
-        src={preview.url}
+        key={src}
+        src={src}
         title="Preview"
         className="block min-h-0 w-full flex-1 border-0"
       />
