@@ -24,10 +24,10 @@ export function ProjectDeployList({
 }) {
   return (
     <section className="flex flex-col gap-4">
-      <h3 className="text-base font-semibold text-vetra-fg">Projects</h3>
+      <h3 className="text-base font-semibold text-foreground">Projects</h3>
 
       {deployments.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-vetra-border bg-vetra-accent px-4 py-6 text-sm text-vetra-muted-fg">
+        <div className="rounded-xl border border-dashed border-border bg-accent px-4 py-6 text-sm text-muted-foreground">
           No projects yet. Create specification documents in the Specify
           section, then deploy them here.
         </div>
@@ -62,11 +62,11 @@ function ProjectCard({
   const deployed = deployedEnvironments.length > 0;
   const count = project.documents.length;
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-vetra-border bg-vetra-card p-5 transition-shadow hover:shadow-sm">
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2">
-          <Folder size={16} className="shrink-0 text-vetra-muted-fg" />
-          <span className="truncate text-base font-semibold text-vetra-fg">
+          <Folder size={16} className="shrink-0 text-muted-foreground" />
+          <span className="truncate text-base font-semibold text-foreground">
             {project.name}
           </span>
         </span>
@@ -74,11 +74,11 @@ function ProjectCard({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-vetra-muted-fg">
+        <span className="text-xs text-muted-foreground">
           {count} {count === 1 ? "document" : "documents"}
         </span>
         {deployed ? (
-          <span className="flex items-center gap-1.5 text-xs text-vetra-muted-fg">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Server size={13} className="shrink-0" />
             <span className="truncate">{deployedEnvironments.join(", ")}</span>
           </span>
@@ -105,15 +105,15 @@ function ReleaseLine({ release }: { release: ReleaseStatus }) {
   if (!release.known) return null;
   if (release.needsRelease) {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-vetra-warning">
-        <span className="inline-block h-2 w-2 rounded-full bg-vetra-warning" />
+      <span className="flex items-center gap-1.5 text-xs font-medium text-warning">
+        <span className="inline-block h-2 w-2 rounded-full bg-warning" />
         Needs release
       </span>
     );
   }
   return (
-    <span className="flex items-center gap-1.5 text-xs text-vetra-muted-fg">
-      <span className="inline-block h-2 w-2 rounded-full bg-vetra-success" />
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="inline-block h-2 w-2 rounded-full bg-success" />
       Up to date
     </span>
   );
@@ -121,10 +121,10 @@ function ReleaseLine({ release }: { release: ReleaseStatus }) {
 
 function StatusPill({ deployed }: { deployed: boolean }) {
   return (
-    <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-vetra-muted-fg">
+    <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
       <span
         className={`inline-block h-2 w-2 rounded-full ${
-          deployed ? "bg-vetra-success" : "bg-vetra-muted-fg"
+          deployed ? "bg-success" : "bg-muted-foreground"
         }`}
       />
       {deployed ? "Deployed" : "Not deployed"}

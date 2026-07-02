@@ -56,7 +56,7 @@ export function WbsHeader({
   dispatch: Dispatch;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-vetra-border bg-vetra-accent p-5">
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-accent p-5">
       <Pill tone={state.status === "COMPLETE" ? "prefer" : "info"}>
         {state.status}
       </Pill>
@@ -65,7 +65,7 @@ export function WbsHeader({
         placeholder="Work breakdown structure name"
         variant="plain"
         onCommit={(name) => dispatch(actions.setWbsName({ name }))}
-        className="text-2xl font-semibold text-vetra-fg"
+        className="text-2xl font-semibold text-foreground"
       />
       <EditableText
         value={state.description}
@@ -75,7 +75,7 @@ export function WbsHeader({
         onCommit={(description) =>
           dispatch(actions.setWbsDescription({ description }))
         }
-        className="text-sm text-vetra-muted-fg"
+        className="text-sm text-muted-foreground"
       />
       <WbsStatusControls status={state.status} dispatch={dispatch} />
       <FeatureLink state={state} dispatch={dispatch} />
@@ -95,7 +95,7 @@ function WbsStatusControls({
       key={label}
       type="button"
       onClick={onClick}
-      className="rounded border border-vetra-border bg-vetra-card px-2 py-0.5 text-xs text-vetra-fg hover:bg-vetra-muted"
+      className="rounded border border-border bg-card px-2 py-0.5 text-xs text-foreground hover:bg-muted"
     >
       {label}
     </button>
@@ -123,10 +123,10 @@ function FeatureLink({
   if (state.feature) {
     return (
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Feature
         </span>
-        <span className="text-vetra-fg">
+        <span className="text-foreground">
           {state.feature.name || state.feature.documentId}
         </span>
         <ClearButton onClick={() => dispatch(actions.clearFeature({}))}>
@@ -137,14 +137,14 @@ function FeatureLink({
   }
   return (
     <div className="flex items-center gap-1.5 text-xs">
-      <span className="font-medium uppercase tracking-wide text-vetra-muted-fg">
+      <span className="font-medium uppercase tracking-wide text-muted-foreground">
         Feature
       </span>
       <input
         value={docId}
         placeholder="feature document id"
         onChange={(e) => setDocId(e.target.value)}
-        className="w-48 rounded border border-vetra-border px-1.5 py-0.5 font-mono outline-none focus:border-vetra-muted-fg"
+        className="w-48 rounded border border-border px-1.5 py-0.5 font-mono outline-none focus:border-muted-foreground"
       />
       <LinkButton
         disabled={!docId.trim()}
@@ -217,8 +217,8 @@ function PackageGroup({
   dispatch: Dispatch;
 }) {
   return (
-    <div className="rounded-lg border border-vetra-border">
-      <div className="flex items-start justify-between gap-3 border-b border-vetra-border/40 bg-vetra-accent p-3">
+    <div className="rounded-lg border border-border">
+      <div className="flex items-start justify-between gap-3 border-b border-border/40 bg-accent p-3">
         <div className="min-w-0 flex-1">
           <EditableText
             value={pkg.name}
@@ -227,7 +227,7 @@ function PackageGroup({
             onCommit={(name) =>
               dispatch(actions.updatePackage({ id: pkg.id, name }))
             }
-            className="font-semibold text-vetra-fg"
+            className="font-semibold text-foreground"
           />
           <EditableText
             value={pkg.description}
@@ -235,7 +235,7 @@ function PackageGroup({
             onCommit={(description) =>
               dispatch(actions.updatePackage({ id: pkg.id, description }))
             }
-            className="text-sm text-vetra-muted-fg"
+            className="text-sm text-muted-foreground"
           />
         </div>
         <RemoveButton
@@ -282,7 +282,7 @@ function TaskGroup({
     <div>
       <div className="mb-1.5 flex items-center justify-between">
         {title ? (
-          <h5 className="text-xs font-medium uppercase tracking-wide text-vetra-muted-fg">
+          <h5 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {title}
           </h5>
         ) : (
@@ -318,7 +318,7 @@ function TaskRow({
   dispatch: Dispatch;
 }) {
   return (
-    <div className="rounded-lg border border-vetra-border bg-vetra-card p-3">
+    <div className="rounded-lg border border-border bg-card p-3">
       <div className="mb-2 flex items-center gap-2">
         <Pill tone={STATUS_TONE[task.status]}>
           {task.status.replace("_", " ")}
@@ -330,7 +330,7 @@ function TaskRow({
           onCommit={(name) =>
             dispatch(actions.updateTask({ id: task.id, name }))
           }
-          className="min-w-40 flex-1 font-medium text-vetra-fg"
+          className="min-w-40 flex-1 font-medium text-foreground"
         />
         <select
           value={task.packageId ?? UNSCOPED}
@@ -343,7 +343,7 @@ function TaskRow({
               }),
             )
           }
-          className="rounded border border-vetra-border bg-vetra-card px-1.5 py-0.5 text-xs outline-none focus:border-vetra-muted-fg"
+          className="rounded border border-border bg-card px-1.5 py-0.5 text-xs outline-none focus:border-muted-foreground"
         >
           {packageOptions.map((o) => (
             <option key={o.id} value={o.id}>
@@ -374,7 +374,7 @@ function TaskRow({
             onCommit={(owner) =>
               dispatch(actions.updateTask({ id: task.id, owner }))
             }
-            className="text-sm text-vetra-fg"
+            className="text-sm text-foreground"
           />
         </Field>
         <Field label="Acceptance criteria">
@@ -384,7 +384,7 @@ function TaskRow({
             onCommit={(acceptanceCriteria) =>
               dispatch(actions.updateTask({ id: task.id, acceptanceCriteria }))
             }
-            className="text-sm text-vetra-fg"
+            className="text-sm text-foreground"
           />
         </Field>
       </div>
@@ -397,7 +397,7 @@ function TaskRow({
             onCommit={(description) =>
               dispatch(actions.updateTask({ id: task.id, description }))
             }
-            className="text-sm text-vetra-muted-fg"
+            className="text-sm text-muted-foreground"
           />
         </Field>
       </div>
@@ -419,7 +419,7 @@ function TaskStatusControls({
       key={label}
       type="button"
       onClick={onClick}
-      className="rounded border border-vetra-border bg-vetra-card px-2 py-0.5 text-xs text-vetra-fg hover:bg-vetra-muted"
+      className="rounded border border-border bg-card px-2 py-0.5 text-xs text-foreground hover:bg-muted"
     >
       {label}
     </button>

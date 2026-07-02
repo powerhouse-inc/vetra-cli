@@ -53,7 +53,7 @@ cd "$(dirname "$0")"
 LAB_DIR="$(pwd)"
 
 # VETRA_ROOT is the repo root (the workspace holding vetra-cli/ + vetra-app/ +
-# pnpm-workspace.yaml). The lab lives at <repo>/lab/registry-cache-lab-vcli, so
+# pnpm-workspace.yaml). The lab lives at <repo>/lab/prod, so
 # default it to three levels up from this script — resolves from a fresh
 # checkout (CI) and a local dev clone alike. PH_CLINT_ROOT is only used when
 # SKIP_PH_CLINT != 1 (CI uses SKIP_PH_CLINT=1 against the catalog-pinned release).

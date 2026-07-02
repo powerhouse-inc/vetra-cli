@@ -31,16 +31,18 @@ export function useSafeDocument<TDoc extends PHDocument>(
 }
 
 function DefaultPending() {
-  return <div className="p-6 text-sm text-vetra-muted-fg">Loading document…</div>;
+  return (
+    <div className="p-6 text-sm text-muted-foreground">Loading document…</div>
+  );
 }
 
 function DefaultError({ state }: { state: ErrorState }) {
   return (
-    <div className="p-6 text-sm text-vetra-muted-fg">
+    <div className="p-6 text-sm text-muted-foreground">
       Couldn't load this document.{" "}
       <button
         type="button"
-        className="underline hover:text-vetra-fg"
+        className="underline hover:text-foreground"
         onClick={() => state.reload?.()}
       >
         Retry

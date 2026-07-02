@@ -10,9 +10,9 @@ import type { ServiceManager } from "@powerhousedao/ph-clint";
 import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from "../constants.js";
 import { resolveReactorProjectPath } from "../helpers/project.js";
 import {
+  browserDriveRemoteUrl,
   buildPreviewDocPath,
   buildPreviewDriveRootPath,
-  driveRemoteUrl,
   getPreviewDriveId,
 } from "../helpers/reactor-project-preview.js";
 import type { ResolveResult } from "./config.js";
@@ -23,6 +23,7 @@ export async function resolvePreview(args: {
   project: string;
   doc: string;
   drive?: string;
+  proxyPublicUrl?: string;
 }): Promise<ResolveResult> {
   if (!args.project) return { kind: "no-target" };
   if (!args.drive && !args.doc) return { kind: "no-target" };
@@ -64,10 +65,16 @@ export async function resolvePreview(args: {
   if (args.drive) {
     // Append the drive's remote URL so Connect registers the ad-hoc app drive
     // via addRemoteDrive on load; otherwise it bounces to the drive picker.
+    // Fetched by the BROWSER — route it through the proxy's switchboard mount,
+    // not the loopback switchboard origin.
     const switchboardUrl = instance.endpoints?.["vetra-switchboard"];
     const docPath = buildPreviewDriveRootPath(
       args.drive,
-      switchboardUrl ? driveRemoteUrl(switchboardUrl, args.drive) : undefined,
+      browserDriveRemoteUrl({
+        driveId: args.drive,
+        proxyUrl: args.proxyPublicUrl,
+        switchboardUrl,
+      }),
     );
     return {
       kind: "ready",

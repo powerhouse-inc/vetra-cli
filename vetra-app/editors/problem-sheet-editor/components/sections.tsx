@@ -74,7 +74,7 @@ export function ContextSection({
         placeholder="Where and when does this problem arise?"
         multiline
         onCommit={(context) => dispatch(actions.setContext({ context }))}
-        className="text-sm leading-relaxed text-vetra-fg"
+        className="text-sm leading-relaxed text-foreground"
       />
     </Section>
   );
@@ -102,10 +102,11 @@ export function CoreJobSection({
         ) : undefined
       }
     >
-      <p className="mb-2 text-sm text-vetra-muted-fg">
+      <p className="mb-2 text-sm text-muted-foreground">
         {productName ? (
           <>
-            The <span className="font-medium text-vetra-fg">{productName}</span>{" "}
+            The{" "}
+            <span className="font-medium text-foreground">{productName}</span>{" "}
             product is for users who…
           </>
         ) : (
@@ -129,7 +130,7 @@ function DefinedJob({
   dispatch: Dispatch;
 }) {
   return (
-    <div className="relative flex flex-col gap-3 overflow-hidden rounded-lg border border-vetra-border bg-vetra-accent p-4">
+    <div className="relative flex flex-col gap-3 overflow-hidden rounded-lg border border-border bg-accent p-4">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-vetra-primary to-transparent opacity-60" />
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Select
@@ -145,7 +146,7 @@ function DefinedJob({
           required
           width="w-32"
           onCommit={(verb) => dispatch(actions.updateCoreJob({ verb }))}
-          className="font-medium text-vetra-fg"
+          className="font-medium text-foreground"
         />
         <EditableText
           value={job.object}
@@ -153,7 +154,7 @@ function DefinedJob({
           required
           width="w-72"
           onCommit={(object) => dispatch(actions.updateCoreJob({ object }))}
-          className="font-medium text-vetra-fg"
+          className="font-medium text-foreground"
         />
       </div>
       <EditableText
@@ -161,7 +162,7 @@ function DefinedJob({
         placeholder="Clarifier — for whom, or under what conditions (optional)"
         multiline
         onCommit={(clarifier) => dispatch(actions.updateCoreJob({ clarifier }))}
-        className="text-sm text-vetra-muted-fg"
+        className="text-sm text-muted-foreground"
       />
     </div>
   );
@@ -174,7 +175,7 @@ function DraftJob({ dispatch }: { dispatch: Dispatch }) {
   const [clarifier, setClarifier] = useState("");
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-vetra-border p-4 text-sm">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border p-4 text-sm">
       <Select
         value={motivation}
         options={MOTIVATIONS}
@@ -184,19 +185,19 @@ function DraftJob({ dispatch }: { dispatch: Dispatch }) {
         value={verb}
         placeholder="verb"
         onChange={(e) => setVerb(e.target.value)}
-        className="w-32 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="w-32 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
       <input
         value={object}
         placeholder="object"
         onChange={(e) => setObject(e.target.value)}
-        className="w-48 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="w-48 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
       <input
         value={clarifier}
         placeholder="clarifier (optional)"
         onChange={(e) => setClarifier(e.target.value)}
-        className="flex-1 rounded border border-vetra-border px-1.5 py-0.5 outline-none focus:border-vetra-muted-fg"
+        className="flex-1 rounded border border-border px-1.5 py-0.5 outline-none focus:border-muted-foreground"
       />
       <LinkButton
         disabled={!verb.trim() || !object.trim()}
@@ -249,7 +250,7 @@ export function JobStepsSection({
 
 function JobStepRow({ step, dispatch }: { step: JobStep; dispatch: Dispatch }) {
   return (
-    <li className="flex items-start gap-3 rounded-lg border border-vetra-border bg-vetra-card p-3">
+    <li className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
       <Select
         value={step.category}
         options={JOB_MAP_STEPS}
@@ -266,7 +267,7 @@ function JobStepRow({ step, dispatch }: { step: JobStep; dispatch: Dispatch }) {
           onCommit={(name) =>
             dispatch(actions.updateJobStep({ id: step.id, name }))
           }
-          className="text-sm font-medium text-vetra-fg"
+          className="text-sm font-medium text-foreground"
         />
         <EditableText
           value={step.description}
@@ -274,7 +275,7 @@ function JobStepRow({ step, dispatch }: { step: JobStep; dispatch: Dispatch }) {
           onCommit={(description) =>
             dispatch(actions.updateJobStep({ id: step.id, description }))
           }
-          className="text-sm text-vetra-muted-fg"
+          className="text-sm text-muted-foreground"
         />
       </div>
       <RemoveButton
@@ -335,7 +336,7 @@ function RoleCard({ role, dispatch }: { role: Role; dispatch: Dispatch }) {
           onCommit={(name) =>
             dispatch(actions.updateRole({ id: role.id, name }))
           }
-          className="text-sm font-medium text-vetra-fg"
+          className="text-sm font-medium text-foreground"
         />
         <EditableText
           value={role.description}
@@ -344,7 +345,7 @@ function RoleCard({ role, dispatch }: { role: Role; dispatch: Dispatch }) {
           onCommit={(description) =>
             dispatch(actions.updateRole({ id: role.id, description }))
           }
-          className="text-sm text-vetra-muted-fg"
+          className="text-sm text-muted-foreground"
         />
         <EditableText
           value={role.context}
@@ -352,7 +353,7 @@ function RoleCard({ role, dispatch }: { role: Role; dispatch: Dispatch }) {
           onCommit={(context) =>
             dispatch(actions.updateRole({ id: role.id, context }))
           }
-          className="text-sm text-vetra-muted-fg"
+          className="text-sm text-muted-foreground"
         />
       </div>
     </Card>
@@ -440,7 +441,7 @@ function OutcomeCard({
                 onCommit={(metric) =>
                   dispatch(actions.updateOutcome({ id: outcome.id, metric }))
                 }
-                className="text-sm text-vetra-fg"
+                className="text-sm text-foreground"
               />
             ) : null}
             <EditableText
@@ -450,7 +451,7 @@ function OutcomeCard({
               onCommit={(object) =>
                 dispatch(actions.updateOutcome({ id: outcome.id, object }))
               }
-              className="text-sm font-medium text-vetra-fg"
+              className="text-sm font-medium text-foreground"
             />
             <EditableText
               value={outcome.clarifier}
@@ -458,7 +459,7 @@ function OutcomeCard({
               onCommit={(clarifier) =>
                 dispatch(actions.updateOutcome({ id: outcome.id, clarifier }))
               }
-              className="text-sm text-vetra-muted-fg"
+              className="text-sm text-muted-foreground"
             />
           </div>
         </div>
@@ -473,7 +474,7 @@ function OutcomeCard({
               dispatch(actions.updateOutcome({ id: outcome.id, scope }))
             }
           />
-          <label className="flex items-center gap-1 text-sm text-vetra-muted-fg">
+          <label className="flex items-center gap-1 text-sm text-muted-foreground">
             Role
             <OptionalRefSelect
               value={outcome.role}
@@ -485,7 +486,7 @@ function OutcomeCard({
               }}
             />
           </label>
-          <label className="flex items-center gap-1 text-sm text-vetra-muted-fg">
+          <label className="flex items-center gap-1 text-sm text-muted-foreground">
             Step
             <OptionalRefSelect
               value={outcome.relatedStep}
@@ -509,7 +510,7 @@ function OutcomeCard({
           onCommit={(notes) =>
             dispatch(actions.updateOutcome({ id: outcome.id, notes }))
           }
-          className="text-sm text-vetra-muted-fg"
+          className="text-sm text-muted-foreground"
         />
       </div>
     </Card>
@@ -530,7 +531,7 @@ function OptionalRefSelect({
     <select
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value || null)}
-      className="w-full rounded border border-vetra-border bg-vetra-card px-1.5 py-0.5 text-sm outline-none focus:border-vetra-muted-fg"
+      className="w-full rounded border border-border bg-card px-1.5 py-0.5 text-sm outline-none focus:border-muted-foreground"
     >
       <option value="">—</option>
       {options.map((o) => (
@@ -588,7 +589,7 @@ function ConstraintRow({
   dispatch: Dispatch;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-vetra-border bg-vetra-card p-3">
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
       <Select
         value={constraint.severity}
         options={SEVERITIES}
@@ -608,7 +609,7 @@ function ConstraintRow({
               actions.updateConstraint({ id: constraint.id, description }),
             )
           }
-          className="text-sm text-vetra-fg"
+          className="text-sm text-foreground"
         />
         <EditableText
           value={constraint.notes}
@@ -617,7 +618,7 @@ function ConstraintRow({
           onCommit={(notes) =>
             dispatch(actions.updateConstraint({ id: constraint.id, notes }))
           }
-          className="text-sm text-vetra-muted-fg"
+          className="text-sm text-muted-foreground"
         />
       </div>
       <RemoveButton

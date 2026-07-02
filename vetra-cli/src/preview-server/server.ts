@@ -6,6 +6,8 @@
  *   POST /start?project=          idempotent start; returns JSON `StartResult`.
  *   GET  /events                  SSE stream of reactor-project events.
  *   GET  /version                 running vetra-cli + ph versions.
+ *   GET  /sessions                list chat sessions (gated).
+ *   GET  /sessions/export?id=     zip of a session's doc/thread/log (gated).
  *   GET  /healthz                 liveness check.
  *
  * Listens on 127.0.0.1 only. CORS is permissive (`*`) for localhost dev —
@@ -21,6 +23,9 @@ import { publishProjectForDeploy } from "./publish-project.js";
 import { checkReleaseStatus } from "./release-status.js";
 import { resolvePreview } from "./resolver.js";
 import { startPreview } from "./starter.js";
+import { authorizeSessions } from "./session-auth.js";
+import { buildSessionExport, listSessions } from "./session-export.js";
+import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
 import {
   confirmAuth,
   getAuthState,
@@ -43,6 +48,10 @@ interface PreviewServerDeps {
   proxyPublicUrl?: string;
   /** Running versions surfaced to the studio UI via `GET /version`. */
   versions: { vetraCli: string; ph: string };
+  /** Embedded-drive accessor for the /sessions endpoints; undefined = no reactor. */
+  getReactor?: () => Promise<EmbeddedDrive | undefined>;
+  /** Whether agent conversation logging is on (surfaced in the export metadata). */
+  agentLogging?: boolean;
   log?: {
     info: (m: string) => void;
     error: (m: string) => void;
@@ -58,7 +67,8 @@ export interface PreviewServerHandle {
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Expose-Headers": "Content-Disposition",
 };
 
 function writeJson(res: ServerResponse, status: number, body: unknown): void {
@@ -87,6 +97,8 @@ export async function startPreviewServer(
     port,
     proxyPublicUrl,
     versions,
+    getReactor,
+    agentLogging,
     log,
   } = deps;
   const broadcaster = createSseBroadcaster({ subscribe });
@@ -126,6 +138,7 @@ export async function startPreviewServer(
           project: q.get("project") ?? "",
           doc: q.get("doc") ?? "",
           drive: q.get("drive") ?? undefined,
+          proxyPublicUrl,
         });
         writeJson(res, 200, result);
         return;
@@ -190,6 +203,55 @@ export async function startPreviewServer(
 
       if (path === "/events" && method === "GET") {
         broadcaster.attach(res);
+        return;
+      }
+
+      if (path === "/sessions" && method === "GET") {
+        const q = parseQuery(url);
+        if (!authorizeSessions(req.headers, q.get("token"))) {
+          writeJson(res, 401, { error: "unauthorized" });
+          return;
+        }
+        const drive = await getReactor?.();
+        if (!drive) {
+          writeJson(res, 503, { error: "reactor-unavailable" });
+          return;
+        }
+        writeJson(res, 200, { kind: "ok", sessions: await listSessions(drive) });
+        return;
+      }
+
+      if (path === "/sessions/export" && method === "GET") {
+        const q = parseQuery(url);
+        if (!authorizeSessions(req.headers, q.get("token"))) {
+          writeJson(res, 401, { error: "unauthorized" });
+          return;
+        }
+        const id = q.get("id") ?? "";
+        if (!id) {
+          writeJson(res, 400, { error: "missing id" });
+          return;
+        }
+        const drive = await getReactor?.();
+        if (!drive) {
+          writeJson(res, 503, { error: "reactor-unavailable" });
+          return;
+        }
+        const result = await buildSessionExport(drive, workdir, id, {
+          versions,
+          agentLogging: agentLogging ?? false,
+        });
+        if (result.kind === "not-found") {
+          writeJson(res, 404, { error: "unknown-session", id });
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${result.filename}"`,
+          ...CORS_HEADERS,
+        });
+        // View over the existing bytes — no copy of the zip payload.
+        res.end(Buffer.from(result.zip.buffer, result.zip.byteOffset, result.zip.byteLength));
         return;
       }
 

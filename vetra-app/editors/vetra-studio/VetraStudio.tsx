@@ -30,6 +30,7 @@ import {
 } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
+import { useActivePhase } from "./hooks/useActivePhase.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionEditedDocument } from "./hooks/useSessionEditedDocument.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
@@ -271,6 +272,17 @@ export function VetraStudio({
   // transcript can name a doc before reactor-browser syncs it, and opening
   // early crashes the editor host ("Document not found").
   const editTarget = useSessionEditedDocument(sessionDocument ?? undefined);
+
+  // The phase the selected session's agent is currently acting on — drives the
+  // soft pulse on the home overview. Same follow signals as auto-nav below.
+  const activePhase = useActivePhase({
+    messages: sessionDocument?.state.global.messages,
+    editDocumentType: editTarget?.documentType,
+    editCallId: editTarget?.callId ?? null,
+    previewCallId: previewTarget?.callId ?? null,
+    deployCallId: deployTarget?.callId ?? null,
+  });
+
   const editMarkRef = useRef<EditMark | null>(null);
   const [pendingEditFollow, setPendingEditFollow] = useState<OpenTarget | null>(
     null,
@@ -467,7 +479,7 @@ export function VetraStudio({
     >
       <aside
         data-tour="chat-pane"
-        className="flex shrink-0 flex-col bg-vetra-card"
+        className="flex shrink-0 flex-col bg-card"
         style={{ width: `${chatWidth}px` }}
       >
         <ChatPane
@@ -484,15 +496,15 @@ export function VetraStudio({
         aria-label="Resize chat panel"
         onMouseDown={handleResizeMouseDown}
         onDoubleClick={handleResizeDoubleClick}
-        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-vetra-border bg-vetra-card hover:bg-vetra-accent active:bg-vetra-muted"
+        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-border bg-card hover:bg-accent active:bg-muted"
       >
         <div className="pointer-events-none flex flex-col gap-1">
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
         </div>
       </div>
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-vetra-accent">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <AutoNavToggle
           enabled={autoNavEnabled}
           paused={userPinned}
@@ -536,7 +548,11 @@ export function VetraStudio({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <PhaseCycle onOpen={setSection} onStartTour={startTour} />
+            <PhaseCycle
+              onOpen={setSection}
+              onStartTour={startTour}
+              activePhase={activePhase}
+            />
           </div>
         )}
       </main>
@@ -567,16 +583,16 @@ function AutoNavToggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-vetra-border bg-vetra-card px-4 py-1.5 min-h-10">
+    <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-1.5 min-h-10">
       <VersionBadge />
       <div className="flex-1" />
       <AgentAuthButton />
       {enabled && paused ? (
-        <span className="text-[11px] text-vetra-muted-fg">
+        <span className="text-[11px] text-muted-foreground">
           paused — close the document to resume
         </span>
       ) : null}
-      <label className="flex cursor-pointer items-center gap-2 text-xs text-vetra-muted-fg">
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
         <input
           type="checkbox"
           checked={enabled}

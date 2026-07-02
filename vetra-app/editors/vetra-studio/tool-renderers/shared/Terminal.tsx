@@ -5,7 +5,7 @@ import { Check, Copy, TerminalSquare } from "lucide-react";
 // eslint-disable-next-line no-control-regex
 const ANSI = /\x1b\[[0-9;]*m/g;
 
-/** Dark terminal panel: header + copy button, then `$ command` and its output. */
+/** Terminal panel: header + copy button, then `$ command` and its output. */
 export function TerminalBlock({
   command,
   output,
@@ -26,16 +26,16 @@ export function TerminalBlock({
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-100">
-      <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+    <div className="overflow-hidden rounded-lg border border-border bg-muted text-foreground">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <TerminalSquare className="size-3.5" />
           Terminal
         </div>
         <button
           type="button"
           onClick={copy}
-          className="text-zinc-400 transition-colors hover:text-zinc-100"
+          className="text-muted-foreground transition-colors hover:text-foreground"
           aria-label="Copy terminal output"
         >
           {copied ? (
