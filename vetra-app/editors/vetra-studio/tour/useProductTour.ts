@@ -1,13 +1,31 @@
 import { useEffect, useMemo, useRef } from "react";
 import { driver, type Driver } from "driver.js";
-import { TOUR_STEPS, type TourSection } from "./steps.js";
+import { TOUR_STEPS, type TourStep } from "./steps.js";
 // driver.js base CSS is imported in style.css (bundled with the tour theme).
 
-const sel = (anchor: string) => `[data-tour="${anchor}"]`;
+/** Studio actions the tour drives to stage each step's UI state. */
+export type TourControls = {
+  setSection: (section: NonNullable<TourStep["section"]>) => void;
+  /** Deselect any open session so the sessions list (with "+ New") shows. */
+  deselectSession: () => void;
+  /** Open an existing session by id (re-opening the tour's cached session). */
+  selectSession: (id: string) => void;
+  /** Create + open a fresh chat session so the chat input renders; returns its id. */
+  openNewSession: () => Promise<string>;
+};
+
+const dataSel = (anchor: string) => `[data-tour="${anchor}"]`;
+
+/** A step's DOM target: raw selector wins, else the data-tour anchor, else none. */
+function stepSelector(step: TourStep): string | undefined {
+  if (step.selector) return step.selector;
+  if (step.anchor) return dataSel(step.anchor);
+  return undefined;
+}
 
 /** Resolve once the selector is in the DOM (or null after `timeout`) — covers the
- * gap while a newly-navigated section mounts its content. */
-function waitForElement(selector: string, timeout = 1500): Promise<Element | null> {
+ * gap while a newly-navigated section or freshly-opened session mounts. */
+function waitForElement(selector: string, timeout = 4000): Promise<Element | null> {
   return new Promise((resolve) => {
     const start = performance.now();
     const tick = () => {
@@ -21,22 +39,42 @@ function waitForElement(selector: string, timeout = 1500): Promise<Element | nul
 }
 
 /**
- * The "Meet the models" product tour. Returns `startTour`, which walks
- * {@link TOUR_STEPS}: each stop navigates to its section (via `setSection`),
- * waits for the anchor to mount, then highlights it with a condensed popover.
- * A missing anchor degrades to a centered popover rather than wedging the tour.
+ * The product tour. Returns `startTour`, which walks {@link TOUR_STEPS}: each
+ * stop stages its UI (left-pane session state + main section), waits for its
+ * target to mount, then highlights it with a condensed popover. A missing target
+ * degrades to a centered popover rather than wedging the tour.
  */
-export function useProductTour(setSection: (section: TourSection) => void): {
-  startTour: () => void;
-} {
+export function useProductTour(controls: TourControls): { startTour: () => void } {
   const driverRef = useRef<Driver | null>(null);
+  // One fresh session per tour run, cached so revisiting the input step (prev/next)
+  // reuses it instead of creating another.
+  const sessionIdRef = useRef<string | null>(null);
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
 
   const api = useMemo(() => {
-    // Navigate to a step's section, let it mount, then highlight it.
-    async function goTo(index: number, d: Driver) {
+    // Stage a step's UI state (session pane + section) and wait for its target
+    // to mount — without highlighting yet.
+    async function stage(index: number) {
       const step = TOUR_STEPS[index];
-      setSection(step.section);
-      await waitForElement(sel(step.anchor));
+      const c = controlsRef.current;
+
+      if (step.session === "none") {
+        c.deselectSession();
+      } else if (step.session === "new") {
+        // Create the fresh session once; on later visits just re-open it.
+        if (!sessionIdRef.current) sessionIdRef.current = await c.openNewSession();
+        else c.selectSession(sessionIdRef.current);
+      }
+      if (step.section) c.setSection(step.section);
+
+      const selector = stepSelector(step);
+      if (selector) await waitForElement(selector);
+    }
+
+    // Stage then highlight (for prev/next while the driver is already active).
+    async function goTo(index: number, d: Driver) {
+      await stage(index);
       d.moveTo(index);
     }
 
@@ -44,13 +82,13 @@ export function useProductTour(setSection: (section: TourSection) => void): {
       return driver({
         showProgress: true,
         allowClose: true,
-        // Block clicks on the highlighted button (no accidental create/open
+        // Block clicks on the highlighted element (no accidental create/open
         // mid-tour); clicking the dimmed overlay still dismisses.
         disableActiveInteraction: true,
         overlayColor: "rgba(0, 0, 0, 0.6)",
         popoverClass: "vetra-tour",
         steps: TOUR_STEPS.map((s) => ({
-          element: sel(s.anchor),
+          element: stepSelector(s),
           popover: {
             title: s.title,
             description: s.blurb,
@@ -58,7 +96,7 @@ export function useProductTour(setSection: (section: TourSection) => void): {
             align: "start" as const,
           },
         })),
-        // Custom hooks suppress auto-advance so we can navigate + wait first.
+        // Custom hooks suppress auto-advance so we can stage + wait first.
         onNextClick: (_el, _step, { driver: d }) => {
           const i = d.getActiveIndex() ?? 0;
           if (i >= TOUR_STEPS.length - 1) {
@@ -77,16 +115,15 @@ export function useProductTour(setSection: (section: TourSection) => void): {
 
     async function startTour() {
       driverRef.current?.destroy();
+      sessionIdRef.current = null; // fresh session per run
       const d = build();
       driverRef.current = d;
-      const first = TOUR_STEPS[0];
-      setSection(first.section);
-      await waitForElement(sel(first.anchor));
+      await stage(0);
       d.drive(0);
     }
 
     return { startTour };
-  }, [setSection]);
+  }, []);
 
   useEffect(() => () => driverRef.current?.destroy(), []);
 

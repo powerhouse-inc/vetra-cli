@@ -73,6 +73,14 @@
 .driver-popover.vetra-tour .driver-popover-progress-text {
   color: var(--color-vetra-muted-fg);
 }
+.driver-popover.vetra-tour .driver-popover-description a {
+  font-weight: 600;
+  color: var(--color-vetra-primary);
+  text-decoration: underline;
+}
+.driver-popover.vetra-tour .driver-popover-description a:hover {
+  color: var(--color-vetra-fg);
+}
 .driver-popover.vetra-tour button.driver-popover-next-btn {
   border: none;
   border-radius: 0.375rem;

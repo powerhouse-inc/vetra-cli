@@ -87,7 +87,10 @@ export function PhaseCycle({
             </button>
           ) : null}
         </div>
-        <p className="rounded-lg border border-vetra-border bg-vetra-accent px-3 py-2 text-xs italic text-vetra-muted-fg">
+        <p
+          data-tour="example-prompt"
+          className="rounded-lg border border-vetra-border bg-vetra-accent px-3 py-2 text-xs italic text-vetra-muted-fg"
+        >
           <span className="mr-1.5 font-semibold not-italic uppercase tracking-wide text-vetra-muted-fg/80">
             Example
           </span>

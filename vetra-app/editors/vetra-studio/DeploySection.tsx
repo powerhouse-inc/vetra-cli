@@ -261,7 +261,7 @@ export function DeploySection({
   });
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-8">
+    <div data-tour="deploy-projects" className="mx-auto max-w-5xl px-8 py-8">
       <Breadcrumb items={crumbs} />
       {!auth.authorized ? (
         <AuthGate loading={auth.loading} onLogin={auth.login} />

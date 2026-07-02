@@ -221,6 +221,7 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
         </div>
         <button
           type="button"
+          data-tour="new-session"
           onClick={() => void createSession()}
           disabled={creating}
           className="inline-flex items-center gap-1 rounded-lg bg-vetra-primary px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"

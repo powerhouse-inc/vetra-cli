@@ -1,5 +1,6 @@
 import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
+  addDocument,
   useDocumentSafe,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
@@ -119,6 +120,8 @@ export type VetraStudioProps = {
 
 type Section = "home" | "ideate" | "specify" | "build" | "deploy";
 
+const CHAT_SESSION_DOCUMENT_TYPE = "powerhouse/chat-session";
+
 /** The section an open document shows in; unknown types keep the legacy
  * IDEATE fallback at restore/user-open sites. */
 function sectionForOpenDoc(target: OpenTarget): Section {
@@ -146,8 +149,27 @@ export function VetraStudio({
     const target = resolveDocFromUrl(document);
     return target ? sectionForOpenDoc(target) : "home";
   });
-  // "Meet the models" product tour, launched from the home overview.
-  const { startTour } = useProductTour(setSection);
+  // Product tour, launched from the home overview. It drives session + section
+  // state so it can walk the "+ New → chat input → example" opening sequence.
+  const { startTour } = useProductTour({
+    setSection,
+    deselectSession: () => setSelectedSessionId(undefined),
+    selectSession: (id: string) => setSelectedSessionId(id),
+    openNewSession: async () => {
+      const count = document.state.global.nodes.filter(
+        (n) =>
+          n.kind === "file" &&
+          (n as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
+      ).length;
+      const node = await addDocument(
+        document.header.id,
+        `Session ${count + 1}`,
+        CHAT_SESSION_DOCUMENT_TYPE,
+      );
+      setSelectedSessionId(node.id);
+      return node.id;
+    },
+  });
   // userPinned: a manual open pins the view so auto-nav won't yank it away.
   // A doc restored from the URL counts as pinned (the user was looking at it).
   const [userPinned, setUserPinned] = useState<boolean>(
@@ -444,6 +466,7 @@ export function VetraStudio({
       className={className ?? "flex h-full w-full overflow-hidden"}
     >
       <aside
+        data-tour="chat-pane"
         className="flex shrink-0 flex-col bg-vetra-card"
         style={{ width: `${chatWidth}px` }}
       >
