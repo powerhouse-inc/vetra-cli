@@ -78,6 +78,11 @@ export function connectDriveUrlOnSwitchboardReady(
           ? `${event.proxy.url}/preview`
           : `http://127.0.0.1:${DEFAULT_PREVIEW_SERVER_PORT}`;
 
+        const environmentId =
+          typeof ctx.config.environmentId === "string" && ctx.config.environmentId
+            ? ctx.config.environmentId
+            : undefined;
+
         const bundleDir = path.join(options.vetraAppDir, connectDir);
         try {
           patchDefaultDrive(bundleDir, driveUrl, ctx.log);
@@ -86,7 +91,7 @@ export function connectDriveUrlOnSwitchboardReady(
           ctx.log.error(`[connect-drive-url] ${message}`);
         }
         try {
-          writeStudioConfig(bundleDir, previewServerUrl, ctx.log);
+          writeStudioConfig(bundleDir, previewServerUrl, environmentId, ctx.log);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           ctx.log.error(`[connect-drive-url] ${message}`);
@@ -143,13 +148,18 @@ function patchDefaultDrive(
 function writeStudioConfig(
   bundleDir: string,
   previewServerUrl: string,
+  environmentId: string | undefined,
   log: Log,
 ): void {
   if (!existsSync(bundleDir)) {
     throw new Error(`Connect bundle not found at ${bundleDir}`);
   }
   const file = path.join(bundleDir, "studio.config.json");
-  const next = `${JSON.stringify({ previewServerUrl }, null, 2)}\n`;
+  const next = `${JSON.stringify(
+    environmentId ? { previewServerUrl, environmentId } : { previewServerUrl },
+    null,
+    2,
+  )}\n`;
 
   if (existsSync(file) && readFileSync(file, "utf8") === next) {
     log.debug(

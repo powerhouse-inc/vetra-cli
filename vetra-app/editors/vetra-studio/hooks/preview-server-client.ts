@@ -29,6 +29,8 @@ interface PreviewConfig {
   // Origin+prefix to resolve proxy-relative `proxiedUrl`s against when the base
   // is a proxied `/preview` mount; undefined for a direct/loopback base.
   proxyBase?: string;
+  // The studio's cloud environment document id, when the daemon stamped one.
+  environmentId?: string;
 }
 
 // Origin+prefix for a proxied `/preview` mount (`https://host/x/preview` ->
@@ -62,11 +64,15 @@ function resolvePreviewConfig(): Promise<PreviewConfig> {
         cache: "no-store",
       });
       if (res.ok) {
-        const cfg = (await res.json()) as { previewServerUrl?: string };
+        const cfg = (await res.json()) as {
+          previewServerUrl?: string;
+          environmentId?: string;
+        };
         if (cfg.previewServerUrl) {
           return {
             base: cfg.previewServerUrl,
             proxyBase: computeProxyBase(cfg.previewServerUrl),
+            environmentId: cfg.environmentId,
           };
         }
       }
@@ -76,6 +82,13 @@ function resolvePreviewConfig(): Promise<PreviewConfig> {
     return { base: DIRECT_BASE };
   })();
   return configPromise;
+}
+
+/** The studio's cloud environment document id from `studio.config.json`, or
+ * null when running outside a provisioned studio (e.g. vite dev). */
+export async function resolveStudioEnvironmentId(): Promise<string | null> {
+  const config = await resolvePreviewConfig();
+  return config.environmentId ?? null;
 }
 
 export type ResolveResult =
