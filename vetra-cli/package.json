@@ -52,6 +52,7 @@
     "@electric-sql/pglite": "^0.3.15",
     "@powerhousedao/pglite-fs": "catalog:",
     "devcert": "1.2.3",
+    "fflate": "^0.8.2",
     "fsevents": "^2.3.3",
     "graphql": "catalog:",
     "libsql": "^0.5.29",

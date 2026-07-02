@@ -238,7 +238,33 @@ so it gets the framework's `ServiceManager` + event-bus access via
   `id === "reactor-project"`. The editor refetches `/resolve` on
   any event. 15s heartbeat keeps the stream alive through quiet
   periods.
+- `GET /sessions` — gated. Lists the embedded drive's chat-session
+  documents (`{ id, name, status, startedAt, threadId, agent }`),
+  enriched from each doc's state. `503 reactor-unavailable` when no
+  reactor is running.
+- `GET /sessions/export?id=<session>` — gated. Returns a zip
+  (`application/zip`, attachment) bundling the session for debugging:
+  `chat-session.json` (the reactor doc state), `chat-session-operations.json`
+  (op history), `mastra-thread.json` (the Mastra thread `recall`ed by the
+  doc's `threadId`, when the LibSQL store exists), `session.md` (the
+  markdown log when `agentLogging` was on), and `metadata.json` (versions,
+  model, flags, which sources were found). `404 unknown-session`,
+  `503 reactor-unavailable`. Implementation: `preview-server/session-export.ts`.
 - `GET /healthz` — liveness check.
+
+**Session-export access gate** (`preview-server/session-auth.ts`,
+`authorizeSessions`). The `/sessions*` routes carry bulk conversation data
+and are reachable through the public proxy, so unlike the other read
+endpoints they are gated: when `VETRA_SESSION_EXPORT_SECRET` is set, a
+request must present a matching `Authorization: Bearer <secret>` (or
+`?token=`) — the operator/support path, which works through the proxy;
+when unset, the routes serve only direct-loopback requests (the embedded
+proxy tags routed requests with `x-forwarded-prefix`/`x-forwarded-for`), so
+local dev exports freely while the public proxy stays closed. Sub-agent
+threads (resource `cli-user-<agentName>`) are not bundled — their
+per-delegation threadIds don't link back to a session. Cryptographic
+per-user browser auth (the browser holds no Renown token today) is a
+deferred follow-up.
 
 **Endpoints (planned but not yet built):**
 
