@@ -24,7 +24,7 @@ export function ProductIdentityCards({
   );
   return (
     <section>
-      <h3 className="mb-3 text-base font-semibold text-vetra-fg">
+      <h3 className="mb-3 text-base font-semibold text-foreground">
         Product Identity
       </h3>
       <div className="grid grid-cols-3 gap-4">
@@ -82,10 +82,12 @@ function IdentityCard({
         onClick={() =>
           onOpen({ id: node.id, documentType: type, name: node.name })
         }
-        className="flex h-28 flex-col justify-between rounded-xl border border-vetra-border bg-vetra-card p-4 text-left transition-colors hover:border-vetra-primary hover:shadow-sm"
+        className="flex h-28 flex-col justify-between rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-vetra-primary hover:shadow-sm"
       >
-        <span className="text-sm font-semibold text-vetra-fg">{label}</span>
-        <span className="truncate text-xs text-vetra-muted-fg">{node.name}</span>
+        <span className="text-sm font-semibold text-foreground">{label}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {node.name}
+        </span>
       </button>
     );
   }
@@ -95,10 +97,10 @@ function IdentityCard({
       type="button"
       onClick={() => void create()}
       disabled={creating}
-      className="flex h-28 flex-col items-center justify-center rounded-xl border border-dashed border-vetra-border bg-vetra-accent p-4 transition-colors hover:border-vetra-primary disabled:opacity-50"
+      className="flex h-28 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-accent p-4 transition-colors hover:border-vetra-primary disabled:opacity-50"
     >
-      <span className="text-sm font-medium text-vetra-fg">{label}</span>
-      <span className="mt-1 text-xs text-vetra-muted-fg">
+      <span className="text-sm font-medium text-foreground">{label}</span>
+      <span className="mt-1 text-xs text-muted-foreground">
         {creating ? "Creating…" : "+ Create"}
       </span>
     </button>

@@ -28,7 +28,7 @@ export function ProblemSheetEditor({
     .replace(/\s*problem sheet$/i, "")
     .trim();
   return (
-    <div className="flex flex-col gap-8 text-vetra-fg">
+    <div className="flex flex-col gap-8 text-foreground">
       <ContextSection state={state} dispatch={dispatch} />
       <CoreJobSection
         state={state}

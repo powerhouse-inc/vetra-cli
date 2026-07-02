@@ -13,11 +13,11 @@ export function SkillTool(props: ToolRenderProps) {
   const label = isRead ? "Reading skill" : "Using skill";
 
   return (
-    <div className="flex items-center gap-2 py-0.5 text-sm text-vetra-muted-fg">
+    <div className="flex items-center gap-2 py-0.5 text-sm text-muted-foreground">
       <Sparkles className="size-4 shrink-0" />
       <span>
         {label}:{" "}
-        <span className="font-medium text-vetra-fg">{name ?? "skill"}</span>
+        <span className="font-medium text-foreground">{name ?? "skill"}</span>
       </span>
     </div>
   );

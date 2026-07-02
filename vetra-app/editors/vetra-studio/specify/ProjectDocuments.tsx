@@ -15,13 +15,15 @@ export function ProjectDocuments({
 
   return (
     <section>
-      <h3 className="mb-3 text-base font-semibold text-vetra-fg">Documents</h3>
-      <div className="overflow-hidden rounded-lg border border-vetra-border bg-vetra-card">
-        <div className="border-b border-vetra-border bg-vetra-accent px-4 py-2 text-xs font-medium text-vetra-muted-fg">
+      <h3 className="mb-3 text-base font-semibold text-foreground">
+        Documents
+      </h3>
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="border-b border-border bg-accent px-4 py-2 text-xs font-medium text-muted-foreground">
           Name
         </div>
         {!project || project.documents.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-vetra-muted-fg">
+          <div className="px-4 py-6 text-sm text-muted-foreground">
             No documents in this project.
           </div>
         ) : (
@@ -36,12 +38,12 @@ export function ProjectDocuments({
                   name: doc.name,
                 })
               }
-              className="flex w-full items-center justify-between border-b border-vetra-border/40 px-4 py-3 text-left last:border-b-0 hover:bg-vetra-accent"
+              className="flex w-full items-center justify-between border-b border-border/40 px-4 py-3 text-left last:border-b-0 hover:bg-accent"
             >
-              <span className="truncate text-sm font-medium text-vetra-fg">
+              <span className="truncate text-sm font-medium text-foreground">
                 {doc.name}
               </span>
-              <span className="ml-3 shrink-0 rounded bg-vetra-muted px-2 py-0.5 text-xs text-vetra-muted-fg">
+              <span className="ml-3 shrink-0 rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                 {SPECIFY_TYPES.get(doc.documentType) ?? doc.documentType}
               </span>
             </button>

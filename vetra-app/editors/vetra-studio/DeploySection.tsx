@@ -285,8 +285,8 @@ export function DeploySection({
           }}
         />
       ) : listError ? (
-        <div className="flex flex-col items-start gap-2 rounded-xl border border-vetra-border bg-vetra-card px-4 py-6">
-          <p className="text-sm text-vetra-destructive">{listError}</p>
+        <div className="flex flex-col items-start gap-2 rounded-xl border border-border bg-card px-4 py-6">
+          <p className="text-sm text-destructive">{listError}</p>
           <button
             type="button"
             onClick={refresh}
@@ -313,19 +313,19 @@ export function DeploySection({
 function ProjectsLoading() {
   return (
     <section className="flex flex-col gap-4">
-      <h3 className="text-base font-semibold text-vetra-fg">Projects</h3>
+      <h3 className="text-base font-semibold text-foreground">Projects</h3>
       <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(22rem,1fr))]">
         {[0, 1].map((i) => (
           <div
             key={i}
-            className="flex animate-pulse flex-col gap-4 rounded-xl border border-vetra-border bg-vetra-card p-5"
+            className="flex animate-pulse flex-col gap-4 rounded-xl border border-border bg-card p-5"
           >
             <div className="flex items-center justify-between gap-3">
-              <div className="h-4 w-32 rounded bg-vetra-muted" />
-              <div className="h-3 w-20 rounded bg-vetra-muted" />
+              <div className="h-4 w-32 rounded bg-muted" />
+              <div className="h-3 w-20 rounded bg-muted" />
             </div>
-            <div className="h-3 w-24 rounded bg-vetra-muted" />
-            <div className="h-9 w-full rounded-lg bg-vetra-muted" />
+            <div className="h-3 w-24 rounded bg-muted" />
+            <div className="h-9 w-full rounded-lg bg-muted" />
           </div>
         ))}
       </div>
@@ -341,16 +341,16 @@ function AuthGate({
   onLogin: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-vetra-border bg-vetra-card px-6 py-24 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-border bg-card px-6 py-24 text-center">
       <Rocket size={28} className="text-vetra-primary" />
-      <h2 className="text-lg font-semibold text-vetra-fg">
+      <h2 className="text-lg font-semibold text-foreground">
         Deploy to vetra.io
       </h2>
       {loading ? (
-        <p className="text-sm text-vetra-muted-fg">Checking sign-in…</p>
+        <p className="text-sm text-muted-foreground">Checking sign-in…</p>
       ) : (
         <>
-          <p className="max-w-md text-sm text-vetra-muted-fg">
+          <p className="max-w-md text-sm text-muted-foreground">
             Sign in with Renown to see your projects and deploy them to the
             cloud.
           </p>

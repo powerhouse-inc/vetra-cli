@@ -52,9 +52,9 @@ export function ToolRow({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="group/toolrow flex w-fit max-w-[500px] items-center gap-2 py-0.5 text-left text-sm text-vetra-fg transition-colors hover:text-vetra-primary"
+        className="group/toolrow flex w-fit max-w-[500px] items-center gap-2 py-0.5 text-left text-sm text-foreground transition-colors hover:text-vetra-primary"
       >
-        <Icon className="size-4 shrink-0 text-vetra-muted-fg" />
+        <Icon className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 truncate">
           <span
             className={cx(primaryMono ? "font-mono text-xs" : "font-medium")}
@@ -64,7 +64,7 @@ export function ToolRow({
           {detail && (
             <span
               className={cx(
-                "text-vetra-muted-fg transition-colors group-hover/toolrow:text-vetra-fg",
+                "text-muted-foreground transition-colors group-hover/toolrow:text-foreground",
                 detailMono && "font-mono text-xs",
               )}
             >
@@ -74,17 +74,17 @@ export function ToolRow({
           )}
         </span>
         {pending && (
-          <Loader2 className="size-3.5 shrink-0 animate-spin text-vetra-info" />
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-info" />
         )}
         {error && (
-          <AlertCircle className="size-3.5 shrink-0 text-vetra-destructive" />
+          <AlertCircle className="size-3.5 shrink-0 text-destructive" />
         )}
         {showStatus && !pending && !error && (
-          <CheckCircle2 className="size-3.5 shrink-0 text-vetra-success" />
+          <CheckCircle2 className="size-3.5 shrink-0 text-success" />
         )}
         <ChevronDown
           className={cx(
-            "size-3.5 shrink-0 text-vetra-muted-fg transition-transform",
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
             open && "rotate-180",
           )}
         />

@@ -24,7 +24,7 @@ export function BuildSection({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-vetra-border bg-vetra-card px-8 py-2">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-8 py-2">
         <Breadcrumb items={crumbs} />
         <PreviewStatusChip preview={preview} />
       </div>
@@ -45,7 +45,7 @@ function PreviewBody({ preview }: { preview: ResolvedPreview }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center bg-vetra-accent px-6 py-10">
+    <div className="flex min-h-0 flex-1 items-center justify-center bg-accent px-6 py-10">
       <PreviewStatus preview={preview} />
     </div>
   );
@@ -111,13 +111,13 @@ function StatusBlock({
       <div
         className={
           "text-sm font-medium " +
-          (tone === "error" ? "text-vetra-destructive" : "text-vetra-fg")
+          (tone === "error" ? "text-destructive" : "text-foreground")
         }
       >
         {title}
       </div>
       {detail ? (
-        <div className="mt-1 text-xs text-vetra-muted-fg">{detail}</div>
+        <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
       ) : null}
     </div>
   );

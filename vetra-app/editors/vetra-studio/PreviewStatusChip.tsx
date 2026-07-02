@@ -35,7 +35,7 @@ export function PreviewStatusChip({ preview }: { preview: ResolvedPreview }) {
       <span className="truncate max-w-[10rem]" title={project}>
         {project}
       </span>
-      <span className="text-vetra-muted-fg">·</span>
+      <span className="text-muted-foreground">·</span>
       <span>{label}</span>
     </span>
   );
@@ -86,11 +86,11 @@ function toneClasses(tone: Tone): string {
     case "ready":
       return "border-vetra-primary/30 bg-vetra-primary/10 text-vetra-primary";
     case "starting":
-      return "border-vetra-warning/30 bg-vetra-warning/10 text-vetra-warning";
+      return "border-warning/30 bg-warning/10 text-warning";
     case "error":
-      return "border-vetra-destructive/30 bg-vetra-destructive/10 text-vetra-destructive";
+      return "border-destructive/30 bg-destructive/10 text-destructive";
     case "stopped":
-      return "border-vetra-border bg-vetra-accent text-vetra-muted-fg";
+      return "border-border bg-accent text-muted-foreground";
   }
 }
 
@@ -99,10 +99,10 @@ function dotClasses(tone: Tone): string {
     case "ready":
       return "bg-vetra-primary";
     case "starting":
-      return "bg-vetra-warning";
+      return "bg-warning";
     case "error":
-      return "bg-vetra-destructive";
+      return "bg-destructive";
     case "stopped":
-      return "bg-vetra-muted-fg";
+      return "bg-muted-foreground";
   }
 }

@@ -453,7 +453,7 @@ export function VetraStudio({
       className={className ?? "flex h-full w-full overflow-hidden"}
     >
       <aside
-        className="flex shrink-0 flex-col bg-vetra-card"
+        className="flex shrink-0 flex-col bg-card"
         style={{ width: `${chatWidth}px` }}
       >
         <ChatPane
@@ -470,15 +470,15 @@ export function VetraStudio({
         aria-label="Resize chat panel"
         onMouseDown={handleResizeMouseDown}
         onDoubleClick={handleResizeDoubleClick}
-        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-vetra-border bg-vetra-card hover:bg-vetra-accent active:bg-vetra-muted"
+        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-border bg-card hover:bg-accent active:bg-muted"
       >
         <div className="pointer-events-none flex flex-col gap-1">
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
         </div>
       </div>
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-vetra-accent">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <AutoNavToggle
           enabled={autoNavEnabled}
           paused={userPinned}
@@ -553,16 +553,16 @@ function AutoNavToggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-vetra-border bg-vetra-card px-4 py-1.5 min-h-10">
+    <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-1.5 min-h-10">
       <VersionBadge />
       <div className="flex-1" />
       <AgentAuthButton />
       {enabled && paused ? (
-        <span className="text-[11px] text-vetra-muted-fg">
+        <span className="text-[11px] text-muted-foreground">
           paused — close the document to resume
         </span>
       ) : null}
-      <label className="flex cursor-pointer items-center gap-2 text-xs text-vetra-muted-fg">
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
         <input
           type="checkbox"
           checked={enabled}

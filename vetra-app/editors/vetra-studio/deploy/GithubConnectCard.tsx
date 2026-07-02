@@ -11,7 +11,7 @@ import {
 import { useGithubConnect } from "./useGithubConnect.js";
 
 const LINK_BTN =
-  "flex shrink-0 items-center gap-1.5 rounded-lg border border-vetra-border px-3.5 py-2 text-sm font-medium text-vetra-fg hover:border-vetra-primary hover:text-vetra-primary";
+  "flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-foreground hover:border-vetra-primary hover:text-vetra-primary";
 
 const PRIMARY_BTN =
   "flex shrink-0 items-center gap-1.5 rounded-lg bg-vetra-primary px-3.5 py-2 text-sm font-medium text-vetra-primary-fg hover:bg-vetra-primary/90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -78,7 +78,7 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
 
   if (status.kind === "loading") {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-vetra-border bg-vetra-card px-4 py-3.5 text-sm text-vetra-muted-fg">
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3.5 text-sm text-muted-foreground">
         <GithubMark size={16} />
         <Loader2 size={14} className="animate-spin" />
       </div>
@@ -99,18 +99,18 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
 
 function ConnectedRow({ connection }: { connection: GithubConnection }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-vetra-border bg-vetra-card px-4 py-3.5">
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
       <GithubMark size={16} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <a
           href={connection.repoUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="truncate text-sm font-medium text-vetra-fg hover:text-vetra-primary"
+          className="truncate text-sm font-medium text-foreground hover:text-vetra-primary"
         >
           {connection.repoFullName}
         </a>
-        <span className="text-xs text-vetra-muted-fg">
+        <span className="text-xs text-muted-foreground">
           The agent pushes your work here once the Vetra app is installed on it.
         </span>
       </div>
@@ -140,18 +140,18 @@ function ConnectFlow({
 
   if (phase.kind === "connected") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-vetra-border bg-vetra-card px-4 py-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-vetra-fg">
-          <Check size={15} className="text-vetra-success" />
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Check size={15} className="text-success" />
           Repository created
         </div>
-        <p className="text-sm text-vetra-muted-fg">
+        <p className="text-sm text-muted-foreground">
           The agent will push to{" "}
           <a
             href={phase.connection.repoUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-vetra-fg underline"
+            className="text-foreground underline"
           >
             {phase.connection.repoFullName}
           </a>{" "}
@@ -170,7 +170,7 @@ function ConnectFlow({
           <button
             type="button"
             onClick={() => onConnected(phase.connection)}
-            className="text-sm text-vetra-muted-fg hover:text-vetra-fg"
+            className="text-sm text-muted-foreground hover:text-foreground"
           >
             Done
           </button>
@@ -181,11 +181,11 @@ function ConnectFlow({
 
   if (phase.kind === "awaiting") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-vetra-border bg-vetra-card px-4 py-4">
-        <p className="text-sm text-vetra-muted-fg">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+        <p className="text-sm text-muted-foreground">
           Open GitHub and enter this code to authorize Vetra:
         </p>
-        <div className="rounded-lg bg-vetra-muted px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-vetra-fg">
+        <div className="rounded-lg bg-muted px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-foreground">
           {phase.userCode}
         </div>
         <div className="flex items-center gap-3">
@@ -198,7 +198,7 @@ function ConnectFlow({
             <GithubMark size={14} />
             Open GitHub
           </a>
-          <span className="flex items-center gap-2 text-sm text-vetra-muted-fg">
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 size={14} className="animate-spin" />
             Waiting for authorization…
           </span>
@@ -209,13 +209,13 @@ function ConnectFlow({
 
   if (!open) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-vetra-border bg-vetra-card px-4 py-3.5">
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
         <GithubMark size={16} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-sm font-medium text-vetra-fg">
+          <span className="text-sm font-medium text-foreground">
             Connect GitHub
           </span>
-          <span className="text-xs text-vetra-muted-fg">
+          <span className="text-xs text-muted-foreground">
             Create a private repository the agent pushes this studio&apos;s work
             to.
           </span>
@@ -233,9 +233,9 @@ function ConnectFlow({
 
   const busy = phase.kind === "starting";
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-vetra-border bg-vetra-card px-4 py-4">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-vetra-fg">
+        <span className="text-xs font-medium text-foreground">
           Repository name
         </span>
         <input
@@ -243,14 +243,14 @@ function ConnectFlow({
           onChange={(e) => setRepoName(e.target.value)}
           placeholder="my-vetra-studio"
           autoFocus
-          className="rounded-lg border border-vetra-border bg-vetra-card px-3 py-2 text-sm text-vetra-fg outline-none focus:border-vetra-primary"
+          className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-vetra-primary"
         />
-        <span className="text-xs text-vetra-muted-fg">
+        <span className="text-xs text-muted-foreground">
           Created private in your GitHub account; must be unique there.
         </span>
       </label>
       {phase.kind === "error" ? (
-        <p className="text-sm text-vetra-destructive">{phase.message}</p>
+        <p className="text-sm text-destructive">{phase.message}</p>
       ) : null}
       <div className="flex items-center gap-3">
         <button
@@ -280,7 +280,7 @@ function ConnectFlow({
             reset();
             setOpen(false);
           }}
-          className="text-sm text-vetra-muted-fg hover:text-vetra-fg disabled:opacity-50"
+          className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           Cancel
         </button>

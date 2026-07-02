@@ -5,17 +5,17 @@ export function Breadcrumb({ items }: { items: Crumb[] }) {
     <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm">
       {items.map((item, i) => (
         <span key={`${i}-${item.label}`} className="flex items-center gap-2">
-          {i > 0 ? <span className="text-vetra-border">›</span> : null}
+          {i > 0 ? <span className="text-border">›</span> : null}
           {item.onClick ? (
             <button
               type="button"
               onClick={item.onClick}
-              className="text-vetra-muted-fg hover:text-vetra-fg hover:underline"
+              className="text-muted-foreground hover:text-foreground hover:underline"
             >
               {item.label}
             </button>
           ) : (
-            <span className="font-medium text-vetra-fg">{item.label}</span>
+            <span className="font-medium text-foreground">{item.label}</span>
           )}
         </span>
       ))}
