@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # One entrypoint for the prod-close e2e: the same script CI runs and a developer
-# runs locally with docker. Brings up the registry-cache-lab-vcli stack, publishes
+# runs locally with docker. Brings up the prod stack, publishes
 # vetra-cli + vetra-app to the disposable local origin against the released
 # (catalog-pinned) ph-clint, builds the clint-agent image the prod way (hoisted
-# `pnpm add -g`), runs it, and asserts the studio contract. Tears the stack and
-# the studio container down on exit (pass or fail).
+# `pnpm add -g`), runs it, then drives the seeded Playwright replay against the
+# baked image — the real functional gate. A fast URL tripwire early-exits first
+# if the studio isn't even serving. Tears the stack and the studio container
+# down on exit (pass or fail).
 #
 # Run locally from the repo root:
 #   ./lab/ci/run-prodclose-e2e.sh
@@ -23,7 +25,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LAB_DIR="$(cd "${HERE}/.." && pwd)"
-STACK_DIR="${LAB_DIR}/registry-cache-lab-vcli"
+STACK_DIR="${LAB_DIR}/prod"
 REPO_ROOT="$(cd "${LAB_DIR}/.." && pwd)"
 
 BASE_IMAGE="${BASE_IMAGE:-clint-runtime:labvcli}"
@@ -80,7 +82,7 @@ fi
 docker image inspect "${BASE_IMAGE}" >/dev/null 2>&1 \
   || { echo "!! base image ${BASE_IMAGE} not present and BUILD_BASE_IMAGE!=1" >&2; exit 1; }
 
-echo "==> bringing up the registry-cache-lab-vcli stack"
+echo "==> bringing up the prod stack"
 docker compose down -v >/dev/null 2>&1 || true
 docker compose up -d
 
@@ -113,86 +115,59 @@ IMAGE_TAG="${IMAGE_TAG}" NAME="${STUDIO_NAME}" \
 VETRA_REPLAY_FIXTURE_HOST="${REPO_ROOT}/vetra-cli/e2e/fixtures/todo-list.replay.json" \
   ./run-prodclose.sh "${IMAGE_TAG}"
 
-# run-prodclose.sh prints the validation; re-assert here so a contract miss is a
-# hard, logged failure (run-prodclose only fails if studio never starts).
-echo "==> asserting studio contract"
+# --- Fast tripwire ----------------------------------------------------------
+# Fail early (before the heavy Playwright install + browser drive) if the studio
+# isn't even serving. This is a smoke check for a clean early exit, NOT the
+# functional contract — the seeded replay below is the real gate. Status codes
+# alone can't catch a studio that serves a stale/broken bundle (every URL still
+# returns 200): PR #38's precompress regression passed exactly this kind of
+# check. So keep this minimal and let the replay do the real asserting.
+echo "==> tripwire: is the studio serving?"
 line="$(docker logs "${STUDIO_NAME}" 2>&1 | grep -m1 'Vetra Studio:' || true)"
 DRIVE="$(echo "${line}" | sed -E 's#.*/d/([A-Za-z0-9_-]+).*#\1#')"
-[ -n "${DRIVE}" ] || { echo "!! no driveId from studio logs" >&2; docker logs "${STUDIO_NAME}" 2>&1 | tail -40; exit 1; }
+[ -n "${DRIVE}" ] || { echo "!! no driveId from studio logs — studio never started" >&2; docker logs "${STUDIO_NAME}" 2>&1 | tail -60; exit 1; }
 
-# Contract asserted on main: the prod-built studio comes up healthy and serves
-# the proxied surface. The proxy exposes the studio service route and serves the
-# SPA assets and the live drive. (The root-redirect contract — `/` -> 302
-# /d/<id> plus studio-redirect/studio-announce proxy routes — depends on the
-# studio-redirect trigger, which is not on main yet; ASSERT_ROOT_REDIRECT=1
-# enables those checks once it lands.)
-fail=0
-assert_code() {
-  local desc="$1" want="$2" url="$3"
-  local got
-  got="$(curl -s -o /dev/null -w '%{http_code}' "${url}")"
-  if [ "${got}" = "${want}" ]; then echo "    OK  ${desc} (${got})"; else echo "    FAIL ${desc}: want ${want}, got ${got} (${url})"; fail=1; fi
+trip=0
+code() { # desc want url
+  # `|| true`: a connection-level failure (curl exit 7) must record trip=1 and
+  # reach the log dump below, not abort the script under set -e.
+  local got; got="$(curl -s -o /dev/null -w '%{http_code}' "$3" || true)"
+  if [ "${got}" = "$2" ]; then echo "    OK  $1 (${got})"; else echo "    FAIL $1: want $2, got ${got} ($3)"; trip=1; fi
 }
-
-routes="$(curl -s http://localhost:8090/_proxy/routes)"
-
-# / is reachable through the proxy.
-root_status="$(curl -sI http://localhost:8090/ | awk 'toupper($1) ~ /HTTP/ {print $2; exit}')"
-if echo "${root_status}" | grep -qE '^(200|302)$'; then
-  echo "    OK  / reachable (${root_status})"
-else
-  echo "    FAIL / : want 200 or 302, got ${root_status}"; fail=1
-fi
-
-# The studio service route is registered on the proxy.
-if echo "${routes}" | grep -q 'service:vetra-studio'; then
-  echo "    OK  /_proxy/routes has service:vetra-studio"
-else
-  echo "    FAIL /_proxy/routes missing service:vetra-studio"; fail=1
-fi
-
-assert_code "/assets/ -> 200" 200 http://localhost:8090/assets/
-assert_code "/d/${DRIVE}/ -> 200" 200 "http://localhost:8090/d/${DRIVE}/"
-
-# Optional: full root-redirect contract (enable once the studio-redirect trigger
-# is on main).
-if [ "${ASSERT_ROOT_REDIRECT:-0}" = "1" ]; then
-  root_loc="$(curl -sI http://localhost:8090/ | awk 'tolower($1) ~ /^location:/ {print $2; exit}' | tr -d '\r')"
-  if [ "${root_status}" = "302" ] && echo "${root_loc}" | grep -q "/d/${DRIVE}"; then
-    echo "    OK  / -> 302 ${root_loc}"
-  else
-    echo "    FAIL / : want 302 -> /d/${DRIVE}, got ${root_status} ${root_loc}"; fail=1
-  fi
-  for r in studio-redirect studio-announce; do
-    if echo "${routes}" | grep -q "${r}"; then echo "    OK  /_proxy/routes has ${r}"; else echo "    FAIL /_proxy/routes missing ${r}"; fail=1; fi
-  done
-fi
-
-if [ "${fail}" != "0" ]; then
-  echo "!! studio contract assertions failed — dumping studio logs" >&2
-  docker logs "${STUDIO_NAME}" 2>&1 | tail -80
-  echo "--- routes ---"; echo "${routes}"
+# `|| true` on both: a refused :8090 (studio logged its URL but the proxy isn't
+# serving) must fall through to the trip=1 log dump, not abort under set -e.
+routes="$(curl -s http://localhost:8090/_proxy/routes || true)"
+root="$(curl -sI http://localhost:8090/ 2>/dev/null | awk 'toupper($1) ~ /HTTP/ {print $2; exit}' || true)"
+echo "${root}" | grep -qE '^(200|302)$' && echo "    OK  / reachable (${root})" || { echo "    FAIL / : want 200 or 302, got ${root}"; trip=1; }
+echo "${routes}" | grep -q 'service:vetra-studio' && echo "    OK  /_proxy/routes has service:vetra-studio" || { echo "    FAIL /_proxy/routes missing service:vetra-studio"; trip=1; }
+code "/assets/ -> 200" 200 http://localhost:8090/assets/
+code "/d/${DRIVE}/ -> 200" 200 "http://localhost:8090/d/${DRIVE}/"
+if [ "${trip}" != 0 ]; then
+  echo "!! studio not serving — failing before the replay" >&2
+  docker logs "${STUDIO_NAME}" 2>&1 | tail -80; echo "--- routes ---"; echo "${routes}"
   exit 1
 fi
 
-# The HTTP contract above is a fast tripwire. The real functional gate is the
-# seeded Playwright replay driven against the prod-built studio: it drives the
-# recorded build (the container's agent is in replay mode) and asserts the
-# generated editor renders in the BUILD-pane iframe — exercising the whole
-# boot -> chat -> build -> codegen -> preview pipeline on the baked image.
-if [ "${RUN_REPLAY:-1}" = "1" ]; then
-  echo "==> seeded replay against the prod-close image (attach mode)"
-  ( cd "${REPO_ROOT}" && pnpm --filter vetra-cli exec playwright install --with-deps chromium )
-  if ! ( cd "${REPO_ROOT}" \
-      && VETRA_E2E_BASE_URL="http://localhost:8090" VETRA_E2E_DRIVE_ID="${DRIVE}" \
-         pnpm --filter vetra-cli test:e2e ); then
-    echo "!! seeded replay failed against the prod image — dumping studio logs" >&2
-    docker logs "${STUDIO_NAME}" 2>&1 | tail -120
-    exit 1
-  fi
-else
-  echo "!! WARNING: RUN_REPLAY=0 — skipped the seeded replay (contract-only run)" >&2
+# --- The functional gate ----------------------------------------------------
+# The seeded Playwright replay drives the recorded build (the container's agent
+# is in replay mode) against the prod-built studio and asserts the generated
+# editor renders in the BUILD-pane iframe with the preview data — the whole
+# boot -> chat -> build -> codegen -> preview pipeline on the baked image. This
+# is THE check. RUN_REPLAY=0 is a local-dev tripwire-only shortcut; it exits
+# without the green PASS so a skipped run can never be mistaken for a full one.
+if [ "${RUN_REPLAY:-1}" != "1" ]; then
+  echo "!! RUN_REPLAY=0 — ran the URL tripwire ONLY. This is NOT a full e2e pass." >&2
+  exit 0
+fi
+echo "==> seeded replay against the prod-close image (the functional gate)"
+( cd "${REPO_ROOT}" && pnpm --filter vetra-cli exec playwright install --with-deps chromium )
+if ! ( cd "${REPO_ROOT}" \
+    && VETRA_E2E_BASE_URL="http://localhost:8090" VETRA_E2E_DRIVE_ID="${DRIVE}" \
+       pnpm --filter vetra-cli test:e2e ); then
+  echo "!! seeded replay failed against the prod image — dumping studio logs" >&2
+  docker logs "${STUDIO_NAME}" 2>&1 | tail -120
+  exit 1
 fi
 
 echo
-echo "PASS: prod-close e2e green. image=${IMAGE_TAG} vetra=${VETRA_VERSION} driveId=${DRIVE}"
+echo "PASS: prod-close e2e green (studio serving + seeded replay). image=${IMAGE_TAG} vetra=${VETRA_VERSION} driveId=${DRIVE}"

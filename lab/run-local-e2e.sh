@@ -9,7 +9,7 @@
 #
 # Prereq: the link override for @powerhousedao/ph-clint is in
 # pnpm-workspace.yaml and `pnpm install` has run; ph-clint dist is built;
-# the registry-cache-lab-vcli stack is up. Ports 8090/27370/59220 must be
+# the prod stack is up. Ports 8090/27370/59220 must be
 # free (stop any prior docker `vetra-studio`).
 set -e
 

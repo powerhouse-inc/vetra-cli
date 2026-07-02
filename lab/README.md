@@ -14,19 +14,13 @@ script you run locally.
 - `ci/run-prodclose-e2e.sh` — the one entrypoint (CI and local). Brings the
   stack up, publishes, builds the image, runs it, asserts the studio contract,
   tears down.
-- `registry-cache-lab-vcli/` — the dual-uplink registry stack (local origin +
+- `prod/` — the dual-uplink registry stack (local origin +
   real npmjs) and the prod-close publish/build/run scripts.
 - `base-image/` — the self-contained `clint-runtime` base image
   (`FROM node:24-bookworm-slim`, no ph-clint source). The entrypoint builds it
   locally when absent.
 - `run-local-e2e.sh` — option 1: run vetra-cli from source against the lab
   registry (no publish, no image build). Requires a local ph-clint link.
-- `LAB.md` — the broader lab guide (all registry variants, gotchas, prod-check
-  commands).
-
-Only the `-vcli` variant is vendored here. The other variants that live in the
-dev workspace (`registry-cache-lab`, `registry-cache-lab-s3`,
-`observability-lab`) are exploration/unrelated and can be added on request.
 
 ## Run prod-close e2e locally
 
@@ -42,7 +36,7 @@ That reproduces CI exactly. It:
 2. Renders the lab config with deterministic publish→build cache knobs
    (`UPLINK_MAXAGE=0s META_TTL=5m PROP_DELAY=0s`).
 3. Builds the `clint-runtime` base image from `base-image/` if absent.
-4. Brings up the `registry-cache-lab-vcli` compose stack.
+4. Brings up the `prod` compose stack.
 5. Runs `publish-local-and-build.sh` with `SKIP_PH_CLINT=1` — publishes
    vetra-cli + vetra-app to the local origin against the **released**
    (catalog-pinned) ph-clint resolved from public npm, then builds the
@@ -95,7 +89,7 @@ no publish, no image build. Validates framework/CLI edits without cutting a
 2. Install through the lab registry:
    `pnpm install --registry http://localhost:5100`.
 3. Bring up the lab:
-   `cd lab/registry-cache-lab-vcli && UPLINK_MAXAGE=10s META_TTL=5s PROP_DELAY=0s ./render.sh && docker compose up -d`.
+   `cd lab/prod && UPLINK_MAXAGE=10s META_TTL=5s PROP_DELAY=0s ./render.sh && docker compose up -d`.
 4. Free the fixed ports 8090/27370/59220 — stop any prior `vetra-studio`
    container. vetra derives switchboard/connect ports from the CLI name, so a
    collision is fatal with no fallback.
@@ -127,12 +121,12 @@ Prereqs:
 - Base image present (`docker images`) or `BUILD_BASE_IMAGE=1` (default in the
   entrypoint).
 - Stack up with cache knobs tuned for deterministic publish→build:
-  `cd lab/registry-cache-lab-vcli && UPLINK_MAXAGE=0s META_TTL=5m PROP_DELAY=0s ./render.sh && docker compose up -d`.
+  `cd lab/prod && UPLINK_MAXAGE=0s META_TTL=5m PROP_DELAY=0s ./render.sh && docker compose up -d`.
 
 Driver (manual, against released ph-clint — the CI path):
 
 ```sh
-cd lab/registry-cache-lab-vcli
+cd lab/prod
 SKIP_PH_CLINT=1 VETRA_VERSION=0.0.1-e2e.1 BASE_IMAGE=clint-runtime:labvcli \
   ./publish-local-and-build.sh
 ./run-prodclose.sh vetra-cli:local-prodclose
