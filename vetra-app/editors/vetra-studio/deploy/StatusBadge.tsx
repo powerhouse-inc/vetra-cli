@@ -58,16 +58,6 @@ function configFor(status: string): StatusConfig {
   );
 }
 
-/** Soft pill — used in the detail header. */
-export function StatusBadge({ status }: { status: string }) {
-  const { label } = configFor(status);
-  return (
-    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium`}>
-      {label}
-    </span>
-  );
-}
-
 /** Colored dot + label — used in the environment cards. */
 export function StatusDot({ status }: { status: string }) {
   const { label, dot } = configFor(status);
