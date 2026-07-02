@@ -56,7 +56,7 @@ type ErrorAction = { label: string; onClick: () => void } | null;
 
 /** Secondary (outlined) button/link style, shared by Open and the Visit menu. */
 const OPEN_BTN =
-  "flex shrink-0 items-center gap-1.5 rounded-lg border border-vetra-border px-3.5 py-2 text-sm font-medium text-vetra-fg hover:border-vetra-primary hover:text-vetra-primary";
+  "flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-foreground hover:border-vetra-primary hover:text-vetra-primary";
 
 function phaseLabel(phase: DeployPhase): string {
   if (phase === "publishing") return "Publishing…";
@@ -266,7 +266,7 @@ export function ProjectDeployDetail({
   const otherEnvs = environments.filter((d) => !d.installed);
 
   const renderEnvList = (envs: ProjectEnvDeployment[]) => (
-    <div className="rounded-xl border border-vetra-border bg-vetra-card">
+    <div className="rounded-xl border border-border bg-card">
       {envs.map((d, i) => {
         const status = d.env.status ?? "";
         const watching = pending.has(d.env.id);
@@ -300,17 +300,17 @@ export function ProjectDeployDetail({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-vetra-fg">
+        <h2 className="text-lg font-semibold text-foreground">
           Deploy {project.name}
         </h2>
-        <p className="text-sm text-vetra-muted-fg">
+        <p className="text-sm text-muted-foreground">
           Choose where this app runs. Deploying makes your latest work live
           there.
         </p>
       </div>
 
       {error ? (
-        <div className="max-h-40 overflow-auto rounded-lg border border-vetra-destructive/40 bg-vetra-destructive/5 px-4 py-3 text-sm text-vetra-destructive">
+        <div className="max-h-40 overflow-auto rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           <pre className="whitespace-pre-wrap break-words font-sans">
             {error}
           </pre>
@@ -326,7 +326,7 @@ export function ProjectDeployDetail({
         </div>
       ) : null}
       {stuck ? (
-        <div className="flex flex-col items-start gap-2 rounded-lg border border-vetra-warning/40 bg-vetra-warning/5 px-4 py-3 text-sm text-vetra-warning">
+        <div className="flex flex-col items-start gap-2 rounded-lg border border-warning/40 bg-warning/5 px-4 py-3 text-sm text-warning">
           <span className="flex items-center gap-2">
             <AlertTriangle size={15} className="shrink-0" />
             {project.name} isn&apos;t live on {stuck.label} yet — its changes
@@ -355,20 +355,20 @@ export function ProjectDeployDetail({
         </div>
       ) : null}
       {done ? (
-        <p className="flex items-center gap-2 rounded-lg border border-vetra-success/40 bg-vetra-success/5 px-4 py-3 text-sm text-vetra-success">
+        <p className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-4 py-3 text-sm text-success">
           <Check size={15} className="shrink-0" />
           {done}
         </p>
       ) : null}
       {allUpToDate && !done ? (
-        <p className="flex items-center gap-2 rounded-lg border border-vetra-success/40 bg-vetra-success/5 px-4 py-3 text-sm text-vetra-success">
+        <p className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-4 py-3 text-sm text-success">
           <Check size={15} className="shrink-0" />
           All environments are up to date — nothing to deploy.
         </p>
       ) : null}
 
       {deploy.kind === "loading" ? (
-        <p className="text-sm text-vetra-muted-fg">Loading…</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : deploy.kind === "unauthenticated" ? (
         <UnauthCard onSignIn={onSignIn} />
       ) : deploy.kind === "error" ? (
@@ -376,20 +376,20 @@ export function ProjectDeployDetail({
       ) : (
         <section className="flex flex-col gap-4">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold text-vetra-fg">
+            <h3 className="text-sm font-semibold text-foreground">
               {deployedEnvs.length > 0
                 ? "Deployed on:"
                 : "Available environments"}
             </h3>
             {pkg.status === "ready" ? (
-              <span className="font-mono text-xs text-vetra-muted-fg">
+              <span className="font-mono text-xs text-muted-foreground">
                 {pkg.name}@{pkg.version}
               </span>
             ) : null}
           </div>
 
           {environments.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-vetra-border bg-vetra-accent px-4 py-6 text-sm text-vetra-muted-fg">
+            <div className="rounded-xl border border-dashed border-border bg-accent px-4 py-6 text-sm text-muted-foreground">
               This app isn&apos;t running anywhere yet. Create an environment to
               put it online.
             </div>
@@ -400,7 +400,7 @@ export function ProjectDeployDetail({
               {renderEnvList(deployedEnvs)}
               {otherEnvs.length > 0 ? (
                 <div className="flex flex-col gap-3">
-                  <h3 className="text-sm font-semibold text-vetra-fg">
+                  <h3 className="text-sm font-semibold text-foreground">
                     Other environments
                   </h3>
                   {renderEnvList(otherEnvs)}
@@ -432,7 +432,7 @@ export function ProjectDeployDetail({
                 clearMessages();
                 setCreating(true);
               }}
-              className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-dashed border-vetra-border px-4 py-2 text-sm font-medium text-vetra-fg hover:border-vetra-primary hover:text-vetra-primary disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-dashed border-border px-4 py-2 text-sm font-medium text-foreground hover:border-vetra-primary hover:text-vetra-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus size={15} />
               New environment
@@ -467,22 +467,22 @@ function EnvRow({
   return (
     <div
       className={`flex items-center gap-4 px-4 py-3.5 ${
-        first ? "" : "border-t border-vetra-border"
+        first ? "" : "border-t border-border"
       }`}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-vetra-muted text-vetra-muted-fg">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
         <Server size={16} />
       </span>
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-vetra-fg">
+          <span className="truncate text-sm font-medium text-foreground">
             {label}
           </span>
           <StatusDot status={d.env.status ?? "DRAFT"} />
         </div>
         {d.url ? (
-          <span className="truncate text-xs text-vetra-muted-fg">{d.url}</span>
+          <span className="truncate text-xs text-muted-foreground">{d.url}</span>
         ) : null}
         <ProjectStatusLine
           d={d}
@@ -518,7 +518,7 @@ function ProjectStatusLine({
 }) {
   if (rollingOut) {
     return (
-      <span className="text-xs text-vetra-muted-fg">
+      <span className="text-xs text-muted-foreground">
         {d.installedVersion
           ? `Rolling out v${d.installedVersion}…`
           : "Rolling out…"}
@@ -527,24 +527,24 @@ function ProjectStatusLine({
   }
   if (needsApproval) {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-vetra-warning">
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-vetra-warning" />
+      <span className="flex items-center gap-1.5 text-xs font-medium text-warning">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />
         Changes pending approval
       </span>
     );
   }
   if (d.state === "not-deployed") {
     return (
-      <span className="text-xs text-vetra-muted-fg">Not deployed here</span>
+      <span className="text-xs text-muted-foreground">Not deployed here</span>
     );
   }
   if (d.state === "update-available") {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-vetra-warning">
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-vetra-warning" />
+      <span className="flex items-center gap-1.5 text-xs font-medium text-warning">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />
         Update available
         {d.installedVersion ? (
-          <span className="font-normal text-vetra-muted-fg">
+          <span className="font-normal text-muted-foreground">
             · running v{d.installedVersion}
           </span>
         ) : null}
@@ -552,8 +552,8 @@ function ProjectStatusLine({
     );
   }
   return (
-    <span className="flex items-center gap-1.5 text-xs text-vetra-muted-fg">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-vetra-success" />
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" />
       {release.known ? "Up to date" : "Deployed"}
       {d.installedVersion ? (
         <span className="font-normal">· v{d.installedVersion}</span>
@@ -587,7 +587,7 @@ function EnvAction({
   }
   if (rollingOut) {
     return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-lg border border-vetra-border px-3.5 py-2 text-sm font-medium text-vetra-muted-fg">
+      <span className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-muted-foreground">
         <Loader2 size={14} className="animate-spin" />
         Deploying…
       </span>
@@ -650,7 +650,7 @@ function VisitMenu({
         <ExternalLink size={14} />
       </a>
     ) : (
-      <span className="shrink-0 text-xs text-vetra-muted-fg">Up to date</span>
+      <span className="shrink-0 text-xs text-muted-foreground">Up to date</span>
     );
   }
 
@@ -684,7 +684,7 @@ function VisitMenu({
       {open ? (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-lg border border-vetra-border bg-vetra-card py-1 shadow-md">
+          <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-md">
             {services.map((s) => (
               <a
                 key={s.type}
@@ -692,10 +692,10 @@ function VisitMenu({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setOpen(false)}
-                className="flex items-center justify-between gap-4 px-3 py-1.5 text-sm text-vetra-fg hover:bg-vetra-accent"
+                className="flex items-center justify-between gap-4 px-3 py-1.5 text-sm text-foreground hover:bg-accent"
               >
                 {s.label}
-                <ExternalLink size={13} className="text-vetra-muted-fg" />
+                <ExternalLink size={13} className="text-muted-foreground" />
               </a>
             ))}
           </div>
@@ -721,9 +721,9 @@ function NewEnvironmentRow({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-vetra-border bg-vetra-accent px-4 py-4">
+    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border bg-accent px-4 py-4">
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-vetra-fg">
+        <span className="text-xs font-medium text-foreground">
           New environment name
         </span>
         <input
@@ -731,9 +731,9 @@ function NewEnvironmentRow({
           onChange={(e) => onChange(e.target.value)}
           placeholder="My product"
           autoFocus
-          className="rounded-lg border border-vetra-border bg-vetra-card px-3 py-2 text-sm text-vetra-fg outline-none focus:border-vetra-primary"
+          className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-vetra-primary"
         />
-        <span className="text-xs text-vetra-muted-fg">
+        <span className="text-xs text-muted-foreground">
           A {CLOUD_BASE_DOMAIN} subdomain is assigned automatically.
         </span>
       </label>
@@ -760,7 +760,7 @@ function NewEnvironmentRow({
           type="button"
           disabled={disabled}
           onClick={onCancel}
-          className="text-sm text-vetra-muted-fg hover:text-vetra-fg disabled:opacity-50"
+          className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           Cancel
         </button>
@@ -771,8 +771,8 @@ function NewEnvironmentRow({
 
 function UnauthCard({ onSignIn }: { onSignIn: () => void }) {
   return (
-    <div className="flex flex-col items-start gap-3 rounded-xl border border-vetra-border bg-vetra-card px-4 py-6">
-      <p className="text-sm text-vetra-muted-fg">
+    <div className="flex flex-col items-start gap-3 rounded-xl border border-border bg-card px-4 py-6">
+      <p className="text-sm text-muted-foreground">
         Sign in with Renown to deploy this project.
       </p>
       <button
@@ -794,8 +794,8 @@ function ErrorCard({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex flex-col items-start gap-2 rounded-xl border border-vetra-border bg-vetra-card px-4 py-6">
-      <p className="text-sm text-vetra-destructive">{message}</p>
+    <div className="flex flex-col items-start gap-2 rounded-xl border border-border bg-card px-4 py-6">
+      <p className="text-sm text-destructive">{message}</p>
       <button
         type="button"
         onClick={onRetry}

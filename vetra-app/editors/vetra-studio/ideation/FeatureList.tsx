@@ -92,7 +92,7 @@ function FeatureRow({
               name: wbs.name ?? "WBS",
             })
           }
-          className="ml-3 flex shrink-0 items-center gap-1 text-xs font-medium text-vetra-primary underline hover:text-vetra-fg"
+          className="ml-3 flex shrink-0 items-center gap-1 text-xs font-medium text-vetra-primary underline hover:text-foreground"
         >
           <FileText size={13} />
           {wbs.name ?? "WBS"}

@@ -82,12 +82,12 @@ function ExamplePrompt() {
 
   return (
     <div
-      className="group relative rounded-lg border border-vetra-border bg-vetra-accent px-3 pb-7 pt-2"
+      className="group relative rounded-lg border border-border bg-accent px-3 pb-7 pt-2"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <p className="text-xs italic text-vetra-muted-fg">
-        <span className="mr-1.5 font-semibold not-italic uppercase tracking-wide text-vetra-muted-fg/80">
+      <p className="text-xs italic text-muted-foreground">
+        <span className="mr-1.5 font-semibold not-italic uppercase tracking-wide text-muted-foreground/80">
           Example
         </span>
         {prompt}
@@ -104,7 +104,7 @@ function ExamplePrompt() {
             className={`h-1.5 rounded-full transition-all ${
               i === index
                 ? "w-4 bg-vetra-primary"
-                : "w-1.5 bg-vetra-muted-fg/40 hover:bg-vetra-muted-fg"
+                : "w-1.5 bg-muted-foreground/40 hover:bg-muted-foreground"
             }`}
           />
         ))}
@@ -114,7 +114,7 @@ function ExamplePrompt() {
         type="button"
         onClick={copy}
         aria-label="Copy example prompt"
-        className="absolute bottom-1.5 right-2 rounded-md p-1 text-vetra-muted-fg opacity-0 transition hover:bg-vetra-muted hover:text-vetra-fg focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute bottom-1.5 right-2 rounded-md p-1 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
@@ -146,7 +146,7 @@ export function PhaseCycle({
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-8 px-8 py-12">
       <div className="flex flex-col gap-4">
-        <h2 className="text-base font-semibold text-vetra-fg">
+        <h2 className="text-base font-semibold text-foreground">
           Product development cycle
         </h2>
         <ExamplePrompt />
@@ -164,7 +164,7 @@ export function PhaseCycle({
                 {!last ? (
                   <span
                     aria-hidden
-                    className="absolute -bottom-9 left-1/2 top-4 w-px -translate-x-1/2 bg-vetra-border"
+                    className="absolute -bottom-9 left-1/2 top-4 w-px -translate-x-1/2 bg-border"
                   />
                 ) : null}
                 <span
@@ -172,8 +172,8 @@ export function PhaseCycle({
                     active
                       ? "animate-phase-pulse border-vetra-primary bg-vetra-primary/10 text-vetra-primary"
                       : open
-                        ? "border-vetra-border bg-vetra-accent text-vetra-fg group-hover:border-vetra-primary group-hover:text-vetra-primary"
-                        : "border-vetra-border/50 bg-vetra-muted text-vetra-muted-fg"
+                        ? "border-border bg-accent text-foreground group-hover:border-vetra-primary group-hover:text-vetra-primary"
+                        : "border-border/50 bg-muted text-muted-foreground"
                   }`}
                 >
                   {i + 1}
@@ -186,31 +186,31 @@ export function PhaseCycle({
                 onClick={open}
                 className={`flex flex-1 flex-col gap-1.5 rounded-xl border px-5 py-4 text-left transition ${
                   open
-                    ? "border-vetra-border bg-vetra-card group-hover:border-vetra-primary group-hover:shadow-sm"
-                    : "cursor-default border-vetra-border/50 bg-vetra-muted"
+                    ? "border-border bg-card group-hover:border-vetra-primary group-hover:shadow-sm"
+                    : "cursor-default border-border/50 bg-muted"
                 }`}
               >
                 <span className="flex items-center gap-2.5">
                   <Icon
                     size={15}
                     className={
-                      open ? "text-vetra-primary" : "text-vetra-muted-fg"
+                      open ? "text-vetra-primary" : "text-muted-foreground"
                     }
                   />
-                  <span className="text-xs font-semibold tracking-widest text-vetra-muted-fg">
+                  <span className="text-xs font-semibold tracking-widest text-muted-foreground">
                     {phase.label}
                   </span>
                   <span
                     className={`ml-1 rounded-md px-2 py-0.5 text-xs font-medium ${
                       open
                         ? "bg-vetra-primary/10 text-vetra-primary"
-                        : "bg-vetra-muted/80 text-vetra-muted-fg"
+                        : "bg-muted/80 text-muted-foreground"
                     }`}
                   >
                     {phase.note}
                   </span>
                 </span>
-                <span className="text-sm text-vetra-muted-fg">
+                <span className="text-sm text-muted-foreground">
                   {phase.description}
                 </span>
               </button>
