@@ -1,3 +1,4 @@
+import { isStudioEnvironment } from "@powerhousedao/vetra-cloud-client";
 import type { EnvironmentSummary } from "./cloudGraphql.js";
 import { CLOUD_BASE_DOMAIN } from "./config.js";
 import type { EnvInstall } from "./useInstalledPackages.js";
@@ -34,9 +35,9 @@ const SERVICE_LABEL: Record<string, string> = {
 const SERVICE_SUFFIX: Record<string, string> = { SWITCHBOARD: "/graphql" };
 const SERVICE_ORDER = ["CONNECT", "FUSION", "SWITCHBOARD"];
 
-/** Build the public URLs for an environment's enabled services from its
- * generated subdomain + per-service prefix (mirrors the environment detail's
- * host construction). The apex service carries no prefix. */
+/** Build the public URLs for an environment's enabled services as
+ * `<subdomain>-<service>` under the base domain (mirrors the environment
+ * detail's host construction). The apex service carries no suffix. */
 export function resolveServiceLinks(global: {
   genericSubdomain?: string | null;
   genericBaseDomain?: string | null;
@@ -49,8 +50,10 @@ export function resolveServiceLinks(global: {
   for (const s of global.services) {
     const label = SERVICE_LABEL[s.type];
     if (!s.enabled || !label) continue;
-    const host = s.prefix
-      ? `${s.prefix}.${subdomain}.${base}`
+    // `prefix` is the document's schema field name; it's the service slug.
+    const serviceSlug = s.prefix;
+    const host = serviceSlug
+      ? `${subdomain}-${serviceSlug}.${base}`
       : `${subdomain}.${base}`;
     links.push({
       type: s.type,
@@ -97,9 +100,12 @@ export function deriveEnvDeployments(args: {
   const { environments, byEnv, packageName, release } = args;
   const byId = new Map(byEnv.map((e) => [e.envId, e]));
 
-  return environments.map((env) => {
+  return environments.flatMap((env) => {
     const entry = byId.get(env.id);
     const installs = entry?.packages;
+    // Vetra Studio environments host the Studio itself — never deploy targets,
+    // and not shown in the deploy UI.
+    if (isStudioEnvironment(installs?.keys() ?? [])) return [];
     const installed = installs?.has(packageName) ?? false;
     const installedVersion = installs?.get(packageName) ?? null;
 
@@ -118,13 +124,15 @@ export function deriveEnvDeployments(args: {
       state = "live-current";
     }
 
-    return {
-      env,
-      url: envHost(env),
-      installed,
-      installedVersion,
-      state,
-      services: entry?.services ?? [],
-    };
+    return [
+      {
+        env,
+        url: envHost(env),
+        installed,
+        installedVersion,
+        state,
+        services: entry?.services ?? [],
+      },
+    ];
   });
 }

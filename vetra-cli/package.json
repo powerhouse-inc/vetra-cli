@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.36",
+  "version": "0.0.1-dev.41",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -16,7 +16,9 @@
   "scripts": {
     "build:assets": "tsx scripts/build-assets.ts",
     "typecheck": "tsc --noEmit",
-    "build": "rm -rf dist && pnpm build:assets && pnpm typecheck && tsdown",
+    "check:deps": "tsx scripts/check-runtime-deps.ts",
+    "build": "pnpm check:deps && rm -rf dist && pnpm build:assets && pnpm typecheck && tsdown && pnpm vendor",
+    "vendor": "tsx scripts/vendor-deps.ts",
     "refresh:test-skills": "pnpm build:assets && rm -rf ../../vetra-test/.ph/vetra/.mastra/skills && cp -R gen/skills ../../vetra-test/.ph/vetra/.mastra/skills && echo '[refresh] vetra-test skills replaced; restart vetra for the change to take effect'",
     "dev": "tsx src/main.ts --workdir ../../vetra-test",
     "dev:reset": "bash scripts/dev-reset.sh",
@@ -32,9 +34,9 @@
     "mastra:start": "mastra start",
     "telemetry:dev": "ph-telemetry-dev --cli-name=vetra"
   },
-  "dependencies": {
-    "@datadog/pprof": "^5.13.3",
-    "@electric-sql/pglite": "^0.3.15",
+  "dependencies": {},
+  "devDependencies": {
+    "@ai-sdk/anthropic": "^2.0.80",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/api-logs": "0.205.0",
     "@opentelemetry/exporter-logs-otlp-http": "0.205.0",
@@ -45,17 +47,15 @@
     "@opentelemetry/sdk-metrics": "2.1.0",
     "@opentelemetry/sdk-node": "0.205.0",
     "@opentelemetry/sdk-trace-base": "2.1.0",
-    "@powerhousedao/pglite-fs": "catalog:",
     "@powerhousedao/switchboard": "catalog:",
+    "@datadog/pprof": "^5.13.3",
+    "@electric-sql/pglite": "^0.3.15",
+    "@powerhousedao/pglite-fs": "catalog:",
     "devcert": "1.2.3",
+    "fflate": "^0.8.2",
+    "fsevents": "^2.3.3",
     "graphql": "catalog:",
-    "libsql": "^0.5.29"
-  },
-  "optionalDependencies": {
-    "fsevents": "^2.3.3"
-  },
-  "devDependencies": {
-    "@ai-sdk/anthropic": "^2.0.80",
+    "libsql": "^0.5.29",
     "@jest/globals": "^30.2.0",
     "@mastra/core": "^1.41.0",
     "@mastra/libsql": "^1.12.1",

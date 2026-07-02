@@ -26,4 +26,19 @@
      destructive, warning, info, success), which already handle light/dark. */
   --color-vetra-primary: #04c161;
   --color-vetra-primary-fg: #ffffff;
+
+  /* Soft "agent is working here" halo — a primary ring that eases out and
+     fades, used on the active phase marker in the home overview. */
+  --animate-phase-pulse: phase-pulse 1.8s ease-in-out infinite;
+  @keyframes phase-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0
+        color-mix(in srgb, var(--color-vetra-primary) 45%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 6px
+        color-mix(in srgb, var(--color-vetra-primary) 0%, transparent);
+    }
+  }
 }

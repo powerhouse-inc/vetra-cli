@@ -277,7 +277,7 @@ cli.configureReactor({
     buildDefaultReactor(ctx, {
       documentModels: [...documentModels, ...vetraModels, ...extModels] as DocumentModelModule<any>[],
       drive: {
-        name: 'vetra-cli',
+        name: 'Home',
         // Salt with the absolute workdir so each workdir is its own drive
         // (stable across restarts, distinct across workdirs).
         id: deterministicId(CLI_NAME, path.resolve(ctx.workdir)),

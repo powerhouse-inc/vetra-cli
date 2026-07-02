@@ -1,20 +1,40 @@
 import {
   CLOUD_BASE_DOMAIN,
   CLOUD_DEFAULT_PACKAGE_REGISTRY,
-  SERVICE_PREFIXES,
+  SERVICE_SLUGS,
 } from "./config.js";
 import type { EnvironmentController } from "./controller.js";
 import { generateSubdomain } from "./subdomain.js";
 import type { CloudServiceType, EnvironmentChanges } from "./types.js";
 
-/** Prefix to re-enable a service with: its current prefix if previously set,
- * else the default. */
-function prefixFor(
+/** Services a deployed app needs live: Connect serves the UI, Switchboard the
+ * reactor/GraphQL backend. Every deploy ensures both are on. */
+export const DEPLOY_SERVICES: CloudServiceType[] = ["CONNECT", "SWITCHBOARD"];
+
+/** Service slug to re-enable a service with: its current slug if previously
+ * set, else the default. (Stored on the document as the `prefix` field.) */
+function serviceSlugFor(
   controller: EnvironmentController,
   type: CloudServiceType,
 ): string {
   const existing = controller.state.global.services.find((s) => s.type === type);
-  return existing?.prefix || SERVICE_PREFIXES[type];
+  return existing?.prefix || SERVICE_SLUGS[type];
+}
+
+/** Enable each service not already enabled, reusing its current slug (or the
+ * default). Idempotent: an already-enabled service emits no action. Does not
+ * push — the caller pushes once after. */
+export function ensureServicesEnabled(
+  controller: EnvironmentController,
+  types: CloudServiceType[],
+): void {
+  for (const type of types) {
+    const existing = controller.state.global.services.find(
+      (s) => s.type === type,
+    );
+    if (existing?.enabled) continue;
+    controller.enableService({ type, prefix: serviceSlugFor(controller, type) });
+  }
 }
 
 /** Apply edits to a loaded environment controller. Does not push — the caller
@@ -26,7 +46,7 @@ export function applyEnvironmentUpdate(
 ): void {
   if (changes.label) controller.setLabel({ label: changes.label });
   for (const type of changes.enableServices ?? []) {
-    controller.enableService({ type, prefix: prefixFor(controller, type) });
+    controller.enableService({ type, prefix: serviceSlugFor(controller, type) });
   }
   for (const type of changes.disableServices ?? []) {
     controller.disableService({ type });
@@ -67,6 +87,6 @@ export function applyCreateEnvironment(
     ? options.services
     : ["CONNECT"];
   for (const type of services) {
-    controller.enableService({ type, prefix: SERVICE_PREFIXES[type] });
+    controller.enableService({ type, prefix: SERVICE_SLUGS[type] });
   }
 }

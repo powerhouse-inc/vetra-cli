@@ -1,8 +1,15 @@
-import { FileText, Hammer, Lightbulb, Rocket } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Copy, FileText, Hammer, Lightbulb, Rocket } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type PhaseId = "ideate" | "specify" | "build" | "deploy";
-type Phase = { id: PhaseId; label: string; note: string; Icon: LucideIcon };
+type Phase = {
+  id: PhaseId;
+  label: string;
+  note: string;
+  Icon: LucideIcon;
+  description: string;
+};
 
 const PHASES: Phase[] = [
   {
@@ -10,16 +17,110 @@ const PHASES: Phase[] = [
     label: "IDEATE",
     note: "Problem Definition",
     Icon: Lightbulb,
+    description:
+      "Frame the problem and who it's for — the agent turns a rough idea into a clear product brief.",
   },
-  { id: "specify", label: "SPECIFY", note: "Solution Design", Icon: FileText },
+  {
+    id: "specify",
+    label: "SPECIFY",
+    note: "Solution Design",
+    Icon: FileText,
+    description:
+      "Pin down how it works — the data model, workflow, and states the agent designs and builds against.",
+  },
   {
     id: "build",
     label: "BUILD",
     note: "Implementation & Testing",
     Icon: Hammer,
+    description:
+      "Watch the agent generate and test the code, with a live preview of the running app.",
   },
-  { id: "deploy", label: "DEPLOY", note: "Delivery", Icon: Rocket },
+  {
+    id: "deploy",
+    label: "DEPLOY",
+    note: "Delivery",
+    Icon: Rocket,
+    description:
+      "Ship it to the cloud — publish the package and run it in your environments.",
+  },
 ];
+
+/** Example prompts shown at the top of the flow to seed a new product;
+ * cycled so visitors see a few different shapes of idea. */
+const EXAMPLE_PROMPTS = [
+  "Develop the product specifications for a breakfast ordering system for a hotel restaurant. Guests will scan a QR code at their table and then enter their breakfast preferences. Hotel staff have a daily kanban-style queue to move orders from menu_setup, draft, requested, in progress, ready, to completed or cancelled.",
+  "Build a maintenance request tracker for a property manager. Tenants submit issues with a photo and priority, and the manager triages them through new, scheduled, in progress, and resolved — assigning each to a contractor along the way.",
+  "Design an invoice approval workflow for a finance team. Employees upload expenses, a reviewer approves or rejects with a note, and approved invoices move to a paid queue with a running total per department.",
+] as const;
+
+/** Rotate the example prompt on a fixed interval, pausing while the user hovers. */
+const PROMPT_ROTATE_MS = 20_000;
+
+/** Example prompt card that rotates through {@link EXAMPLE_PROMPTS} and reveals
+ * a copy button on hover. */
+function ExamplePrompt() {
+  const [index, setIndex] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const prompt = EXAMPLE_PROMPTS[index];
+
+  useEffect(() => {
+    if (paused) return;
+    const id = window.setInterval(() => {
+      setIndex((i) => (i + 1) % EXAMPLE_PROMPTS.length);
+    }, PROMPT_ROTATE_MS);
+    return () => window.clearInterval(id);
+  }, [paused]);
+
+  const copy = () => {
+    void navigator.clipboard.writeText(prompt).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div
+      className="group relative rounded-lg border border-vetra-border bg-vetra-accent px-3 pb-7 pt-2"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <p className="text-xs italic text-vetra-muted-fg">
+        <span className="mr-1.5 font-semibold not-italic uppercase tracking-wide text-vetra-muted-fg/80">
+          Example
+        </span>
+        {prompt}
+      </p>
+
+      <div className="absolute bottom-2 left-3 flex items-center gap-1.5">
+        {EXAMPLE_PROMPTS.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => setIndex(i)}
+            aria-label={`Show example prompt ${i + 1} of ${EXAMPLE_PROMPTS.length}`}
+            aria-current={i === index}
+            className={`h-1.5 rounded-full transition-all ${
+              i === index
+                ? "w-4 bg-vetra-primary"
+                : "w-1.5 bg-vetra-muted-fg/40 hover:bg-vetra-muted-fg"
+            }`}
+          />
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={copy}
+        aria-label="Copy example prompt"
+        className="absolute bottom-1.5 right-2 rounded-md p-1 text-vetra-muted-fg opacity-0 transition hover:bg-vetra-muted hover:text-vetra-fg focus-visible:opacity-100 group-hover:opacity-100"
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+    </div>
+  );
+}
 
 type OpenablePhase = "ideate" | "specify" | "build" | "deploy";
 
@@ -32,58 +133,91 @@ function isOpenablePhase(id: PhaseId): id is OpenablePhase {
   );
 }
 
-/** The product "home" overview: the four-phase cycle. */
+/** The product "home" overview: example prompts to get started, then the
+ * four-phase product design flow as a numbered vertical timeline. `activePhase`
+ * softly pulses the phase the agent is currently working on. */
 export function PhaseCycle({
   onOpen,
+  activePhase,
 }: {
   onOpen: (phase: OpenablePhase) => void;
+  activePhase?: OpenablePhase | null;
 }) {
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 px-8 py-12">
-      {PHASES.map((phase) => {
-        const { id, Icon } = phase;
-        const open = isOpenablePhase(id) ? () => onOpen(id) : undefined;
-        return (
-          <button
-            key={id}
-            type="button"
-            disabled={!open}
-            onClick={open}
-            className={`group relative flex items-center justify-between overflow-hidden rounded-xl border px-6 py-6 text-left transition ${
-              open
-                ? "border-border bg-card hover:border-vetra-primary hover:shadow-sm"
-                : "cursor-default border-border/50 bg-muted"
-            }`}
-          >
-            {open ? (
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-vetra-primary to-transparent opacity-0 transition-opacity group-hover:opacity-60"
-              />
-            ) : null}
-            <span className="flex items-center gap-2.5">
-              <Icon
-                size={15}
-                className={
-                  open ? "text-vetra-primary" : "text-muted-foreground"
-                }
-              />
-              <span className="text-xs font-semibold tracking-widest text-muted-foreground">
-                {phase.label}
+    <div className="mx-auto flex max-w-2xl flex-col gap-8 px-8 py-12">
+      <div className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold text-vetra-fg">
+          Product development cycle
+        </h2>
+        <ExamplePrompt />
+      </div>
+
+      <ol className="isolate flex flex-col gap-5">
+        {PHASES.map((phase, i) => {
+          const { id, Icon } = phase;
+          const open = isOpenablePhase(id) ? () => onOpen(id) : undefined;
+          const last = i === PHASES.length - 1;
+          const active = id === activePhase;
+          return (
+            <li key={id} className="group flex items-stretch gap-5">
+              <span className="relative flex w-9 shrink-0 justify-center">
+                {!last ? (
+                  <span
+                    aria-hidden
+                    className="absolute -bottom-9 left-1/2 top-4 w-px -translate-x-1/2 bg-vetra-border"
+                  />
+                ) : null}
+                <span
+                  className={`relative mt-4 flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition ${
+                    active
+                      ? "animate-phase-pulse border-vetra-primary bg-vetra-primary/10 text-vetra-primary"
+                      : open
+                        ? "border-vetra-border bg-vetra-accent text-vetra-fg group-hover:border-vetra-primary group-hover:text-vetra-primary"
+                        : "border-vetra-border/50 bg-vetra-muted text-vetra-muted-fg"
+                  }`}
+                >
+                  {i + 1}
+                </span>
               </span>
-            </span>
-            <span
-              className={`rounded-lg px-3 py-1 text-sm font-medium ${
-                open
-                  ? "bg-vetra-primary/10 text-vetra-primary"
-                  : "bg-muted/80 text-muted-foreground"
-              }`}
-            >
-              {phase.note}
-            </span>
-          </button>
-        );
-      })}
+
+              <button
+                type="button"
+                disabled={!open}
+                onClick={open}
+                className={`flex flex-1 flex-col gap-1.5 rounded-xl border px-5 py-4 text-left transition ${
+                  open
+                    ? "border-vetra-border bg-vetra-card group-hover:border-vetra-primary group-hover:shadow-sm"
+                    : "cursor-default border-vetra-border/50 bg-vetra-muted"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Icon
+                    size={15}
+                    className={
+                      open ? "text-vetra-primary" : "text-vetra-muted-fg"
+                    }
+                  />
+                  <span className="text-xs font-semibold tracking-widest text-vetra-muted-fg">
+                    {phase.label}
+                  </span>
+                  <span
+                    className={`ml-1 rounded-md px-2 py-0.5 text-xs font-medium ${
+                      open
+                        ? "bg-vetra-primary/10 text-vetra-primary"
+                        : "bg-vetra-muted/80 text-vetra-muted-fg"
+                    }`}
+                  >
+                    {phase.note}
+                  </span>
+                </span>
+                <span className="text-sm text-vetra-muted-fg">
+                  {phase.description}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

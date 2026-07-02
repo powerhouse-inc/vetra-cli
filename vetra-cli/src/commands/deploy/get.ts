@@ -7,6 +7,7 @@ import {
   listMyEnvironments,
 } from "../../cloud/environments-read.js";
 import { loadEnvironmentState } from "../../cloud/environments-write.js";
+import { isStudioEnvironment } from "@powerhousedao/vetra-cloud-client";
 import {
   describeEnvironmentState,
   describeEnvironmentSummary,
@@ -66,10 +67,16 @@ export const deployEnvironmentGet = defineCommand({
       const obj = state ? { ...state, id: env.id } : env;
       return { text: renderProjected(obj, input.filter ?? "$", input.format) };
     }
+    const studioNote =
+      state && isStudioEnvironment(state.packages.map((p) => p.name))
+        ? "\n\nVetra Studio environment (not a deploy target). Do not install " +
+          "project packages here; deploy to a separate environment."
+        : "";
     return {
-      text: state
-        ? describeEnvironmentState(state, env.id)
-        : describeEnvironmentSummary(env),
+      text:
+        (state
+          ? describeEnvironmentState(state, env.id)
+          : describeEnvironmentSummary(env)) + studioNote,
     };
   },
 });

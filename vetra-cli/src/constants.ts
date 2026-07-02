@@ -1,14 +1,4 @@
 /**
- * Placeholder for the preview-server base URL, baked literally into
- * vetra-app's `preview-server-client.ts` (keep the two in sync). The
- * `connect-drive-url` hook stamps it with the absolute proxy URL
- * (`<proxy>/preview`) the same way it stamps the drive URL. An unstamped
- * bundle (vite dev, or before the first stamp) falls back to the direct
- * preview-server port client-side.
- */
-export const PREVIEW_SERVER_URL_PLACEHOLDER = 'http://__ph_preview_server_url__';
-
-/**
  * Proxy path prefix for a reactor-project's Connect (the BUILD-pane iframe
  * target). Must equal `/{serviceId}/{captureName}` of the `vetra-studio`
  * capture in `services/reactor-project.ts` — ph-clint derives the proxy

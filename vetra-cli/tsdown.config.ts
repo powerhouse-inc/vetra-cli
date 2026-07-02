@@ -27,9 +27,31 @@ export default defineConfig({
   dts: false,
   // build:assets writes dist/gen + manifest first; build wipes dist up front.
   clean: false,
-  // OpenTelemetry + devcert do dynamic platform requires that don't survive
-  // bundling; keep them external (declared as deps) so they resolve at runtime.
-  external: [/^@opentelemetry\//, "devcert"],
+  // Un-bundleable leaves kept external + vendored into dist/node_modules by
+  // scripts/vendor-deps.ts. otel bundles cleanly (no auto-instrumentation).
+  external: [
+    "devcert",
+    "libsql",
+    "@datadog/pprof",
+    "@electric-sql/pglite",
+    "@powerhousedao/pglite-fs",
+    "graphql",
+    "fsevents",
+    // Optional leaves of the bundled embedded Switchboard, absent by design
+    // (knex uses pglite; codegen runs via `ph generate`; ink devtools unused).
+    "@graphql-codegen/cli",
+    "@opentelemetry/exporter-jaeger",
+    "better-sqlite3",
+    "sqlite3",
+    "mysql",
+    "mysql2",
+    "oracledb",
+    "tedious",
+    "pg-query-stream",
+    "react-devtools-core",
+    /^@prettier\/plugin-/,
+    /prettier-plugin-/,
+  ],
   plugins: [dirnameShim],
   // bin/start/Dockerfile expect dist/main.js (ESM via package "type": "module").
   outputOptions: {

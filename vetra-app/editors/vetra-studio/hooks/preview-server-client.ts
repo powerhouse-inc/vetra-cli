@@ -3,49 +3,93 @@
  *
  * The server runs in the vetra-cli daemon (separate process from Connect),
  * reached through the daemon's embedded proxy at `<proxy>/preview`. The
- * proxy URL isn't known at build time, so the base below is a placeholder
- * token (must match `PREVIEW_SERVER_URL_PLACEHOLDER` in vetra-cli's
- * `constants.ts`) that the `connect-drive-url` lifecycle hook stamps with
- * the absolute proxy URL on daemon startup — same mechanism as the default
- * drive URL. An unstamped bundle (vite dev, or before the first stamp)
- * falls back to the preview-server's direct loopback port.
+ * proxy URL isn't known at build time, so the daemon writes it into
+ * `studio.config.json` (a sibling of `powerhouse.config.json`) on startup;
+ * this module fetches that config once and caches it — no JS asset is mutated.
+ * A missing config (vite dev, or before the first write) falls back to the
+ * preview-server's direct loopback port.
  *
- * `ready` results carry a proxy-relative `proxiedUrl`; when the base is
- * stamped we resolve it against the proxy origin so the BUILD iframe goes
- * through the proxy too.
+ * `ready` results carry a proxy-relative `proxiedUrl`; when the base is a
+ * proxied `<proxy>/preview` URL we resolve it against the proxy origin so the
+ * BUILD iframe goes through the proxy too.
  *
  * The EventSource is shared across all consumers of `subscribePreviewEvents`
  * so we keep exactly one open connection per browser tab regardless of how
  * many BUILD panes mount.
  */
-const PREVIEW_SERVER_BASE_URL = "http://__ph_preview_server_url__";
 const DIRECT_BASE = "http://127.0.0.1:5180";
 
-/* Vite dev serves the editor from source, where the placeholder is never
- * stamped — use the direct port there. Built bundles are stamped by the
- * daemon before the browser loads them (proxy URL when enabled, direct URL
- * otherwise). Safe access: package builds may lack import.meta.env. */
+// Vite dev serves the editor from source, where no daemon writes the config —
+// use the direct port. Safe access: package builds may lack import.meta.env.
 const isDev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
-const BASE = isDev ? DIRECT_BASE : PREVIEW_SERVER_BASE_URL;
 
-/**
- * Origin+prefix to resolve proxy-relative `proxiedUrl`s against. The proxied
- * stamp mounts the preview-server at a `/preview` SUFFIX, optionally under a
- * subpath (`https://host/myagent/preview` → `https://host/myagent`). A direct
- * stamp (or dev fallback) has no `/preview` suffix and serves from the loopback
- * root, where proxy paths don't exist — leave it undefined so the direct url
- * stands.
- */
-const PROXY_BASE = (() => {
+interface PreviewConfig {
+  // Absolute preview-server base (proxied `<proxy>/preview`, or a direct URL).
+  base: string;
+  // Origin+prefix to resolve proxy-relative `proxiedUrl`s against when the base
+  // is a proxied `/preview` mount; undefined for a direct/loopback base.
+  proxyBase?: string;
+  // The studio's cloud environment document id, when the daemon stamped one.
+  environmentId?: string;
+}
+
+// Origin+prefix for a proxied `/preview` mount (`https://host/x/preview` ->
+// `https://host/x`); undefined when the base isn't a `/preview` suffix.
+function computeProxyBase(base: string): string | undefined {
   try {
-    const u = new URL(BASE);
+    const u = new URL(base);
     if (!u.pathname.endsWith("/preview")) return undefined;
-    const prefix = u.pathname.slice(0, -"/preview".length);
-    return u.origin + prefix;
+    return u.origin + u.pathname.slice(0, -"/preview".length);
   } catch {
     return undefined;
   }
-})();
+}
+
+// Base path the bundle is served under (daemon-substituted dynamic base, else
+// the build-time base), to fetch sibling config from the bundle root.
+function bundleBase(): string {
+  const g = globalThis as { __PH_DYNAMIC_BASE__?: string };
+  if (g.__PH_DYNAMIC_BASE__) return g.__PH_DYNAMIC_BASE__;
+  return (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
+}
+
+let configPromise: Promise<PreviewConfig> | undefined;
+
+// Resolve (once, memoized) the preview-server base from studio.config.json.
+function resolvePreviewConfig(): Promise<PreviewConfig> {
+  configPromise ??= (async (): Promise<PreviewConfig> => {
+    if (isDev) return { base: DIRECT_BASE };
+    try {
+      const res = await fetch(`${bundleBase()}studio.config.json`, {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const cfg = (await res.json()) as {
+          previewServerUrl?: string;
+          environmentId?: string;
+        };
+        if (cfg.previewServerUrl) {
+          return {
+            base: cfg.previewServerUrl,
+            proxyBase: computeProxyBase(cfg.previewServerUrl),
+            environmentId: cfg.environmentId,
+          };
+        }
+      }
+    } catch {
+      // fall through to the direct loopback base
+    }
+    return { base: DIRECT_BASE };
+  })();
+  return configPromise;
+}
+
+/** The studio's cloud environment document id from `studio.config.json`, or
+ * null when running outside a provisioned studio (e.g. vite dev). */
+export async function resolveStudioEnvironmentId(): Promise<string | null> {
+  const config = await resolvePreviewConfig();
+  return config.environmentId ?? null;
+}
 
 export type ResolveResult =
   | { kind: "no-target" }
@@ -89,13 +133,14 @@ export async function fetchResolve(args: {
 }): Promise<ResolveResult> {
   const params = new URLSearchParams({ project: args.project, doc: args.doc });
   if (args.drive) params.set("drive", args.drive);
-  const res = await fetch(`${BASE}/resolve?${params}`, { signal: args.signal });
+  const { base, proxyBase } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/resolve?${params}`, { signal: args.signal });
   if (!res.ok) {
     throw new Error(`preview-server /resolve: ${res.status} ${res.statusText}`);
   }
   const result = (await res.json()) as ResolveResult;
-  if (result.kind === "ready" && PROXY_BASE && result.proxiedUrl) {
-    return { ...result, url: `${PROXY_BASE}${result.proxiedUrl}` };
+  if (result.kind === "ready" && proxyBase && result.proxiedUrl) {
+    return { ...result, url: `${proxyBase}${result.proxiedUrl}` };
   }
   return result;
 }
@@ -111,7 +156,8 @@ export async function fetchProjectPackage(args: {
   signal?: AbortSignal;
 }): Promise<ProjectPackageResult> {
   const params = new URLSearchParams({ project: args.project });
-  const res = await fetch(`${BASE}/project-package?${params}`, {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/project-package?${params}`, {
     signal: args.signal,
   });
   if (!res.ok) {
@@ -144,7 +190,8 @@ export async function fetchReleaseStatus(args: {
   signal?: AbortSignal;
 }): Promise<ReleaseStatusResult> {
   const params = new URLSearchParams({ project: args.project });
-  const res = await fetch(`${BASE}/release-status?${params}`, {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/release-status?${params}`, {
     signal: args.signal,
   });
   if (!res.ok) {
@@ -178,7 +225,8 @@ export async function publishProject(args: {
   signal?: AbortSignal;
 }): Promise<PublishProjectResult> {
   const params = new URLSearchParams({ project: args.project });
-  const res = await fetch(`${BASE}/publish?${params}`, {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/publish?${params}`, {
     method: "POST",
     signal: args.signal,
   });
@@ -190,7 +238,8 @@ export async function fetchStart(args: {
   signal?: AbortSignal;
 }): Promise<StartResult> {
   const params = new URLSearchParams({ project: args.project });
-  const res = await fetch(`${BASE}/start?${params}`, {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/start?${params}`, {
     method: "POST",
     signal: args.signal,
   });
@@ -203,7 +252,8 @@ export type VersionInfo = { vetraCli: string; ph: string };
 
 /** Fetch the daemon's vetra-cli + ph versions (served from /version). */
 export async function fetchVersion(signal?: AbortSignal): Promise<VersionInfo> {
-  const res = await fetch(`${BASE}/version`, { signal });
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/version`, { signal });
   if (!res.ok) {
     throw new Error(`preview-server /version: ${res.status} ${res.statusText}`);
   }
@@ -222,7 +272,8 @@ export type AuthState = {
 export async function fetchAuthStatus(
   signal?: AbortSignal,
 ): Promise<AuthState> {
-  const res = await fetch(`${BASE}/auth/status`, { signal });
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/auth/status`, { signal });
   if (!res.ok) {
     throw new Error(
       `preview-server /auth/status: ${res.status} ${res.statusText}`,
@@ -234,7 +285,8 @@ export async function fetchAuthStatus(
 /** Start a login for the agent's identity: the daemon builds the renown.id
  * console URL (returned as `pending.loginUrl`) and stashes the session. */
 export async function startAuth(signal?: AbortSignal): Promise<AuthState> {
-  const res = await fetch(`${BASE}/auth/start`, {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/auth/start`, {
     method: "POST",
     signal,
   });
@@ -255,7 +307,8 @@ export async function confirmAuth(args?: {
   const params = new URLSearchParams();
   if (args?.waitMs != null) params.set("wait", String(args.waitMs));
   const qs = params.toString();
-  const res = await fetch(`${BASE}/auth/confirm${qs ? `?${qs}` : ""}`, {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/auth/confirm${qs ? `?${qs}` : ""}`, {
     method: "POST",
     signal: args?.signal,
   });
@@ -269,7 +322,8 @@ export async function confirmAuth(args?: {
 
 /** Clear the stored credential (the agent's keypair/DID is kept). */
 export async function logoutAuth(signal?: AbortSignal): Promise<AuthState> {
-  const res = await fetch(`${BASE}/auth/logout`, {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/auth/logout`, {
     method: "POST",
     signal,
   });
@@ -284,33 +338,40 @@ export async function logoutAuth(signal?: AbortSignal): Promise<AuthState> {
 type Listener = (eventType: string) => void;
 
 let sharedSource: EventSource | undefined;
+let creatingSource = false;
 const listeners = new Set<Listener>();
 
-function ensureSource(): EventSource | undefined {
+// Opens the shared EventSource once the config resolves. Guards against a
+// concurrent open (the config fetch is async) and a closed prior source.
+function ensureSource(): void {
   if (typeof window === "undefined" || typeof EventSource === "undefined")
-    return undefined;
-  if (sharedSource && sharedSource.readyState !== EventSource.CLOSED)
-    return sharedSource;
-  const src = new EventSource(`${BASE}/events`);
-  for (const type of [
-    "service:starting",
-    "service:ready",
-    "service:stopped",
-    "service:restarting",
-    "service:failed",
-  ]) {
-    src.addEventListener(type, () => {
-      for (const fn of listeners) fn(type);
-    });
-  }
-  sharedSource = src;
-  return src;
+    return;
+  if (sharedSource && sharedSource.readyState !== EventSource.CLOSED) return;
+  if (creatingSource) return;
+  creatingSource = true;
+  void resolvePreviewConfig().then(({ base }) => {
+    creatingSource = false;
+    if (sharedSource && sharedSource.readyState !== EventSource.CLOSED) return;
+    const src = new EventSource(`${base}/events`);
+    for (const type of [
+      "service:starting",
+      "service:ready",
+      "service:stopped",
+      "service:restarting",
+      "service:failed",
+    ]) {
+      src.addEventListener(type, () => {
+        for (const fn of listeners) fn(type);
+      });
+    }
+    sharedSource = src;
+  });
 }
 
 /** Subscribe to preview-server events. Returns an unsubscribe function. */
 export function subscribePreviewEvents(listener: Listener): () => void {
-  ensureSource();
   listeners.add(listener);
+  ensureSource();
   return () => {
     listeners.delete(listener);
   };

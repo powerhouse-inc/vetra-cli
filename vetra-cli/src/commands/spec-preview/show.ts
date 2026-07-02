@@ -7,9 +7,9 @@ import {
 } from "../../helpers/project.js";
 import { runChecks } from "../../helpers/project-checks.js";
 import {
+  browserDriveRemoteUrl,
   buildPreviewDocPath,
   buildPreviewDriveRootPath,
-  driveRemoteUrl,
   findPreviewByName,
   getPreviewAuthToken,
   resolveAppEditorId,
@@ -135,9 +135,15 @@ export const specPreviewShow = defineCommand({
       }
       // Append the drive's remote URL so Connect registers it via addRemoteDrive
       // on load (an ad-hoc app drive isn't in Connect's known set otherwise).
+      // The URL is fetched by the BROWSER — route it through the proxy's
+      // switchboard mount, not the loopback switchboard origin.
       const docPath = buildPreviewDriveRootPath(
         input.drive,
-        driveRemoteUrl(switchboardUrl, input.drive),
+        browserDriveRemoteUrl({
+          driveId: input.drive,
+          proxyUrl: context.proxy?.url,
+          switchboardUrl,
+        }),
       );
       const previewUrl = context.proxy
         ? `${context.proxy.url}${REACTOR_PROJECT_CONNECT_PROXY_PATH}${docPath}`

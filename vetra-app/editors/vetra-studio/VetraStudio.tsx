@@ -28,6 +28,7 @@ import {
 } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
+import { useActivePhase } from "./hooks/useActivePhase.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionEditedDocument } from "./hooks/useSessionEditedDocument.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
@@ -246,6 +247,17 @@ export function VetraStudio({
   // transcript can name a doc before reactor-browser syncs it, and opening
   // early crashes the editor host ("Document not found").
   const editTarget = useSessionEditedDocument(sessionDocument ?? undefined);
+
+  // The phase the selected session's agent is currently acting on — drives the
+  // soft pulse on the home overview. Same follow signals as auto-nav below.
+  const activePhase = useActivePhase({
+    messages: sessionDocument?.state.global.messages,
+    editDocumentType: editTarget?.documentType,
+    editCallId: editTarget?.callId ?? null,
+    previewCallId: previewTarget?.callId ?? null,
+    deployCallId: deployTarget?.callId ?? null,
+  });
+
   const editMarkRef = useRef<EditMark | null>(null);
   const [pendingEditFollow, setPendingEditFollow] = useState<OpenTarget | null>(
     null,
@@ -510,7 +522,7 @@ export function VetraStudio({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <PhaseCycle onOpen={setSection} />
+            <PhaseCycle onOpen={setSection} activePhase={activePhase} />
           </div>
         )}
       </main>

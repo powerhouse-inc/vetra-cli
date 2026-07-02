@@ -16,6 +16,7 @@ import path from "node:path";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
 import { getBearerToken } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
+import { REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH } from "../constants.js";
 import type { Config } from "../framework.js";
 import { formatLines, unknownValueError } from "./cli-errors.js";
 
@@ -386,12 +387,32 @@ export async function createEmptyPreviewDocument(
   name: string,
   token?: string,
 ): Promise<PreviewDocumentFull> {
-  const created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
-    switchboardUrl,
-    CREATE_EMPTY_DOCUMENT_MUTATION,
-    { documentType, parentIdentifier: driveId },
-    token,
-  );
+  // createEmptyDocument can race the reactor's async load of a just-generated
+  // document-model package. Retry on "module not found for type" for up to 5s.
+  const deadline = Date.now() + 5_000;
+  let created: { createEmptyDocument: PreviewDocumentFull };
+  for (;;) {
+    try {
+      created = await gqlRequest<{ createEmptyDocument: PreviewDocumentFull }>(
+        switchboardUrl,
+        CREATE_EMPTY_DOCUMENT_MUTATION,
+        { documentType, parentIdentifier: driveId },
+        token,
+      );
+      break;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        !/Document model module not found for type/.test(msg) ||
+        Date.now() >= deadline
+      )
+        throw err;
+      console.warn(
+        `[spec-preview-create] ${documentType} not yet registered in the reactor; retrying (up to 5s)…`,
+      );
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
   const renamed = await gqlRequest<{ renameDocument: PreviewDocumentFull }>(
     switchboardUrl,
     RENAME_DOCUMENT_MUTATION,
@@ -520,6 +541,27 @@ export function buildPreviewDriveRootPath(
  */
 export function driveRemoteUrl(switchboardUrl: string, driveId: string): string {
   return `${switchboardUrl.replace(/\/graphql\/?$/, "")}/d/${driveId}`;
+}
+
+/**
+ * Browser-facing remote-drive URL for Connect's `addRemoteDrive`. Routed
+ * through the embedded proxy's switchboard mount when a proxy is configured
+ * (`<proxy>/reactor-project/switchboard/d/<id>`): the captured switchboard
+ * endpoint is loopback-only, which the browser can't reach on a deployed
+ * Studio. Falls back to the direct switchboard origin when there is no proxy.
+ */
+export function browserDriveRemoteUrl(args: {
+  driveId: string;
+  proxyUrl?: string;
+  switchboardUrl?: string;
+}): string | undefined {
+  if (args.proxyUrl) {
+    return `${args.proxyUrl.replace(/\/+$/, "")}${REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH}/d/${args.driveId}`;
+  }
+  if (args.switchboardUrl) {
+    return driveRemoteUrl(args.switchboardUrl, args.driveId);
+  }
+  return undefined;
 }
 
 type PreviewDriveRow = {

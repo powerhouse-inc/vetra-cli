@@ -3,8 +3,9 @@ name: e2e
 # e2e job — two checks run in parallel as matrix legs:
 #   source — from-source seeded Playwright e2e (boots the studio via tsx, drives
 #            the chat UI, asserts the generated editor renders). Fast tripwire.
-#   docker — prod-close: publish + build the clint-agent image the prod way and
-#            assert the studio HTTP contract (lab/ci/run-prodclose-e2e.sh).
+#   docker — prod-close: publish + build the clint-agent image the prod way,
+#            assert the studio HTTP contract, then run the seeded Playwright
+#            replay against the baked image (lab/ci/run-prodclose-e2e.sh).
 # fail-fast (matrix default) cancels the in-progress sibling on the first
 # failure, so a broken source check aborts the slow docker build early.
 #
@@ -30,10 +31,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  deps-guard:
+    name: deps guard (zero runtime deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # node 24 strips TS types natively — no install needed.
+      - name: Assert vetra-cli declares no runtime deps
+        run: node vetra-cli/scripts/check-runtime-deps.ts
+
   e2e:
     name: e2e (${{ matrix.leg }})
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # docker leg now also runs the seeded replay against the baked image, so it
+    # needs headroom past the image build + lab stack.
+    timeout-minutes: 45
     strategy:
       fail-fast: true
       matrix:
@@ -126,13 +142,36 @@ jobs:
         if: matrix.leg == 'docker'
         uses: docker/setup-buildx-action@v3
 
-      - name: Run prod-close e2e
+      # The prod-close leg drives a Playwright replay against the baked image
+      # (attach mode). Provision the workspace + browser explicitly so the run
+      # never silently degrades to a contract-only check.
+      - name: Install workspace
         if: matrix.leg == 'docker'
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        if: matrix.leg == 'docker'
+        run: pnpm --filter vetra-cli exec playwright install --with-deps chromium
+
+      - name: Run prod-close e2e (image build + contract + seeded replay)
+        if: matrix.leg == 'docker'
+        env:
+          RUN_REPLAY: "1"
         run: ./lab/ci/run-prodclose-e2e.sh
 
       - name: Dump studio logs on failure
         if: failure() && matrix.leg == 'docker'
         run: docker logs vetra-studio-prodclose 2>&1 | tail -200 || true
+
+      - name: Upload prod-close replay artifacts on failure
+        if: failure() && matrix.leg == 'docker'
+        uses: actions/upload-artifact@v4
+        with:
+          name: prodclose-replay-report
+          path: |
+            vetra-cli/e2e/playwright-report/
+            vetra-cli/e2e/.cache/
+          retention-days: 7
 
   # Strongest global-install signal: prove the published package installs as a
   # plain global install on a vanilla node image AND boots the full seeded replay
