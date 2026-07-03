@@ -21,6 +21,9 @@ import {
   type PreviewServerHandle,
 } from "../preview-server/index.js";
 import { resolveCloudConfig } from "../cloud/config.js";
+import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
+import { DEFAULT_PH_VERSION } from "../ph-version.gen.js";
+import { VETRA_CLI_VERSION } from "../version-banner.js";
 
 interface TriggerState {
   handle: PreviewServerHandle | undefined;
@@ -56,8 +59,12 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         subscribe: (event, handler) => on(event, handler),
         workdir,
         renownUrl,
+        registryUrl: ctx.context.config.registryUrl,
         port: DEFAULT_PREVIEW_SERVER_PORT,
         proxyPublicUrl: ctx.commandContext.proxy?.url,
+        versions: { vetraCli: VETRA_CLI_VERSION, ph: DEFAULT_PH_VERSION },
+        getReactor: () => getEmbeddedDrive(ctx.commandContext),
+        agentLogging: ctx.context.config.agentLogging,
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),

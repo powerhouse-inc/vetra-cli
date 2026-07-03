@@ -1,3 +1,5 @@
+import { useTheme } from "@powerhousedao/reactor-browser";
+import { useMemo } from "react";
 import { Breadcrumb, type Crumb } from "./Breadcrumb.js";
 import { PreviewStatusChip } from "./PreviewStatusChip.js";
 import type { ResolvedPreview } from "./hooks/useResolvedPreview.js";
@@ -23,8 +25,8 @@ export function BuildSection({
   ];
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-vetra-border bg-vetra-card px-8 py-2">
+    <div data-tour="build-preview" className="flex h-full w-full flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-8 py-2">
         <Breadcrumb items={crumbs} />
         <PreviewStatusChip preview={preview} />
       </div>
@@ -34,10 +36,24 @@ export function BuildSection({
 }
 
 function PreviewBody({ preview }: { preview: ResolvedPreview }) {
-  if (preview.kind === "ready") {
+  const { theme } = useTheme();
+  const url = preview.kind === "ready" ? preview.url : undefined;
+
+  /* Carry the Studio theme into the preview so its boot script can theme the
+   * first paint. Keyed on src: toggling re-mounts the iframe with the new
+   * param (live sync without reload lands with upstream storage-event sync). */
+  const src = useMemo(() => {
+    if (!url) return undefined;
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set("theme", theme);
+    return u.toString();
+  }, [url, theme]);
+
+  if (src) {
     return (
       <iframe
-        src={preview.url}
+        key={src}
+        src={src}
         title="Preview"
         className="block min-h-0 w-full flex-1 border-0"
       />
@@ -45,7 +61,7 @@ function PreviewBody({ preview }: { preview: ResolvedPreview }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center bg-vetra-accent px-6 py-10">
+    <div className="flex min-h-0 flex-1 items-center justify-center bg-accent px-6 py-10">
       <PreviewStatus preview={preview} />
     </div>
   );
@@ -111,13 +127,13 @@ function StatusBlock({
       <div
         className={
           "text-sm font-medium " +
-          (tone === "error" ? "text-vetra-destructive" : "text-vetra-fg")
+          (tone === "error" ? "text-destructive" : "text-foreground")
         }
       >
         {title}
       </div>
       {detail ? (
-        <div className="mt-1 text-xs text-vetra-muted-fg">{detail}</div>
+        <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
       ) : null}
     </div>
   );

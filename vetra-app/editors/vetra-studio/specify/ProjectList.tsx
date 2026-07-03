@@ -10,9 +10,9 @@ export function ProjectList({
 
   return (
     <section>
-      <h3 className="mb-3 text-base font-semibold text-vetra-fg">Projects</h3>
+      <h3 className="mb-3 text-base font-semibold text-foreground">Projects</h3>
       {projects.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-vetra-border bg-vetra-accent px-4 py-6 text-sm text-vetra-muted-fg">
+        <div className="rounded-lg border border-dashed border-border bg-accent px-4 py-6 text-sm text-muted-foreground">
           No specification documents yet. Ask the agent to specify one.
         </div>
       ) : (
@@ -22,12 +22,12 @@ export function ProjectList({
               key={project.id}
               type="button"
               onClick={() => onSelectProject(project.id)}
-              className="flex h-28 flex-col justify-between rounded-lg border border-vetra-border bg-vetra-card p-4 text-left hover:border-vetra-muted-fg hover:shadow-sm"
+              className="flex h-28 flex-col justify-between rounded-lg border border-border bg-card p-4 text-left hover:border-muted-foreground hover:shadow-sm"
             >
-              <span className="truncate text-sm font-semibold text-vetra-fg">
+              <span className="truncate text-sm font-semibold text-foreground">
                 {project.name}
               </span>
-              <span className="text-xs text-vetra-muted-fg">
+              <span className="text-xs text-muted-foreground">
                 {project.documents.length}{" "}
                 {project.documents.length === 1 ? "document" : "documents"}
               </span>

@@ -91,6 +91,13 @@ export const specUpdate = defineCommand({
           .map((m) => `  ${m.type}${m.label ? ` "${m.label}"` : ""} → ${m.id}`)
           .join("\n");
     }
-    return { text };
+    return {
+      text,
+      data: {
+        documentId: next.header.id,
+        documentType: next.header.documentType,
+        name: next.header.name,
+      },
+    };
   },
 });

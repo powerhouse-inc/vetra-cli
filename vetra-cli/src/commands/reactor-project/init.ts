@@ -1,12 +1,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { z } from 'zod';
 import { defineCommand } from '../../framework.js';
 import { requireOption, formatProcessFailure } from '../../helpers/cli-errors.js';
+import { ensureWorkspaceGitignore } from '../../helpers/workspace-git.js';
 import { phInitNodeOptions } from '../../helpers/node-memory.js';
 import { DEFAULT_PH_VERSION } from '../../constants.js';
 
+const execFileAsync = promisify(execFile);
 const NAME_PATTERN = /^[a-zA-Z0-9-_]+$/;
+
+/** True when a `pnpm` bin resolves — used to prefer pnpm for fresh scaffolds.
+ * Short timeout so a stalled corepack shim degrades to npm quickly. */
+async function pnpmAvailable(): Promise<boolean> {
+  try {
+    await execFileAsync('pnpm', ['--version'], { timeout: 5_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const inputSchema = z.object({
   name: z
@@ -55,14 +70,19 @@ export const reactorProjectInit = defineCommand({
 
     const tags = ['dev', 'staging', 'latest'];
     const versionArgs = tags.includes(phVersion)
-      ? [`--${phVersion}`]
+      ? ['--tag', phVersion]
       : ['--version', phVersion];
-    // ph-cmd uses the version flag to dlx the right ph-cli; the downstream
-    // ph-cli ignores the version when --clone is set (the cloned project's
-    // lockfile is authoritative) and just warns, which is the intended UX.
+    // ph-cmd dlx's the right ph-cli by version; ph-cli ignores --version when
+    // --clone is set (the clone's lockfile wins) and just warns.
+
+    // --clone requires pnpm (offline install from the clone's pnpm-lock.yaml).
+    // Otherwise honor the configured PM, else prefer pnpm when present (ph infers npm).
+    let pm = config.packageManager as string | undefined;
+    if (!clonePath && !pm && (await pnpmAvailable())) pm = 'pnpm';
+    const pmArgs = pm ? ['--package-manager', pm] : [];
     const initArgs = clonePath
       ? `${versionArgs.join(' ')} --pnpm --clone ${clonePath}`
-      : `${versionArgs.join(' ')} --pnpm`;
+      : [...versionArgs, ...pmArgs].join(' ');
     const command = `ph init ${name} ${initArgs}`;
     const { success, output } = await runProcess(command, {
       label: 'ph-init',
@@ -74,6 +94,23 @@ export const reactorProjectInit = defineCommand({
     if (!success) {
       throw new Error(formatProcessFailure('ph init failed', command, workdir, output));
     }
+
+    fs.rmSync(path.join(projectPath, '.git'), { recursive: true, force: true });
+
+    if (!fs.existsSync(path.join(workdir, '.git'))) {
+      const gitInit = await runProcess('git init -q', {
+        label: 'git-init',
+        cwd: workdir,
+        timeout: 30_000,
+      });
+      if (!gitInit.success) {
+        throw new Error(
+          formatProcessFailure('git init failed', 'git init -q', workdir, gitInit.output),
+        );
+      }
+    }
+
+    ensureWorkspaceGitignore(workdir);
 
     const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
     const hasConfig = fs.existsSync(path.join(projectPath, 'powerhouse.config.json'));

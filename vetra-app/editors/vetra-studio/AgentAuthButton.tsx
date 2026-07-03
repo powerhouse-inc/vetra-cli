@@ -111,7 +111,7 @@ export function AgentAuthButton() {
   if (state.authenticated) {
     return (
       <span
-        className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400"
+        className="flex items-center gap-1.5 text-[11px] text-success"
         title={
           state.address
             ? `Authorized via Renown as ${state.address}`
@@ -119,7 +119,7 @@ export function AgentAuthButton() {
         }
       >
         <CheckIcon />
-        <span className="text-vetra-muted-fg">Renown</span>
+        <span className="text-muted-foreground">Renown</span>
         <span className="font-mono">
           {state.address ? shortAddress(state.address) : "connected"}
         </span>
@@ -128,7 +128,7 @@ export function AgentAuthButton() {
           onClick={() => void disconnect()}
           disabled={busy}
           title="Sign out of Renown (revoke the agent's access)"
-          className="ml-0.5 rounded px-1 text-vetra-muted-fg hover:text-vetra-fg disabled:opacity-50"
+          className="ml-0.5 rounded px-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           Disconnect
         </button>
@@ -143,7 +143,7 @@ export function AgentAuthButton() {
         onClick={() => void authorize()}
         disabled={busy}
         title="Approve in the Renown tab, or click to reopen"
-        className="flex items-center gap-1.5 rounded-md border border-vetra-border px-2 py-0.5 text-[11px] text-vetra-muted-fg hover:bg-vetra-accent disabled:opacity-50"
+        className="flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent disabled:opacity-50"
       >
         <Spinner />
         Authorizing…
@@ -157,7 +157,7 @@ export function AgentAuthButton() {
       onClick={() => void authorize()}
       disabled={busy}
       title="Authorize the agent to act as you, using your Renown identity"
-      className="flex items-center gap-1.5 rounded-md bg-vetra-primary px-2 py-0.5 text-[11px] font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+      className="flex items-center gap-1.5 rounded-md bg-vetra-primary px-2 py-0.5 text-[11px] font-medium text-vetra-primary-fg shadow-sm hover:opacity-90 disabled:opacity-50"
     >
       Authorize agent
     </button>
@@ -168,7 +168,7 @@ function Spinner() {
   return (
     <span
       aria-hidden
-      className="inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-vetra-muted-fg/40 border-t-vetra-primary"
+      className="inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-muted-foreground/40 border-t-vetra-primary"
     />
   );
 }

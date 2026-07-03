@@ -73,12 +73,48 @@ function host(state: VetraCloudEnvironmentGlobalState): string {
 
 function serviceHost(
   state: VetraCloudEnvironmentGlobalState,
-  prefix: string,
+  serviceSlug: string,
 ): string {
   const base = state.genericBaseDomain ?? CLOUD_BASE_DOMAIN;
   return state.genericSubdomain
-    ? `${prefix}.${state.genericSubdomain}.${base}`
+    ? `${state.genericSubdomain}-${serviceSlug}.${base}`
     : "(no host)";
+}
+
+const SERVICE_LABEL: Record<string, string> = {
+  CONNECT: "Connect",
+  SWITCHBOARD: "Switchboard",
+  FUSION: "Fusion",
+};
+/** Switchboard's reachable endpoint is its GraphQL path, not the bare host. */
+const SERVICE_PATH: Record<string, string> = { SWITCHBOARD: "/graphql" };
+
+/** Public links for an environment's enabled services, as full https URLs in
+ * the canonical `<subdomain>-<service>` form. Empty until a subdomain exists. */
+export function serviceLinks(
+  state: VetraCloudEnvironmentGlobalState,
+): { label: string; url: string }[] {
+  if (!state.genericSubdomain) return [];
+  const links: { label: string; url: string }[] = [];
+  for (const svc of state.services) {
+    const label = SERVICE_LABEL[svc.type];
+    if (!svc.enabled || !label) continue;
+    links.push({
+      label,
+      url: `https://${serviceHost(state, svc.prefix)}${SERVICE_PATH[svc.type] ?? ""}`,
+    });
+  }
+  return links;
+}
+
+/** Bulleted service-link list to quote when an env goes live, or null when no
+ * service is reachable yet. Quote this verbatim — never hand-build the hosts. */
+export function describeServiceLinks(
+  state: VetraCloudEnvironmentGlobalState,
+): string | null {
+  const links = serviceLinks(state);
+  if (links.length === 0) return null;
+  return links.map((l) => `  ${l.label}: ${l.url}`).join("\n");
 }
 
 /** Human-readable summary from the read path (`myEnvironments`). Lacks the

@@ -13,6 +13,7 @@ import { defineService } from '../framework.js';
 import {
   REACTOR_PROJECT_CONNECT_PROXY_PATH,
   REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH,
+  RENOWN_NAMESPACE,
 } from '../constants.js';
 import { reactorProjectNodeOptions } from '../helpers/node-memory.js';
 import { connectExternalizeVendorEnv } from '../helpers/connect-vendor.js';
@@ -135,6 +136,9 @@ export const reactorProject = defineService({
     // this base. Under a proxy subpath the base carries that prefix too, so
     // the captured upstream matches the path stripBase forwards.
     parts.push('--base', `${resolvedDeployBasePath}${REACTOR_PROJECT_CONNECT_PROXY_PATH}/`);
+    // Share the Studio's Renown localStorage namespace so the preview Connect
+    // reuses the owner's session instead of prompting a second login.
+    parts.push('--renown-namespace', RENOWN_NAMESPACE);
     // Bind the Vite Connect dev server to IPv4 loopback. Without this it binds
     // [::1] only; ph-clint builds the proxy upstream from the captured Local:
     // URL via new URL(), whose `localhost` host resolves IPv4-first to
@@ -166,6 +170,14 @@ export const reactorProject = defineService({
     // the long-lived Vite dev server never dep-optimizes them (~1 GB resident).
     // Off unless a vetra-cli-level signal is set. See connect-vendor.ts.
     ...connectExternalizeVendorEnv(),
+    // The preview reactor is a PUBLIC, no-login reactor. Override the auth env
+    // the pod injects (inherited via process.env) so this child boots OPEN.
+    // The main Studio switchboard is started in-process and keeps its auth.
+    AUTH_ENABLED: 'false',
+    DOCUMENT_PERMISSIONS_ENABLED: 'false', // required or reactor-api throws at boot
+    DEFAULT_PROTECTION: 'false',
+    SKIP_CREDENTIAL_VERIFICATION: 'false',
+    ADMINS: '',
   }),
   readiness: {
     patterns: [

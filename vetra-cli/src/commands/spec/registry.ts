@@ -1,5 +1,5 @@
-import { mkdir, readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, rename, stat } from "node:fs/promises";
+import { basename, join } from "node:path";
 import {
   getDocumentModels as getBuiltinModels,
   getDocumentModelSchema as getBuiltinSchema,
@@ -136,14 +136,21 @@ export function createSpecDocument(
   return doc;
 }
 
-/** Persist a spec to `<projectDir>/specs/<subdir>/<kebab-name>.<ext>.phd`. */
+/** Persist a spec to `<projectDir>/specs/<subdir>/<kebab-name>.<ext>.phd`,
+ * atomically (temp sibling + rename) so readers never see a half-written zip. */
 export async function saveSpec(doc: PHDocument, projectDir: string): Promise<string> {
   const entry = resolveSpecEntry(doc.header.documentType);
   const dir = join(projectDir, SPECS_DIRNAME, entry.subdir);
   await mkdir(dir, { recursive: true });
+  const ext = stripLeadingDot(entry.utils.fileExtension);
   const name = kebabCase(doc.header.name || "untitled");
-  return baseSaveToFile(doc, dir, stripLeadingDot(entry.utils.fileExtension), name);
+  const tmpName = `${name}.tmp-${process.pid}-${saveSpecCounter++}`;
+  const tmpPath = await baseSaveToFile(doc, dir, ext, tmpName);
+  const finalPath = join(dir, basename(tmpPath).replace(tmpName, name));
+  await rename(tmpPath, finalPath);
+  return finalPath;
 }
+let saveSpecCounter = 0;
 
 /** Load a spec from disk. The subdir hints which reducer to try first; falls
  * back to every registered reducer so a moved file still loads. */

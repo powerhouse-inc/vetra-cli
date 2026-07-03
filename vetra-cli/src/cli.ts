@@ -24,11 +24,8 @@ import { deployCommands } from './commands/deploy/index.js';
 import { authCommands } from './commands/auth/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { reactorProject, proxyBasePathHook } from './services/reactor-project.js';
-import { localRegistry } from './services/local-registry.js';
-import { LOCAL_REGISTRY_ENABLED, LOCAL_REGISTRY_URL } from './constants.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
-import { publishReloadTrigger } from './triggers/publish-reload.js';
 import { previewServerTrigger } from './triggers/preview-server.js';
 import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url.js';
 import { connectExternalPackagesLayerOrder } from './lifecycle/connect-layer-order.js';
@@ -43,6 +40,7 @@ import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
 import { createAttachmentCommands } from '@powerhousedao/ph-clint/powerhouse';
+import { githubCommands } from './commands/github/index.js';
 import { existsSync } from 'node:fs';
 
 // Connect SPA dir: vetra-cli's own dist when built/published, else the
@@ -73,11 +71,12 @@ export const cli = defineCli({
     // claude-login / claude-logout / claude-status — Claude.ai subscription
     // auth (user scope: one login shared across workdirs).
     ...createClaudeAuthCommands({ cliName: CLI_NAME }),
+    ...githubCommands,
   ],
   // @clint:end commands
 
   // @clint:begin services
-  services: [reactorProject, ...(LOCAL_REGISTRY_ENABLED ? [localRegistry] : [])],
+  services: [reactorProject],
   // @clint:end services
 
   // @clint:begin triggers
@@ -88,7 +87,6 @@ export const cli = defineCli({
     previewServerTrigger,
     studioUrlTrigger,
     studioRedirectTrigger,
-    ...(LOCAL_REGISTRY_ENABLED ? [publishReloadTrigger] : []),
   ],
   // @clint:end triggers
 
@@ -218,17 +216,6 @@ export const cli = defineCli({
     'service:stopped': (event, log) => {
       log.info(`■ ${event.name} stopped`);
     },
-    'package:reload-failed': (event: unknown, log) => {
-      const { packageName, version, target, error } = event as {
-        packageName: string;
-        version: string;
-        target: 'switchboard' | 'connect';
-        error: string;
-      };
-      log.error(
-        `✗ Failed to reload ${packageName}@${version} on ${target}: ${error}`,
-      );
-    },
   },
   // @clint:end events
 
@@ -290,7 +277,7 @@ cli.configureReactor({
     buildDefaultReactor(ctx, {
       documentModels: [...documentModels, ...vetraModels, ...extModels] as DocumentModelModule<any>[],
       drive: {
-        name: 'vetra-cli',
+        name: 'Home',
         // Salt with the absolute workdir so each workdir is its own drive
         // (stable across restarts, distinct across workdirs).
         id: deterministicId(CLI_NAME, path.resolve(ctx.workdir)),
@@ -302,8 +289,6 @@ cli.configureReactor({
     enabled: true,
     // Scan up from the derived default so a parallel studio gets a free port.
     portRange: 20,
-    // Local-registry URL for the `Packages` subgraph (publish-reload trigger).
-    ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
   connect: {
     enabled: true,
@@ -312,8 +297,6 @@ cli.configureReactor({
     // installed in prod); the studio serves this static bundle directly.
     workdir: CONNECT_ASSETS_ROOT,
     assetsDir: path.join(CONNECT_ASSETS_ROOT, 'dist', 'connect'),
-    // Forwarded to Connect's vite as PH_CONNECT_PACKAGES_REGISTRY.
-    ...(LOCAL_REGISTRY_ENABLED ? { registryUrl: LOCAL_REGISTRY_URL } : {}),
   },
 });
 // @clint:end reactor

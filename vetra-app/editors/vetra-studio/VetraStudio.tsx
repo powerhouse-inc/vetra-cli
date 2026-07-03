@@ -1,8 +1,6 @@
+import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
-  isChatSessionDocument,
-  type ChatSessionDocument,
-} from "@powerhousedao/clint-common/document-models/chat-session";
-import {
+  addDocument,
   useDocumentSafe,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
@@ -14,23 +12,34 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentAuthButton } from "./AgentAuthButton.js";
 import { BuildSection } from "./BuildSection.js";
-import { ChatPane } from "./ChatPane.js";
+import { ChatPane, CHAT_SESSION_DOCUMENT_TYPE } from "./ChatPane.js";
 import { DeploySection } from "./DeploySection.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
+import { useProductTour } from "./tour/useProductTour.js";
+import { VersionBadge } from "./VersionBadge.js";
 import {
-  followAction,
-  latestTouchedNavigable,
+  deployFollowAction,
+  editFollowAction,
   previewFollowAction,
   sectionForDocumentType,
-  type FollowMark,
+  type DeployMark,
+  type EditMark,
   type PreviewMark,
 } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
+import { useActivePhase, useActiveEditType } from "./hooks/useActivePhase.js";
+import { LearnWhileYouWait } from "./LearnWhileYouWait.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
+import { useSessionEditedDocument } from "./hooks/useSessionEditedDocument.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
+import {
+  useSessionDeployActivity,
+  useSessionDeployTarget,
+  type DeployTarget,
+} from "./hooks/useSessionDeployTarget.js";
 
 const CHAT_WIDTH_STORAGE_KEY = "vetra-studio:chat-pane-width";
 /**
@@ -186,6 +195,30 @@ export function VetraStudio({
     [],
   );
 
+  // Product tour, launched from the home overview. It drives session, section
+  // and open-doc state so it can walk the "+ New → chat input → example"
+  // opening sequence with the section grids (not an open document) on screen.
+  const { startTour } = useProductTour({
+    setSection,
+    deselectSession: () => setSelectedSessionId(undefined),
+    selectSession: (id: string) => setSelectedSessionId(id),
+    openNewSession: async () => {
+      const count = document.state.global.nodes.filter(
+        (n) =>
+          n.kind === "file" &&
+          (n as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
+      ).length;
+      const node = await addDocument(
+        document.header.id,
+        `Session ${count + 1}`,
+        CHAT_SESSION_DOCUMENT_TYPE,
+      );
+      setSelectedSessionId(node.id);
+      return node.id;
+    },
+    closeDocument: () => openDocument(null, { pinned: false }),
+  });
+
   // Keep local state in sync when the URL changes externally (back/forward,
   // someone editing the address bar, shared link arrives via in-page nav).
   useEffect(() => {
@@ -198,40 +231,10 @@ export function VetraStudio({
     return () => window.removeEventListener("popstate", onPopState);
   }, [openDocument]);
 
-  // ── Auto-navigation: follow the doc the agent is working on ──
-  // useDriveDocuments is reactive (re-renders when the agent creates or edits
-  // a doc — lastModifiedAtUtcIso bumps) and self-heals documents whose node
-  // synced before their content. We track the newest touch we've processed
-  // (high-water mark) and open the doc whenever a more recent touch lands on
-  // a doc that isn't in view — `followAction` holds the decision rules. Seed
-  // on first observation so we never jump to a pre-existing doc on mount.
+  // Reactive drive documents — restores `?doc=` once the drive hydrates and
+  // gates the session-scoped edit-follow on local sync (see below).
+  // `undefined` until the drive loads (ChatPane reads it as `driveLoaded`).
   const documents = useDriveDocuments();
-  const lastTouchedRef = useRef<FollowMark | null>(null);
-  const seededRef = useRef(false);
-  useEffect(() => {
-    if (documents === undefined) return; // drive not loaded yet
-    const latest = latestTouchedNavigable(documents);
-    // Seed once the drive has loaded — even when empty — so a doc that
-    // existed at mount isn't auto-opened, but the first doc created
-    // afterwards is.
-    if (!seededRef.current) {
-      lastTouchedRef.current = latest ? { id: latest.id, ts: latest.ts } : null;
-      seededRef.current = true;
-      return;
-    }
-    const { mark, open } = followAction(latest, lastTouchedRef.current, {
-      autoNavEnabled,
-      userPinned,
-      openDocId: openDoc?.id ?? null,
-    });
-    if (mark) lastTouchedRef.current = mark;
-    if (open) {
-      openDocument(
-        { id: open.id, documentType: open.documentType, name: open.name },
-        { pinned: false },
-      );
-    }
-  }, [documents, autoNavEnabled, userPinned, openDoc, openDocument]);
 
   // Restore `?doc=` once the drive hydrates: the initializer resolves against
   // the node list, which may be empty on first render (nodes arrive after
@@ -255,10 +258,80 @@ export function VetraStudio({
   const sessionDocument =
     sessionState.status === "success" &&
     isChatSessionDocument(sessionState.data)
-      ? (sessionState.data as ChatSessionDocument)
+      ? sessionState.data
       : undefined;
   const previewTarget = useSessionPreviewTarget(sessionDocument ?? undefined);
   const preview = useResolvedPreview(previewTarget);
+  const deployTarget = useSessionDeployTarget(sessionDocument ?? undefined);
+  const deployActivity = useSessionDeployActivity(sessionDocument ?? undefined);
+
+  // ── Auto-navigation: follow the doc the SELECTED session's agent edits ──
+  // Derived from that session's transcript (spec-create/spec-update results),
+  // so an edit in another session never moves the view. A new edit (keyed by
+  // the tool-result callId) opens its doc; `editFollowAction` holds the rules
+  // and seeds per session so switching sessions doesn't yank. We park the
+  // target and open only once the doc has synced into the drive — the
+  // transcript can name a doc before reactor-browser syncs it, and opening
+  // early crashes the editor host ("Document not found").
+  const editTarget = useSessionEditedDocument(sessionDocument ?? undefined);
+
+  // The phase the selected session's agent is currently acting on — drives the
+  // soft pulse on the home overview. Same follow signals as auto-nav below.
+  const phaseSignals = {
+    messages: sessionDocument?.state.global.messages,
+    editDocumentType: editTarget?.documentType,
+    editCallId: editTarget?.callId ?? null,
+    previewCallId: previewTarget?.callId ?? null,
+    deployCallId: deployTarget?.callId ?? null,
+  };
+  const activePhase = useActivePhase(phaseSignals);
+  // The exact documentType the agent is editing — drives the contextual
+  // "learn while you wait" card.
+  const activeEditType = useActiveEditType(phaseSignals);
+
+  const editMarkRef = useRef<EditMark | null>(null);
+  const [pendingEditFollow, setPendingEditFollow] = useState<OpenTarget | null>(
+    null,
+  );
+  useEffect(() => {
+    const { mark, open } = editFollowAction(
+      {
+        sessionId: sessionDocument?.header.id ?? null,
+        callId: editTarget?.callId ?? null,
+        target: editTarget
+          ? {
+              id: editTarget.id,
+              documentType: editTarget.documentType,
+              name: editTarget.name,
+            }
+          : null,
+      },
+      editMarkRef.current,
+      { autoNavEnabled, userPinned, openDocId: openDoc?.id ?? null },
+    );
+    if (mark) editMarkRef.current = mark;
+    if (open) setPendingEditFollow(open);
+  }, [sessionDocument, editTarget, autoNavEnabled, userPinned, openDoc]);
+
+  // Open the parked edit-follow target once the doc is local; re-check guards
+  // at open time (the user may have pinned or toggled off while it synced).
+  useEffect(() => {
+    if (!pendingEditFollow) return;
+    if (!documents?.some((d) => d.header.id === pendingEditFollow.id)) return;
+    if (!autoNavEnabled || userPinned || pendingEditFollow.id === openDoc?.id) {
+      setPendingEditFollow(null);
+      return;
+    }
+    openDocument(pendingEditFollow, { pinned: false });
+    setPendingEditFollow(null);
+  }, [
+    documents,
+    pendingEditFollow,
+    autoNavEnabled,
+    userPinned,
+    openDoc,
+    openDocument,
+  ]);
 
   // ── Auto-navigation: follow the preview the agent surfaces ──
   // A spec-preview-show is the agent explicitly showing the user something —
@@ -289,6 +362,40 @@ export function VetraStudio({
     userPinned,
     openDocument,
   ]);
+
+  // ── Auto-navigation: follow the project the agent is deploying ──
+  // Same per-session new-callId decision as the preview-follow (shared via
+  // `deployFollowAction`), but the signal is the agent's own deploy commands
+  // — there's no explicit "show". A new deploy call switches to DEPLOY and
+  // hands the target down to DeploySection, which resolves it to a project.
+  const deployMarkRef = useRef<DeployMark | null>(null);
+  const [deployFocus, setDeployFocus] = useState<DeployTarget | null>(null);
+  useEffect(() => {
+    const { mark, navigate } = deployFollowAction(
+      {
+        sessionId: sessionDocument?.header.id ?? null,
+        callId: deployTarget?.callId ?? null,
+      },
+      deployMarkRef.current,
+      { autoNavEnabled, userPinned },
+    );
+    if (mark) deployMarkRef.current = mark;
+    if (navigate && deployTarget) {
+      // Clear any auto-opened doc so openDoc and section stay in lockstep.
+      openDocument(null, { pinned: false });
+      setSection("deploy");
+      setDeployFocus(deployTarget);
+    }
+  }, [sessionDocument, deployTarget, autoNavEnabled, userPinned, openDocument]);
+
+  // Drop a consumed deploy focus once we leave DEPLOY. DeploySection's
+  // applied-once guard is component-local and resets when it unmounts, so a
+  // lingering focus would re-open the last deployed project when the user
+  // returns to DEPLOY manually. A fresh deploy re-sets focus in the same batch
+  // as section="deploy", so this never clears the target we just navigated to.
+  useEffect(() => {
+    if (section !== "deploy") setDeployFocus(null);
+  }, [section]);
 
   // Manual open (a user click) — pins the view against auto-nav.
   const handleUserOpen = useCallback(
@@ -377,7 +484,8 @@ export function VetraStudio({
       className={className ?? "flex h-full w-full overflow-hidden"}
     >
       <aside
-        className="flex shrink-0 flex-col bg-vetra-card"
+        data-tour="chat-pane"
+        className="flex shrink-0 flex-col bg-card"
         style={{ width: `${chatWidth}px` }}
       >
         <ChatPane
@@ -394,15 +502,15 @@ export function VetraStudio({
         aria-label="Resize chat panel"
         onMouseDown={handleResizeMouseDown}
         onDoubleClick={handleResizeDoubleClick}
-        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-vetra-border bg-vetra-card hover:bg-vetra-accent active:bg-vetra-muted"
+        className="group relative flex w-2.5 shrink-0 cursor-col-resize items-center justify-center border-x border-border bg-card hover:bg-accent active:bg-muted"
       >
         <div className="pointer-events-none flex flex-col gap-1">
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
-          <div className="h-1 w-1 rounded-full bg-vetra-border group-hover:bg-vetra-muted-fg" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
+          <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
         </div>
       </div>
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-vetra-accent">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <AutoNavToggle
           enabled={autoNavEnabled}
           paused={userPinned}
@@ -440,13 +548,20 @@ export function VetraStudio({
             <DeploySection
               productName={productName}
               onExitToHome={handleExitToHome}
+              focus={deployFocus}
+              deployActivity={deployActivity}
             />
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <PhaseCycle onOpen={setSection} />
+            <PhaseCycle
+              onOpen={setSection}
+              onStartTour={startTour}
+              activePhase={activePhase}
+            />
           </div>
         )}
+        <LearnWhileYouWait activeDocumentType={activeEditType} />
       </main>
       {isDragging ? (
         /* Catches mouse events that would otherwise route into the BUILD
@@ -475,14 +590,16 @@ function AutoNavToggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-end gap-3 border-b border-vetra-border bg-vetra-card px-4 py-1.5 min-h-10">
+    <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-1.5 min-h-10">
+      <VersionBadge />
+      <div className="flex-1" />
       <AgentAuthButton />
       {enabled && paused ? (
-        <span className="text-[11px] text-vetra-muted-fg">
+        <span className="text-[11px] text-muted-foreground">
           paused — close the document to resume
         </span>
       ) : null}
-      <label className="flex cursor-pointer items-center gap-2 text-xs text-vetra-muted-fg">
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
         <input
           type="checkbox"
           checked={enabled}

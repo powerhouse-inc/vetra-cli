@@ -5,12 +5,13 @@ import { resolveRegistryUrl } from '@powerhousedao/shared/registry';
 import { defineCommand } from '../../framework.js';
 import { getRegistryToken } from '../../auth/renown.js';
 import { resolveCloudConfig } from '../../cloud/config.js';
+import { fetchPackument } from '../../cloud/registry-packument.js';
 import { resolveReactorProjectPath } from '../../helpers/project.js';
 
-/* Read the registry packument over HTTP with the agent's Renown token and map
- * the result onto an explicit state — published / not-published / unknown — so
- * the deploy skill can decide reuse-vs-publish without guessing. The token is
- * the same registry-bound credential `reactor-project-publish` uses. */
+/* Read the registry packument with the agent's Renown token and map the result
+ * onto an explicit state — published / not-published / unknown — so the deploy
+ * skill can decide reuse-vs-publish without guessing. The token is the same
+ * registry-bound credential `reactor-project-publish` uses. */
 type PublishCheck =
   | { state: 'published'; version: string }
   | { state: 'not-published' }
@@ -21,77 +22,34 @@ interface PublishStatus {
   latest: string | null;
 }
 
-/* Keep error reasons to a couple of meaningful lines so the agent's context
- * isn't flooded. */
-function condense(message: string): string {
-  return message
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(' ');
-}
-
-/* npm encodes the scope separator in scoped package names (`@scope/pkg` →
- * `@scope%2fpkg`). */
-function packumentUrl(registryUrl: string, pkgName: string): string {
-  const base = registryUrl.endsWith('/') ? registryUrl : `${registryUrl}/`;
-  return base + pkgName.replace('/', '%2f');
-}
-
 async function checkPublish(
   registryUrl: string,
   pkgName: string,
   targetVersion: string,
   token: string | null,
 ): Promise<PublishStatus> {
-  let res: Response;
-  try {
-    res = await fetch(packumentUrl(registryUrl, pkgName), {
-      headers: {
-        accept: 'application/vnd.npm.install-v1+json',
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-      },
-    });
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    return { check: { state: 'unknown', reason: condense(reason) }, latest: null };
-  }
-
-  if (res.status === 404) {
+  const packument = await fetchPackument(registryUrl, pkgName, token);
+  if (packument.kind === 'not-found') {
     return { check: { state: 'not-published' }, latest: null };
   }
-  if (res.status === 401 || res.status === 403) {
+  if (packument.kind === 'auth-required') {
     return {
-      check: { state: 'unknown', reason: `registry requires auth (HTTP ${res.status})` },
+      check: {
+        state: 'unknown',
+        reason: `registry requires auth (HTTP ${packument.status})`,
+      },
       latest: null,
     };
   }
-  if (!res.ok) {
-    return {
-      check: { state: 'unknown', reason: `registry returned HTTP ${res.status}` },
-      latest: null,
-    };
+  if (packument.kind === 'error') {
+    return { check: { state: 'unknown', reason: packument.reason }, latest: null };
   }
-
-  let body: {
-    versions?: Record<string, unknown>;
-    'dist-tags'?: Record<string, string>;
-  };
-  try {
-    body = (await res.json()) as typeof body;
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    return { check: { state: 'unknown', reason: condense(reason) }, latest: null };
-  }
-
-  const latest = body['dist-tags']?.latest ?? null;
-  const published = Boolean(body.versions && targetVersion in body.versions);
+  const published = targetVersion in packument.versions;
   return {
     check: published
       ? { state: 'published', version: targetVersion }
       : { state: 'not-published' },
-    latest,
+    latest: packument.latest,
   };
 }
 

@@ -9,4 +9,8 @@ import { DEFAULT_PH_VERSION } from './ph-version.gen.js';
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json') as { name: string; version: string };
 
+// Resolved here (not at each call site) because this module sits at src/ root,
+// where `../package.json` resolves the same in the src tree and the flat bundle.
+export const VETRA_CLI_VERSION = pkg.version;
+
 console.log(`${pkg.name} v${pkg.version} (ph ${DEFAULT_PH_VERSION})`);

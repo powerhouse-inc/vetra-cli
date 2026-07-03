@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { findMyEnvironment } from "../../cloud/environments-read.js";
-import { describeEnvironmentSummary, resolveEnvironment } from "./_helpers.js";
+import { loadEnvironmentState } from "../../cloud/environments-write.js";
+import {
+  describeEnvironmentSummary,
+  describeServiceLinks,
+  resolveEnvironment,
+} from "./_helpers.js";
 
 // Statuses that mean a deploy is still progressing; anything else is settled.
 // Compared upper-cased, which also normalizes the model's DEPLOYMENt_FAILED typo.
@@ -32,9 +37,9 @@ export const deployEnvironmentWait = defineCommand({
       .number()
       .int()
       .min(5)
-      .max(60)
+      .max(300)
       .default(30)
-      .describe("Max seconds to block while polling (default 30, max 60). Polls every 5s."),
+      .describe("Max seconds to block while polling (default 30, max 300). Polls every 5s."),
   }),
   execute: async (input, { workdir, config }) => {
     const ctx = { workdir, config };
@@ -43,11 +48,21 @@ export const deployEnvironmentWait = defineCommand({
     for (;;) {
       const status = (env.status ?? "").toUpperCase();
       if (!IN_FLIGHT.has(status)) {
-        const verdict =
-          status === "READY"
-            ? "Deploy complete — environment is READY."
-            : `Environment settled in ${env.status ?? "unknown"} (not READY).`;
-        return { text: `${verdict}\n${describeEnvironmentSummary(env)}` };
+        if (status === "READY") {
+          // Pull the document so we can quote the real service links rather than
+          // letting the caller hand-build hosts (and get the format wrong).
+          const state = await loadEnvironmentState(ctx, env.id).catch(() => null);
+          const links = state ? describeServiceLinks(state) : null;
+          return {
+            text:
+              `Deploy complete — environment is READY.\n` +
+              describeEnvironmentSummary(env) +
+              (links ? `\nlinks:\n${links}` : ""),
+          };
+        }
+        return {
+          text: `Environment settled in ${env.status ?? "unknown"} (not READY).\n${describeEnvironmentSummary(env)}`,
+        };
       }
       if (Date.now() >= deadline) {
         return {

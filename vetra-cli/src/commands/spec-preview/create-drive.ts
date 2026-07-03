@@ -7,6 +7,7 @@ import {
 import {
   createPreviewDrive,
   findPreviewDriveByPreferredEditor,
+  getPreviewAuthToken,
   resolveAppEditorId,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
@@ -41,12 +42,14 @@ export const specPreviewCreateDrive = defineCommand({
     );
     const appEditorId = resolveAppEditorId(base, input.app);
     const driveName = input.name ?? `${input.app} Preview`;
+    const token = await getPreviewAuthToken(context.workdir, context.config);
 
     // Reuse by app (preferredEditor), not by name, so a different --name/--app
     // spelling doesn't spawn a duplicate drive for the same app.
     const existing = await findPreviewDriveByPreferredEditor(
       switchboardUrl,
       appEditorId,
+      token,
     );
     if (existing) {
       return {
@@ -63,6 +66,7 @@ export const specPreviewCreateDrive = defineCommand({
       switchboardUrl,
       driveName,
       appEditorId,
+      token,
     );
     return {
       text: `Created preview drive "${drive.name}"  id: ${drive.id}  preferredEditor: ${drive.preferredEditor ?? "(none)"}`,

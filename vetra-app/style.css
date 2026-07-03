@@ -13,6 +13,8 @@
    In the embedded-studio build this import is the only thing that brings
    them into the page — the build does not inject them on its own. */
 @import '@powerhousedao/connect/style.css';
+/* Product-tour (driver.js) base styles; themed to vetra tokens below. */
+@import 'driver.js/dist/driver.css';
 
 /* The connect build's Vite root is not this package, so point Tailwind's
    scanner at our sources explicitly. */
@@ -21,33 +23,66 @@
 @source "./node_modules/@powerhousedao/document-engineering/dist/**/*.js";
 
 @theme {
-  /* Vetra design system palette (light) */
+  /* Vetra brand color. Every other color comes from the design-system theme's
+     semantic tokens (background, foreground, border, muted, accent, card,
+     destructive, warning, info, success), which already handle light/dark. */
   --color-vetra-primary: #04c161;
   --color-vetra-primary-fg: #ffffff;
-  --color-vetra-bg: #fcfcfc;
-  --color-vetra-fg: #343839;
-  --color-vetra-border: #d7d8d9;
-  --color-vetra-muted: #efefef;
-  --color-vetra-muted-fg: #9ea0a1;
-  --color-vetra-accent: #f3f5f7;
-  --color-vetra-card: #fcfcfc;
-  --color-vetra-destructive: #ea4335;
-  --color-vetra-warning: #ffa132;
-  --color-vetra-info: #329dff;
-  --color-vetra-success: #4fc86f;
+
+  /* Soft "agent is working here" halo — a primary ring that eases out and
+     fades, used on the active phase marker in the home overview. */
+  --animate-phase-pulse: phase-pulse 1.8s ease-in-out infinite;
+  @keyframes phase-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0
+        color-mix(in srgb, var(--color-vetra-primary) 45%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 6px
+        color-mix(in srgb, var(--color-vetra-primary) 0%, transparent);
+    }
+  }
 }
 
-/* Dark values for the vetra tokens, aligned with the design-system slate
-   scale Connect uses for dark mode (literals: Tailwind only emits theme
-   variables it sees used, so var(--color-slate-N) references here could
-   dangle). Every vetra-token bg/text/border utility flips automatically;
-   components don't need dark: pairs for these. */
-.dark {
-  --color-vetra-bg: hsl(195 9% 9%); /* slate-800 */
-  --color-vetra-fg: hsl(210 20% 99%); /* slate-50 */
-  --color-vetra-border: hsl(207 8% 21%); /* slate-500 */
-  --color-vetra-muted: hsl(204 9% 11%); /* slate-700 */
-  --color-vetra-muted-fg: hsl(210 9% 63%); /* slate-400 */
-  --color-vetra-accent: hsl(195 9% 9%); /* slate-800 */
-  --color-vetra-card: hsl(210 9% 13%); /* slate-600 */
+/* Product-tour popover — theme driver.js to the vetra design tokens. Applied via
+   the `vetra-tour` popoverClass set in useProductTour. Arrow keeps driver's
+   default styling. */
+.driver-popover.vetra-tour {
+  max-width: 320px;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background-color: var(--color-card);
+  color: var(--color-foreground);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.15);
+}
+.driver-popover.vetra-tour .driver-popover-title {
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+.driver-popover.vetra-tour .driver-popover-description,
+.driver-popover.vetra-tour .driver-popover-progress-text {
+  color: var(--color-muted-foreground);
+}
+.driver-popover.vetra-tour .driver-popover-description a {
+  font-weight: 600;
+  color: var(--color-vetra-primary);
+  text-decoration: underline;
+}
+.driver-popover.vetra-tour .driver-popover-description a:hover {
+  color: var(--color-foreground);
+}
+.driver-popover.vetra-tour button.driver-popover-next-btn {
+  border: none;
+  border-radius: 0.375rem;
+  background-color: var(--color-vetra-primary);
+  color: var(--color-vetra-primary-fg);
+  text-shadow: none;
+}
+.driver-popover.vetra-tour button.driver-popover-prev-btn {
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  text-shadow: none;
 }

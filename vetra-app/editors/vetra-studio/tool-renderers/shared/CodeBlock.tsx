@@ -14,14 +14,14 @@ export function CodeBlock({
   return (
     <div>
       {label && (
-        <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-vetra-muted-fg">
+        <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </div>
       )}
       <pre
         className={cx(
-          "max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-vetra-muted p-2 font-mono text-xs",
-          tone === "error" ? "text-vetra-destructive" : "text-vetra-fg",
+          "max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono text-xs",
+          tone === "error" ? "text-destructive" : "text-foreground",
         )}
       >
         {value}

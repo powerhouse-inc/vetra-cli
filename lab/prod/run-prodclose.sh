@@ -16,11 +16,24 @@ KEY="${VETRA_ANTHROPIC_API_KEY:-sk-ant-placeholder}"
 echo "==> freeing studio ports (stopping any vetra-studio*)"
 docker rm -f vetra-studio vetra-studio-prodclose >/dev/null 2>&1 || true
 
+run_args=(
+  -d --name "${NAME}"
+  -p 8090:8090 -p 27370:27370 -p 59220:59220
+  -e SERVICE_COMMAND=vetra
+  -e VETRA_ANTHROPIC_API_KEY="${KEY}" -e ANTHROPIC_API_KEY="${KEY}"
+)
+
+# Optional replay mode: mount a recorded fixture so the agent replays a build
+# without an LLM (the CI docker leg uses this to run the seeded Playwright e2e).
+if [ -n "${VETRA_REPLAY_FIXTURE_HOST:-}" ]; then
+  [ -f "${VETRA_REPLAY_FIXTURE_HOST}" ] \
+    || { echo "replay fixture not found: ${VETRA_REPLAY_FIXTURE_HOST}" >&2; exit 1; }
+  run_args+=( -e VETRA_REPLAY_FIXTURE=/replay.json -v "${VETRA_REPLAY_FIXTURE_HOST}:/replay.json:ro" )
+  echo "    replay mode: ${VETRA_REPLAY_FIXTURE_HOST}"
+fi
+
 echo "==> running ${IMAGE} as ${NAME}"
-docker run -d --name "${NAME}" \
-  -p 8090:8090 -p 27370:27370 -p 59220:59220 \
-  -e SERVICE_COMMAND=vetra \
-  -e VETRA_ANTHROPIC_API_KEY="${KEY}" -e ANTHROPIC_API_KEY="${KEY}" \
+docker run "${run_args[@]}" \
   --entrypoint sh "${IMAGE}" -c 'export PATH=$PNPM_HOME/bin:$PATH; exec vetra'
 
 echo "==> waiting for studio to come up"

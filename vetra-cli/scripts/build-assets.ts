@@ -6,6 +6,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { build as tsdownBuild } from 'tsdown';
 import { buildSkills } from '@powerhousedao/ph-clint-dev';
 import { buildManifest } from '@powerhousedao/ph-clint-dev/manifest';
 import { cli } from '../src/cli.js';
@@ -65,25 +66,38 @@ await buildManifest({
   cli,
 });
 
-// ph-clint (now bundled) spawns `node <its dir>/connect-server.js` for the studio
-// static server; bundled, that dir is dist/, so copy the node-builtins-only script in.
-function copyConnectServer(): void {
+// The bundled CLI spawns `node <dist>/connect-server.js` for the studio static
+// server; sirv/totalist aren't in the prod install, so bundle it self-contained.
+async function bundleConnectServer(): Promise<void> {
   const rel = path.join('dist', 'integrations', 'powerhouse', 'connect-server.js');
   const candidates = [
     path.join(PROJECT_ROOT, 'node_modules', '@powerhousedao', 'ph-clint', rel),
     path.join(PROJECT_ROOT, '..', 'node_modules', '@powerhousedao', 'ph-clint', rel),
   ];
   const src = candidates.find((p) => fs.existsSync(p));
-  const dest = path.join(PROJECT_ROOT, 'dist', 'connect-server.js');
   if (!src) {
     console.warn('build-assets: ph-clint connect-server.js not found; studio static server will be missing');
     return;
   }
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(src, dest);
-  console.log('build-assets: copied connect-server.js -> dist/');
+  // node builtins stay external; sirv/totalist + the lazy import('totalist') inline.
+  await tsdownBuild({
+    config: false,
+    entry: { 'connect-server': src },
+    outDir: path.join(PROJECT_ROOT, 'dist'),
+    format: ['esm'],
+    platform: 'node',
+    target: 'node22',
+    dts: false,
+    clean: false,
+    sourcemap: false,
+    silent: true,
+    codeSplitting: false,
+    deps: { alwaysBundle: ['sirv', 'totalist'] },
+    outputOptions: { entryFileNames: '[name].js' },
+  });
+  console.log('build-assets: bundled connect-server.js -> dist/');
 }
-copyConnectServer();
+await bundleConnectServer();
 
 // Ship the prebuilt Connect SPA in vetra-cli's own dist (served from
 // CLI_ROOT/dist/connect) so vetra-app can be a devDep. Skips if already current.

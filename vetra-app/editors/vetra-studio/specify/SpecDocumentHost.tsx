@@ -14,7 +14,9 @@ const PREFERRED_EDITOR_ID: Record<string, string | undefined> = {
 };
 
 function Loading() {
-  return <div className="p-6 text-sm text-vetra-muted-fg">Loading document…</div>;
+  return (
+    <div className="p-6 text-sm text-muted-foreground">Loading document…</div>
+  );
 }
 
 /**
@@ -89,7 +91,7 @@ export function SpecDocumentHost({
 
   if (!mod) {
     return (
-      <div className="p-6 text-sm text-vetra-muted-fg">
+      <div className="p-6 text-sm text-muted-foreground">
         No editor registered for {documentType}.
       </div>
     );

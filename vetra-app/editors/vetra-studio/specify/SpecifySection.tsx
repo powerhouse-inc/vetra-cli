@@ -64,7 +64,7 @@ export function SpecifySection({
   ];
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-8">
+    <div data-tour="specify" className="mx-auto max-w-5xl px-8 py-8">
       <Breadcrumb items={crumbs} />
       {open ? (
         <SpecDocumentHost

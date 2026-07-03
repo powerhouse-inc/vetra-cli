@@ -108,13 +108,37 @@ control, auth, and more).
 
 ## Installing the published CLI
 
-The released CLI ships as the `vetra` binary:
+The released CLI ships as the `vetra` binary. Install it with the one-liner —
+it installs `ph-cmd` + `vetra-cli`, ensures a pinned pnpm is on PATH, and
+offers to set up Claude auth:
 
 ```sh
-npm install -g vetra      # or: pnpm add -g vetra
-export ANTHROPIC_API_KEY= 
-vetra                     # launch the agent REPL
+curl -fsSL https://raw.githubusercontent.com/powerhouse-inc/vetra-cli/main/install.sh | sh
 ```
+
+Prefer to run it yourself (to read it first, or to answer the auth prompt)?
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/powerhouse-inc/vetra-cli/main/install.sh -o install.sh
+sh install.sh
+```
+
+Advanced / manual install — the CLI needs both packages:
+
+```sh
+npm install -g ph-cmd vetra-cli        # or: pnpm add -g ph-cmd vetra-cli
+export ANTHROPIC_API_KEY=sk-ant-...    # or run: vetra claude-login
+vetra                                  # launch the agent REPL
+```
+
+`ph init` scaffolds new projects with pnpm when it's installed, else npm (set
+`VETRA_PACKAGE_MANAGER` to force `npm`/`pnpm`/`yarn`/`bun`).
+
+Installer env knobs (non-exhaustive — see the header of `install.sh`):
+`VETRA_VERSION`, `PH_VERSION`, `VETRA_REGISTRY` (e.g. the pre-release registry
+`https://registry.dev.vetra.io`), `VETRA_PM=npm|pnpm` (installer PM),
+`VETRA_PACKAGE_MANAGER` (PM for scaffolded projects), `VETRA_SKIP_PH=1`,
+`VETRA_YES=1` (non-interactive), `VETRA_NO_LAUNCH=1`.
 
 ## Project layout
 

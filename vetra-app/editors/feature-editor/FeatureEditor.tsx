@@ -20,7 +20,7 @@ export function FeatureEditor({
 }) {
   const state = document.state.global;
   return (
-    <div className="flex flex-col gap-8 text-vetra-fg">
+    <div className="flex flex-col gap-8 text-foreground">
       <FeatureHeader state={state} dispatch={dispatch} />
       <BetSection state={state} dispatch={dispatch} />
       <EstimatesSection state={state} dispatch={dispatch} />

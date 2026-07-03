@@ -27,22 +27,22 @@ export function ReadTool(props: ToolRenderProps) {
       {props.isError ? (
         <CodeBlock label="error" value={resultText} tone="error" />
       ) : (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-vetra-muted-fg">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {meta.lines && (
             <span>
               lines{" "}
-              <span className="font-medium text-vetra-fg">
+              <span className="font-medium text-foreground">
                 {meta.lines.start}–{meta.lines.end}
               </span>{" "}
               of{" "}
-              <span className="font-medium text-vetra-fg">
+              <span className="font-medium text-foreground">
                 {meta.lines.total}
               </span>
             </span>
           )}
           {meta.bytes != null && (
             <span>
-              <span className="font-medium text-vetra-fg">
+              <span className="font-medium text-foreground">
                 {meta.bytes.toLocaleString()}
               </span>{" "}
               bytes

@@ -39,15 +39,15 @@ of the open work.
                   │  └────────┬─────────────────────────────────┘  │
                   └───────────┼────────────────────────────────────┘
                               │
-                ┌─────────────┼───────────────────────┐
-                │             │                       │
-                ▼             ▼                       ▼
-       ┌──────────────────┐  ┌─────────────────────┐  ┌──────────────────┐
-       │ Connect          │  │ reactor-project(s)  │  │ (dormant)        │
-       │ (static SPA      │  │ per-chat-session    │  │ local-registry   │
-       │ serving          │  │ ph vetra dev-mode   │  │ gated off; see   │
-       │ vetra-app)       │  │ Switchboard +       │  │ footnote         │
-       │ Drive editor =   │  │ Connect with Vite   │  └──────────────────┘
+                ┌─────────────┴───────────┐
+                │                         │
+                ▼                         ▼
+       ┌──────────────────┐  ┌─────────────────────┐
+       │ Connect          │  │ reactor-project(s)  │
+       │ (static SPA      │  │ per-chat-session    │
+       │ serving          │  │ ph vetra dev-mode   │
+       │ vetra-app)       │  │ Switchboard +       │
+       │ Drive editor =   │  │ Connect with Vite   │
        │ Vetra Studio     │  │ HMR. Preview docs   │
        │ port 27370       │  │ live here.          │
        └────────┬─────────┘  └─────────────────────┘
@@ -115,9 +115,9 @@ own. Exposes:
 - `/mcp` — Model Context Protocol endpoint.
 - `/d/:drive` — per-drive GraphQL endpoint.
 
-`PackagesSubgraph` is still registered (cheap, harmless), but the
-agent and editor no longer drive it; package installation is not part
-of the live path.
+The embedded Switchboard starts without a `registryUrl`, so the dynamic
+`Packages` install/uninstall subgraph is not registered. Package
+installation is not part of the live path.
 
 ### Embedded Connect (Vetra Studio)
 
@@ -200,6 +200,34 @@ so it gets the framework's `ServiceManager` + event-bus access via
   the live preview URL or a state code (`no-target`,
   `unknown-project`, `project-stopped`, `starting`, `ready`). The
   editor calls this on every relevant state change.
+- `GET /project-package?project=<label>` — read-only. Returns the
+  project's package identity (`{ kind: "ok", name, version }`) read from
+  `<workdir>/<label>/package.json`, or `unknown-project` / `no-package`.
+  The Deploy section's read-only package display calls this.
+- `GET /release-status?project=<label>&registry=<url>` — read-only. Compares
+  the project's current source content hash
+  (`helpers/project-fingerprint.ts`) against the hash embedded in the latest
+  published version on the registry (full packument via
+  `cloud/registry-packument.ts`), returning `{ kind: "ok", upToDate,
+  needsRelease, localVersion, publishedVersion, reason }` or
+  `unknown-project` / `no-package` / `unknown`. `reactor-project-publish`
+  embeds the hash at `package.json` → `powerhouse.contentHash`. The Deploy
+  section's "up to date / needs release" indicator calls this.
+- `POST /publish?project=<label>&registry=<url>` — build + publish the
+  project's package for the Deploy flow (`preview-server/publish-project.ts`).
+  Skips publishing when the source already matches the latest published
+  version (same content hash); otherwise picks a free version and runs the
+  **same publish sequence the agent's `reactor-project-publish` uses** —
+  `publishReactorProject` in `commands/reactor-project/publish-core.ts` (embed
+  content hash, `reactor-project/build.ts`, `npm publish --registry` with a
+  token minted from the agent's Renown identity). The shared core bump-and-
+  retries a registry version conflict (`bumpOnConflict`) so a stale packument
+  can't surface a 409 to the UI. Returns `{ kind: "ok", packageName, version,
+  registry, published }` (`published: false` = skipped, install the existing
+  version) or `unknown-project` / `no-package` / `auth-required` / `failed`.
+  The browser then installs that exact version into the target cloud
+  environment (env-document edit + approve, signed by the user). This is the
+  publish half of the Deploy section's per-environment Deploy/Update action.
 - `POST /start?project=<label>` — idempotent. If an instance for
   the project's workdir is already `starting`/`ready`, returns
   `already-running`; otherwise spawns one via
@@ -210,7 +238,33 @@ so it gets the framework's `ServiceManager` + event-bus access via
   `id === "reactor-project"`. The editor refetches `/resolve` on
   any event. 15s heartbeat keeps the stream alive through quiet
   periods.
+- `GET /sessions` — gated. Lists the embedded drive's chat-session
+  documents (`{ id, name, status, startedAt, threadId, agent }`),
+  enriched from each doc's state. `503 reactor-unavailable` when no
+  reactor is running.
+- `GET /sessions/export?id=<session>` — gated. Returns a zip
+  (`application/zip`, attachment) bundling the session for debugging:
+  `chat-session.json` (the reactor doc state), `chat-session-operations.json`
+  (op history), `mastra-thread.json` (the Mastra thread `recall`ed by the
+  doc's `threadId`, when the LibSQL store exists), `session.md` (the
+  markdown log when `agentLogging` was on), and `metadata.json` (versions,
+  model, flags, which sources were found). `404 unknown-session`,
+  `503 reactor-unavailable`. Implementation: `preview-server/session-export.ts`.
 - `GET /healthz` — liveness check.
+
+**Session-export access gate** (`preview-server/session-auth.ts`,
+`authorizeSessions`). The `/sessions*` routes carry bulk conversation data
+and are reachable through the public proxy, so unlike the other read
+endpoints they are gated: when `VETRA_SESSION_EXPORT_SECRET` is set, a
+request must present a matching `Authorization: Bearer <secret>` (or
+`?token=`) — the operator/support path, which works through the proxy;
+when unset, the routes serve only direct-loopback requests (the embedded
+proxy tags routed requests with `x-forwarded-prefix`/`x-forwarded-for`), so
+local dev exports freely while the public proxy stays closed. Sub-agent
+threads (resource `cli-user-<agentName>`) are not bundled — their
+per-delegation threadIds don't link back to a session. Cryptographic
+per-user browser auth (the browser holds no Renown token today) is a
+deferred follow-up.
 
 **Endpoints (planned but not yet built):**
 
@@ -432,9 +486,6 @@ present, `ctx.reactor()` returns the already-cached instance.
   `teardown()` closes it on daemon shutdown, `poll()` returns null
   (no work items — the trigger is purely a lifetime host for the
   server).
-- `publishReloadTrigger` — **dormant**; gated by
-  `LOCAL_REGISTRY_ENABLED = false` in `constants.ts`. Not registered
-  at runtime. See footnote.
 
 ### Services
 
@@ -442,8 +493,6 @@ present, `ctx.reactor()` returns the already-cached instance.
   Persistent state at `<workdir>/.ph/vetra-cli/services/reactor-project/
   <instance>.json` (read by `reactor-project-ls` and projected over
   the local API).
-- `local-registry` — **dormant**; gated by `LOCAL_REGISTRY_ENABLED`.
-  See footnote.
 
 ## Boot sequence
 
@@ -638,16 +687,14 @@ vetra-cli/
     ├── src/
     │   ├── cli.ts             ← defineCli + configureReactor
     │   ├── framework.ts       ← config + secrets schemas
-    │   ├── constants.ts       ← LOCAL_REGISTRY_* (dormant), API port
+    │   ├── constants.ts       ← API port, proxy paths, default PH version
     │   ├── agents/agent.ts    ← Mastra agent factory
     │   ├── preview-server/    ← vetra-cli local API (resolve/start/events)
     │   ├── commands/          ← spec-*, reactor-project-*, spec-preview-*
     │   ├── services/
-    │   │   ├── local-registry.ts   ← dormant
     │   │   └── reactor-project.ts
     │   ├── triggers/
     │   │   ├── preview-server.ts   ← hosts the local API
-    │   │   ├── publish-reload.ts   ← dormant
     │   │   ├── spec-sync.ts
     │   │   └── spec-fs-sync.ts
     │   └── workflows/         ← workflow registry; planned
@@ -677,41 +724,19 @@ These are limitations of the current direction; not bugs.
 - **Agent doesn't see runtime failures.** Service errors, workflow
   failures, and reactor-project crashes surface in the terminal via
   log handlers; the agent's input channels (chat session + Mastra
-  thread) don't yet receive them. Same gap as the older `package:
-  reload-failed` issue. A `pushAgentNotice(message)` primitive in
-  ph-clint, or a per-turn pending-context queue, would close it.
+  thread) don't yet receive them. A `pushAgentNotice(message)` primitive
+  in ph-clint, or a per-turn pending-context queue, would close it.
 
 - **Studio-mode parity.** Connect runs static in vetra-cli today
-  (vetra-app's prebuilt bundle exists). The dynamic-package-loading
-  endpoints in `connect-server.ts` (`/__packages` SSE, etc.) are
-  upstream and remain in place, but they're not exercised by
-  vetra-cli's live path anymore.
+  (vetra-app's prebuilt bundle exists). ph-clint's `connect-server.ts`
+  serves the static SPA and applies the dynamic-base substitution; it no
+  longer hosts a live package hot-reload channel. ph-clint still accepts
+  a `registryUrl` on its Switchboard/Connect config (the `Packages`
+  subgraph + `PH_CONNECT_PACKAGES_REGISTRY`), but vetra-cli does not set
+  it — the live preview path is reactor-project + Vite HMR, not dynamic
+  package loading.
 
-## Footnote: dormant local-registry path
-
-A previous iteration drove preview through a different mechanism:
-the agent published a Reactor package to a local Verdaccio-based
-registry, and a `publish-reload` trigger reconciled the embedded
-Switchboard + Connect's installed packages via SSE for dynamic bundle
-swaps. That whole chain remains in the source tree, gated by
-`LOCAL_REGISTRY_ENABLED = false` in `constants.ts`. Affected pieces:
-
-- `services/local-registry.ts` (Verdaccio supervisor service)
-- `triggers/publish-reload.ts` (SSE consumer + Switchboard/Connect
-  reconciler)
-- `LOCAL_REGISTRY_URL` / `LOCAL_REGISTRY_PORT` constants
-- `registryUrl` wiring in `cli.configureReactor`'s switchboard/connect
-  options
-
-`commands/reactor-project/publish.ts` (and `publish-status.ts`) are **not**
-dormant — they are the live deploy-flow tools that publish a Reactor package
-to the remote registry via the agent's Renown token (see "Renown identity →
-Publish path" above). Only the local-registry preview wiring above is gated
-off.
-
-With the flag false, none of this runs. The code is retained as
-reference for future scenarios where dynamic package loading is the
-right primitive (e.g. previewing a package against a real
-remote-registry deploy). The live path is the reactor-project + Vite
-HMR flow described above; do not extend the dormant chain unless the
-flag is being deliberately re-enabled.
+The live publish path — `commands/reactor-project/publish.ts` and
+`publish-status.ts` — is unaffected: those are the deploy-flow tools that
+publish a Reactor package to the remote registry via the agent's Renown
+token (see "Renown identity → Publish path" above).

@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals
 import crypto from "node:crypto";
 
 import {
+  browserDriveRemoteUrl,
   buildPreviewDriveRootPath,
+  createEmptyPreviewDocument,
   createPreviewDrive,
   driveRemoteUrl,
   findPreviewByName,
   findPreviewDriveByPreferredEditor,
   getPreviewDriveId,
+  listPreviewDocuments,
   resolvePreviewEndpoint,
 } from "../../src/helpers/reactor-project-preview.js";
 
@@ -279,6 +282,104 @@ describe("createPreviewDrive (mutation ordering)", () => {
   });
 });
 
+describe("gqlRequest auth header", () => {
+  const driveId = "preview-abcd1234";
+
+  function authHeaderOf(call: unknown): string | null {
+    const init = (call as [unknown, RequestInit])[1];
+    const headers = init.headers as Record<string, string>;
+    return headers.Authorization ?? headers.authorization ?? null;
+  }
+
+  let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
+
+  function mockOk(data: Record<string, unknown>) {
+    fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ data }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+  }
+
+  afterEach(() => fetchSpy?.mockRestore());
+
+  it("attaches a Bearer token to every request when one is provided", async () => {
+    const doc = {
+      id: "doc-1",
+      slug: "d",
+      name: "Doc",
+      documentType: "x",
+      preferredEditor: null,
+      state: {},
+      revisionsList: [],
+    };
+    mockOk({ createEmptyDocument: doc, renameDocument: doc });
+
+    await createEmptyPreviewDocument(
+      SWITCHBOARD_URL,
+      driveId,
+      "x",
+      "Doc",
+      "tok-123",
+    );
+
+    // createEmptyDocument + renameDocument = two requests, both authed.
+    expect(fetchSpy.mock.calls.length).toBe(2);
+    for (const call of fetchSpy.mock.calls) {
+      expect(authHeaderOf(call)).toBe("Bearer tok-123");
+    }
+  });
+
+  it("sends no Authorization header when no token is provided", async () => {
+    mockOk({ findDocuments: { items: [] } });
+
+    await listPreviewDocuments(SWITCHBOARD_URL, driveId);
+
+    expect(authHeaderOf(fetchSpy.mock.calls[0])).toBeNull();
+  });
+});
+
+describe("gqlRequest auth-failure guidance", () => {
+  let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
+
+  function mockGraphqlError(message: string) {
+    fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ errors: [{ message }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+  }
+
+  afterEach(() => fetchSpy?.mockRestore());
+
+  it("turns an anonymous Forbidden into 'Authorize agent' guidance", async () => {
+    mockGraphqlError("Forbidden: insufficient permissions to write to this document");
+    await expect(
+      listPreviewDocuments(SWITCHBOARD_URL, "preview-x"),
+    ).rejects.toThrow(/authorize agent/i);
+  });
+
+  it("explains a permission gap when a token was already attached", async () => {
+    mockGraphqlError("Forbidden: insufficient permissions to write to this document");
+    await expect(
+      listPreviewDocuments(SWITCHBOARD_URL, "preview-x", "tok-123"),
+    ).rejects.toThrow(/admin/i);
+  });
+
+  it("leaves non-permission GraphQL errors unchanged", async () => {
+    mockGraphqlError("Variable \"$x\" is not defined");
+    await expect(
+      listPreviewDocuments(SWITCHBOARD_URL, "preview-x"),
+    ).rejects.toThrow(/is not defined/);
+  });
+});
+
 describe("preview drive URL builders", () => {
   it("driveRemoteUrl swaps /graphql for /d/<id>", () => {
     expect(driveRemoteUrl("http://localhost:4001/graphql", "abc")).toBe("http://localhost:4001/d/abc");
@@ -291,5 +392,33 @@ describe("preview drive URL builders", () => {
     expect(buildPreviewDriveRootPath("abc", remote)).toBe(
       `/d/abc?embed=1&driveUrl=${encodeURIComponent(remote)}`,
     );
+  });
+
+  it("browserDriveRemoteUrl routes through the proxy switchboard mount when a proxy is configured", () => {
+    expect(
+      browserDriveRemoteUrl({
+        driveId: "abc",
+        proxyUrl: "https://wise-hare.vetra.io",
+        switchboardUrl: "http://localhost:4001/graphql",
+      }),
+    ).toBe("https://wise-hare.vetra.io/reactor-project/switchboard/d/abc");
+    // trailing slash on the proxy URL is stripped
+    expect(
+      browserDriveRemoteUrl({ driveId: "abc", proxyUrl: "http://localhost:8090/" }),
+    ).toBe("http://localhost:8090/reactor-project/switchboard/d/abc");
+    // a proxy under a base path keeps the path prefix
+    expect(
+      browserDriveRemoteUrl({ driveId: "abc", proxyUrl: "https://host/myagent" }),
+    ).toBe("https://host/myagent/reactor-project/switchboard/d/abc");
+  });
+
+  it("browserDriveRemoteUrl falls back to the switchboard origin without a proxy", () => {
+    expect(
+      browserDriveRemoteUrl({
+        driveId: "abc",
+        switchboardUrl: "http://localhost:4001/graphql",
+      }),
+    ).toBe("http://localhost:4001/d/abc");
+    expect(browserDriveRemoteUrl({ driveId: "abc" })).toBeUndefined();
   });
 });

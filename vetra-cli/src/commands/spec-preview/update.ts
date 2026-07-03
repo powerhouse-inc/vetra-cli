@@ -6,6 +6,7 @@ import {
 } from "../../helpers/project.js";
 import {
   findPreviewByName,
+  getPreviewAuthToken,
   getPreviewDocument,
   mutatePreviewDocument,
   resolvePreviewEndpoint,
@@ -72,7 +73,8 @@ export const specPreviewUpdate = defineCommand({
       input.project ?? ".",
     );
     const driveId = input.drive ?? defaultDriveId;
-    const row = await findPreviewByName(switchboardUrl, driveId, input.name);
+    const token = await getPreviewAuthToken(context.workdir, context.config);
+    const row = await findPreviewByName(switchboardUrl, driveId, input.name, token);
     const actions = await resolveActionsInput({
       actions: input.actions,
       from: input.from,
@@ -87,12 +89,12 @@ export const specPreviewUpdate = defineCommand({
       row.documentType === DOCUMENT_MODEL_TYPE &&
       batchTouchesTypeDefinitions(actions);
     const before = guardDuplicates
-      ? (await getPreviewDocument(switchboardUrl, row.id))?.state
+      ? (await getPreviewDocument(switchboardUrl, row.id, token))?.state
       : undefined;
 
     let next: Awaited<ReturnType<typeof mutatePreviewDocument>>;
     try {
-      next = await mutatePreviewDocument(switchboardUrl, row.id, actions);
+      next = await mutatePreviewDocument(switchboardUrl, row.id, actions, token);
     } catch (err) {
       enrichActionValidationError(err, row.documentType);
     }
