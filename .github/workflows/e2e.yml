@@ -11,6 +11,7 @@ name: e2e
 #
 # global-install job — lighter coverage of the plain global-install path on a
 # vanilla node:24 image (npm + pnpm matrix). See the job for details.
+# script-install job — same shape, but runs the shipped install.sh end to end.
 on:
   pull_request:
     paths:
@@ -22,6 +23,7 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "lab/**"
+      - "install.sh"
       - ".github/workflows/e2e.yml"
   workflow_dispatch:
 
@@ -310,5 +312,98 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: global-install-replay-${{ matrix.pm }}
+          path: ${{ github.workspace }}/e2e-cache/
+          retention-days: 7
+
+  # Same shape as global-install, but exercises the shipped install.sh end to end:
+  # run the installer (pointed at the locally-packed tarball via VETRA_INSTALL_SPEC
+  # instead of a registry) on a vanilla node:24, then drive the seeded replay
+  # against the global `vetra` it produced. Proves the script's preflight, pnpm
+  # setup, ph-cmd pin resolution, and PATH handling yield a working studio.
+  script-install:
+    name: script-install
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Build vetra-app (studio + connect)
+        run: |
+          pnpm --filter vetra-app build
+          pnpm --filter vetra-app build:connect
+
+      - name: Build vetra-cli
+        run: pnpm --filter vetra-cli build
+
+      - name: Pack vetra-cli
+        run: |
+          cd vetra-cli
+          TARBALL=$(pnpm pack | tail -1)
+          cp "$TARBALL" "$GITHUB_WORKSPACE/vetra-cli.tgz"
+          echo "packed $TARBALL"
+
+      - name: install.sh + seeded replay on node:24
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/e2e-cache"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/install.sh:/install.sh:ro" \
+            -v "$GITHUB_WORKSPACE/vetra-cli.tgz:/t.tgz:ro" \
+            -v "$GITHUB_WORKSPACE/vetra-cli/e2e:/e2e-src:ro" \
+            -v "$GITHUB_WORKSPACE/e2e-cache:/out" \
+            node:24 bash -eu -c '
+              echo "=== node $(node --version) ==="
+
+              # Keep the inner reactor-project corepack pnpm pinned (do not float
+              # to a newer pnpm whose supply-chain verifier is stricter).
+              export COREPACK_DEFAULT_TO_LATEST=0
+
+              # Run the shipped installer non-interactively, pointed at the locally
+              # packed tarball. It sets up pnpm (for `ph init`), installs ph-cmd at
+              # the pin baked into the bundle, and puts vetra/ph on the npm global bin
+              # (already on PATH in node:24).
+              VETRA_INSTALL_SPEC=/t.tgz VETRA_YES=1 VETRA_NO_LAUNCH=1 sh /install.sh
+
+              # Confirm the installer produced working bins before the heavy replay.
+              command -v ph; command -v vetra
+              ph --version
+              vetra --version
+              vetra --help | head -20
+
+              # Provision the Playwright harness. The ESM harness needs the nearest
+              # package.json to declare type=module for Playwrights TS loader.
+              mkdir -p /work && cp -R /e2e-src /work/e2e
+              cd /work
+              printf "{\"type\":\"module\"}\n" > /work/package.json
+              npm install --no-save @playwright/test@^1.61.0 tsx@^4.19.0
+              npx playwright install --with-deps chromium
+
+              # Drive the replay against the installer-provided global vetra.
+              # (vetra sets PNPM_CONFIG_MINIMUM_RELEASE_AGE=0 for its child pnpm,
+              # so the pnpm-preferred scaffold is not blocked by fresh CI deps.)
+              export VETRA_E2E_BOOT_CMD=vetra
+              set +e
+              npx playwright test --config /work/e2e/playwright.config.ts
+              rc=$?
+              set -e
+              cp -R /work/e2e/.cache/. /out/ 2>/dev/null || true
+              cp -R /work/e2e/playwright-report /out/ 2>/dev/null || true
+              exit $rc
+            '
+
+      - name: Upload script-install replay artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: script-install-replay
           path: ${{ github.workspace }}/e2e-cache/
           retention-days: 7

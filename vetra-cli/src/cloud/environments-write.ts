@@ -28,8 +28,12 @@ import {
   NOT_AUTHENTICATED,
   type ReadContext,
 } from "./environments-read.js";
+import { stampStudioInstance } from "./stamp-studio-instance.js";
 
-export type { EnvironmentChanges, EnvironmentTransition } from "@powerhousedao/vetra-cloud-client";
+export type {
+  EnvironmentChanges,
+  EnvironmentTransition,
+} from "@powerhousedao/vetra-cloud-client";
 
 interface WriteSession {
   signer: ISigner;
@@ -124,7 +128,6 @@ export async function applyEnvironmentUpdate(
       `Cannot install packages into the Vetra Studio environment "${label}".
 This environment runs Vetra Studio and cannot be used as a deploy target.
 Please select a different environment or create a new one for deployments.`,
-
     );
   }
   // Installing an app implies it must be reachable: Connect serves the UI,
@@ -132,6 +135,11 @@ Please select a different environment or create a new one for deployments.`,
   // package-only update never lands a deploy that can't actually run.
   if ((changes.addPackages?.length ?? 0) > 0) {
     ensureServicesEnabled(controller, DEPLOY_SERVICES);
+    // Link the target env to the studio that produced it (this agent's own
+    // env). "Where the package from the studio is installed" — stamped only on
+    // a package install, only when running inside a studio (environmentId set),
+    // and only when it isn't already linked to this studio.
+    stampStudioInstance(controller, ctx.config);
   }
   applyUpdateActions(controller, changes);
   await controller.push();
@@ -155,6 +163,9 @@ export async function createCloudEnvironment(
     label: options.label,
     services: options.services,
   });
+  // A studio-created deploy target belongs to this studio — link it so it
+  // groups under the studio on /user/products (no-op outside a studio context).
+  stampStudioInstance(controller, ctx.config);
   const result = await controller.push();
   return { id: result.remoteDocument.id, state: controller.state.global };
 }

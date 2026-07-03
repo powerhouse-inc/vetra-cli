@@ -37,6 +37,14 @@ export const configSchema = z.object({
     .describe(
       'The studio environment document id used to scope the GitHub repo (env VETRA_ENVIRONMENT_ID)',
     ),
+  packageManager: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+      z.enum(['npm', 'pnpm']).optional().catch(undefined),
+    )
+    .describe(
+      'Package manager for `ph init` on fresh reactor projects. Unset: prefer pnpm when installed, else npm. An unrecognized value is ignored (falls back to inference). The --clone fast path always uses pnpm (ph requires it). Env VETRA_PACKAGE_MANAGER.',
+    ),
 });
 
 export const secretsSchema = z.object({
