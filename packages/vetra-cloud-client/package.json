@@ -17,7 +17,7 @@
     "document-model": "catalog:"
   },
   "dependencies": {
-    "@powerhousedao/vetra-cloud-package": "https://registry.dev.vetra.io/@powerhousedao/vetra-cloud-package/-/vetra-cloud-package-0.0.3-dev.93.tgz"
+    "@powerhousedao/vetra-cloud-package": "https://registry.dev.vetra.io/@powerhousedao/vetra-cloud-package/-/vetra-cloud-package-0.0.12.tgz"
   },
   "devDependencies": {
     "@powerhousedao/reactor-browser": "catalog:",
