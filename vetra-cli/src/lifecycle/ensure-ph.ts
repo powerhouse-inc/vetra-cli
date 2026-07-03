@@ -6,10 +6,10 @@
  *
  * `ph` is provided by the unscoped `ph-cmd` package. The deployed
  * clint-agent image installs only `vetra-cli` and never puts `ph` on PATH,
- * so this hook checks for it on boot and, when missing, runs
- * `pnpm add -g ph-cmd@<DEFAULT_PH_VERSION>` (against `$CLINT_REGISTRY` when
- * set). It re-verifies afterwards and throws on failure — `onInit` errors
- * halt startup, which is preferable to a later cryptic `ph: not found`.
+ * so this hook checks for it on boot and, when missing, installs
+ * `ph-cmd@<DEFAULT_PH_VERSION>` (against `$CLINT_REGISTRY` when set) with pnpm,
+ * or npm when pnpm isn't on PATH. It re-verifies afterwards and throws on
+ * failure — `onInit` errors halt startup, preferable to a later `ph: not found`.
  *
  * No-op when `ph` already resolves, so it's safe to run every boot.
  */
@@ -59,14 +59,21 @@ export function ensurePh(): LifecycleHook {
 
       const registry = process.env.CLINT_REGISTRY;
       const spec = `ph-cmd@${DEFAULT_PH_VERSION}`;
-      const args = ["add", "-g", spec, ...(registry ? ["--registry", registry] : [])];
+      const regArgs = registry ? ["--registry", registry] : [];
+      // Prefer pnpm; fall back to npm when pnpm isn't on PATH.
+      let pm = "pnpm";
+      let args = ["add", "-g", spec, ...regArgs];
+      if (!(await run("pnpm", ["--version"], CHECK_TIMEOUT_MS)).success) {
+        pm = "npm";
+        args = ["install", "-g", spec, ...regArgs];
+      }
       log.info(
         `[ensure-ph] ph not found; installing ${spec}` +
           (registry ? ` from ${registry}` : "") +
-          ` (pnpm ${args.join(" ")})`,
+          ` (${pm} ${args.join(" ")})`,
       );
 
-      const { success, output } = await run("pnpm", args, INSTALL_TIMEOUT_MS);
+      const { success, output } = await run(pm, args, INSTALL_TIMEOUT_MS);
       if (!success) {
         throw new Error(
           `[ensure-ph] failed to install ${spec}: ${output.trim()}`,
