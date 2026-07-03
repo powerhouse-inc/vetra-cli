@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, FileText, Hammer, Lightbulb, Rocket } from "lucide-react";
+import {
+  Check,
+  Compass,
+  Copy,
+  FileText,
+  Hammer,
+  Lightbulb,
+  Rocket,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 type PhaseId = "ideate" | "specify" | "build" | "deploy";
@@ -82,6 +90,7 @@ function ExamplePrompt() {
 
   return (
     <div
+      data-tour="example-prompt"
       className="group relative rounded-lg border border-border bg-accent px-3 pb-7 pt-2"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
@@ -138,21 +147,35 @@ function isOpenablePhase(id: PhaseId): id is OpenablePhase {
  * softly pulses the phase the agent is currently working on. */
 export function PhaseCycle({
   onOpen,
+  onStartTour,
   activePhase,
 }: {
   onOpen: (phase: OpenablePhase) => void;
+  onStartTour?: () => void;
   activePhase?: OpenablePhase | null;
 }) {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-8 px-8 py-12">
       <div className="flex flex-col gap-4">
-        <h2 className="text-base font-semibold text-foreground">
-          Product development cycle
-        </h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-foreground">
+            Product development cycle
+          </h2>
+          {onStartTour ? (
+            <button
+              type="button"
+              onClick={onStartTour}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-vetra-primary hover:text-vetra-primary"
+            >
+              <Compass size={14} />
+              Take a tour
+            </button>
+          ) : null}
+        </div>
         <ExamplePrompt />
       </div>
 
-      <ol className="isolate flex flex-col gap-5">
+      <ol data-tour="flow" className="isolate flex flex-col gap-5">
         {PHASES.map((phase, i) => {
           const { id, Icon } = phase;
           const open = isOpenablePhase(id) ? () => onOpen(id) : undefined;
@@ -182,6 +205,7 @@ export function PhaseCycle({
 
               <button
                 type="button"
+                data-tour={`phase-${id}`}
                 disabled={!open}
                 onClick={open}
                 className={`flex flex-1 flex-col gap-1.5 rounded-xl border px-5 py-4 text-left transition ${

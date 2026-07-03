@@ -1,5 +1,6 @@
 import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
+  addDocument,
   useDocumentSafe,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
@@ -11,11 +12,12 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentAuthButton } from "./AgentAuthButton.js";
 import { BuildSection } from "./BuildSection.js";
-import { ChatPane } from "./ChatPane.js";
+import { ChatPane, CHAT_SESSION_DOCUMENT_TYPE } from "./ChatPane.js";
 import { DeploySection } from "./DeploySection.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
+import { useProductTour } from "./tour/useProductTour.js";
 import { VersionBadge } from "./VersionBadge.js";
 import {
   deployFollowAction,
@@ -28,7 +30,8 @@ import {
 } from "./auto-nav.js";
 import type { OpenTarget } from "./ideation/types.js";
 import { useDriveDocuments } from "./hooks/useDriveDocuments.js";
-import { useActivePhase } from "./hooks/useActivePhase.js";
+import { useActivePhase, useActiveEditType } from "./hooks/useActivePhase.js";
+import { LearnWhileYouWait } from "./LearnWhileYouWait.js";
 import { useResolvedPreview } from "./hooks/useResolvedPreview.js";
 import { useSessionEditedDocument } from "./hooks/useSessionEditedDocument.js";
 import { useSessionPreviewTarget } from "./hooks/useSessionPreviewTarget.js";
@@ -192,6 +195,30 @@ export function VetraStudio({
     [],
   );
 
+  // Product tour, launched from the home overview. It drives session, section
+  // and open-doc state so it can walk the "+ New → chat input → example"
+  // opening sequence with the section grids (not an open document) on screen.
+  const { startTour } = useProductTour({
+    setSection,
+    deselectSession: () => setSelectedSessionId(undefined),
+    selectSession: (id: string) => setSelectedSessionId(id),
+    openNewSession: async () => {
+      const count = document.state.global.nodes.filter(
+        (n) =>
+          n.kind === "file" &&
+          (n as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
+      ).length;
+      const node = await addDocument(
+        document.header.id,
+        `Session ${count + 1}`,
+        CHAT_SESSION_DOCUMENT_TYPE,
+      );
+      setSelectedSessionId(node.id);
+      return node.id;
+    },
+    closeDocument: () => openDocument(null, { pinned: false }),
+  });
+
   // Keep local state in sync when the URL changes externally (back/forward,
   // someone editing the address bar, shared link arrives via in-page nav).
   useEffect(() => {
@@ -250,13 +277,17 @@ export function VetraStudio({
 
   // The phase the selected session's agent is currently acting on — drives the
   // soft pulse on the home overview. Same follow signals as auto-nav below.
-  const activePhase = useActivePhase({
+  const phaseSignals = {
     messages: sessionDocument?.state.global.messages,
     editDocumentType: editTarget?.documentType,
     editCallId: editTarget?.callId ?? null,
     previewCallId: previewTarget?.callId ?? null,
     deployCallId: deployTarget?.callId ?? null,
-  });
+  };
+  const activePhase = useActivePhase(phaseSignals);
+  // The exact documentType the agent is editing — drives the contextual
+  // "learn while you wait" card.
+  const activeEditType = useActiveEditType(phaseSignals);
 
   const editMarkRef = useRef<EditMark | null>(null);
   const [pendingEditFollow, setPendingEditFollow] = useState<OpenTarget | null>(
@@ -453,6 +484,7 @@ export function VetraStudio({
       className={className ?? "flex h-full w-full overflow-hidden"}
     >
       <aside
+        data-tour="chat-pane"
         className="flex shrink-0 flex-col bg-card"
         style={{ width: `${chatWidth}px` }}
       >
@@ -478,7 +510,7 @@ export function VetraStudio({
           <div className="h-1 w-1 rounded-full bg-border group-hover:bg-muted-foreground" />
         </div>
       </div>
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <AutoNavToggle
           enabled={autoNavEnabled}
           paused={userPinned}
@@ -522,9 +554,14 @@ export function VetraStudio({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <PhaseCycle onOpen={setSection} activePhase={activePhase} />
+            <PhaseCycle
+              onOpen={setSection}
+              onStartTour={startTour}
+              activePhase={activePhase}
+            />
           </div>
         )}
+        <LearnWhileYouWait activeDocumentType={activeEditType} />
       </main>
       {isDragging ? (
         /* Catches mouse events that would otherwise route into the BUILD

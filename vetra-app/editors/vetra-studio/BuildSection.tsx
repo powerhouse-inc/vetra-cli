@@ -25,7 +25,7 @@ export function BuildSection({
   ];
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div data-tour="build-preview" className="flex h-full w-full flex-col">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-8 py-2">
         <Breadcrumb items={crumbs} />
         <PreviewStatusChip preview={preview} />

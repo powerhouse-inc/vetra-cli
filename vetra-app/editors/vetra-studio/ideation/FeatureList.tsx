@@ -23,7 +23,10 @@ export function FeatureList({
   return (
     <section>
       <h3 className="mb-3 text-base font-semibold text-foreground">Features</h3>
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div
+        data-tour="model-wbs"
+        className="overflow-hidden rounded-xl border border-border bg-card"
+      >
         <div className="flex items-center justify-between border-b border-border bg-accent px-4 py-2 text-xs font-medium text-muted-foreground">
           <span>Feature title, status, scope</span>
           <span>WBS</span>
