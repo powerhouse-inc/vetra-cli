@@ -149,27 +149,6 @@ export function VetraStudio({
     const target = resolveDocFromUrl(document);
     return target ? sectionForOpenDoc(target) : "home";
   });
-  // Product tour, launched from the home overview. It drives session + section
-  // state so it can walk the "+ New → chat input → example" opening sequence.
-  const { startTour } = useProductTour({
-    setSection,
-    deselectSession: () => setSelectedSessionId(undefined),
-    selectSession: (id: string) => setSelectedSessionId(id),
-    openNewSession: async () => {
-      const count = document.state.global.nodes.filter(
-        (n) =>
-          n.kind === "file" &&
-          (n as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
-      ).length;
-      const node = await addDocument(
-        document.header.id,
-        `Session ${count + 1}`,
-        CHAT_SESSION_DOCUMENT_TYPE,
-      );
-      setSelectedSessionId(node.id);
-      return node.id;
-    },
-  });
   // userPinned: a manual open pins the view so auto-nav won't yank it away.
   // A doc restored from the URL counts as pinned (the user was looking at it).
   const [userPinned, setUserPinned] = useState<boolean>(
@@ -215,6 +194,30 @@ export function VetraStudio({
     },
     [],
   );
+
+  // Product tour, launched from the home overview. It drives session, section
+  // and open-doc state so it can walk the "+ New → chat input → example"
+  // opening sequence with the section grids (not an open document) on screen.
+  const { startTour } = useProductTour({
+    setSection,
+    deselectSession: () => setSelectedSessionId(undefined),
+    selectSession: (id: string) => setSelectedSessionId(id),
+    openNewSession: async () => {
+      const count = document.state.global.nodes.filter(
+        (n) =>
+          n.kind === "file" &&
+          (n as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
+      ).length;
+      const node = await addDocument(
+        document.header.id,
+        `Session ${count + 1}`,
+        CHAT_SESSION_DOCUMENT_TYPE,
+      );
+      setSelectedSessionId(node.id);
+      return node.id;
+    },
+    closeDocument: () => openDocument(null, { pinned: false }),
+  });
 
   // Keep local state in sync when the URL changes externally (back/forward,
   // someone editing the address bar, shared link arrives via in-page nav).

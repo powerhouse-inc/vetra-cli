@@ -13,6 +13,8 @@ export type TourControls = {
   selectSession: (id: string) => void;
   /** Create + open a fresh chat session so the chat input renders; returns its id. */
   openNewSession: () => Promise<string>;
+  /** Close any open document so the section grids (and their anchors) render. */
+  closeDocument: () => void;
 };
 
 const dataSel = (anchor: string) => `[data-tour="${anchor}"]`;
@@ -55,28 +57,46 @@ export function useProductTour(controls: TourControls): { startTour: () => void 
 
   const api = useMemo(() => {
     // Stage a step's UI state (session pane + section) and wait for its target
-    // to mount — without highlighting yet.
+    // to mount — without highlighting yet. Staging is best-effort: a failure
+    // (e.g. session creation rejects) just means the step's anchor won't mount
+    // and the popover centers instead of wedging the tour.
     async function stage(index: number) {
       const step = TOUR_STEPS[index];
       const c = controlsRef.current;
 
-      if (step.session === "none") {
-        c.deselectSession();
-      } else if (step.session === "new") {
-        // Create the fresh session once; on later visits just re-open it.
-        if (!sessionIdRef.current) sessionIdRef.current = await c.openNewSession();
-        else c.selectSession(sessionIdRef.current);
+      try {
+        c.closeDocument();
+        if (step.session === "none") {
+          c.deselectSession();
+        } else if (step.session === "new") {
+          // Create the fresh session once; on later visits just re-open it.
+          if (!sessionIdRef.current)
+            sessionIdRef.current = await c.openNewSession();
+          else c.selectSession(sessionIdRef.current);
+        }
+        if (step.section) c.setSection(step.section);
+      } catch {
+        // fall through to the centered-popover degradation
       }
-      if (step.section) c.setSection(step.section);
 
       const selector = stepSelector(step);
       if (selector) await waitForElement(selector);
     }
 
     // Stage then highlight (for prev/next while the driver is already active).
+    // The in-flight guard drops clicks that land while a step is still staging
+    // (a double-click would otherwise stage twice, creating two sessions).
+    let staging = false;
     async function goTo(index: number, d: Driver) {
-      await stage(index);
-      d.moveTo(index);
+      if (staging) return;
+      staging = true;
+      try {
+        await stage(index);
+        // The user may have dismissed the tour (Esc / overlay) mid-stage.
+        if (d.isActive()) d.moveTo(index);
+      } finally {
+        staging = false;
+      }
     }
 
     function build(): Driver {
@@ -117,7 +137,8 @@ export function useProductTour(controls: TourControls): { startTour: () => void 
       const d = build();
       driverRef.current = d;
       await stage(0);
-      d.drive(0);
+      // A re-click mid-stage replaces the driver; don't drive the stale one.
+      if (driverRef.current === d) d.drive(0);
     }
 
     return { startTour };

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GraduationCap, X } from "lucide-react";
 import { LESSONS } from "./tour/lessons.js";
-import { runLesson } from "./tour/runLesson.js";
+import { runLesson, stopLesson } from "./tour/runLesson.js";
 
 /**
  * A dismissible floating card that turns agent wait-time into learning: when the
@@ -18,6 +18,10 @@ export function LearnWhileYouWait({
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+
+  // The lesson overlay lives on document.body, outside React — tear it down
+  // when the Studio unmounts so it can't be left blocking the app.
+  useEffect(() => () => stopLesson(), []);
 
   const lesson = activeDocumentType ? LESSONS[activeDocumentType] : undefined;
   if (!activeDocumentType || !lesson || dismissed.has(activeDocumentType)) {
