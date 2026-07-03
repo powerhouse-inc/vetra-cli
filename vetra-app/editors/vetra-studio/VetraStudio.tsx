@@ -12,7 +12,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentAuthButton } from "./AgentAuthButton.js";
 import { BuildSection } from "./BuildSection.js";
-import { ChatPane } from "./ChatPane.js";
+import { ChatPane, CHAT_SESSION_DOCUMENT_TYPE } from "./ChatPane.js";
 import { DeploySection } from "./DeploySection.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
@@ -121,8 +121,6 @@ export type VetraStudioProps = {
 };
 
 type Section = "home" | "ideate" | "specify" | "build" | "deploy";
-
-const CHAT_SESSION_DOCUMENT_TYPE = "powerhouse/chat-session";
 
 /** The section an open document shows in; unknown types keep the legacy
  * IDEATE fallback at restore/user-open sites. */

@@ -33,7 +33,7 @@ const ChatSession = lazy(() =>
   })),
 );
 
-const CHAT_SESSION_DOCUMENT_TYPE = "powerhouse/chat-session";
+export const CHAT_SESSION_DOCUMENT_TYPE = "powerhouse/chat-session";
 
 // Animated Vetra logo as the agent avatar; animates while the agent responds.
 function AgentMitosisAvatar({

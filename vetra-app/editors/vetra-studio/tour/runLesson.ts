@@ -1,4 +1,5 @@
 import { driver } from "driver.js";
+import { baseDriverConfig } from "./constants.js";
 import type { Lesson } from "./lessons.js";
 // driver.js base CSS + .vetra-tour theme live in style.css.
 
@@ -6,10 +7,7 @@ import type { Lesson } from "./lessons.js";
  * a selector). Reuses the shared `vetra-tour` popover theme. */
 export function runLesson(lesson: Lesson): void {
   const d = driver({
-    showProgress: true,
-    allowClose: true,
-    overlayColor: "rgba(0, 0, 0, 0.6)",
-    popoverClass: "vetra-tour",
+    ...baseDriverConfig,
     steps: lesson.steps.map((s) => ({
       element: s.selector,
       popover: {

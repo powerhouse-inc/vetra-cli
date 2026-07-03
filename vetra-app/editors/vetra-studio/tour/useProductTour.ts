@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { driver, type Driver } from "driver.js";
+import { baseDriverConfig } from "./constants.js";
 import { TOUR_STEPS, type TourStep } from "./steps.js";
 // driver.js base CSS is imported in style.css (bundled with the tour theme).
 
@@ -80,13 +81,10 @@ export function useProductTour(controls: TourControls): { startTour: () => void 
 
     function build(): Driver {
       return driver({
-        showProgress: true,
-        allowClose: true,
+        ...baseDriverConfig,
         // Block clicks on the highlighted element (no accidental create/open
         // mid-tour); clicking the dimmed overlay still dismisses.
         disableActiveInteraction: true,
-        overlayColor: "rgba(0, 0, 0, 0.6)",
-        popoverClass: "vetra-tour",
         steps: TOUR_STEPS.map((s) => ({
           element: stepSelector(s),
           popover: {

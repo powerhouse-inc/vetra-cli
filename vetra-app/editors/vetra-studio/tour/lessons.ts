@@ -4,8 +4,7 @@
  * don't control the external editors' DOM, so lessons are conceptual) that teach
  * the idea behind the document being built, closing with an Academy link.
  */
-
-const ACADEMY_LEARN_URL = "https://academy.dev.vetra.io/academy/Learn/Overview";
+import { ACADEMY_LEARN_URL } from "./constants.js";
 
 export type LessonStep = {
   title: string;

@@ -1,3 +1,5 @@
+import { ACADEMY_LEARN_URL } from "./constants.js";
+
 /** Sections a tour step can live in — mirrors VetraStudio's `Section` (minus the
  * ones the tour doesn't visit). Kept local so the tour module is self-contained. */
 export type TourSection = "home" | "ideate" | "specify" | "build" | "deploy";
@@ -17,8 +19,6 @@ export type TourStep = {
   title: string;
   blurb: string;
 };
-
-const ACADEMY_LEARN_URL = "https://academy.dev.vetra.io/academy/Learn/Overview";
 
 /**
  * The product tour: opens with how to start (new chat → describe it → example),
