@@ -7,9 +7,18 @@ import {
 import {
   findPreviewByName,
   getPreviewAuthToken,
+  getPreviewDocument,
   mutatePreviewDocument,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
+import {
+  DOCUMENT_MODEL_TYPE,
+  batchTouchesTypeDefinitions,
+} from "../spec/document-model.js";
+import {
+  formatDuplicateTypeError,
+  newDuplicateTypeDefinitions,
+} from "../spec/registry.js";
 import {
   actionInputSchema,
   enrichActionValidationError,
@@ -70,11 +79,31 @@ export const specPreviewUpdate = defineCommand({
       actions: input.actions,
       from: input.from,
     });
+
+    // The reactor applies preview mutations through the same reducer as the
+    // local path but skips its duplicate-type guard. For document-model edits
+    // that touch SDL, capture the pre-mutation state so we can reject a
+    // newly-introduced duplicate (Sentry #917) before it reaches the gateway
+    // via the preview drive. A batch that touches no schema can't add one.
+    const guardDuplicates =
+      row.documentType === DOCUMENT_MODEL_TYPE &&
+      batchTouchesTypeDefinitions(actions);
+    const before = guardDuplicates
+      ? (await getPreviewDocument(switchboardUrl, row.id, token))?.state
+      : undefined;
+
     let next: Awaited<ReturnType<typeof mutatePreviewDocument>>;
     try {
       next = await mutatePreviewDocument(switchboardUrl, row.id, actions, token);
     } catch (err) {
       enrichActionValidationError(err, row.documentType);
+    }
+
+    if (guardDuplicates) {
+      const error = formatDuplicateTypeError(
+        newDuplicateTypeDefinitions(before, next.state),
+      );
+      if (error) throw error;
     }
     const opsCount = next.revisionsList.reduce(
       (sum, r) => sum + r.revision,

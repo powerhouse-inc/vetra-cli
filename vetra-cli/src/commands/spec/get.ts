@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { projectInputSchema, resolveSpecBasePath } from "../../helpers/project.js";
+import { DOCUMENT_MODEL_TYPE } from "./document-model.js";
 import { formatSchema, loadByName, renderProjected } from "./_helpers.js";
 
 /* Narrow a doc's state down to its latest specification entry. Only doc-model
  * specs have a versioned `specifications` array on state.global; for other doc
  * types, fall back to state.global so --latest is a no-op rather than a crash. */
 function pickLatestSpec(state: unknown, documentType: string): unknown {
-  if (documentType !== "powerhouse/document-model") {
+  if (documentType !== DOCUMENT_MODEL_TYPE) {
     return (state as { global?: unknown }).global ?? state;
   }
   const global = (state as { global?: { specifications?: unknown[] } }).global;
@@ -17,7 +18,7 @@ function pickLatestSpec(state: unknown, documentType: string): unknown {
 }
 
 const HELP_BY_TYPE: Record<string, string> = {
-  "powerhouse/document-model": [
+  [DOCUMENT_MODEL_TYPE]: [
     "  --filter $.global.name                                    model name",
     "  --latest --filter $.modules[*].name                       module names in the latest spec",
     "  --latest --filter \"$.modules[*].operations[?(@.name=='SET_MODEL_NAME')]\"  one operation",
@@ -41,7 +42,7 @@ function buildHelp(documentType: string, name: string): string {
   const generic =
     "  --filter <jsonpath>                                       project against state (default scope: $.global)";
   const latestNote =
-    documentType === "powerhouse/document-model"
+    documentType === DOCUMENT_MODEL_TYPE
       ? "\n  --latest scopes the value (and --filter) to state.global.specifications.at(-1).\n"
       : "\n";
   return [

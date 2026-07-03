@@ -7,6 +7,7 @@ import {
   summarizeDiagnostics,
   type GenDiagnostic,
 } from "../../helpers/project-checks.js";
+import { DOCUMENT_MODEL_TYPE } from "./document-model.js";
 import { withProjectCodegenLock } from "../../helpers/project-lock.js";
 import { phBuildNodeOptions } from "../../helpers/node-memory.js";
 import { findByName, getDocumentsWithPaths } from "./_helpers.js";
@@ -14,7 +15,7 @@ import { findByName, getDocumentsWithPaths } from "./_helpers.js";
 // documentType → `ph generate <subcommand>`. The five builder types each map to
 // a subcommand; domain (vetra-app product) spec types have no codegen path.
 const GENERATE_SUBCOMMAND: Record<string, string> = {
-  "powerhouse/document-model": "document-model",
+  [DOCUMENT_MODEL_TYPE]: "document-model",
   "powerhouse/document-editor": "editor",
   "powerhouse/app": "app",
   "powerhouse/processor": "processor",
