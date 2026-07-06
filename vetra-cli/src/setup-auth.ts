@@ -18,10 +18,9 @@ const REQUIRE_ENV = configKeyToEnvVar(CLI_NAME, 'requireApiKey'); // VETRA_REQUI
 // as a subcommand (subset of ph-clint's private frameworkFlags, core/cli.ts).
 const VALUE_FLAGS = new Set(['--resume', '--workdir', '-w']);
 
-// True only for a bare interactive launch that will use the agent: TTY, no
-// subcommand, no --version/--help/--meta, no explicit --config.
-function isInteractiveLaunch(argv: string[]): boolean {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
+// Pure argv classification (TTY-independent, exported for tests): true when the
+// launch is bare — no subcommand, no --version/--help/--meta, no explicit --config.
+export function isBareLaunchArgs(argv: string[]): boolean {
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -34,8 +33,13 @@ function isInteractiveLaunch(argv: string[]): boolean {
   return true;
 }
 
+// A bare launch on a real terminal (both stdio a TTY) that will use the agent.
+function isInteractiveLaunch(argv: string[]): boolean {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY) && isBareLaunchArgs(argv);
+}
+
 // The workdir the framework resolves config against: --workdir/-w value, else cwd.
-function resolveWorkdir(argv: string[]): string {
+export function resolveWorkdir(argv: string[]): string {
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === '--workdir' || args[i] === '-w') && i + 1 < args.length) return args[i + 1];
@@ -71,11 +75,19 @@ function persistApiKey(key: string): string {
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) obj = parsed as Record<string, unknown>;
   } catch { /* new or unreadable file */ }
   obj.anthropicApiKey = key;
+  const data = `${JSON.stringify(obj, null, 2)}\n`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(obj, null, 2)}\n`, { mode: 0o600 });
+  fs.writeFileSync(tmp, data, { mode: 0o600 });
   fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  try {
+    fs.renameSync(tmp, file);
+  } catch {
+    // Windows rename won't clobber an existing dest; write in place instead.
+    fs.writeFileSync(file, data, { mode: 0o600 });
+    fs.chmodSync(file, 0o600);
+    fs.rmSync(tmp, { force: true });
+  }
   return file;
 }
 
