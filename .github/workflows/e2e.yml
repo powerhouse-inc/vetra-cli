@@ -369,9 +369,15 @@ jobs:
 
               # Run the shipped installer non-interactively, pointed at the locally
               # packed tarball. It sets up pnpm (for `ph init`), installs ph-cmd at
-              # the pin baked into the bundle, and puts vetra/ph on the npm global bin
-              # (already on PATH in node:24).
+              # the pin baked into the bundle, and installs vetra/ph globally with
+              # the default pnpm.
               VETRA_INSTALL_SPEC=/t.tgz VETRA_YES=1 VETRA_NO_LAUNCH=1 sh /install.sh
+
+              # pnpm's global bin dir isn't on PATH by default; a fresh shell would
+              # pick it up from the profile line install.sh appends. Mirror that here
+              # (install.sh pins PNPM_HOME the same way) so the bins resolve.
+              export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+              export PATH="$PNPM_HOME/bin:$PATH"
 
               # Confirm the installer produced working bins before the heavy replay.
               command -v ph; command -v vetra
