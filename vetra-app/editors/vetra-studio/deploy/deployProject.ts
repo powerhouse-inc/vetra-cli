@@ -5,7 +5,10 @@ import {
   isStudioEnvironment,
 } from "@powerhousedao/vetra-cloud-client";
 import type { ISigner } from "document-model";
-import { publishProject } from "../hooks/preview-server-client.js";
+import {
+  fetchVersion,
+  publishProject,
+} from "../hooks/preview-server-client.js";
 import {
   createNewEnvironmentController,
   loadEnvironmentController,
@@ -131,6 +134,10 @@ export async function deployProject(opts: {
     if (!ownerAddress) {
       throw new Error("Signer has no address — cannot create an environment.");
     }
+    // Pin the new env's services to the stack version the Studio runs so the
+    // deployment can't drift into API differences. A transient /version outage
+    // leaves it unpinned rather than blocking the deploy.
+    const frameworkVersion = await fetchVersion().catch(() => null);
     const controller = createNewEnvironmentController({
       parentIdentifier: driveId,
       signer,
@@ -139,6 +146,7 @@ export async function deployProject(opts: {
       address: ownerAddress,
       label: target.label,
       services: DEPLOY_SERVICES,
+      serviceVersion: frameworkVersion?.ph,
     });
     controller.addPackage({ packageName, version });
     onPhase?.("approving");

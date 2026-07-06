@@ -147,11 +147,10 @@ export function describeEnvironmentState(
   }
   lines.push("services:");
   for (const svc of state.services) {
-    lines.push(
-      `  ${svc.enabled ? "✓" : "·"} ${svc.type.padEnd(11)} ${
-        svc.enabled ? serviceHost(state, svc.prefix) : "(off)"
-      }`,
-    );
+    const detail = svc.enabled
+      ? `${serviceHost(state, svc.prefix)}${svc.version ? `  @${svc.version}` : ""}`
+      : "(off)";
+    lines.push(`  ${svc.enabled ? "✓" : "·"} ${svc.type.padEnd(11)} ${detail}`);
   }
   if (state.packages.length > 0) {
     lines.push("packages:");

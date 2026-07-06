@@ -21,6 +21,13 @@ function serviceSlugFor(
   return existing?.prefix || SERVICE_SLUGS[type];
 }
 
+/** A service's `version` is consumed verbatim as the container image tag, which
+ * is `v`-prefixed (e.g. `v6.2.0-rc.6`). Normalize a bare framework version to
+ * that form; an already-prefixed tag is left as-is. */
+function toServiceImageTag(version: string): string {
+  return version.startsWith("v") ? version : `v${version}`;
+}
+
 /** Enable each service not already enabled, reusing its current slug (or the
  * default). Idempotent: an already-enabled service emits no action. Does not
  * push — the caller pushes once after. */
@@ -64,7 +71,9 @@ export function applyEnvironmentUpdate(
 }
 
 /** Apply the create sequence to a new environment controller. Does not push.
- * setOwner first — every subsequent action is owner-gated on the remote. */
+ * setOwner first — every subsequent action is owner-gated on the remote. When
+ * `serviceVersion` is set, each enabled service is pinned to it so the deployed
+ * runtime matches the framework version the caller builds against. */
 export function applyCreateEnvironment(
   controller: EnvironmentController,
   options: {
@@ -73,6 +82,7 @@ export function applyCreateEnvironment(
     services?: CloudServiceType[];
     baseDomain?: string;
     defaultPackageRegistry?: string;
+    serviceVersion?: string;
   },
 ): void {
   controller.setOwner({ address: options.address });
@@ -88,5 +98,11 @@ export function applyCreateEnvironment(
     : ["CONNECT"];
   for (const type of services) {
     controller.enableService({ type, prefix: SERVICE_SLUGS[type] });
+  }
+  if (options.serviceVersion) {
+    const tag = toServiceImageTag(options.serviceVersion);
+    for (const type of services) {
+      controller.setServiceVersion({ type, version: tag });
+    }
   }
 }
