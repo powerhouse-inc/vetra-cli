@@ -109,14 +109,14 @@ control, auth, and more).
 ## Installing the published CLI
 
 The released CLI ships as the `vetra` binary. Install it with the one-liner —
-it installs `ph-cmd` + `vetra-cli`, ensures a pinned pnpm is on PATH, and
-offers to set up Claude auth:
+it installs `ph-cmd` + `vetra-cli` globally. Claude auth is set up on the first
+`vetra` launch, not by the installer:
 
 ```sh
 curl -fsSL https://get.vetra.io | sh
 ```
 
-Prefer to run it yourself (to read it first, or to answer the auth prompt)?
+Prefer to run it yourself (to read it first)?
 
 ```sh
 curl -fsSL https://get.vetra.io -o install.sh
@@ -126,9 +126,9 @@ sh install.sh
 Advanced / manual install — the CLI needs both packages:
 
 ```sh
-npm install -g ph-cmd vetra-cli        # or: pnpm add -g ph-cmd vetra-cli
-export ANTHROPIC_API_KEY=sk-ant-...    # or run: vetra claude-login
-vetra                                  # launch the agent REPL
+npm install -g ph-cmd vetra-cli          # or: pnpm add -g ph-cmd vetra-cli
+export VETRA_ANTHROPIC_API_KEY=sk-ant-...  # or run: vetra claude-login
+vetra                                    # launch the agent REPL
 ```
 
 `ph init` scaffolds new projects with pnpm when it's installed, else npm (set
