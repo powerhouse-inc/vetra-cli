@@ -48,9 +48,10 @@ TTY=
 [ -r /dev/tty ] && TTY=/dev/tty
 interactive() { [ -n "$TTY" ] && [ "${VETRA_YES:-}" != "1" ]; }
 
-# Global bin dir for the active PM (npm's differs from pnpm's).
+# Global bin dir for the active PM (npm's differs from pnpm's). resolve_pm pins
+# PNPM_HOME, so pnpm's global bin dir is deterministically $PNPM_HOME/bin.
 global_bin() {
-  if [ "$PM" = pnpm ]; then pnpm bin -g 2>/dev/null
+  if [ "$PM" = pnpm ]; then printf '%s' "${PNPM_HOME:-$HOME/.local/share/pnpm}/bin"
   else p=$(npm prefix -g 2>/dev/null) && printf '%s/bin' "$p"; fi
 }
 # Absolute path to the just-installed vetra bin (don't trust a stale one on PATH).
@@ -87,10 +88,21 @@ preflight() {
 resolve_pm() {
   if [ -n "$PM" ]; then
     command -v "$PM" >/dev/null 2>&1 || die "package manager '$PM' not found on PATH."
-    return 0
+  else
+    if command -v pnpm >/dev/null 2>&1; then PM=pnpm; else PM=npm; fi
+    info "using $PM"
   fi
-  if command -v pnpm >/dev/null 2>&1; then PM=pnpm; else PM=npm; fi
-  info "using $PM"
+  # pnpm refuses `add -g` unless its global bin dir ($PNPM_HOME/bin) is on PATH.
+  # Pin PNPM_HOME so the dir is deterministic, and put it on PATH for this run
+  # (ensure_path persists it for the user's shell afterward).
+  if [ "$PM" = pnpm ]; then
+    PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"; export PNPM_HOME
+    gbin="$PNPM_HOME/bin"
+    case ":$PATH:" in
+      *":$gbin:"*) ;;
+      *) PATH="$gbin:$PATH"; export PATH ;;
+    esac
+  fi
 }
 
 check_ports() {
