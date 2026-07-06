@@ -113,13 +113,13 @@ it installs `ph-cmd` + `vetra-cli`, ensures a pinned pnpm is on PATH, and
 offers to set up Claude auth:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/powerhouse-inc/vetra-cli/main/install.sh | sh
+curl -fsSL https://get.vetra.io | sh
 ```
 
 Prefer to run it yourself (to read it first, or to answer the auth prompt)?
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/powerhouse-inc/vetra-cli/main/install.sh -o install.sh
+curl -fsSL https://get.vetra.io -o install.sh
 sh install.sh
 ```
 
