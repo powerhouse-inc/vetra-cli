@@ -56,10 +56,17 @@ global_bin() {
 }
 # Absolute path to the just-installed vetra bin (don't trust a stale one on PATH).
 vetra_path() {
-  b=$(global_bin) || return 1
+  b=${GLOBAL_BIN:-$(global_bin)}
+  [ -n "$b" ] || return 1
   [ -x "$b/$VETRA_BIN" ] && printf '%s/%s' "$b" "$VETRA_BIN" && return 0
   command -v "$VETRA_BIN" 2>/dev/null
 }
+
+# 0 if $1 is a path directly under directory $2.
+path_under() { case "$1" in "$2"/*) return 0 ;; esac; return 1; }
+
+# 0 when ph-cmd is part of this install (i.e. not skipped via VETRA_SKIP_PH).
+installs_ph() { [ "${VETRA_SKIP_PH:-}" != "1" ]; }
 
 # ------------------------------------------------------------- preflight ----
 preflight() {
@@ -132,11 +139,15 @@ check_ports() {
 # ---------------------------------------------------------------- pnpm -------
 # Install the latest pnpm 11.x via npm (a method documented at
 # https://pnpm.io/installation). npm ships with Node, so it's always available.
-# Returns 0 only if pnpm is on PATH afterward.
+# pnpm lands in npm's global bin, so put that on PATH before checking. Returns 0
+# only if a usable pnpm (pnpm_ok) resolves afterward — so a stale older pnpm
+# earlier on PATH can't be mistaken for the one we just installed.
 install_pnpm() {
   step "Installing pnpm@latest-$PNPM_MAJOR with npm"
   npm install -g "pnpm@latest-$PNPM_MAJOR" || { warn "pnpm install failed; falling back to npm."; return 1; }
-  command -v pnpm >/dev/null 2>&1
+  nbin=$(npm prefix -g 2>/dev/null || true)
+  [ -n "$nbin" ] && case ":$PATH:" in *":$nbin/bin:"*) ;; *) PATH="$nbin/bin:$PATH"; export PATH ;; esac
+  pnpm_ok
 }
 
 # 0 if a usable pnpm (major >= PNPM_MAJOR) is on PATH. Only the major is checked
@@ -149,9 +160,11 @@ pnpm_ok() {
 }
 
 # pnpm missing or too old: offer to install pnpm 11. Yes (the default) installs;
-# no falls back to npm. Non-interactive runs skip the prompt and fall back to npm
-# (matching how finish() declines to auto-launch without a TTY).
+# no falls back to npm. VETRA_YES accepts that default (installs). A plain no-TTY
+# run has no way to consent, so it falls back to npm (like finish() not
+# auto-launching without a terminal).
 offer_install_pnpm() {
+  [ "${VETRA_YES:-}" = "1" ] && { install_pnpm; return; }
   interactive || return 1
   if command -v pnpm >/dev/null 2>&1; then
     printf '\n    pnpm %s is older than %s. Upgrade it now (recommended)? [Y/n]: ' "$(pnpm --version 2>/dev/null)" "$PNPM_MAJOR"
@@ -218,7 +231,7 @@ detect_profile() {
 }
 
 ensure_path() {
-  bin=$(global_bin) && [ -n "$bin" ] || return 0
+  bin=${GLOBAL_BIN:-$(global_bin)}; [ -n "$bin" ] || return 0
   case ":$PATH:" in *":$bin:"*) return 0 ;; esac
   prof=$(detect_profile)
   line="export PATH=\"$bin:\$PATH\""
@@ -241,15 +254,20 @@ ensure_path() {
 check_shadow() {
   stale="$1"; bin="$2"; pkg="$3"
   [ -n "$stale" ] || return 0
-  mine=$(global_bin)/"$bin"
+  [ -n "$GLOBAL_BIN" ] || return 0
+  mine="$GLOBAL_BIN/$bin"
   [ "$stale" = "$mine" ] && return 0   # reinstalled in place — fine
-  npmbin=$(npm prefix -g 2>/dev/null)/bin
-  pnpmbin="${PNPM_HOME:-$HOME/.local/share/pnpm}/bin"
+  # Ask each manager where its global bin is (pnpm's differs by OS: ~/Library/pnpm
+  # on macOS). Only offer an uninstall the manager actually owns — a bin that
+  # merely sits under npm's prefix (Homebrew, a manual symlink) is not npm's.
+  npmbin=$(npm prefix -g 2>/dev/null || true); npmbin=${npmbin:+$npmbin/bin}
+  pnpmbin=$(pnpm bin -g 2>/dev/null || printf '%s' "${PNPM_HOME:-$HOME/.local/share/pnpm}/bin")
   ucmd=
-  case "$stale" in
-    "$npmbin"/*)  ucmd="npm rm -g $pkg" ;;
-    "$pnpmbin"/*) command -v pnpm >/dev/null 2>&1 && ucmd="pnpm rm -g $pkg" ;;
-  esac
+  if [ -n "$pnpmbin" ] && path_under "$stale" "$pnpmbin" && command -v pnpm >/dev/null 2>&1; then
+    ucmd="pnpm rm -g $pkg"
+  elif [ -n "$npmbin" ] && path_under "$stale" "$npmbin" && npm ls -g "$pkg" >/dev/null 2>&1; then
+    ucmd="npm rm -g $pkg"
+  fi
   warn "an older \`$bin\` at $stale may shadow the one just installed at $mine."
   if [ -n "$ucmd" ] && interactive; then
     printf '    Remove the old copy now (%s)? [Y/n]: ' "$ucmd"
@@ -261,40 +279,37 @@ check_shadow() {
   elif [ -n "$ucmd" ]; then
     info "remove it with: $ucmd"
   else
-    info "remove $stale manually, or ensure $(global_bin) precedes it on your PATH."
+    info "remove $stale manually, or ensure $GLOBAL_BIN precedes it on your PATH."
   fi
 }
 
-# Check both bins we install. Skip ph when we didn't install it (VETRA_SKIP_PH).
+# Check both bins we install; ph only when we installed it.
 warn_if_shadowed() {
   check_shadow "${STALE_VETRA:-}" "$VETRA_BIN" "$VETRA_PKG"
-  [ "${VETRA_SKIP_PH:-}" = "1" ] || check_shadow "${STALE_PH:-}" "$PH_BIN" "$PH_PKG"
+  installs_ph && check_shadow "${STALE_PH:-}" "$PH_BIN" "$PH_PKG"
 }
 
 # ---------------------------------------------------------------- verify -----
-# Final sanity check: each bin we installed exists at our global bin, actually
-# executes (`--version` — catches a broken install: dangling module / wrong
-# NODE_PATH), and is what the shell resolves when you type it (catches a leftover
-# copy still winning on PATH). Runs after warn_if_shadowed so any removal counts.
+# Verify one installed bin: present at our global bin and actually executes
+# (`--version` — catches a broken install: dangling module / wrong NODE_PATH).
+# Sets the shared `problems` flag on failure. Which `bin` the shell *resolves* is
+# warn_if_shadowed's job (it compares the pre-install PATH, before we mutated it).
+verify_bin() {
+  vb_bin="$1"; vb_pkg="$2"; vb_mine="$GLOBAL_BIN/$vb_bin"
+  if [ ! -x "$vb_mine" ]; then
+    warn "$vb_pkg: \`$vb_bin\` not found at $vb_mine after install."; problems=1; return
+  fi
+  "$vb_mine" --version >/dev/null 2>&1 \
+    || { warn "$vb_pkg: \`$vb_bin\` at $vb_mine did not run (\`$vb_bin --version\` failed)."; problems=1; }
+}
+
+# Final sanity check, after warn_if_shadowed so any removal counts.
 verify_install() {
-  set -- "$VETRA_BIN:$VETRA_PKG"
-  [ "${VETRA_SKIP_PH:-}" = "1" ] || set -- "$@" "$PH_BIN:$PH_PKG"
+  [ -n "$GLOBAL_BIN" ] || { warn "could not determine the global bin dir; skipping install verification."; return 0; }
   problems=0
-  for pair in "$@"; do
-    bin=${pair%%:*}; pkg=${pair#*:}
-    mine=$(global_bin)/"$bin"
-    if [ ! -x "$mine" ]; then
-      warn "$pkg: \`$bin\` not found at $mine after install."; problems=1; continue
-    fi
-    if ! "$mine" --version >/dev/null 2>&1; then
-      warn "$pkg: \`$bin\` at $mine does not run (\`$bin --version\` failed)."; problems=1; continue
-    fi
-    resolved=$(command -v "$bin" 2>/dev/null || true)
-    if [ "$resolved" != "$mine" ]; then
-      warn "\`$bin\` resolves to ${resolved:-<nothing on PATH>}, not $mine — restart your shell or fix PATH order."; problems=1
-    fi
-  done
-  [ "$problems" = 0 ] && info "verified: the installed bins run and resolve from $(global_bin)."
+  verify_bin "$VETRA_BIN" "$VETRA_PKG"
+  installs_ph && verify_bin "$PH_BIN" "$PH_PKG"
+  [ "$problems" = 0 ] && info "verified: the installed bins run from $GLOBAL_BIN."
   return 0
 }
 
@@ -324,6 +339,7 @@ preflight
 STALE_VETRA=$(command -v "$VETRA_BIN" 2>/dev/null || true)
 STALE_PH=$(command -v "$PH_BIN" 2>/dev/null || true)
 resolve_pm
+GLOBAL_BIN=$(global_bin 2>/dev/null || true)   # compute once; guarded at every use
 export APOLLO_TELEMETRY_DISABLED=1
 install_vetra
 install_ph
