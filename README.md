@@ -126,7 +126,9 @@ sh install.sh
 Advanced / manual install — the CLI needs both packages:
 
 ```sh
-npm install -g ph-cmd vetra-cli          # or: pnpm add -g ph-cmd vetra-cli
+# vetra-cli lives on the pre-release registry until it ships to npmjs.
+npm install -g ph-cmd
+npm install -g vetra-cli --registry https://registry.dev.vetra.io   # or: pnpm add -g ...
 export VETRA_ANTHROPIC_API_KEY=sk-ant-...  # or run: vetra claude-login
 vetra                                    # launch the agent REPL
 ```
@@ -135,8 +137,9 @@ vetra                                    # launch the agent REPL
 `VETRA_PACKAGE_MANAGER` to force `npm`/`pnpm`/`yarn`/`bun`).
 
 Installer env knobs (non-exhaustive — see the header of `install.sh`):
-`VETRA_VERSION`, `PH_VERSION`, `VETRA_REGISTRY` (e.g. the pre-release registry
-`https://registry.dev.vetra.io`), `VETRA_PM=npm|pnpm` (installer PM),
+`VETRA_VERSION`, `PH_VERSION`, `VETRA_REGISTRY` (registry for the `vetra-cli`
+package; defaults to the pre-release registry `https://registry.dev.vetra.io`),
+`VETRA_PM=npm|pnpm` (installer PM),
 `VETRA_PACKAGE_MANAGER` (PM for scaffolded projects), `VETRA_SKIP_PH=1`,
 `VETRA_YES=1` (non-interactive), `VETRA_NO_LAUNCH=1`.
 
