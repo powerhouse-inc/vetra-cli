@@ -147,10 +147,8 @@ Please select a different environment or create a new one for deployments.`,
   return controller.state.global;
 }
 
-/** Create a new environment, claiming ownership for the signed-in user. Enabled
- * services are pinned to `version` (defaults to the stack's `DEFAULT_PH_VERSION`)
- * so the deployment matches the framework version the local Studio runs. Returns
- * its new document id and resulting state. */
+/** Create a new environment owned by the signed-in user. Services pin to
+ * `version ?? config.phVersion ?? DEFAULT_PH_VERSION` (reactor-project-init's precedence). */
 export async function createCloudEnvironment(
   ctx: ReadContext,
   options: { label: string; services?: CloudServiceType[]; version?: string },
@@ -165,7 +163,7 @@ export async function createCloudEnvironment(
     address: session.address,
     label: options.label,
     services: options.services,
-    serviceVersion: options.version ?? DEFAULT_PH_VERSION,
+    serviceVersion: options.version ?? ctx.config.phVersion ?? DEFAULT_PH_VERSION,
   });
   // A studio-created deploy target belongs to this studio — link it so it
   // groups under the studio on /user/products (no-op outside a studio context).
