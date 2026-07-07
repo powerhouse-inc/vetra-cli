@@ -151,10 +151,13 @@ install_pnpm() {
 }
 
 # 0 if a usable pnpm (major >= PNPM_MAJOR) is on PATH. Only the major is checked
-# — any pnpm 11.x is fine.
+# — any pnpm 11.x is fine. Stashes the full version in PNPM_VER (empty if pnpm is
+# absent) so offer_install_pnpm's prompt reuses it instead of re-running pnpm.
 pnpm_ok() {
+  PNPM_VER=
   command -v pnpm >/dev/null 2>&1 || return 1
-  pmaj=$(pnpm --version 2>/dev/null | cut -d. -f1)
+  PNPM_VER=$(pnpm --version 2>/dev/null || true)
+  pmaj=${PNPM_VER%%.*}
   case "$pmaj" in ''|*[!0-9]*) return 1 ;; esac
   [ "$pmaj" -ge "$PNPM_MAJOR" ]
 }
@@ -166,11 +169,12 @@ pnpm_ok() {
 offer_install_pnpm() {
   [ "${VETRA_YES:-}" = "1" ] && { install_pnpm; return; }
   interactive || return 1
-  if command -v pnpm >/dev/null 2>&1; then
-    printf '\n    pnpm %s is older than %s. Upgrade it now (recommended)? [Y/n]: ' "$(pnpm --version 2>/dev/null)" "$PNPM_MAJOR"
+  if [ -n "${PNPM_VER:-}" ]; then
+    msg="pnpm $PNPM_VER is older than $PNPM_MAJOR. Upgrade it now (recommended)?"
   else
-    printf '\n    pnpm is not installed. Install it now (recommended)? [Y/n]: '
+    msg="pnpm is not installed. Install it now (recommended)?"
   fi
+  printf '\n    %s [Y/n]: ' "$msg"
   read -r ans < "$TTY" || ans=n
   case "$ans" in ""|y|Y|yes|YES) install_pnpm && return 0 ;; esac
   return 1
@@ -319,7 +323,7 @@ finish() {
   printf '\n'
   ok "Vetra CLI installed."
   [ -n "$vbin" ] && info "$("$vbin" --version 2>/dev/null | head -1 || echo "$VETRA_PKG")"
-  info "Run ${c_blu}$VETRA_BIN${c_rst} to start the agent — first launch sets up Claude auth, then prints ${c_dim}http://localhost:8090/d/<driveId>${c_rst}."
+  info "Run ${c_blu}$VETRA_BIN${c_rst} to start the agent — first launch sets up Claude auth, then prints ${c_dim}http://localhost:8090/${c_rst}."
 
   [ "${VETRA_NO_LAUNCH:-}" = "1" ] && return 0
   interactive || return 0
