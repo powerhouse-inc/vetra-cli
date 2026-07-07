@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.46",
+  "version": "0.0.1",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
