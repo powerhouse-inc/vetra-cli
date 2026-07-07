@@ -48,8 +48,9 @@ want the agent to decide on its own.
 
 ## Prerequisites
 
-- **Node** ≥ 22.13.0
-- **pnpm** 11.5.0 (`corepack enable`)
+- **Node** ≥ 24
+- **pnpm** 11 — optional; the installer uses it if present and otherwise offers
+  to install it (via npm), falling back to npm if you decline
 - An **Anthropic API key** (the agent runs on
 Claude)
 - **Docker** — only needed for the end-to-end [lab](lab/README.md)

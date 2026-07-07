@@ -12,7 +12,7 @@
 #   VETRA_INSTALL_SPEC  install this spec instead of vetra-cli@$VERSION (e.g. a local tarball; used in CI)
 #   PH_VERSION       ph-cmd version to install               (default: pin baked into vetra-cli)
 #   VETRA_REGISTRY   registry for the vetra-cli package only  (default: https://registry.dev.vetra.io, the pre-release registry; ph-cmd + deps always use your npm default)
-#   VETRA_PM         package manager: npm | pnpm             (default: pnpm, falling back to npm if pnpm is unavailable)
+#   VETRA_PM         package manager: npm | pnpm             (default: pnpm — offers to install it if missing, else npm)
 #   VETRA_SKIP_PH=1  don't install ph-cmd (rely on first-boot ensure-ph)
 #   VETRA_YES=1      non-interactive: accept defaults, never prompt
 #   VETRA_NO_LAUNCH=1  install only, don't offer to launch
@@ -21,9 +21,9 @@ set -eu
 VETRA_PKG="vetra-cli"
 VETRA_BIN="vetra"
 PH_PKG="ph-cmd"
-PNPM_PIN="11.5.0"
-MIN_NODE_MAJOR=22
-MIN_NODE_MINOR=13
+PH_BIN="ph"
+PNPM_MAJOR="11"
+MIN_NODE_MAJOR=24
 
 VERSION="${VETRA_VERSION:-latest}"
 REGISTRY="${VETRA_REGISTRY:-https://registry.dev.vetra.io}"
@@ -69,28 +69,35 @@ preflight() {
   esac
 
   command -v node >/dev/null 2>&1 || die \
-    "Node.js is required but not found. Install Node >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} from https://nodejs.org (or via nvm/fnm), then re-run."
+    "Node.js >= ${MIN_NODE_MAJOR} is required but not found.
+    Install it from https://nodejs.org/en/download, then re-run this script."
 
   nv=$(node -p 'process.versions.node' 2>/dev/null) || die "could not run node."
   nmaj=$(printf '%s' "$nv" | cut -d. -f1)
-  nmin=$(printf '%s' "$nv" | cut -d. -f2)
-  if [ "$nmaj" -lt "$MIN_NODE_MAJOR" ] || { [ "$nmaj" -eq "$MIN_NODE_MAJOR" ] && [ "$nmin" -lt "$MIN_NODE_MINOR" ]; }; then
-    die "Node >= ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} required; found $nv. Upgrade Node and re-run."
+  if [ "$nmaj" -lt "$MIN_NODE_MAJOR" ]; then
+    die "Node >= ${MIN_NODE_MAJOR} required; found $nv.
+    Upgrade from https://nodejs.org/en/download, then re-run this script."
   fi
 
   # Studio/Reactor/Switchboard ports have no fallback — warn early if taken.
   check_ports 8090 27370 59220
 }
 
-# Resolve the package manager. An explicit VETRA_PM must resolve (die if not).
-# Otherwise default to pnpm, falling back to npm when pnpm isn't available (even
-# after setup_pnpm). Runs after setup_pnpm so the default sees a corepack pnpm.
+# Resolve the package manager. An explicit VETRA_PM must resolve (die if not);
+# VETRA_PM=pnpm auto-installs pnpm when missing or older than PNPM_MAJOR. With no
+# explicit choice, prefer a usable pnpm, else offer to install it, else npm.
 resolve_pm() {
   if [ -n "$PM" ]; then
+    if [ "$PM" = pnpm ] && ! pnpm_ok; then
+      install_pnpm || die "package manager 'pnpm' (>= $PNPM_MAJOR) requested but install failed."
+    fi
     command -v "$PM" >/dev/null 2>&1 || die "package manager '$PM' not found on PATH."
+  elif pnpm_ok; then
+    PM=pnpm
+  elif offer_install_pnpm; then
+    PM=pnpm
   else
-    if command -v pnpm >/dev/null 2>&1; then PM=pnpm; else PM=npm; fi
-    info "using $PM"
+    PM=npm
   fi
   # pnpm refuses `add -g` unless its global bin dir ($PNPM_HOME/bin) is on PATH.
   # Pin PNPM_HOME so the dir is deterministic, and put it on PATH for this run
@@ -123,16 +130,37 @@ check_ports() {
 }
 
 # ---------------------------------------------------------------- pnpm -------
-# pnpm is the default package manager; activate a pinned pnpm best-effort via
-# corepack so the default works without a pre-existing pnpm (resolve_pm falls
-# back to npm if this doesn't provide one). COREPACK_DEFAULT_TO_LATEST=0 keeps
-# the inner pnpm from floating to a release whose verifier rejects fresh
-# pre-release deps.
-setup_pnpm() {
-  command -v corepack >/dev/null 2>&1 || return 0
-  step "Preparing pnpm@$PNPM_PIN (used when pnpm is the resolved package manager)"
-  COREPACK_DEFAULT_TO_LATEST=0 corepack enable >/dev/null 2>&1 || true
-  COREPACK_DEFAULT_TO_LATEST=0 corepack prepare "pnpm@$PNPM_PIN" --activate >/dev/null 2>&1 || true
+# Install the latest pnpm 11.x via npm (a method documented at
+# https://pnpm.io/installation). npm ships with Node, so it's always available.
+# Returns 0 only if pnpm is on PATH afterward.
+install_pnpm() {
+  step "Installing pnpm@latest-$PNPM_MAJOR with npm"
+  npm install -g "pnpm@latest-$PNPM_MAJOR" || { warn "pnpm install failed; falling back to npm."; return 1; }
+  command -v pnpm >/dev/null 2>&1
+}
+
+# 0 if a usable pnpm (major >= PNPM_MAJOR) is on PATH. Only the major is checked
+# — any pnpm 11.x is fine.
+pnpm_ok() {
+  command -v pnpm >/dev/null 2>&1 || return 1
+  pmaj=$(pnpm --version 2>/dev/null | cut -d. -f1)
+  case "$pmaj" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$pmaj" -ge "$PNPM_MAJOR" ]
+}
+
+# pnpm missing or too old: offer to install pnpm 11. Yes (the default) installs;
+# no falls back to npm. Non-interactive runs skip the prompt and fall back to npm
+# (matching how finish() declines to auto-launch without a TTY).
+offer_install_pnpm() {
+  interactive || return 1
+  if command -v pnpm >/dev/null 2>&1; then
+    printf '\n    pnpm %s is older than %s. Upgrade it now (recommended)? [Y/n]: ' "$(pnpm --version 2>/dev/null)" "$PNPM_MAJOR"
+  else
+    printf '\n    pnpm is not installed. Install it now (recommended)? [Y/n]: '
+  fi
+  read -r ans < "$TTY" || ans=n
+  case "$ans" in ""|y|Y|yes|YES) install_pnpm && return 0 ;; esac
+  return 1
 }
 
 # ------------------------------------------------------------- install -------
@@ -201,7 +229,73 @@ ensure_path() {
       && info "added the global bin to PATH in $prof" \
       || warn "add \"$bin\" to your PATH — the \`vetra\`/\`ph\` bins live there."
   fi
-  warn "open a new terminal (or run \`export PATH=\"$bin:\$PATH\"\`) so \`$VETRA_BIN\` resolves."
+  info "open a new terminal (or run \`export PATH=\"$bin:\$PATH\"\`) so \`$VETRA_BIN\` resolves."
+}
+
+# --------------------------------------------------------- stale copies ------
+# A bin already on PATH before we install can shadow the fresh one — most
+# commonly an older copy under a *different* package manager's global bin (e.g. a
+# past `npm i -g` while we now install with pnpm), which stays earlier on PATH.
+# $1 = the bin's pre-install path (captured in main before resolve_pm mutates
+# PATH), $2 = bin name, $3 = package name to uninstall.
+check_shadow() {
+  stale="$1"; bin="$2"; pkg="$3"
+  [ -n "$stale" ] || return 0
+  mine=$(global_bin)/"$bin"
+  [ "$stale" = "$mine" ] && return 0   # reinstalled in place — fine
+  npmbin=$(npm prefix -g 2>/dev/null)/bin
+  pnpmbin="${PNPM_HOME:-$HOME/.local/share/pnpm}/bin"
+  ucmd=
+  case "$stale" in
+    "$npmbin"/*)  ucmd="npm rm -g $pkg" ;;
+    "$pnpmbin"/*) command -v pnpm >/dev/null 2>&1 && ucmd="pnpm rm -g $pkg" ;;
+  esac
+  warn "an older \`$bin\` at $stale may shadow the one just installed at $mine."
+  if [ -n "$ucmd" ] && interactive; then
+    printf '    Remove the old copy now (%s)? [Y/n]: ' "$ucmd"
+    read -r a < "$TTY" || a=n
+    case "$a" in
+      ""|y|Y|yes|YES) step "Removing the old $pkg"
+        $ucmd >/dev/null 2>&1 && info "removed $stale" || warn "removal failed; run: $ucmd" ;;
+    esac
+  elif [ -n "$ucmd" ]; then
+    info "remove it with: $ucmd"
+  else
+    info "remove $stale manually, or ensure $(global_bin) precedes it on your PATH."
+  fi
+}
+
+# Check both bins we install. Skip ph when we didn't install it (VETRA_SKIP_PH).
+warn_if_shadowed() {
+  check_shadow "${STALE_VETRA:-}" "$VETRA_BIN" "$VETRA_PKG"
+  [ "${VETRA_SKIP_PH:-}" = "1" ] || check_shadow "${STALE_PH:-}" "$PH_BIN" "$PH_PKG"
+}
+
+# ---------------------------------------------------------------- verify -----
+# Final sanity check: each bin we installed exists at our global bin, actually
+# executes (`--version` — catches a broken install: dangling module / wrong
+# NODE_PATH), and is what the shell resolves when you type it (catches a leftover
+# copy still winning on PATH). Runs after warn_if_shadowed so any removal counts.
+verify_install() {
+  set -- "$VETRA_BIN:$VETRA_PKG"
+  [ "${VETRA_SKIP_PH:-}" = "1" ] || set -- "$@" "$PH_BIN:$PH_PKG"
+  problems=0
+  for pair in "$@"; do
+    bin=${pair%%:*}; pkg=${pair#*:}
+    mine=$(global_bin)/"$bin"
+    if [ ! -x "$mine" ]; then
+      warn "$pkg: \`$bin\` not found at $mine after install."; problems=1; continue
+    fi
+    if ! "$mine" --version >/dev/null 2>&1; then
+      warn "$pkg: \`$bin\` at $mine does not run (\`$bin --version\` failed)."; problems=1; continue
+    fi
+    resolved=$(command -v "$bin" 2>/dev/null || true)
+    if [ "$resolved" != "$mine" ]; then
+      warn "\`$bin\` resolves to ${resolved:-<nothing on PATH>}, not $mine — restart your shell or fix PATH order."; problems=1
+    fi
+  done
+  [ "$problems" = 0 ] && info "verified: the installed bins run and resolve from $(global_bin)."
+  return 0
 }
 
 # ------------------------------------------------------------- launch --------
@@ -226,10 +320,14 @@ finish() {
 # ---------------------------------------------------------------- main -------
 printf '%sVetra CLI installer%s\n' "$c_blu" "$c_rst"
 preflight
-setup_pnpm
+# capture any pre-existing bins before resolve_pm touches PATH (shadow check)
+STALE_VETRA=$(command -v "$VETRA_BIN" 2>/dev/null || true)
+STALE_PH=$(command -v "$PH_BIN" 2>/dev/null || true)
 resolve_pm
 export APOLLO_TELEMETRY_DISABLED=1
 install_vetra
 install_ph
 ensure_path
+warn_if_shadowed
+verify_install
 finish
