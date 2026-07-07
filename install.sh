@@ -11,7 +11,7 @@
 #   VETRA_VERSION    vetra-cli version to install            (default: latest)
 #   VETRA_INSTALL_SPEC  install this spec instead of vetra-cli@$VERSION (e.g. a local tarball; used in CI)
 #   PH_VERSION       ph-cmd version to install               (default: pin baked into vetra-cli)
-#   VETRA_REGISTRY   registry for the vetra-cli package only  (default: your npm default; ph-cmd + deps always use your npm default)
+#   VETRA_REGISTRY   registry for the vetra-cli package only  (default: https://registry.dev.vetra.io, the pre-release registry; ph-cmd + deps always use your npm default)
 #   VETRA_PM         package manager: npm | pnpm             (default: pnpm, falling back to npm if pnpm is unavailable)
 #   VETRA_SKIP_PH=1  don't install ph-cmd (rely on first-boot ensure-ph)
 #   VETRA_YES=1      non-interactive: accept defaults, never prompt
@@ -26,7 +26,7 @@ MIN_NODE_MAJOR=22
 MIN_NODE_MINOR=13
 
 VERSION="${VETRA_VERSION:-latest}"
-REGISTRY="${VETRA_REGISTRY:-}"
+REGISTRY="${VETRA_REGISTRY:-https://registry.dev.vetra.io}"
 PM="${VETRA_PM:-}"   # empty = infer in resolve_pm (prefer pnpm, fall back to npm)
 
 # ---------------------------------------------------------------- output ----
