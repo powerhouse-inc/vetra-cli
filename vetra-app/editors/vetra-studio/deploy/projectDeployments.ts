@@ -13,7 +13,12 @@ export type EnvDeployState =
 
 /** An openable service running in an environment (Connect, Switchboard, …).
  * The apex domain itself serves nothing — the services do. */
-export type EnvServiceLink = { type: string; label: string; url: string };
+export type EnvServiceLink = {
+  type: string;
+  label: string;
+  url: string;
+  description?: string;
+};
 
 /** This project's status in one environment, fully resolved for render. */
 export type ProjectEnvDeployment = {
@@ -31,6 +36,12 @@ const SERVICE_LABEL: Record<string, string> = {
   CONNECT: "Connect",
   SWITCHBOARD: "Switchboard",
   FUSION: "Fusion",
+};
+const SERVICE_DESCRIPTION: Record<string, string> = {
+  CONNECT:
+    "User-facing workspace that loads your app's editors and keeps everyone's changes in sync.",
+  SWITCHBOARD:
+    "Turns the documents your app manages into an API that websites, services, and AI agents can talk to.",
 };
 const SERVICE_SUFFIX: Record<string, string> = { SWITCHBOARD: "/graphql" };
 const SERVICE_ORDER = ["CONNECT", "FUSION", "SWITCHBOARD"];
@@ -59,6 +70,7 @@ export function resolveServiceLinks(global: {
       type: s.type,
       label,
       url: `https://${host}${SERVICE_SUFFIX[s.type] ?? ""}`,
+      description: SERVICE_DESCRIPTION[s.type],
     });
   }
   links.sort(

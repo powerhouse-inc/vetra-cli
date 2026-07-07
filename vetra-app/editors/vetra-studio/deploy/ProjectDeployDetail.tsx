@@ -482,7 +482,9 @@ function EnvRow({
           <StatusDot status={d.env.status ?? "DRAFT"} />
         </div>
         {d.url ? (
-          <span className="truncate text-xs text-muted-foreground">{d.url}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {d.url}
+          </span>
         ) : null}
         <ProjectStatusLine
           d={d}
@@ -684,18 +686,28 @@ function VisitMenu({
       {open ? (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full z-20 mt-1 min-w-44 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-md">
-            {services.map((s) => (
+          <div className="absolute right-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-md">
+            {services.map((service) => (
               <a
-                key={s.type}
-                href={s.url}
+                key={service.type}
+                href={service.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setOpen(false)}
-                className="flex items-center justify-between gap-4 px-3 py-1.5 text-sm text-foreground hover:bg-accent"
+                className="flex items-start justify-between gap-3 px-3 py-2 text-sm text-foreground hover:bg-accent"
               >
-                {s.label}
-                <ExternalLink size={13} className="text-muted-foreground" />
+                <span className="flex flex-col gap-0.5">
+                  <span className="font-medium">{service.label}</span>
+                  {service.description && (
+                    <span className="text-xs leading-snug text-muted-foreground">
+                      {service.description}
+                    </span>
+                  )}
+                </span>
+                <ExternalLink
+                  size={13}
+                  className="mt-0.5 shrink-0 text-muted-foreground"
+                />
               </a>
             ))}
           </div>
