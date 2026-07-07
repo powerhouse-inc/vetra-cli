@@ -47,14 +47,20 @@ export const studioUrlTrigger = defineTrigger({
     if (!studioUrl) return;
 
     const url = `${studioUrl.replace(/\/+$/, "")}/d/${driveId}`;
-    const tty = Boolean(process.stdout.isTTY);
-    const paint = (code: string, s: string) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
-    const heading = tty
-      ? "▸ Opening Vetra Studio in your browser…"
-      : "▸ Open Vetra Studio in your browser:";
-    console.log(`\n  ${paint("1;32", heading)}\n    ${paint("1;36", url)}\n`);
 
-    if (tty) openBrowser(url);
+    // Non-TTY (CI, lab scripts, pods): emit the exact `Vetra Studio: <url>` line
+    // that automated consumers grep for readiness. Keep it byte-stable.
+    if (!process.stdout.isTTY) {
+      console.log(`Vetra Studio: ${url}`);
+      return;
+    }
+
+    // Interactive terminal: a prominent, colored call-to-action, then open it.
+    const paint = (code: string, s: string) => `\x1b[${code}m${s}\x1b[0m`;
+    console.log(
+      `\n  ${paint("1;32", "▸ Opening Vetra Studio in your browser…")}\n    ${paint("1;36", url)}\n`,
+    );
+    openBrowser(url);
   },
 
   async poll() {
