@@ -1,5 +1,5 @@
 // First-run Claude auth: on a bare interactive launch with no credential, offer
-// the installer's three paths — paste a key, subscription login (OAuth), or skip.
+// the installer's paths — paste a key or skip.
 import fs from 'node:fs';
 import readline from 'node:readline/promises';
 import {
@@ -10,7 +10,6 @@ import {
   type CommandContext,
 } from '@powerhousedao/ph-clint';
 import {
-  createClaudeAuthCommands,
   createSession,
   createUserTokenStore,
 } from '@powerhousedao/ph-clint-claude-subscription';
@@ -89,22 +88,6 @@ async function persistApiKey(key: string): Promise<string> {
   return userConfigPath(CLI_NAME);
 }
 
-async function runClaudeLogin(): Promise<void> {
-  const login = createClaudeAuthCommands({ cliName: CLI_NAME }).find((c) => c.id === 'claude-login');
-  if (!login) return;
-  // --interactive uses only ctx.stdout + a fixed user-scope store; workspace is a stub.
-  await login.execute(
-    { interactive: true },
-    {
-      stdout: (text: string) => process.stdout.write(`${text}\n`),
-      workspace: {
-        loadJsonObject: async <T>(_f: string, fallback: T) => fallback,
-        storeJsonObject: async () => {},
-      },
-    } as never,
-  );
-}
-
 // Read a line with echo suppressed via raw mode (no readline private APIs).
 // If the TTY can't enter raw mode, warn — the input can't be hidden.
 function readSecret(prompt: string): Promise<string> {
@@ -148,17 +131,16 @@ async function promptSetup(): Promise<void> {
       'Set up Claude authentication.',
       'How do you want to authenticate?',
       '  [1] Paste an Anthropic API key  (console.anthropic.com)',
-      '  [2] Log in with a Claude.ai subscription',
-      '  [3] Skip — set it up later',
+      '  [2] Skip — set it up later',
       '',
     ].join('\n'),
   );
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
   let choice: string;
   try {
-    choice = (await rl.question('Choose [1/2/3]: ')).trim();
+    choice = (await rl.question('Choose [1/2]: ')).trim();
   } finally {
-    rl.close(); // release stdin before raw read / claude-login's own reader
+    rl.close(); // release stdin before raw read
   }
   if (choice === '1') {
     const key = (await readSecret('Paste your Anthropic API key (hidden): ')).trim();
@@ -171,12 +153,8 @@ async function promptSetup(): Promise<void> {
     }
     return;
   }
-  if (choice === '2') {
-    await runClaudeLogin();
-    return;
-  }
   process.stdout.write(
-    `Skipped. Authenticate later with \`export ${KEY_ENV}=sk-ant-...\` or \`${CLI_NAME} claude-login\`.\n`,
+    `Skipped. Authenticate later with \`export ${KEY_ENV}=sk-ant-...\`.\n`,
   );
 }
 
