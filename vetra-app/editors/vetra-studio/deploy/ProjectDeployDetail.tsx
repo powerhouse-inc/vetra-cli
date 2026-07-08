@@ -10,7 +10,8 @@ import {
   Rocket,
   Server,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAgentAuth } from "../hooks/useAgentAuth.js";
 import type { Project } from "../specify/projects.js";
 import { CLOUD_BASE_DOMAIN } from "./config.js";
 import {
@@ -53,6 +54,15 @@ type Stuck = { envId: string; label: string } | null;
 
 /** An actionable button rendered inside the error card (e.g. re-auth). */
 type ErrorAction = { label: string; onClick: () => void } | null;
+
+/** Deploy that failed because the agent isn't authorized to publish; re-run
+ * automatically once the agent authorization lands. While set, the error card
+ * shows the "Authorize agent" flow instead of a static action. */
+type RetryAfterAuth = {
+  target: DeployTarget;
+  key: string;
+  label: string;
+} | null;
 
 /** Secondary (outlined) button/link style, shared by Open and the Visit menu. */
 const OPEN_BTN =
@@ -102,6 +112,11 @@ export function ProjectDeployDetail({
   const [creating, setCreating] = useState(false);
   const [newEnvName, setNewEnvName] = useState(project.name);
   const [pending, setPending] = useState<Pending>(new Map());
+  const [retryAfterAuth, setRetryAfterAuth] = useState<RetryAfterAuth>(null);
+  // Publishing authenticates as the agent's Renown identity (daemon-side), not
+  // the user's browser session — an auth-required failure is fixed by the
+  // agent authorization flow, the same one behind the header button.
+  const agentAuth = useAgentAuth();
 
   const environments = deploy.kind === "ready" ? deploy.environments : [];
   // Stable dependency for the polling effect: only the watched statuses.
@@ -120,6 +135,7 @@ export function ProjectDeployDetail({
     setPending(new Map());
     setCreating(false);
     setNewEnvName(project.name);
+    setRetryAfterAuth(null);
   }, [project.name]);
 
   // Hold each just-deployed env in "Deploying…" until the cloud rollout
@@ -202,12 +218,14 @@ export function ProjectDeployDetail({
     setErrorAction(null);
     setDone(null);
     setStuck(null);
+    setRetryAfterAuth(null);
   }
 
   async function run(target: DeployTarget, key: string, label: string) {
     if (!signer) {
       setError("Sign in with Renown to deploy.");
       setErrorAction({ label: "Connect with Renown", onClick: onSignIn });
+      setRetryAfterAuth(null);
       return;
     }
     clearMessages();
@@ -245,6 +263,13 @@ export function ProjectDeployDetail({
     } catch (err) {
       setBusy(null);
       if (err instanceof DeployError && err.kind === "auth-required") {
+        setError(
+          "The agent isn't authorized to publish this app. Authorize the agent to deploy.",
+        );
+        setRetryAfterAuth({ target, key, label });
+        return;
+      }
+      if (err instanceof DeployError && err.kind === "session-expired") {
         setError("Your Renown session expired. Sign in again to deploy.");
         setErrorAction({ label: "Connect with Renown", onClick: onSignIn });
         return;
@@ -252,6 +277,20 @@ export function ProjectDeployDetail({
       setError(errorMessage(err));
     }
   }
+
+  // Auto-retry: once the agent authorization lands (false → true), re-run the
+  // deploy that failed on it. Transition-guarded so a deploy that fails while
+  // the agent is already authorized doesn't retry in a loop.
+  const wasAgentAuthed = useRef(agentAuth.authenticated);
+  useEffect(() => {
+    const was = wasAgentAuthed.current;
+    wasAgentAuthed.current = agentAuth.authenticated;
+    if (was || !agentAuth.authenticated || !retryAfterAuth) return;
+    const retry = retryAfterAuth;
+    setRetryAfterAuth(null);
+    void run(retry.target, retry.key, retry.label);
+    // `run` is recreated per render; the transition + retryAfterAuth gate it.
+  }, [agentAuth.authenticated, retryAfterAuth]);
 
   // Every environment runs the latest and nothing is rolling out.
   const allUpToDate =
@@ -314,7 +353,28 @@ export function ProjectDeployDetail({
           <pre className="whitespace-pre-wrap break-words font-sans">
             {error}
           </pre>
-          {errorAction ? (
+          {retryAfterAuth ? (
+            <button
+              type="button"
+              onClick={() => void agentAuth.authorize()}
+              disabled={agentAuth.busy}
+              title={
+                agentAuth.pending
+                  ? "Approve in the Renown tab, or click to reopen"
+                  : "Authorize the agent to act as you, using your Renown identity"
+              }
+              className="mt-2 flex items-center gap-1.5 rounded-lg bg-vetra-primary px-3 py-1.5 text-xs font-medium text-vetra-primary-fg hover:bg-vetra-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {agentAuth.pending ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" />
+                  Authorizing…
+                </>
+              ) : (
+                "Authorize agent"
+              )}
+            </button>
+          ) : errorAction ? (
             <button
               type="button"
               onClick={errorAction.onClick}
