@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "publishConfig": {
     "access": "public",
-    "registry": "https://registry.dev.vetra.io"
+    "registry": "https://registry.vetra.io"
   },
   "type": "module",
   "bin": {

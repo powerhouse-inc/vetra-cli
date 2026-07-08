@@ -4,7 +4,7 @@
   "license": "AGPL-3.0-only",
   "publishConfig": {
     "access": "public",
-    "registry": "https://registry.dev.vetra.io"
+    "registry": "https://registry.vetra.io"
   },
   "type": "module",
   "files": [
