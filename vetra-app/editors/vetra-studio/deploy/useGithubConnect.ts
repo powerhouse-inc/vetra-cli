@@ -111,8 +111,10 @@ export function useGithubConnect(environmentId: string) {
           return;
         }
         if (result.status === "appNotInstalled") {
+          // Keep polling: the backend holds the exchanged token in memory and
+          // completes the connect on the first poll after the app is installed.
           setPhase({ kind: "needsInstall" });
-          return;
+          continue;
         }
         setPhase({
           kind: "error",

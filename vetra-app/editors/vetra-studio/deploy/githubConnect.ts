@@ -20,6 +20,14 @@ export type GithubConnectionStatus = {
   connection: GithubConnection | null;
 };
 
+/** Connection + identity link + live install state (see backend GithubStatus). */
+export type GithubStatus = {
+  connected: boolean;
+  connection: GithubConnection | null;
+  githubLogin: string | null;
+  appInstalled: boolean;
+};
+
 export type GithubDeviceFlow = {
   deviceCode: string;
   userCode: string;
@@ -106,6 +114,34 @@ export async function myGithubConnection(
     token,
   );
   return data?.VetraGithubAuth.myGithubConnection ?? null;
+}
+
+/**
+ * Connection, identity link, and live install state for the caller — lets the
+ * card skip the install step for users who already installed the app. Null on
+ * failure.
+ */
+export async function myGithubStatus(
+  environmentId: string,
+  token: string,
+): Promise<GithubStatus | null> {
+  const { data } = await gql<{
+    VetraGithubAuth: { myGithubStatus: GithubStatus };
+  }>(
+    `query ($environmentId: String!) {
+      VetraGithubAuth {
+        myGithubStatus(environmentId: $environmentId) {
+          connected
+          connection { environmentId repoFullName repoUrl createdAt }
+          githubLogin
+          appInstalled
+        }
+      }
+    }`,
+    { environmentId },
+    token,
+  );
+  return data?.VetraGithubAuth.myGithubStatus ?? null;
 }
 
 /** Begin device authorization. Null on failure. */

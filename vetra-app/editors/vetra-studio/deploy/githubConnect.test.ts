@@ -11,6 +11,7 @@ import {
   connectGithub,
   githubInstallUrl,
   myGithubConnection,
+  myGithubStatus,
   startGithubDeviceFlow,
 } from "./githubConnect.js";
 
@@ -70,6 +71,37 @@ describe("myGithubConnection", () => {
   });
 });
 
+describe("myGithubStatus", () => {
+  it("returns the full status", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({
+        data: {
+          VetraGithubAuth: {
+            myGithubStatus: {
+              connected: false,
+              connection: null,
+              githubLogin: "alice",
+              appInstalled: true,
+            },
+          },
+        },
+      }),
+    );
+
+    expect(await myGithubStatus("env-1", "tok")).toEqual({
+      connected: false,
+      connection: null,
+      githubLogin: "alice",
+      appInstalled: true,
+    });
+  });
+
+  it("returns null on a network failure", async () => {
+    fetchSpy.mockRejectedValue(new Error("offline"));
+    expect(await myGithubStatus("env-1", "tok")).toBeNull();
+  });
+});
+
 describe("startGithubDeviceFlow", () => {
   it("returns the device flow", async () => {
     const flow = {
@@ -113,6 +145,7 @@ describe("connectGithub", () => {
     ["DEVICE_CODE_EXPIRED", "expired"],
     ["ACCESS_DENIED", "denied"],
     ["REPO_ALREADY_EXISTS", "repoExists"],
+    ["APP_NOT_INSTALLED", "appNotInstalled"],
     ["UNAUTHENTICATED", "unauthenticated"],
   ];
 
