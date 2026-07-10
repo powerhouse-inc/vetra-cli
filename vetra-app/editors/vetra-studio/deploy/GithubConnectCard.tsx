@@ -163,7 +163,11 @@ function ConnectFlow({
             to.
           </span>
         </div>
-        <button type="button" onClick={() => setOpen(true)} className={LINK_BTN}>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={LINK_BTN}
+        >
           Connect
         </button>
       </div>
@@ -269,7 +273,7 @@ function ModalBody({
           </a>
           .
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-end">
           <button
             type="button"
             onClick={() => onDone(phase.connection)}
@@ -291,11 +295,18 @@ function ModalBody({
           Waiting for the app installation…
         </div>
         <p className="text-sm text-muted-foreground">
-          You&apos;re authorized, but the Vetra app isn&apos;t installed on
-          your GitHub account yet. Install it and this dialog will continue by
-          itself — nothing to confirm here.
+          You&apos;re authorized, but the Vetra app isn&apos;t installed on your
+          GitHub account yet. Install it and this dialog will continue by itself
+          — nothing to confirm here.
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
           <a
             href={githubInstallUrl()}
             target="_blank"
@@ -305,13 +316,6 @@ function ModalBody({
             <GithubMark size={14} />
             Install the Vetra app
           </a>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            Cancel
-          </button>
         </div>
       </>
     );
@@ -326,20 +330,29 @@ function ModalBody({
         <div className="rounded-lg bg-muted px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-foreground">
           {phase.userCode}
         </div>
-        <div className="flex items-center gap-3">
-          <a
-            href={phase.verificationUri}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={PRIMARY_BTN}
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground"
           >
-            <GithubMark size={14} />
-            Open GitHub
-          </a>
-          <span className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" />
-            Waiting for authorization…
-          </span>
+            Cancel
+          </button>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" />
+              Waiting for authorization…
+            </span>
+            <a
+              href={phase.verificationUri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={PRIMARY_BTN}
+            >
+              <GithubMark size={14} />
+              Open GitHub
+            </a>
+          </div>
         </div>
       </>
     );
@@ -367,17 +380,17 @@ function ModalBody({
     return (
       <>
         <p className="text-sm text-destructive">{phase.message}</p>
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={onRetry} className={PRIMARY_BTN}>
-            <GithubMark size={14} />
-            Try again
-          </button>
+        <div className="flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={onClose}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             Cancel
+          </button>
+          <button type="button" onClick={onRetry} className={PRIMARY_BTN}>
+            <GithubMark size={14} />
+            Try again
           </button>
         </div>
       </>
@@ -402,10 +415,17 @@ function ModalBody({
           Created private in your GitHub account; must be unique there.
         </span>
       </label>
-      {phase.kind === "naming" && phase.error ? (
+      {phase.error ? (
         <p className="text-sm text-destructive">{phase.error}</p>
       ) : null}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          Cancel
+        </button>
         <button
           type="button"
           disabled={repoName.trim().length === 0}
@@ -414,13 +434,6 @@ function ModalBody({
         >
           <GithubMark size={14} />
           Create repository
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          Cancel
         </button>
       </div>
     </>
