@@ -8,6 +8,7 @@
  *   GET  /version                 running vetra-cli + ph versions.
  *   GET  /sessions                list chat sessions (gated).
  *   GET  /sessions/export?id=     zip of a session's doc/thread/log (gated).
+ *   GET  /export?workspace=1      zip of selected workspace parts (gated).
  *   GET  /healthz                 liveness check.
  *
  * Listens on 127.0.0.1 only. CORS is permissive (`*`) for localhost dev —
@@ -25,10 +26,12 @@ import { resolvePreview } from "./resolver.js";
 import { startPreview } from "./starter.js";
 import { authorizeSessions } from "./session-auth.js";
 import { buildSessionExport, listSessions } from "./session-export.js";
+import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-export.js";
 import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
 import {
   confirmAuth,
   getAuthState,
+  isAuthorizedAdmin,
   logoutAuth,
   startAuth,
 } from "../auth/renown.js";
@@ -85,6 +88,10 @@ function parseQuery(url: string): URLSearchParams {
   return new URLSearchParams(url.slice(idx + 1));
 }
 
+function isTruthyParam(value: string | null): boolean {
+  return value !== null && /^(1|true|yes)$/i.test(value);
+}
+
 export async function startPreviewServer(
   deps: PreviewServerDeps,
 ): Promise<PreviewServerHandle> {
@@ -102,6 +109,19 @@ export async function startPreviewServer(
     log,
   } = deps;
   const broadcaster = createSseBroadcaster({ subscribe });
+  // One workspace export at a time — each streams the whole workdir.
+  let workspaceExportInFlight = false;
+
+  // Loopback/secret gate, or the authorized owner (ADMINS) through the proxy.
+  async function exportAuthorized(
+    req: IncomingMessage,
+    token: string | null,
+  ): Promise<boolean> {
+    return (
+      authorizeSessions(req.headers, token) ||
+      (await isAuthorizedAdmin(workdir, renownUrl))
+    );
+  }
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void handleRequest(req, res);
@@ -252,6 +272,51 @@ export async function startPreviewServer(
         });
         // View over the existing bytes — no copy of the zip payload.
         res.end(Buffer.from(result.zip.buffer, result.zip.byteOffset, result.zip.byteLength));
+        return;
+      }
+
+      // Whether the caller may download an export — lets the studio button
+      // guide an unauthorized user to authorize instead of failing the fetch.
+      if (path === "/export/status" && method === "GET") {
+        const q = parseQuery(url);
+        writeJson(res, 200, {
+          authorized: await exportAuthorized(req, q.get("token")),
+        });
+        return;
+      }
+
+      // General export: selectable workspace parts, decoupled from any session.
+      if (path === "/export" && method === "GET") {
+        const q = parseQuery(url);
+        if (!(await exportAuthorized(req, q.get("token")))) {
+          writeJson(res, 401, { error: "unauthorized" });
+          return;
+        }
+        if (!isTruthyParam(q.get("workspace"))) {
+          writeJson(res, 400, { error: "no export parts selected", hint: "add ?workspace=1" });
+          return;
+        }
+        if (workspaceExportInFlight) {
+          writeJson(res, 409, { error: "export in progress" });
+          return;
+        }
+        workspaceExportInFlight = true;
+        res.writeHead(200, {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${WORKSPACE_ZIP_FILENAME}"`,
+          ...CORS_HEADERS,
+        });
+        try {
+          await streamWorkspaceExport(workdir, res);
+          res.end();
+        } catch (err) {
+          log?.error(
+            `[preview-server] GET /export: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          res.destroy();
+        } finally {
+          workspaceExportInFlight = false;
+        }
         return;
       }
 

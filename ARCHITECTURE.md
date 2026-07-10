@@ -250,6 +250,19 @@ so it gets the framework's `ServiceManager` + event-bus access via
   markdown log when `agentLogging` was on), and `metadata.json` (versions,
   model, flags, which sources were found). `404 unknown-session`,
   `503 reactor-unavailable`. Implementation: `preview-server/session-export.ts`.
+- `GET /export?workspace=1` — gated. Streams a zip (`application/zip`,
+  attachment `vetra-workspace.zip`) of the whole workdir under a `workspace/`
+  prefix, excluding `node_modules`, build/cache output
+  (`dist`/`build`/`.next`/`out`/`coverage`/`.turbo`/`.cache`), `.git`, the `.ph`
+  store, and `.env*` secrets. Deflate runs on fflate's worker pool and
+  the archive streams to the response (bounded memory; the main thread stays
+  free). Single-flight: a concurrent request gets `409 export in progress`. A
+  general endpoint — `workspace` is the only selectable part today. `400` when
+  no part is selected. Implementation: `preview-server/workspace-export.ts`.
+- `GET /export/status` — ungated; returns `{ authorized }` (the export gate
+  resolved server-side, incl. the `ADMINS` owner check the browser can't
+  compute). The studio "Download workspace" button reads it to guide an
+  unauthorized user to the Renown authorize flow instead of failing the fetch.
 - `GET /healthz` — liveness check.
 
 **Session-export access gate** (`preview-server/session-auth.ts`,
@@ -260,7 +273,15 @@ request must present a matching `Authorization: Bearer <secret>` (or
 `?token=`) — the operator/support path, which works through the proxy;
 when unset, the routes serve only direct-loopback requests (the embedded
 proxy tags routed requests with `x-forwarded-prefix`/`x-forwarded-for`), so
-local dev exports freely while the public proxy stays closed. Sub-agent
+local dev exports freely while the public proxy stays closed. `GET /export`
+additionally accepts the **authorized owner**: `authorizeSessions` OR
+`isAuthorizedAdmin` (`auth/renown.ts`) — the daemon's authorized Renown
+identity (`getAuthState`) has its wallet in the pod-injected `ADMINS`
+allowlist. This lets the studio "Download workspace" header button work
+through the proxy once the owner has authorized the agent, without shipping a
+secret to the browser. It gates on the daemon's single authorized identity,
+not the specific browser user (per-user browser auth remains the deferred
+follow-up below). Sub-agent
 threads (resource `cli-user-<agentName>`) are not bundled — their
 per-delegation threadIds don't link back to a session. Cryptographic
 per-user browser auth (the browser holds no Renown token today) is a
