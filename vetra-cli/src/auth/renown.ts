@@ -106,6 +106,30 @@ export async function getAuthState(
   };
 }
 
+// Is `address` in the ADMINS allowlist? Case-insensitive; empty/unset
+// allowlist matches nothing (comma- or whitespace-separated wallet addresses).
+export function isAdminAddress(
+  address: string | undefined,
+  adminsEnv: string | undefined,
+): boolean {
+  if (!address) return false;
+  const admins = (adminsEnv ?? "")
+    .split(/[\s,]+/)
+    .map((a) => a.trim().toLowerCase())
+    .filter(Boolean);
+  return admins.includes(address.toLowerCase());
+}
+
+/** Owner gate for the export endpoints: the daemon must be authorized as a
+ * Renown identity whose wallet is in the pod's `ADMINS` allowlist. */
+export async function isAuthorizedAdmin(
+  workdir: string,
+  renownUrl: string,
+): Promise<boolean> {
+  const state = await getAuthState(workdir, renownUrl);
+  return state.authenticated && isAdminAddress(state.address, process.env.ADMINS);
+}
+
 /** Poll the pending login for up to `timeoutMs` and, once the user has approved
  * in the browser, store the credential. Returns the resulting state; `pending`
  * stays true if approval hasn't landed yet (caller retries). */

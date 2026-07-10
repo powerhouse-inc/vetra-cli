@@ -260,6 +260,28 @@ export async function fetchVersion(signal?: AbortSignal): Promise<VersionInfo> {
   return (await res.json()) as VersionInfo;
 }
 
+/** Absolute URL for the workspace export download. The caller fetches it and
+ * checks the status so a 401/409 surfaces a message instead of navigating. */
+export async function resolveWorkspaceExportUrl(): Promise<string> {
+  const { base } = await resolvePreviewConfig();
+  return `${base}/export?workspace=1`;
+}
+
+/** Whether the caller may download an export (the daemon's gate resolved
+ * server-side, incl. the ADMINS owner check the browser can't compute). */
+export async function fetchExportStatus(
+  signal?: AbortSignal,
+): Promise<{ authorized: boolean }> {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/export/status`, { signal });
+  if (!res.ok) {
+    throw new Error(
+      `preview-server /export/status: ${res.status} ${res.statusText}`,
+    );
+  }
+  return (await res.json()) as { authorized: boolean };
+}
+
 /** Renown auth state served by the daemon's /auth endpoints. `pending`
  * is set while a Renown console login is awaiting browser approval. */
 export type AuthState = {
