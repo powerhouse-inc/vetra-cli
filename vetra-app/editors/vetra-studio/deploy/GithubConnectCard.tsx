@@ -142,12 +142,116 @@ function ConnectFlow({
 }) {
   const { phase, connect, reset } = useGithubConnect(environmentId);
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"install" | "form">("install");
   const [repoName, setRepoName] = useState("");
 
+  const close = () => {
+    reset();
+    setRepoName("");
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
+        <GithubMark size={16} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-sm font-medium text-foreground">
+            Connect GitHub
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Create a private repository the agent pushes this studio&apos;s work
+            to.
+          </span>
+        </div>
+        <button type="button" onClick={() => setOpen(true)} className={LINK_BTN}>
+          Connect
+        </button>
+      </div>
+      {open ? (
+        <ConnectModal
+          phase={phase}
+          appInstalled={appInstalled}
+          repoName={repoName}
+          setRepoName={setRepoName}
+          onSubmit={() => void connect(repoName.trim())}
+          onDone={(connection) => {
+            onConnected(connection);
+            close();
+          }}
+          onClose={close}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Focused dialog hosting the whole connect journey: repo name → device code
+ * → (if needed) waiting-for-install → created. The flow advances by itself;
+ * the only manual actions are GitHub's own pages. */
+function ConnectModal({
+  phase,
+  appInstalled,
+  repoName,
+  setRepoName,
+  onSubmit,
+  onDone,
+  onClose,
+}: {
+  phase: ReturnType<typeof useGithubConnect>["phase"];
+  appInstalled: boolean;
+  repoName: string;
+  setRepoName: (v: string) => void;
+  onSubmit: () => void;
+  onDone: (connection: GithubConnection) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div aria-hidden className="absolute inset-0 bg-black/60" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Connect GitHub"
+        className="relative z-10 flex w-full max-w-md flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-xl"
+      >
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <GithubMark size={16} />
+          Connect GitHub
+        </div>
+        <ModalBody
+          phase={phase}
+          appInstalled={appInstalled}
+          repoName={repoName}
+          setRepoName={setRepoName}
+          onSubmit={onSubmit}
+          onDone={onDone}
+          onClose={onClose}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ModalBody({
+  phase,
+  appInstalled,
+  repoName,
+  setRepoName,
+  onSubmit,
+  onDone,
+  onClose,
+}: {
+  phase: ReturnType<typeof useGithubConnect>["phase"];
+  appInstalled: boolean;
+  repoName: string;
+  setRepoName: (v: string) => void;
+  onSubmit: () => void;
+  onDone: (connection: GithubConnection) => void;
+  onClose: () => void;
+}) {
   if (phase.kind === "connected") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+      <>
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Check size={15} className="text-success" />
           Repository created
@@ -167,28 +271,28 @@ function ConnectFlow({
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => onConnected(phase.connection)}
+            onClick={() => onDone(phase.connection)}
             className={PRIMARY_BTN}
           >
             <Check size={14} />
             Done
           </button>
         </div>
-      </div>
+      </>
     );
   }
 
   if (phase.kind === "needsInstall") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+      <>
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <GithubMark size={15} />
+          <Loader2 size={15} className="animate-spin" />
           Waiting for the app installation…
         </div>
         <p className="text-sm text-muted-foreground">
           You&apos;re authorized, but the Vetra app isn&apos;t installed on
-          your GitHub account yet. Install it and this card will continue by
-          itself — no need to come back and click anything.
+          your GitHub account yet. Install it and this dialog will continue by
+          itself — nothing to confirm here.
         </p>
         <div className="flex items-center gap-3">
           <a
@@ -200,28 +304,21 @@ function ConnectFlow({
             <GithubMark size={14} />
             Install the Vetra app
           </a>
-          <span className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" />
-            Watching for the install…
-          </span>
           <button
             type="button"
-            onClick={() => {
-              reset();
-              setOpen(false);
-            }}
+            onClick={onClose}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             Cancel
           </button>
         </div>
-      </div>
+      </>
     );
   }
 
   if (phase.kind === "awaiting") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+      <>
         <p className="text-sm text-muted-foreground">
           Open GitHub and enter this code to authorize Vetra:
         </p>
@@ -243,83 +340,13 @@ function ConnectFlow({
             Waiting for authorization…
           </span>
         </div>
-      </div>
-    );
-  }
-
-  if (!open) {
-    return (
-      <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
-        <GithubMark size={16} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-sm font-medium text-foreground">
-            Connect GitHub
-          </span>
-          <span className="text-xs text-muted-foreground">
-            Create a private repository the agent pushes this studio&apos;s work
-            to.
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(true);
-            // Users with the app already installed go straight to the form.
-            setStep(appInstalled ? "form" : "install");
-          }}
-          className={LINK_BTN}
-        >
-          Connect
-        </button>
-      </div>
-    );
-  }
-
-  if (step === "install") {
-    return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <GithubMark size={15} />
-          Step 1 of 2 — Install the Vetra app
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Install the Vetra app on your GitHub account first — GitHub only lets
-          it create the studio&apos;s repository once it&apos;s installed.
-          &ldquo;All repositories&rdquo; or a selection both work; the new repo
-          is added to the installation automatically.
-        </p>
-        <div className="flex items-center gap-3">
-          <a
-            href={githubInstallUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={PRIMARY_BTN}
-          >
-            <GithubMark size={14} />
-            Install the Vetra app
-          </a>
-          <button
-            type="button"
-            onClick={() => setStep("form")}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            Already installed — continue
-          </button>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
+      </>
     );
   }
 
   const busy = phase.kind === "starting";
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+    <>
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-foreground">
           Repository name
@@ -335,6 +362,11 @@ function ConnectFlow({
           Created private in your GitHub account; must be unique there.
         </span>
       </label>
+      <p className="text-xs text-muted-foreground">
+        {appInstalled
+          ? "The Vetra GitHub app is installed on your account — you'll only be asked to authorize."
+          : "You'll authorize Vetra on GitHub and be asked to install the Vetra app if it isn't installed yet."}
+      </p>
       {phase.kind === "error" ? (
         <p className="text-sm text-destructive">{phase.message}</p>
       ) : null}
@@ -342,9 +374,7 @@ function ConnectFlow({
         <button
           type="button"
           disabled={busy || repoName.trim().length === 0}
-          onClick={() => {
-            void connect(repoName.trim());
-          }}
+          onClick={onSubmit}
           className={PRIMARY_BTN}
         >
           {busy ? (
@@ -362,15 +392,12 @@ function ConnectFlow({
         <button
           type="button"
           disabled={busy}
-          onClick={() => {
-            reset();
-            setOpen(false);
-          }}
+          onClick={onClose}
           className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           Cancel
         </button>
       </div>
-    </div>
+    </>
   );
 }
