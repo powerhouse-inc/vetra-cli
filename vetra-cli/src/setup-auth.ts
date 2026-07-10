@@ -146,7 +146,7 @@ async function promptSetup(): Promise<void> {
     const key = (await readSecret('Paste your Anthropic API key (hidden): ')).trim();
     if (!key) { process.stdout.write('No key entered — skipping.\n'); return; }
     try {
-      process.stdout.write(`Saved your API key to ${await persistApiKey(key)}\n`);
+      await persistApiKey(key)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stdout.write(`Could not save the API key (${msg}); it is set for this session — export ${KEY_ENV} to persist it.\n`);
