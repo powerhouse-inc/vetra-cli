@@ -5,7 +5,7 @@ import { resolveStudioEnvironmentId } from "../hooks/preview-server-client.js";
 import { getAuthToken } from "./cloudClient.js";
 import {
   githubInstallUrl,
-  myGithubConnection,
+  myGithubStatus,
   type GithubConnection,
 } from "./githubConnect.js";
 import { useGithubConnect } from "./useGithubConnect.js";
@@ -40,7 +40,7 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
   const [environmentId, setEnvironmentId] = useState<string | null>(null);
   const [status, setStatus] = useState<
     | { kind: "loading" }
-    | { kind: "disconnected" }
+    | { kind: "disconnected"; appInstalled: boolean }
     | { kind: "connected"; connection: GithubConnection }
   >({ kind: "loading" });
 
@@ -61,12 +61,15 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
     void (async () => {
       const token = await getAuthToken(renown);
       if (!token || isCancelled()) return;
-      const result = await myGithubConnection(environmentId, token);
+      const result = await myGithubStatus(environmentId, token);
       if (isCancelled()) return;
       if (result?.connected && result.connection) {
         setStatus({ kind: "connected", connection: result.connection });
       } else {
-        setStatus({ kind: "disconnected" });
+        setStatus({
+          kind: "disconnected",
+          appInstalled: result?.appInstalled ?? false,
+        });
       }
     })();
     return () => {
@@ -92,6 +95,7 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
   return (
     <ConnectFlow
       environmentId={environmentId}
+      appInstalled={status.appInstalled}
       onConnected={(connection) => setStatus({ kind: "connected", connection })}
     />
   );
@@ -129,9 +133,11 @@ function ConnectedRow({ connection }: { connection: GithubConnection }) {
 
 function ConnectFlow({
   environmentId,
+  appInstalled,
   onConnected,
 }: {
   environmentId: string;
+  appInstalled: boolean;
   onConnected: (connection: GithubConnection) => void;
 }) {
   const { phase, connect, reset } = useGithubConnect(environmentId);
@@ -177,11 +183,12 @@ function ConnectFlow({
       <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <GithubMark size={15} />
-          Install the Vetra app first
+          Waiting for the app installation…
         </div>
         <p className="text-sm text-muted-foreground">
-          The Vetra app isn&apos;t installed on your GitHub account yet, so
-          GitHub refuses to create the repository. Install it, then try again.
+          You&apos;re authorized, but the Vetra app isn&apos;t installed on
+          your GitHub account yet. Install it and this card will continue by
+          itself — no need to come back and click anything.
         </p>
         <div className="flex items-center gap-3">
           <a
@@ -193,15 +200,19 @@ function ConnectFlow({
             <GithubMark size={14} />
             Install the Vetra app
           </a>
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={14} className="animate-spin" />
+            Watching for the install…
+          </span>
           <button
             type="button"
             onClick={() => {
               reset();
-              setStep("form");
+              setOpen(false);
             }}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            I&apos;ve installed it — try again
+            Cancel
           </button>
         </div>
       </div>
@@ -253,7 +264,8 @@ function ConnectFlow({
           type="button"
           onClick={() => {
             setOpen(true);
-            setStep("install");
+            // Users with the app already installed go straight to the form.
+            setStep(appInstalled ? "form" : "install");
           }}
           className={LINK_BTN}
         >
