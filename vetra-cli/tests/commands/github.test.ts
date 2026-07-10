@@ -158,7 +158,11 @@ describe("github commands", () => {
     const gitignore = readFileSync(join(workdir, ".gitignore"), "utf8");
     expect(gitignore).toContain(".ph/");
     const commands = runProcess.mock.calls.map((c) => String(c[0]));
-    expect(commands.some((c) => c.includes("git add") && c.includes("(exclude).ph"))).toBe(true);
+    // second layer: forced unstage of .ph at any depth + staged-list assert
+    const commit = commands.find((c) => c.includes("git add -A"));
+    expect(commit).toContain("git rm -r -q --cached --ignore-unmatch -- .ph");
+    expect(commit).toContain("*/.ph/*");
+    expect(commit).toContain("git diff --cached --name-only | grep");
   });
 
   it("github-pull fast-forwards from the repo", async () => {
