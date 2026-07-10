@@ -15,6 +15,7 @@ export type ConnectPhase =
   | { kind: "idle" }
   | { kind: "starting" }
   | { kind: "awaiting"; userCode: string; verificationUri: string }
+  | { kind: "needsInstall" }
   | { kind: "connected"; connection: GithubConnection }
   | { kind: "error"; message: string };
 
@@ -107,6 +108,10 @@ export function useGithubConnect(environmentId: string) {
             kind: "error",
             message: `A repository named "${repoName}" already exists. Choose another name.`,
           });
+          return;
+        }
+        if (result.status === "appNotInstalled") {
+          setPhase({ kind: "needsInstall" });
           return;
         }
         setPhase({

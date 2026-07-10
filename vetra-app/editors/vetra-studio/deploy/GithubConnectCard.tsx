@@ -111,7 +111,7 @@ function ConnectedRow({ connection }: { connection: GithubConnection }) {
           {connection.repoFullName}
         </a>
         <span className="text-xs text-muted-foreground">
-          The agent pushes your work here once the Vetra app is installed on it.
+          The agent pushes this studio&apos;s work here.
         </span>
       </div>
       <a
@@ -120,7 +120,7 @@ function ConnectedRow({ connection }: { connection: GithubConnection }) {
         rel="noopener noreferrer"
         className={LINK_BTN}
       >
-        Install app
+        Manage app
         <ExternalLink size={14} />
       </a>
     </div>
@@ -136,6 +136,7 @@ function ConnectFlow({
 }) {
   const { phase, connect, reset } = useGithubConnect(environmentId);
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<"install" | "form">("install");
   const [repoName, setRepoName] = useState("");
 
   if (phase.kind === "connected") {
@@ -146,7 +147,7 @@ function ConnectFlow({
           Repository created
         </div>
         <p className="text-sm text-muted-foreground">
-          The agent will push to{" "}
+          The agent will push this studio&apos;s work to{" "}
           <a
             href={phase.connection.repoUrl}
             target="_blank"
@@ -154,8 +155,33 @@ function ConnectFlow({
             className="text-foreground underline"
           >
             {phase.connection.repoFullName}
-          </a>{" "}
-          once the Vetra app is installed on it.
+          </a>
+          .
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onConnected(phase.connection)}
+            className={PRIMARY_BTN}
+          >
+            <Check size={14} />
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase.kind === "needsInstall") {
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <GithubMark size={15} />
+          Install the Vetra app first
+        </div>
+        <p className="text-sm text-muted-foreground">
+          The Vetra app isn&apos;t installed on your GitHub account yet, so
+          GitHub refuses to create the repository. Install it, then try again.
         </p>
         <div className="flex items-center gap-3">
           <a
@@ -169,10 +195,13 @@ function ConnectFlow({
           </a>
           <button
             type="button"
-            onClick={() => onConnected(phase.connection)}
+            onClick={() => {
+              reset();
+              setStep("form");
+            }}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            Done
+            I&apos;ve installed it — try again
           </button>
         </div>
       </div>
@@ -222,11 +251,56 @@ function ConnectFlow({
         </div>
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true);
+            setStep("install");
+          }}
           className={LINK_BTN}
         >
           Connect
         </button>
+      </div>
+    );
+  }
+
+  if (step === "install") {
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <GithubMark size={15} />
+          Step 1 of 2 — Install the Vetra app
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Install the Vetra app on your GitHub account first — GitHub only lets
+          it create the studio&apos;s repository once it&apos;s installed.
+          &ldquo;All repositories&rdquo; or a selection both work; the new repo
+          is added to the installation automatically.
+        </p>
+        <div className="flex items-center gap-3">
+          <a
+            href={githubInstallUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={PRIMARY_BTN}
+          >
+            <GithubMark size={14} />
+            Install the Vetra app
+          </a>
+          <button
+            type="button"
+            onClick={() => setStep("form")}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Already installed — continue
+          </button>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }
