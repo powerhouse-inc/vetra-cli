@@ -8,6 +8,7 @@ import {
   type MockInstance,
 } from "vitest";
 import {
+  authorizeGithub,
   connectGithub,
   githubInstallUrl,
   myGithubConnection,
@@ -118,6 +119,47 @@ describe("startGithubDeviceFlow", () => {
     );
 
     expect(await startGithubDeviceFlow("tok")).toEqual(flow);
+  });
+});
+
+describe("authorizeGithub", () => {
+  it("returns authorized with identity + install state", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({
+        data: {
+          VetraGithubAuth: {
+            authorizeGithub: { githubLogin: "alice", appInstalled: false },
+          },
+        },
+      }),
+    );
+
+    expect(await authorizeGithub("dev", "tok")).toEqual({
+      status: "authorized",
+      githubLogin: "alice",
+      appInstalled: false,
+    });
+  });
+
+  it("maps AUTHORIZATION_PENDING to pending", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({
+        errors: [{ extensions: { code: "AUTHORIZATION_PENDING" } }],
+      }),
+    );
+
+    expect(await authorizeGithub("dev", "tok")).toEqual({ status: "pending" });
+  });
+
+  it("surfaces unknown codes as an error result", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({ errors: [{ extensions: { code: "BOOM" } }] }),
+    );
+
+    expect(await authorizeGithub("dev", "tok")).toEqual({
+      status: "error",
+      message: "BOOM",
+    });
   });
 });
 

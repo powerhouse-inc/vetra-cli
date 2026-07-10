@@ -40,7 +40,7 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
   const [environmentId, setEnvironmentId] = useState<string | null>(null);
   const [status, setStatus] = useState<
     | { kind: "loading" }
-    | { kind: "disconnected"; appInstalled: boolean }
+    | { kind: "disconnected" }
     | { kind: "connected"; connection: GithubConnection }
   >({ kind: "loading" });
 
@@ -66,10 +66,7 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
       if (result?.connected && result.connection) {
         setStatus({ kind: "connected", connection: result.connection });
       } else {
-        setStatus({
-          kind: "disconnected",
-          appInstalled: result?.appInstalled ?? false,
-        });
+        setStatus({ kind: "disconnected" });
       }
     })();
     return () => {
@@ -95,7 +92,6 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
   return (
     <ConnectFlow
       environmentId={environmentId}
-      appInstalled={status.appInstalled}
       onConnected={(connection) => setStatus({ kind: "connected", connection })}
     />
   );
@@ -133,16 +129,20 @@ function ConnectedRow({ connection }: { connection: GithubConnection }) {
 
 function ConnectFlow({
   environmentId,
-  appInstalled,
   onConnected,
 }: {
   environmentId: string;
-  appInstalled: boolean;
   onConnected: (connection: GithubConnection) => void;
 }) {
-  const { phase, connect, reset } = useGithubConnect(environmentId);
+  const { phase, start, createRepo, reset } = useGithubConnect(environmentId);
   const [open, setOpen] = useState(false);
   const [repoName, setRepoName] = useState("");
+
+  // The journey starts with GitHub authorization, so kick it off the moment
+  // the dialog opens — the repo name comes last.
+  useEffect(() => {
+    if (open && phase.kind === "idle") void start();
+  }, [open, phase.kind, start]);
 
   const close = () => {
     reset();
@@ -170,10 +170,10 @@ function ConnectFlow({
       {open ? (
         <ConnectModal
           phase={phase}
-          appInstalled={appInstalled}
           repoName={repoName}
           setRepoName={setRepoName}
-          onSubmit={() => void connect(repoName.trim())}
+          onSubmit={() => void createRepo(repoName.trim())}
+          onRetry={() => void start()}
           onDone={(connection) => {
             onConnected(connection);
             close();
@@ -185,23 +185,24 @@ function ConnectFlow({
   );
 }
 
-/** Focused dialog hosting the whole connect journey: repo name → device code
- * → (if needed) waiting-for-install → created. The flow advances by itself;
- * the only manual actions are GitHub's own pages. */
+/** Focused dialog hosting the whole connect journey: authorize (device code)
+ * → waiting-for-install if needed (auto-advances) → repo name → created. The
+ * flow advances by itself; the only manual actions are GitHub's own pages and
+ * the final repo name. */
 function ConnectModal({
   phase,
-  appInstalled,
   repoName,
   setRepoName,
   onSubmit,
+  onRetry,
   onDone,
   onClose,
 }: {
   phase: ReturnType<typeof useGithubConnect>["phase"];
-  appInstalled: boolean;
   repoName: string;
   setRepoName: (v: string) => void;
   onSubmit: () => void;
+  onRetry: () => void;
   onDone: (connection: GithubConnection) => void;
   onClose: () => void;
 }) {
@@ -220,10 +221,10 @@ function ConnectModal({
         </div>
         <ModalBody
           phase={phase}
-          appInstalled={appInstalled}
           repoName={repoName}
           setRepoName={setRepoName}
           onSubmit={onSubmit}
+          onRetry={onRetry}
           onDone={onDone}
           onClose={onClose}
         />
@@ -234,18 +235,18 @@ function ConnectModal({
 
 function ModalBody({
   phase,
-  appInstalled,
   repoName,
   setRepoName,
   onSubmit,
+  onRetry,
   onDone,
   onClose,
 }: {
   phase: ReturnType<typeof useGithubConnect>["phase"];
-  appInstalled: boolean;
   repoName: string;
   setRepoName: (v: string) => void;
   onSubmit: () => void;
+  onRetry: () => void;
   onDone: (connection: GithubConnection) => void;
   onClose: () => void;
 }) {
@@ -282,7 +283,7 @@ function ModalBody({
     );
   }
 
-  if (phase.kind === "needsInstall") {
+  if (phase.kind === "waitingInstall") {
     return (
       <>
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -344,7 +345,46 @@ function ModalBody({
     );
   }
 
-  const busy = phase.kind === "starting";
+  if (phase.kind === "idle" || phase.kind === "starting") {
+    return (
+      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 size={14} className="animate-spin" />
+        Contacting GitHub…
+      </span>
+    );
+  }
+
+  if (phase.kind === "creating") {
+    return (
+      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 size={14} className="animate-spin" />
+        Creating the repository…
+      </span>
+    );
+  }
+
+  if (phase.kind === "error") {
+    return (
+      <>
+        <p className="text-sm text-destructive">{phase.message}</p>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={onRetry} className={PRIMARY_BTN}>
+            <GithubMark size={14} />
+            Try again
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  // naming — authorized + installed; the repo name is the last step.
   return (
     <>
       <label className="flex flex-col gap-1.5">
@@ -362,38 +402,23 @@ function ModalBody({
           Created private in your GitHub account; must be unique there.
         </span>
       </label>
-      <p className="text-xs text-muted-foreground">
-        {appInstalled
-          ? "The Vetra GitHub app is installed on your account — you'll only be asked to authorize."
-          : "You'll authorize Vetra on GitHub and be asked to install the Vetra app if it isn't installed yet."}
-      </p>
-      {phase.kind === "error" ? (
-        <p className="text-sm text-destructive">{phase.message}</p>
+      {phase.kind === "naming" && phase.error ? (
+        <p className="text-sm text-destructive">{phase.error}</p>
       ) : null}
       <div className="flex items-center gap-3">
         <button
           type="button"
-          disabled={busy || repoName.trim().length === 0}
+          disabled={repoName.trim().length === 0}
           onClick={onSubmit}
           className={PRIMARY_BTN}
         >
-          {busy ? (
-            <>
-              <Loader2 size={14} className="animate-spin" />
-              Starting…
-            </>
-          ) : (
-            <>
-              <GithubMark size={14} />
-              Connect GitHub
-            </>
-          )}
+          <GithubMark size={14} />
+          Create repository
         </button>
         <button
           type="button"
-          disabled={busy}
           onClick={onClose}
-          className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+          className="text-sm text-muted-foreground hover:text-foreground"
         >
           Cancel
         </button>

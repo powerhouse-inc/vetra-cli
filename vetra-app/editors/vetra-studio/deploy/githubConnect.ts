@@ -144,6 +144,57 @@ export async function myGithubStatus(
   return data?.VetraGithubAuth.myGithubStatus ?? null;
 }
 
+/** Result of one authorizeGithub poll. */
+export type AuthorizeResult =
+  | { status: "authorized"; githubLogin: string | null; appInstalled: boolean }
+  | { status: "pending" }
+  | { status: "slowDown" }
+  | { status: "expired" }
+  | { status: "denied" }
+  | { status: "unauthenticated" }
+  | { status: "error"; message: string };
+
+/**
+ * One poll of device authorization: reports identity + live install state once
+ * the user approves. Keep polling while pending, and while appInstalled is
+ * false. The backend caches the exchanged token so connectGithub can follow
+ * with the same deviceCode.
+ */
+export async function authorizeGithub(
+  deviceCode: string,
+  token: string,
+): Promise<AuthorizeResult> {
+  const { data, errorMessage } = await gql<{
+    VetraGithubAuth: {
+      authorizeGithub: { githubLogin: string | null; appInstalled: boolean };
+    };
+  }>(
+    `mutation ($deviceCode: String!) {
+      VetraGithubAuth {
+        authorizeGithub(deviceCode: $deviceCode) { githubLogin appInstalled }
+      }
+    }`,
+    { deviceCode },
+    token,
+  );
+  const result = data?.VetraGithubAuth.authorizeGithub;
+  if (result) return { status: "authorized", ...result };
+  switch (errorMessage) {
+    case "AUTHORIZATION_PENDING":
+      return { status: "pending" };
+    case "SLOW_DOWN":
+      return { status: "slowDown" };
+    case "DEVICE_CODE_EXPIRED":
+      return { status: "expired" };
+    case "ACCESS_DENIED":
+      return { status: "denied" };
+    case "UNAUTHENTICATED":
+      return { status: "unauthenticated" };
+    default:
+      return { status: "error", message: errorMessage ?? "UNKNOWN" };
+  }
+}
+
 /** Begin device authorization. Null on failure. */
 export async function startGithubDeviceFlow(
   token: string,
