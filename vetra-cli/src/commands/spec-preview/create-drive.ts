@@ -9,6 +9,7 @@ import {
   findPreviewDriveByPreferredEditor,
   getPreviewAuthToken,
   resolveAppEditorId,
+  ensureReactorProjectReady,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
 
@@ -35,6 +36,9 @@ export const specPreviewCreateDrive = defineCommand({
       context.workdir,
       input.project,
     );
+    await ensureReactorProjectReady(context.services, base, {
+      startParams: context.proxy?.url ? { proxyPublicUrl: context.proxy.url } : undefined,
+    });
     const { switchboardUrl } = resolvePreviewEndpoint(
       context.services,
       base,

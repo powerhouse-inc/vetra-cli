@@ -46,6 +46,12 @@ export function getPreviewDriveId(projectPath: string): string {
   return `${PREVIEW_DRIVE_PREFIX}-${hash}`;
 }
 
+// Compare project paths by canonical (realpath) form — a running instance
+// registers a realpath'd workdir (macOS /var → /private/var) a raw compare misses.
+function sameProjectPath(a: string | undefined, b: string): boolean {
+  return a !== undefined && canonicalProjectPath(a) === canonicalProjectPath(b);
+}
+
 function canonicalProjectPath(projectPath: string): string {
   try {
     return fs.realpathSync(projectPath);
@@ -78,7 +84,7 @@ export function resolvePreviewEndpoint(
   const instances = services.list("reactor-project");
   const live = instances.find(
     (i) =>
-      i.workdir === projectPath &&
+      sameProjectPath(i.workdir, projectPath) &&
       (i.status === "ready" || i.status === "starting"),
   );
   if (!live) {
@@ -100,6 +106,49 @@ export function resolvePreviewEndpoint(
     connectUrl: live.endpoints?.["vetra-studio"],
     driveId: getPreviewDriveId(projectPath),
   };
+}
+
+// Deterministically bring the reactor-project to "ready" (Switchboard up) so
+// preview tools don't error/retry on a still-starting instance.
+
+// Starts one if none is registered (`services.start` blocks until ready); the
+// poll covers an instance already starting via the spec-change auto-start trigger.
+export async function ensureReactorProjectReady(
+  services: ServiceManager | undefined,
+  projectPath: string,
+  opts?: { startParams?: Record<string, unknown>; timeoutMs?: number },
+): Promise<void> {
+  if (!services) return;
+  const ready = () => {
+    const inst = services
+      .list("reactor-project")
+      .find((i) => sameProjectPath(i.workdir, projectPath));
+    return inst?.status === "ready" && Boolean(inst.endpoints?.["vetra-switchboard"]);
+  };
+  if (ready()) return;
+
+  const starting = services
+    .list("reactor-project")
+    .some((i) => sameProjectPath(i.workdir, projectPath) && (i.status === "ready" || i.status === "starting"));
+  if (!starting) {
+    try {
+      await services.start("reactor-project", {
+        workdir: projectPath,
+        cwd: projectPath,
+        params: opts?.startParams,
+      });
+    } catch (err) {
+      // Surface, don't swallow — a start failure here (e.g. "max instances")
+      // otherwise looks like a mysterious "not running" downstream.
+      console.error(`[ensure-ready] services.start failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const deadline = Date.now() + (opts?.timeoutMs ?? 45_000);
+  while (Date.now() < deadline) {
+    if (ready()) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
 
 /**
