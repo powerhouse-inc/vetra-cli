@@ -36,6 +36,7 @@ export type ConnectResult =
   | { status: "expired" }
   | { status: "denied" }
   | { status: "repoExists" }
+  | { status: "appNotInstalled" }
   | { status: "unauthenticated" }
   | { status: "error"; message: string };
 
@@ -47,6 +48,7 @@ const CONNECT_ERROR_STATUS: Partial<Record<string, PollStatus>> = {
   DEVICE_CODE_EXPIRED: "expired",
   ACCESS_DENIED: "denied",
   REPO_ALREADY_EXISTS: "repoExists",
+  APP_NOT_INSTALLED: "appNotInstalled",
   UNAUTHENTICATED: "unauthenticated",
 };
 

@@ -41,9 +41,16 @@ export const githubPush = defineCommand({
       { label: 'git-init', command: 'git init -q' },
       {
         label: 'git-commit',
-        command: `git add -A -- . ${shq(':(exclude).ph')} && (git diff --cached --quiet || git -c user.name=${shq(
-          botName,
-        )} -c user.email=${shq(botEmail)} commit -q -m ${shq(message)})`,
+        // .ph is excluded twice: the workspace .gitignore, plus a forced
+        // unstage at any depth (an add-time pathspec exclude exits 1 when
+        // .gitignore already covers .ph). The grep asserts nothing .ph-ish
+        // survived staging before the commit runs.
+        command:
+          `git add -A && git rm -r -q --cached --ignore-unmatch -- .ph ${shq('*/.ph/*')} && ` +
+          `! git diff --cached --name-only | grep -qE ${shq('(^|/)\\.ph(/|$)')} && ` +
+          `(git diff --cached --quiet || git -c user.name=${shq(
+            botName,
+          )} -c user.email=${shq(botEmail)} commit -q -m ${shq(message)})`,
       },
       {
         label: 'git-push',
