@@ -108,29 +108,32 @@ export function resolvePreviewEndpoint(
   };
 }
 
-// Deterministically bring the reactor-project to "ready" (Switchboard up) so
-// preview tools don't error/retry on a still-starting instance.
+// Default wait matches the reactor service's own cold-start readiness budget
+// (VETRA_REACTOR_READINESS_TIMEOUT_MS, default 90s) plus a margin.
+const READY_POLL_TIMEOUT_MS =
+  (Number(process.env.VETRA_REACTOR_READINESS_TIMEOUT_MS) || 90_000) + 30_000;
 
-// Starts one if none is registered (`services.start` blocks until ready); the
-// poll covers an instance already starting via the spec-change auto-start trigger.
+// Bring the reactor-project to "ready" (Switchboard up) before a preview tool
+// talks to it. Throws an actionable error rather than a vague "not running".
 export async function ensureReactorProjectReady(
   services: ServiceManager | undefined,
   projectPath: string,
   opts?: { startParams?: Record<string, unknown>; timeoutMs?: number },
 ): Promise<void> {
   if (!services) return;
-  const ready = () => {
-    const inst = services
+  const matches = (i: { workdir?: string }) => sameProjectPath(i.workdir, projectPath);
+  // Filter by status inside the find — a stale stopped/failed entry for the
+  // same path must not shadow the actual ready instance.
+  const readyInstance = () =>
+    services
       .list("reactor-project")
-      .find((i) => sameProjectPath(i.workdir, projectPath));
-    return inst?.status === "ready" && Boolean(inst.endpoints?.["vetra-switchboard"]);
-  };
-  if (ready()) return;
+      .find((i) => matches(i) && i.status === "ready" && Boolean(i.endpoints?.["vetra-switchboard"]));
+  if (readyInstance()) return;
 
-  const starting = services
+  const pending = services
     .list("reactor-project")
-    .some((i) => sameProjectPath(i.workdir, projectPath) && (i.status === "ready" || i.status === "starting"));
-  if (!starting) {
+    .some((i) => matches(i) && (i.status === "ready" || i.status === "starting"));
+  if (!pending) {
     try {
       await services.start("reactor-project", {
         workdir: projectPath,
@@ -138,17 +141,26 @@ export async function ensureReactorProjectReady(
         params: opts?.startParams,
       });
     } catch (err) {
-      // Surface, don't swallow — a start failure here (e.g. "max instances")
-      // otherwise looks like a mysterious "not running" downstream.
-      console.error(`[ensure-ready] services.start failed: ${err instanceof Error ? err.message : String(err)}`);
+      // The single reactor slot is held by a different project — fail fast with
+      // the fix, not a poll that ends in a misleading "not running".
+      const other = services
+        .list("reactor-project")
+        .find((i) => !matches(i) && (i.status === "ready" || i.status === "starting"));
+      if (other) {
+        throw new Error(
+          `Cannot start the reactor for this project — another reactor project ("${path.basename(other.workdir ?? "?")}") is running. Stop it first with \`reactor-project-stop\`.`,
+        );
+      }
+      throw err instanceof Error ? err : new Error(String(err));
     }
   }
 
-  const deadline = Date.now() + (opts?.timeoutMs ?? 45_000);
+  const deadline = Date.now() + (opts?.timeoutMs ?? READY_POLL_TIMEOUT_MS);
   while (Date.now() < deadline) {
-    if (ready()) return;
+    if (readyInstance()) return;
     await new Promise((r) => setTimeout(r, 500));
   }
+  throw new Error(`Timed out waiting for reactor project at ${projectPath} to become ready.`);
 }
 
 /**
