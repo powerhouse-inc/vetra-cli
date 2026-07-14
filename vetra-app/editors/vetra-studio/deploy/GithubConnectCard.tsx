@@ -1,5 +1,5 @@
-import { Check, ExternalLink, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRenown } from "@powerhousedao/reactor-browser";
 import { resolveStudioEnvironmentId } from "../hooks/preview-server-client.js";
 import { getAuthToken } from "./cloudClient.js";
@@ -15,6 +15,64 @@ const LINK_BTN =
 
 const PRIMARY_BTN =
   "flex shrink-0 items-center gap-1.5 rounded-lg bg-vetra-primary px-3.5 py-2 text-sm font-medium text-vetra-primary-fg hover:bg-vetra-primary/90 disabled:cursor-not-allowed disabled:opacity-50";
+
+/** Counts down, then opens `url` in a new tab once; keeps the user informed
+ * either way (popup blockers may eat the auto-open — the manual button stays). */
+function AutoOpenNotice({
+  url,
+  pendingLabel,
+  openedLabel,
+}: {
+  url: string;
+  pendingLabel: (seconds: number) => string;
+  openedLabel: string;
+}) {
+  const [remaining, setRemaining] = useState(5);
+  const openedRef = useRef(false);
+
+  useEffect(() => {
+    if (remaining <= 0) {
+      if (!openedRef.current) {
+        openedRef.current = true;
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+    const timer = setTimeout(() => setRemaining((r) => r - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [remaining, url]);
+
+  return (
+    <p className="text-xs text-muted-foreground">
+      {remaining > 0 ? pendingLabel(remaining) : openedLabel}
+    </p>
+  );
+}
+
+/** Copies `value` to the clipboard with a brief confirmation state. */
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        void navigator.clipboard.writeText(value).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-vetra-primary hover:text-vetra-primary"
+    >
+      {copied ? (
+        <Check size={16} className="text-success" />
+      ) : (
+        <Copy size={16} />
+      )}
+    </button>
+  );
+}
 
 /** GitHub mark, inline (this lucide-react version ships no brand icons). */
 function GithubMark({ size }: { size: number }) {
@@ -373,6 +431,11 @@ function ModalBody({
           GitHub account yet. Install it and this dialog will continue by itself
           — nothing to confirm here.
         </p>
+        <AutoOpenNotice
+          url={githubInstallUrl()}
+          pendingLabel={(s) => `Taking you to the app install page in ${s}s…`}
+          openedLabel="Install page opened in a new tab — choose which repositories the app may access."
+        />
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -401,9 +464,23 @@ function ModalBody({
         <p className="text-sm text-muted-foreground">
           Open GitHub and enter this code to authorize Vetra:
         </p>
-        <div className="rounded-lg bg-muted px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-foreground">
-          {phase.userCode}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 rounded-lg bg-muted px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-foreground">
+            {phase.userCode}
+          </div>
+          <CopyButton value={phase.userCode} label="Copy code" />
         </div>
+        <span className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 size={14} className="animate-spin" />
+          Waiting for authorization…
+        </span>
+        <AutoOpenNotice
+          url={phase.verificationUri}
+          pendingLabel={(s) =>
+            `Taking you to GitHub in ${s}s to enter the code…`
+          }
+          openedLabel="GitHub opened in a new tab — enter the code there."
+        />
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -412,21 +489,15 @@ function ModalBody({
           >
             Cancel
           </button>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" />
-              Waiting for authorization…
-            </span>
-            <a
-              href={phase.verificationUri}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={PRIMARY_BTN}
-            >
-              <GithubMark size={14} />
-              Open GitHub
-            </a>
-          </div>
+          <a
+            href={phase.verificationUri}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={PRIMARY_BTN}
+          >
+            <GithubMark size={14} />
+            Open GitHub
+          </a>
         </div>
       </>
     );
