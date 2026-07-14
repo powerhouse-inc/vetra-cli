@@ -5,7 +5,7 @@ import { resolveStudioEnvironmentId } from "../hooks/preview-server-client.js";
 import { getAuthToken } from "./cloudClient.js";
 import {
   githubInstallUrl,
-  myGithubConnection,
+  myGithubStatus,
   type GithubConnection,
 } from "./githubConnect.js";
 import { useGithubConnect } from "./useGithubConnect.js";
@@ -61,7 +61,7 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
     void (async () => {
       const token = await getAuthToken(renown);
       if (!token || isCancelled()) return;
-      const result = await myGithubConnection(environmentId, token);
+      const result = await myGithubStatus(environmentId, token);
       if (isCancelled()) return;
       if (result?.connected && result.connection) {
         setStatus({ kind: "connected", connection: result.connection });
@@ -134,14 +134,129 @@ function ConnectFlow({
   environmentId: string;
   onConnected: (connection: GithubConnection) => void;
 }) {
-  const { phase, connect, reset } = useGithubConnect(environmentId);
+  const { phase, start, createRepo, reset } = useGithubConnect(environmentId);
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"install" | "form">("install");
   const [repoName, setRepoName] = useState("");
 
+  // The journey starts with GitHub authorization, so kick it off the moment
+  // the dialog opens — the repo name comes last.
+  useEffect(() => {
+    if (open && phase.kind === "idle") void start();
+  }, [open, phase.kind, start]);
+
+  const close = () => {
+    reset();
+    setRepoName("");
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
+        <GithubMark size={16} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-sm font-medium text-foreground">
+            Connect GitHub
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Create a private repository the agent pushes this studio&apos;s work
+            to.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={LINK_BTN}
+        >
+          Connect
+        </button>
+      </div>
+      {open ? (
+        <ConnectModal
+          phase={phase}
+          repoName={repoName}
+          setRepoName={setRepoName}
+          onSubmit={() => void createRepo(repoName.trim())}
+          onRetry={() => void start()}
+          onDone={(connection) => {
+            onConnected(connection);
+            close();
+          }}
+          onClose={close}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Focused dialog hosting the whole connect journey: authorize (device code)
+ * → waiting-for-install if needed (auto-advances) → repo name → created. The
+ * flow advances by itself; the only manual actions are GitHub's own pages and
+ * the final repo name. */
+function ConnectModal({
+  phase,
+  repoName,
+  setRepoName,
+  onSubmit,
+  onRetry,
+  onDone,
+  onClose,
+}: {
+  phase: ReturnType<typeof useGithubConnect>["phase"];
+  repoName: string;
+  setRepoName: (v: string) => void;
+  onSubmit: () => void;
+  onRetry: () => void;
+  onDone: (connection: GithubConnection) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div aria-hidden className="absolute inset-0 bg-black/60" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Connect GitHub"
+        className="relative z-10 flex w-full max-w-md flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-xl"
+      >
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <GithubMark size={16} />
+          Connect GitHub
+        </div>
+        <ModalBody
+          phase={phase}
+          repoName={repoName}
+          setRepoName={setRepoName}
+          onSubmit={onSubmit}
+          onRetry={onRetry}
+          onDone={onDone}
+          onClose={onClose}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ModalBody({
+  phase,
+  repoName,
+  setRepoName,
+  onSubmit,
+  onRetry,
+  onDone,
+  onClose,
+}: {
+  phase: ReturnType<typeof useGithubConnect>["phase"];
+  repoName: string;
+  setRepoName: (v: string) => void;
+  onSubmit: () => void;
+  onRetry: () => void;
+  onDone: (connection: GithubConnection) => void;
+  onClose: () => void;
+}) {
   if (phase.kind === "connected") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+      <>
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Check size={15} className="text-success" />
           Repository created
@@ -158,32 +273,40 @@ function ConnectFlow({
           </a>
           .
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-end">
           <button
             type="button"
-            onClick={() => onConnected(phase.connection)}
+            onClick={() => onDone(phase.connection)}
             className={PRIMARY_BTN}
           >
             <Check size={14} />
             Done
           </button>
         </div>
-      </div>
+      </>
     );
   }
 
-  if (phase.kind === "needsInstall") {
+  if (phase.kind === "waitingInstall") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+      <>
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <GithubMark size={15} />
-          Install the Vetra app first
+          <Loader2 size={15} className="animate-spin" />
+          Waiting for the app installation…
         </div>
         <p className="text-sm text-muted-foreground">
-          The Vetra app isn&apos;t installed on your GitHub account yet, so
-          GitHub refuses to create the repository. Install it, then try again.
+          You&apos;re authorized, but the Vetra app isn&apos;t installed on your
+          GitHub account yet. Install it and this dialog will continue by itself
+          — nothing to confirm here.
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
           <a
             href={githubInstallUrl()}
             target="_blank"
@@ -193,121 +316,90 @@ function ConnectFlow({
             <GithubMark size={14} />
             Install the Vetra app
           </a>
-          <button
-            type="button"
-            onClick={() => {
-              reset();
-              setStep("form");
-            }}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            I&apos;ve installed it — try again
-          </button>
         </div>
-      </div>
+      </>
     );
   }
 
   if (phase.kind === "awaiting") {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+      <>
         <p className="text-sm text-muted-foreground">
           Open GitHub and enter this code to authorize Vetra:
         </p>
         <div className="rounded-lg bg-muted px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-foreground">
           {phase.userCode}
         </div>
-        <div className="flex items-center gap-3">
-          <a
-            href={phase.verificationUri}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={PRIMARY_BTN}
-          >
-            <GithubMark size={14} />
-            Open GitHub
-          </a>
-          <span className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" />
-            Waiting for authorization…
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!open) {
-    return (
-      <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
-        <GithubMark size={16} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-sm font-medium text-foreground">
-            Connect GitHub
-          </span>
-          <span className="text-xs text-muted-foreground">
-            Create a private repository the agent pushes this studio&apos;s work
-            to.
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(true);
-            setStep("install");
-          }}
-          className={LINK_BTN}
-        >
-          Connect
-        </button>
-      </div>
-    );
-  }
-
-  if (step === "install") {
-    return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <GithubMark size={15} />
-          Step 1 of 2 — Install the Vetra app
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Install the Vetra app on your GitHub account first — GitHub only lets
-          it create the studio&apos;s repository once it&apos;s installed.
-          &ldquo;All repositories&rdquo; or a selection both work; the new repo
-          is added to the installation automatically.
-        </p>
-        <div className="flex items-center gap-3">
-          <a
-            href={githubInstallUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={PRIMARY_BTN}
-          >
-            <GithubMark size={14} />
-            Install the Vetra app
-          </a>
+        <div className="flex items-center justify-between gap-3">
           <button
             type="button"
-            onClick={() => setStep("form")}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            Already installed — continue
-          </button>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
+            onClick={onClose}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             Cancel
           </button>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" />
+              Waiting for authorization…
+            </span>
+            <a
+              href={phase.verificationUri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={PRIMARY_BTN}
+            >
+              <GithubMark size={14} />
+              Open GitHub
+            </a>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
-  const busy = phase.kind === "starting";
+  if (phase.kind === "idle" || phase.kind === "starting") {
+    return (
+      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 size={14} className="animate-spin" />
+        Contacting GitHub…
+      </span>
+    );
+  }
+
+  if (phase.kind === "creating") {
+    return (
+      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 size={14} className="animate-spin" />
+        Creating the repository…
+      </span>
+    );
+  }
+
+  if (phase.kind === "error") {
+    return (
+      <>
+        <p className="text-sm text-destructive">{phase.message}</p>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <button type="button" onClick={onRetry} className={PRIMARY_BTN}>
+            <GithubMark size={14} />
+            Try again
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  // naming — authorized + installed; the repo name is the last step.
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4">
+    <>
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-foreground">
           Repository name
@@ -323,42 +415,27 @@ function ConnectFlow({
           Created private in your GitHub account; must be unique there.
         </span>
       </label>
-      {phase.kind === "error" ? (
-        <p className="text-sm text-destructive">{phase.message}</p>
+      {phase.error ? (
+        <p className="text-sm text-destructive">{phase.error}</p>
       ) : null}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3">
         <button
           type="button"
-          disabled={busy || repoName.trim().length === 0}
-          onClick={() => {
-            void connect(repoName.trim());
-          }}
-          className={PRIMARY_BTN}
-        >
-          {busy ? (
-            <>
-              <Loader2 size={14} className="animate-spin" />
-              Starting…
-            </>
-          ) : (
-            <>
-              <GithubMark size={14} />
-              Connect GitHub
-            </>
-          )}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            reset();
-            setOpen(false);
-          }}
-          className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+          onClick={onClose}
+          className="text-sm text-muted-foreground hover:text-foreground"
         >
           Cancel
         </button>
+        <button
+          type="button"
+          disabled={repoName.trim().length === 0}
+          onClick={onSubmit}
+          className={PRIMARY_BTN}
+        >
+          <GithubMark size={14} />
+          Create repository
+        </button>
       </div>
-    </div>
+    </>
   );
 }

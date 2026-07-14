@@ -8,9 +8,11 @@ import {
   type MockInstance,
 } from "vitest";
 import {
+  authorizeGithub,
   connectGithub,
   githubInstallUrl,
   myGithubConnection,
+  myGithubStatus,
   startGithubDeviceFlow,
 } from "./githubConnect.js";
 
@@ -70,6 +72,37 @@ describe("myGithubConnection", () => {
   });
 });
 
+describe("myGithubStatus", () => {
+  it("returns the full status", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({
+        data: {
+          VetraGithubAuth: {
+            myGithubStatus: {
+              connected: false,
+              connection: null,
+              githubLogin: "alice",
+              appInstalled: true,
+            },
+          },
+        },
+      }),
+    );
+
+    expect(await myGithubStatus("env-1", "tok")).toEqual({
+      connected: false,
+      connection: null,
+      githubLogin: "alice",
+      appInstalled: true,
+    });
+  });
+
+  it("returns null on a network failure", async () => {
+    fetchSpy.mockRejectedValue(new Error("offline"));
+    expect(await myGithubStatus("env-1", "tok")).toBeNull();
+  });
+});
+
 describe("startGithubDeviceFlow", () => {
   it("returns the device flow", async () => {
     const flow = {
@@ -86,6 +119,47 @@ describe("startGithubDeviceFlow", () => {
     );
 
     expect(await startGithubDeviceFlow("tok")).toEqual(flow);
+  });
+});
+
+describe("authorizeGithub", () => {
+  it("returns authorized with identity + install state", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({
+        data: {
+          VetraGithubAuth: {
+            authorizeGithub: { githubLogin: "alice", appInstalled: false },
+          },
+        },
+      }),
+    );
+
+    expect(await authorizeGithub("dev", "tok")).toEqual({
+      status: "authorized",
+      githubLogin: "alice",
+      appInstalled: false,
+    });
+  });
+
+  it("maps AUTHORIZATION_PENDING to pending", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({
+        errors: [{ extensions: { code: "AUTHORIZATION_PENDING" } }],
+      }),
+    );
+
+    expect(await authorizeGithub("dev", "tok")).toEqual({ status: "pending" });
+  });
+
+  it("surfaces unknown codes as an error result", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({ errors: [{ extensions: { code: "BOOM" } }] }),
+    );
+
+    expect(await authorizeGithub("dev", "tok")).toEqual({
+      status: "error",
+      message: "BOOM",
+    });
   });
 });
 
@@ -113,6 +187,7 @@ describe("connectGithub", () => {
     ["DEVICE_CODE_EXPIRED", "expired"],
     ["ACCESS_DENIED", "denied"],
     ["REPO_ALREADY_EXISTS", "repoExists"],
+    ["APP_NOT_INSTALLED", "appNotInstalled"],
     ["UNAUTHENTICATED", "unauthenticated"],
   ];
 
