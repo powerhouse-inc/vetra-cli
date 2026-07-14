@@ -1,15 +1,20 @@
 // First-run Claude auth: on a bare interactive launch with no credential, offer
-// the installer's three paths — paste a key, subscription login (OAuth), or skip.
+// the installer's paths — paste a key or skip.
 import fs from 'node:fs';
-import path from 'node:path';
 import readline from 'node:readline/promises';
-import { configKeyToEnvVar, localConfigPath, userConfigPath } from '@powerhousedao/ph-clint';
 import {
-  createClaudeAuthCommands,
+  configKeyToEnvVar,
+  createConfigCommand,
+  localConfigPath,
+  userConfigPath,
+  type CommandContext,
+} from '@powerhousedao/ph-clint';
+import {
   createSession,
   createUserTokenStore,
 } from '@powerhousedao/ph-clint-claude-subscription';
 import { CLI_NAME } from './config.js';
+import { configSchema, secretsSchema } from './framework.js';
 
 const KEY_ENV = configKeyToEnvVar(CLI_NAME, 'anthropicApiKey'); // VETRA_ANTHROPIC_API_KEY
 const REQUIRE_ENV = configKeyToEnvVar(CLI_NAME, 'requireApiKey'); // VETRA_REQUIRE_API_KEY
@@ -64,47 +69,23 @@ function readKey(file: string): string | undefined {
   }
 }
 
-// Persist atomically at 0600 (writeFileSync's mode is ignored on an existing
-// file); set the env first so the key works this run even if the write fails.
-function persistApiKey(key: string): string {
+// Persist the key to user config via ph-clint's config command (single source
+// of truth for merge + schema validation). Returns the config file path.
+async function persistApiKey(key: string): Promise<string> {
+  // Set env first so the key works this run even if the write fails.
   process.env[KEY_ENV] = key;
-  const file = userConfigPath(CLI_NAME);
-  let obj: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) obj = parsed as Record<string, unknown>;
-  } catch { /* new or unreadable file */ }
-  obj.anthropicApiKey = key;
-  const data = `${JSON.stringify(obj, null, 2)}\n`;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, data, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  try {
-    fs.renameSync(tmp, file);
-  } catch {
-    // Windows rename won't clobber an existing dest; write in place instead.
-    fs.writeFileSync(file, data, { mode: 0o600 });
-    fs.chmodSync(file, 0o600);
-    fs.rmSync(tmp, { force: true });
-  }
-  return file;
-}
-
-async function runClaudeLogin(): Promise<void> {
-  const login = createClaudeAuthCommands({ cliName: CLI_NAME }).find((c) => c.id === 'claude-login');
-  if (!login) return;
-  // --interactive uses only ctx.stdout + a fixed user-scope store; workspace is a stub.
-  await login.execute(
-    { interactive: true },
-    {
-      stdout: (text: string) => process.stdout.write(`${text}\n`),
-      workspace: {
-        loadJsonObject: async <T>(_f: string, fallback: T) => fallback,
-        storeJsonObject: async () => {},
-      },
-    } as never,
+  const configCommand = createConfigCommand({
+    cliName: CLI_NAME,
+    configSchema: configSchema.merge(secretsSchema),
+    sensitiveKeys: new Set(Object.keys(secretsSchema.shape)),
+  });
+  // scope 'user' targets userConfigPath regardless of workdir; the returned
+  // text echoes the value uncensored, so discard it in favor of the path.
+  await configCommand.execute(
+    { name: 'anthropicApiKey', write: key, scope: 'user' },
+    { workdir: process.cwd() } as unknown as CommandContext,
   );
+  return userConfigPath(CLI_NAME);
 }
 
 // Read a line with echo suppressed via raw mode (no readline private APIs).
@@ -147,38 +128,33 @@ async function promptSetup(): Promise<void> {
   process.stdout.write(
     [
       '',
-      'Set up Claude auth',
-      'Vetra calls Claude. How do you want to authenticate?',
+      'Set up Claude authentication.',
+      'How do you want to authenticate?',
       '  [1] Paste an Anthropic API key  (console.anthropic.com)',
-      '  [2] Log in with a Claude.ai subscription',
-      '  [3] Skip — set it up later',
+      '  [2] Skip — set it up later',
       '',
     ].join('\n'),
   );
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
   let choice: string;
   try {
-    choice = (await rl.question('Choose [1/2/3]: ')).trim();
+    choice = (await rl.question('Choose [1/2]: ')).trim();
   } finally {
-    rl.close(); // release stdin before raw read / claude-login's own reader
+    rl.close(); // release stdin before raw read
   }
   if (choice === '1') {
     const key = (await readSecret('Paste your Anthropic API key (hidden): ')).trim();
     if (!key) { process.stdout.write('No key entered — skipping.\n'); return; }
     try {
-      process.stdout.write(`Saved your API key to ${persistApiKey(key)}\n`);
+      await persistApiKey(key)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stdout.write(`Could not save the API key (${msg}); it is set for this session — export ${KEY_ENV} to persist it.\n`);
     }
     return;
   }
-  if (choice === '2') {
-    await runClaudeLogin();
-    return;
-  }
   process.stdout.write(
-    `Skipped. Authenticate later with \`export ${KEY_ENV}=sk-ant-...\` or \`${CLI_NAME} claude-login\`.\n`,
+    `Skipped. Authenticate later with \`export ${KEY_ENV}=sk-ant-...\`.\n`,
   );
 }
 

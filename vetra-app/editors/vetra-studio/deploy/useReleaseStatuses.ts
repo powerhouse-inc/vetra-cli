@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchReleaseStatus } from "../hooks/preview-server-client.js";
+import { errorMessage } from "./utils.js";
 
 /** Per-project release status. `known: false` when it can't be determined
  * (registry unreachable, auth required, no package) — the UI shows nothing. */
@@ -69,10 +70,7 @@ export function useReleaseStatuses(
         setState({ status: "ready", byProject: new Map(entries) });
       } catch (err) {
         if (!alive.current) return;
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : String(err),
-        });
+        setState({ status: "error", message: errorMessage(err) });
       }
     })();
     return () => {

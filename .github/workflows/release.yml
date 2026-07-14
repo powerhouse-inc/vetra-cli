@@ -99,16 +99,28 @@ jobs:
           # Registry auth tokens are 300s JWTs (even on the htpasswd path), so
           # a stored token secret would be dead on arrival — log in with
           # user/password and mint a fresh token right before each registry's
-          # publishes instead.
+          # publishes instead. JSON is built by node so special characters in
+          # the password survive; retries re-roll the pod behind the LB (the
+          # registries keep per-pod htpasswd state).
           mint_token() { # <registry> <user> <password>
-            local reg="$1" user="$2" pass="$3" resp token
-            resp=$(curl -sf -X PUT "$reg/-/user/org.couchdb.user:$user" \
-              -H 'content-type: application/json' \
-              -d "{\"name\":\"$user\",\"password\":\"$pass\"}") \
-              || { echo "::error::login to $reg failed"; exit 1; }
-            token=$(node -p 'JSON.parse(process.argv[1]).token' "$resp")
-            echo "::add-mask::$token"
-            echo "//${reg#https://}/:_authToken=$token" >> ~/.npmrc
+            local reg="$1" body code token attempt
+            export MINT_USER="$2" MINT_PASS="$3"
+            body=$(node -e 'console.log(JSON.stringify({name:process.env.MINT_USER,password:process.env.MINT_PASS}))')
+            for attempt in 1 2 3; do
+              code=$(curl -s -o /tmp/login-resp.json -w '%{http_code}' -X PUT \
+                "$reg/-/user/org.couchdb.user:$MINT_USER" \
+                -H 'content-type: application/json' -d "$body")
+              if [ "$code" = "201" ] || [ "$code" = "200" ]; then
+                token=$(node -p 'JSON.parse(require("fs").readFileSync("/tmp/login-resp.json","utf8")).token')
+                echo "::add-mask::$token"
+                echo "//${reg#https://}/:_authToken=$token" >> ~/.npmrc
+                return 0
+              fi
+              echo "login attempt $attempt to $reg failed: HTTP $code $(cat /tmp/login-resp.json)"
+              sleep 2
+            done
+            echo "::error::login to $reg failed after 3 attempts"
+            return 1
           }
 
           publish_one() { # <tarball> <name> <registry>

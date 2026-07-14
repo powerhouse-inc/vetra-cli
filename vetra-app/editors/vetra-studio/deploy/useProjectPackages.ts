@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchProjectPackage } from "../hooks/preview-server-client.js";
+import { errorMessage } from "./utils.js";
 
 export type ProjectPackageInfo = { name: string; version: string };
 
@@ -54,10 +55,7 @@ export function useProjectPackages(
         setState({ status: "ready", byProject: new Map(entries) });
       } catch (err) {
         if (!alive.current) return;
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : String(err),
-        });
+        setState({ status: "error", message: errorMessage(err) });
       }
     })();
     return () => {

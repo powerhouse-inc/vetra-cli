@@ -19,6 +19,7 @@ import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
 import { useProductTour } from "./tour/useProductTour.js";
 import { VersionBadge } from "./VersionBadge.js";
+import { WorkspaceExportButton } from "./WorkspaceExportButton.js";
 import {
   deployFollowAction,
   editFollowAction,
@@ -608,6 +609,7 @@ function AutoNavToggle({
         />
         Auto-follow agent
       </label>
+      <WorkspaceExportButton />
     </div>
   );
 }
