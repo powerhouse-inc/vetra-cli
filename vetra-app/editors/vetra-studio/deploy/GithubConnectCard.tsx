@@ -16,21 +16,38 @@ const LINK_BTN =
 const PRIMARY_BTN =
   "flex shrink-0 items-center gap-1.5 rounded-lg bg-vetra-primary px-3.5 py-2 text-sm font-medium text-vetra-primary-fg hover:bg-vetra-primary/90 disabled:cursor-not-allowed disabled:opacity-50";
 
-/** Counts down, then opens `url` in a new tab once; keeps the user informed
- * either way (popup blockers may eat the auto-open — the manual button stays). */
+/** Imperative handle to cancel a pending auto-open (set by AutoOpenNotice,
+ * called by the manual open button so the same tab isn't opened twice). */
+type AutoOpenCancel = { current: (() => void) | null };
+
+/** Counts down, then opens `url` in a new tab once. The browser may block the
+ * open (no fresh user gesture — and with noopener the return value can't tell
+ * us), so the post-countdown copy stays neutral and the manual button remains.
+ * Clicking the manual button cancels the countdown via `cancelRef`. */
 function AutoOpenNotice({
   url,
   pendingLabel,
   openedLabel,
+  cancelRef,
 }: {
   url: string;
   pendingLabel: (seconds: number) => string;
   openedLabel: string;
+  cancelRef: AutoOpenCancel;
 }) {
   const [remaining, setRemaining] = useState(5);
+  const [cancelled, setCancelled] = useState(false);
   const openedRef = useRef(false);
 
   useEffect(() => {
+    cancelRef.current = () => setCancelled(true);
+    return () => {
+      cancelRef.current = null;
+    };
+  }, [cancelRef]);
+
+  useEffect(() => {
+    if (cancelled) return;
     if (remaining <= 0) {
       if (!openedRef.current) {
         openedRef.current = true;
@@ -40,8 +57,9 @@ function AutoOpenNotice({
     }
     const timer = setTimeout(() => setRemaining((r) => r - 1), 1000);
     return () => clearTimeout(timer);
-  }, [remaining, url]);
+  }, [remaining, cancelled, url]);
 
+  if (cancelled) return null;
   return (
     <p className="text-xs text-muted-foreground">
       {remaining > 0 ? pendingLabel(remaining) : openedLabel}
@@ -386,6 +404,10 @@ function ModalBody({
   onDone: (connection: GithubConnection) => void;
   onClose: () => void;
 }) {
+  // Shared by the GitHub-bound steps: the manual open button cancels the
+  // pending auto-open so the same page isn't opened twice.
+  const autoOpenCancel = useRef<(() => void) | null>(null);
+
   if (phase.kind === "connected") {
     return (
       <>
@@ -434,7 +456,8 @@ function ModalBody({
         <AutoOpenNotice
           url={githubInstallUrl()}
           pendingLabel={(s) => `Taking you to the app install page in ${s}s…`}
-          openedLabel="Install page opened in a new tab — choose which repositories the app may access."
+          openedLabel="An install tab should have opened — if it didn't, use the button."
+          cancelRef={autoOpenCancel}
         />
         <div className="flex items-center justify-between gap-3">
           <button
@@ -448,6 +471,7 @@ function ModalBody({
             href={githubInstallUrl()}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => autoOpenCancel.current?.()}
             className={PRIMARY_BTN}
           >
             <GithubMark size={14} />
@@ -479,7 +503,8 @@ function ModalBody({
           pendingLabel={(s) =>
             `Taking you to GitHub in ${s}s to enter the code…`
           }
-          openedLabel="GitHub opened in a new tab — enter the code there."
+          openedLabel="A GitHub tab should have opened — if it didn't, use the button."
+          cancelRef={autoOpenCancel}
         />
         <div className="flex items-center justify-between gap-3">
           <button
@@ -493,6 +518,7 @@ function ModalBody({
             href={phase.verificationUri}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => autoOpenCancel.current?.()}
             className={PRIMARY_BTN}
           >
             <GithubMark size={14} />
