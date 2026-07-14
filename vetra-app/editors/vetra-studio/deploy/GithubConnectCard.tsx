@@ -1,5 +1,5 @@
-import { Check, ExternalLink, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRenown } from "@powerhousedao/reactor-browser";
 import { resolveStudioEnvironmentId } from "../hooks/preview-server-client.js";
 import { getAuthToken } from "./cloudClient.js";
@@ -15,6 +15,82 @@ const LINK_BTN =
 
 const PRIMARY_BTN =
   "flex shrink-0 items-center gap-1.5 rounded-lg bg-vetra-primary px-3.5 py-2 text-sm font-medium text-vetra-primary-fg hover:bg-vetra-primary/90 disabled:cursor-not-allowed disabled:opacity-50";
+
+/** Imperative handle to cancel a pending auto-open (set by AutoOpenNotice,
+ * called by the manual open button so the same tab isn't opened twice). */
+type AutoOpenCancel = { current: (() => void) | null };
+
+/** Counts down, then opens `url` in a new tab once. The browser may block the
+ * open (no fresh user gesture — and with noopener the return value can't tell
+ * us), so the post-countdown copy stays neutral and the manual button remains.
+ * Clicking the manual button cancels the countdown via `cancelRef`. */
+function AutoOpenNotice({
+  url,
+  pendingLabel,
+  openedLabel,
+  cancelRef,
+}: {
+  url: string;
+  pendingLabel: (seconds: number) => string;
+  openedLabel: string;
+  cancelRef: AutoOpenCancel;
+}) {
+  const [remaining, setRemaining] = useState(5);
+  const [cancelled, setCancelled] = useState(false);
+  const openedRef = useRef(false);
+
+  useEffect(() => {
+    cancelRef.current = () => setCancelled(true);
+    return () => {
+      cancelRef.current = null;
+    };
+  }, [cancelRef]);
+
+  useEffect(() => {
+    if (cancelled) return;
+    if (remaining <= 0) {
+      if (!openedRef.current) {
+        openedRef.current = true;
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+    const timer = setTimeout(() => setRemaining((r) => r - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [remaining, cancelled, url]);
+
+  if (cancelled) return null;
+  return (
+    <p className="text-xs text-muted-foreground">
+      {remaining > 0 ? pendingLabel(remaining) : openedLabel}
+    </p>
+  );
+}
+
+/** Copies `value` to the clipboard with a brief confirmation state. */
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        void navigator.clipboard.writeText(value).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-vetra-primary hover:text-vetra-primary"
+    >
+      {copied ? (
+        <Check size={16} className="text-success" />
+      ) : (
+        <Copy size={16} />
+      )}
+    </button>
+  );
+}
 
 /** GitHub mark, inline (this lucide-react version ships no brand icons). */
 function GithubMark({ size }: { size: number }) {
@@ -40,8 +116,13 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
   const [environmentId, setEnvironmentId] = useState<string | null>(null);
   const [status, setStatus] = useState<
     | { kind: "loading" }
+    | { kind: "unavailable" }
     | { kind: "disconnected" }
-    | { kind: "connected"; connection: GithubConnection }
+    | {
+        kind: "connected";
+        connection: GithubConnection;
+        repoAccessible: boolean | null;
+      }
   >({ kind: "loading" });
 
   useEffect(() => {
@@ -54,25 +135,39 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
     };
   }, []);
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     if (!environmentId || !authorized) return;
-    const flags = { cancelled: false };
-    const isCancelled = () => flags.cancelled;
-    void (async () => {
-      const token = await getAuthToken(renown);
-      if (!token || isCancelled()) return;
-      const result = await myGithubStatus(environmentId, token);
-      if (isCancelled()) return;
-      if (result?.connected && result.connection) {
-        setStatus({ kind: "connected", connection: result.connection });
-      } else {
-        setStatus({ kind: "disconnected" });
-      }
-    })();
-    return () => {
-      flags.cancelled = true;
-    };
+    const token = await getAuthToken(renown);
+    if (!token) return;
+    const result = await myGithubStatus(environmentId, token);
+    if (result === null) {
+      // Fetch failure: never downgrade a known state to "disconnected".
+      setStatus((s) => (s.kind === "loading" ? { kind: "unavailable" } : s));
+      return;
+    }
+    if (result.connected && result.connection) {
+      setStatus({
+        kind: "connected",
+        connection: result.connection,
+        // Older backends don't return the field — treat as healthy.
+        repoAccessible: result.repoAccessible ?? true,
+      });
+    } else {
+      setStatus({ kind: "disconnected" });
+    }
   }, [environmentId, authorized, renown]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // The user fixes install/access on github.com in another tab; re-check when
+  // they come back so the card heals without a manual click.
+  useEffect(() => {
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
 
   if (!environmentId || !authorized) return null;
 
@@ -85,44 +180,99 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
     );
   }
 
+  if (status.kind === "unavailable") {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
+        <GithubMark size={16} />
+        <span className="flex-1 text-sm text-muted-foreground">
+          Couldn&apos;t check the GitHub connection.
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setStatus({ kind: "loading" });
+            void refresh();
+          }}
+          className={LINK_BTN}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   if (status.kind === "connected") {
-    return <ConnectedRow connection={status.connection} />;
+    return (
+      <ConnectedRow
+        connection={status.connection}
+        repoAccessible={status.repoAccessible}
+        onRefresh={() => void refresh()}
+      />
+    );
   }
 
   return (
     <ConnectFlow
       environmentId={environmentId}
-      onConnected={(connection) => setStatus({ kind: "connected", connection })}
+      onConnected={(connection) =>
+        setStatus({ kind: "connected", connection, repoAccessible: true })
+      }
     />
   );
 }
 
-function ConnectedRow({ connection }: { connection: GithubConnection }) {
+function ConnectedRow({
+  connection,
+  repoAccessible,
+  onRefresh,
+}: {
+  connection: GithubConnection;
+  repoAccessible: boolean | null;
+  onRefresh: () => void;
+}) {
+  const degraded = repoAccessible === false;
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
-      <GithubMark size={16} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3.5">
+      <div className="flex items-center gap-3">
+        <GithubMark size={16} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <a
+            href={connection.repoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="truncate text-sm font-medium text-foreground hover:text-vetra-primary"
+          >
+            {connection.repoFullName}
+          </a>
+          <span className="text-xs text-muted-foreground">
+            The agent pushes this studio&apos;s work here.
+          </span>
+        </div>
         <a
-          href={connection.repoUrl}
+          href={githubInstallUrl()}
           target="_blank"
           rel="noopener noreferrer"
-          className="truncate text-sm font-medium text-foreground hover:text-vetra-primary"
+          className={LINK_BTN}
         >
-          {connection.repoFullName}
+          {degraded ? "Fix access on GitHub" : "Manage app"}
+          <ExternalLink size={14} />
         </a>
-        <span className="text-xs text-muted-foreground">
-          The agent pushes this studio&apos;s work here.
-        </span>
       </div>
-      <a
-        href={githubInstallUrl()}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={LINK_BTN}
-      >
-        Manage app
-        <ExternalLink size={14} />
-      </a>
+      {degraded ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2">
+          <span className="text-xs text-destructive">
+            The Vetra app can&apos;t access this repository — pushes will fail.
+            Reinstall the app or add the repository to its access list.
+          </span>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Check again
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -254,6 +404,10 @@ function ModalBody({
   onDone: (connection: GithubConnection) => void;
   onClose: () => void;
 }) {
+  // Shared by the GitHub-bound steps: the manual open button cancels the
+  // pending auto-open so the same page isn't opened twice.
+  const autoOpenCancel = useRef<(() => void) | null>(null);
+
   if (phase.kind === "connected") {
     return (
       <>
@@ -299,6 +453,12 @@ function ModalBody({
           GitHub account yet. Install it and this dialog will continue by itself
           — nothing to confirm here.
         </p>
+        <AutoOpenNotice
+          url={githubInstallUrl()}
+          pendingLabel={(s) => `Taking you to the app install page in ${s}s…`}
+          openedLabel="An install tab should have opened — if it didn't, use the button."
+          cancelRef={autoOpenCancel}
+        />
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -311,6 +471,7 @@ function ModalBody({
             href={githubInstallUrl()}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => autoOpenCancel.current?.()}
             className={PRIMARY_BTN}
           >
             <GithubMark size={14} />
@@ -327,9 +488,24 @@ function ModalBody({
         <p className="text-sm text-muted-foreground">
           Open GitHub and enter this code to authorize Vetra:
         </p>
-        <div className="rounded-lg bg-muted px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-foreground">
-          {phase.userCode}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 rounded-lg bg-muted px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-foreground">
+            {phase.userCode}
+          </div>
+          <CopyButton value={phase.userCode} label="Copy code" />
         </div>
+        <span className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 size={14} className="animate-spin" />
+          Waiting for authorization…
+        </span>
+        <AutoOpenNotice
+          url={phase.verificationUri}
+          pendingLabel={(s) =>
+            `Taking you to GitHub in ${s}s to enter the code…`
+          }
+          openedLabel="A GitHub tab should have opened — if it didn't, use the button."
+          cancelRef={autoOpenCancel}
+        />
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -338,21 +514,16 @@ function ModalBody({
           >
             Cancel
           </button>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" />
-              Waiting for authorization…
-            </span>
-            <a
-              href={phase.verificationUri}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={PRIMARY_BTN}
-            >
-              <GithubMark size={14} />
-              Open GitHub
-            </a>
-          </div>
+          <a
+            href={phase.verificationUri}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => autoOpenCancel.current?.()}
+            className={PRIMARY_BTN}
+          >
+            <GithubMark size={14} />
+            Open GitHub
+          </a>
         </div>
       </>
     );
