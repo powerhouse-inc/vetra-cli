@@ -79,10 +79,11 @@ describe("myGithubStatus", () => {
         data: {
           VetraGithubAuth: {
             myGithubStatus: {
-              connected: false,
-              connection: null,
+              connected: true,
+              connection: CONNECTION,
               githubLogin: "alice",
               appInstalled: true,
+              repoAccessible: false,
             },
           },
         },
@@ -90,10 +91,11 @@ describe("myGithubStatus", () => {
     );
 
     expect(await myGithubStatus("env-1", "tok")).toEqual({
-      connected: false,
-      connection: null,
+      connected: true,
+      connection: CONNECTION,
       githubLogin: "alice",
       appInstalled: true,
+      repoAccessible: false,
     });
   });
 

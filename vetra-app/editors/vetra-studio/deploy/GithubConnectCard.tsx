@@ -1,5 +1,5 @@
 import { Check, ExternalLink, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRenown } from "@powerhousedao/reactor-browser";
 import { resolveStudioEnvironmentId } from "../hooks/preview-server-client.js";
 import { getAuthToken } from "./cloudClient.js";
@@ -40,8 +40,13 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
   const [environmentId, setEnvironmentId] = useState<string | null>(null);
   const [status, setStatus] = useState<
     | { kind: "loading" }
+    | { kind: "unavailable" }
     | { kind: "disconnected" }
-    | { kind: "connected"; connection: GithubConnection }
+    | {
+        kind: "connected";
+        connection: GithubConnection;
+        repoAccessible: boolean | null;
+      }
   >({ kind: "loading" });
 
   useEffect(() => {
@@ -54,25 +59,39 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
     };
   }, []);
 
-  useEffect(() => {
+  const refresh = useCallback(async () => {
     if (!environmentId || !authorized) return;
-    const flags = { cancelled: false };
-    const isCancelled = () => flags.cancelled;
-    void (async () => {
-      const token = await getAuthToken(renown);
-      if (!token || isCancelled()) return;
-      const result = await myGithubStatus(environmentId, token);
-      if (isCancelled()) return;
-      if (result?.connected && result.connection) {
-        setStatus({ kind: "connected", connection: result.connection });
-      } else {
-        setStatus({ kind: "disconnected" });
-      }
-    })();
-    return () => {
-      flags.cancelled = true;
-    };
+    const token = await getAuthToken(renown);
+    if (!token) return;
+    const result = await myGithubStatus(environmentId, token);
+    if (result === null) {
+      // Fetch failure: never downgrade a known state to "disconnected".
+      setStatus((s) => (s.kind === "loading" ? { kind: "unavailable" } : s));
+      return;
+    }
+    if (result.connected && result.connection) {
+      setStatus({
+        kind: "connected",
+        connection: result.connection,
+        // Older backends don't return the field — treat as healthy.
+        repoAccessible: result.repoAccessible ?? true,
+      });
+    } else {
+      setStatus({ kind: "disconnected" });
+    }
   }, [environmentId, authorized, renown]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // The user fixes install/access on github.com in another tab; re-check when
+  // they come back so the card heals without a manual click.
+  useEffect(() => {
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
 
   if (!environmentId || !authorized) return null;
 
@@ -85,44 +104,99 @@ export function GithubConnectCard({ authorized }: { authorized: boolean }) {
     );
   }
 
+  if (status.kind === "unavailable") {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
+        <GithubMark size={16} />
+        <span className="flex-1 text-sm text-muted-foreground">
+          Couldn&apos;t check the GitHub connection.
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setStatus({ kind: "loading" });
+            void refresh();
+          }}
+          className={LINK_BTN}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   if (status.kind === "connected") {
-    return <ConnectedRow connection={status.connection} />;
+    return (
+      <ConnectedRow
+        connection={status.connection}
+        repoAccessible={status.repoAccessible}
+        onRefresh={() => void refresh()}
+      />
+    );
   }
 
   return (
     <ConnectFlow
       environmentId={environmentId}
-      onConnected={(connection) => setStatus({ kind: "connected", connection })}
+      onConnected={(connection) =>
+        setStatus({ kind: "connected", connection, repoAccessible: true })
+      }
     />
   );
 }
 
-function ConnectedRow({ connection }: { connection: GithubConnection }) {
+function ConnectedRow({
+  connection,
+  repoAccessible,
+  onRefresh,
+}: {
+  connection: GithubConnection;
+  repoAccessible: boolean | null;
+  onRefresh: () => void;
+}) {
+  const degraded = repoAccessible === false;
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
-      <GithubMark size={16} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3.5">
+      <div className="flex items-center gap-3">
+        <GithubMark size={16} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <a
+            href={connection.repoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="truncate text-sm font-medium text-foreground hover:text-vetra-primary"
+          >
+            {connection.repoFullName}
+          </a>
+          <span className="text-xs text-muted-foreground">
+            The agent pushes this studio&apos;s work here.
+          </span>
+        </div>
         <a
-          href={connection.repoUrl}
+          href={githubInstallUrl()}
           target="_blank"
           rel="noopener noreferrer"
-          className="truncate text-sm font-medium text-foreground hover:text-vetra-primary"
+          className={LINK_BTN}
         >
-          {connection.repoFullName}
+          {degraded ? "Fix access on GitHub" : "Manage app"}
+          <ExternalLink size={14} />
         </a>
-        <span className="text-xs text-muted-foreground">
-          The agent pushes this studio&apos;s work here.
-        </span>
       </div>
-      <a
-        href={githubInstallUrl()}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={LINK_BTN}
-      >
-        Manage app
-        <ExternalLink size={14} />
-      </a>
+      {degraded ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2">
+          <span className="text-xs text-destructive">
+            The Vetra app can&apos;t access this repository — pushes will fail.
+            Reinstall the app or add the repository to its access list.
+          </span>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Check again
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

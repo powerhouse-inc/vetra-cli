@@ -26,6 +26,9 @@ export type GithubStatus = {
   connection: GithubConnection | null;
   githubLogin: string | null;
   appInstalled: boolean;
+  /** Push health for a connected env: can the installation reach the repo?
+   * Null when not connected or GitHub unreachable. Absent on older backends. */
+  repoAccessible?: boolean | null;
 };
 
 export type GithubDeviceFlow = {
@@ -135,6 +138,7 @@ export async function myGithubStatus(
           connection { environmentId repoFullName repoUrl createdAt }
           githubLogin
           appInstalled
+          repoAccessible
         }
       }
     }`,
