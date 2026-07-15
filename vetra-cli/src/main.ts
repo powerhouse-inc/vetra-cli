@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './ensure-node-version.js';
 import './ensure-home.js';
 import './allow-fresh-deps.js';
 import './version-banner.js';
