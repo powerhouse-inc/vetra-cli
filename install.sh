@@ -5,13 +5,13 @@
 #
 # Installs `ph-cmd` (the `ph` bin) and `vetra-cli` (the `vetra` bin) globally.
 # Claude auth is set up on first `vetra` launch, not here. Advanced users can
-# skip this script and run:  npm install -g ph-cmd vetra-cli
+# skip this script and run:  npm install -g ph-cmd vetra-cli --registry=https://registry.vetra.io
 #
 # Env knobs (all optional):
 #   VETRA_VERSION    vetra-cli version to install            (default: latest)
 #   VETRA_INSTALL_SPEC  install this spec instead of vetra-cli@$VERSION (e.g. a local tarball; used in CI)
 #   PH_VERSION       ph-cmd version to install               (default: pin baked into vetra-cli)
-#   VETRA_REGISTRY   registry for the vetra-cli package only  (default: https://registry.dev.vetra.io, the pre-release registry; ph-cmd + deps always use your npm default)
+#   VETRA_REGISTRY   registry for the vetra-cli package only  (default: https://registry.vetra.io, the pre-release registry; ph-cmd + deps always use your npm default)
 #   VETRA_PM         package manager: npm | pnpm             (default: pnpm — offers to install it if missing, else npm)
 #   VETRA_SKIP_PH=1  don't install ph-cmd (rely on first-boot ensure-ph)
 #   VETRA_YES=1      non-interactive: accept defaults, never prompt
@@ -26,7 +26,7 @@ PNPM_MAJOR="11"
 MIN_NODE_MAJOR=24
 
 VERSION="${VETRA_VERSION:-latest}"
-REGISTRY="${VETRA_REGISTRY:-https://registry.dev.vetra.io}"
+REGISTRY="${VETRA_REGISTRY:-https://registry.vetra.io}"
 PM="${VETRA_PM:-}"   # empty = infer in resolve_pm (prefer pnpm, fall back to npm)
 
 # ---------------------------------------------------------------- output ----
