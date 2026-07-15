@@ -8,6 +8,7 @@ import type { ISigner } from "document-model";
 import {
   fetchVersion,
   publishProject,
+  resolveStudioPackageRegistry,
 } from "../hooks/preview-server-client.js";
 import {
   createNewEnvironmentController,
@@ -158,6 +159,8 @@ export async function deployProject(opts: {
         label: target.label,
         services: DEPLOY_SERVICES,
         serviceVersion: frameworkVersion?.ph,
+        defaultPackageRegistry:
+          (await resolveStudioPackageRegistry()) ?? undefined,
       });
       controller.addPackage({ packageName, version });
       onPhase?.("approving");

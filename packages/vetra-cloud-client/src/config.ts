@@ -10,7 +10,10 @@ export const CLOUD_RENOWN_URL = "https://www.renown.id";
 /** Base domain for environments (`<subdomain>.vetra.io`). */
 export const CLOUD_BASE_DOMAIN = "vetra.io";
 
-/** Default package registry stamped onto new environments. */
+/** Fallback package registry stamped onto new environments. Consumers resolve
+ * their own (CLI: config/PH_REGISTRY_URL/powerhouse.config.json; studio:
+ * `studio.config.json`) and pass `defaultPackageRegistry`; this is the default
+ * when none resolves. */
 export const CLOUD_DEFAULT_PACKAGE_REGISTRY = "https://registry.dev.vetra.io";
 
 /** vetra.to web app base — deep links to an environment's cloud page. */

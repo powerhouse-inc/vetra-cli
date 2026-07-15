@@ -31,6 +31,9 @@ interface PreviewConfig {
   proxyBase?: string;
   // The studio's cloud environment document id, when the daemon stamped one.
   environmentId?: string;
+  // Registry to stamp onto envs this studio deploys; undefined outside a
+  // provisioned studio (falls back to the shared client default).
+  packageRegistryUrl?: string;
 }
 
 // Origin+prefix for a proxied `/preview` mount (`https://host/x/preview` ->
@@ -67,12 +70,14 @@ function resolvePreviewConfig(): Promise<PreviewConfig> {
         const cfg = (await res.json()) as {
           previewServerUrl?: string;
           environmentId?: string;
+          packageRegistryUrl?: string;
         };
         if (cfg.previewServerUrl) {
           return {
             base: cfg.previewServerUrl,
             proxyBase: computeProxyBase(cfg.previewServerUrl),
             environmentId: cfg.environmentId,
+            packageRegistryUrl: cfg.packageRegistryUrl,
           };
         }
       }
@@ -89,6 +94,13 @@ function resolvePreviewConfig(): Promise<PreviewConfig> {
 export async function resolveStudioEnvironmentId(): Promise<string | null> {
   const config = await resolvePreviewConfig();
   return config.environmentId ?? null;
+}
+
+/** The registry to stamp onto envs this studio deploys, from
+ * `studio.config.json`; null outside a provisioned studio. */
+export async function resolveStudioPackageRegistry(): Promise<string | null> {
+  const config = await resolvePreviewConfig();
+  return config.packageRegistryUrl ?? null;
 }
 
 export type ResolveResult =

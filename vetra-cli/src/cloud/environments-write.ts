@@ -21,6 +21,7 @@ import {
   type ListScope,
   type VetraCloudEnvironmentGlobalState,
 } from "@powerhousedao/vetra-cloud-client";
+import { resolveRegistryUrl } from "@powerhousedao/shared/registry";
 import { getBearerToken, getRenown } from "../auth/renown.js";
 import { DEFAULT_PH_VERSION } from "../constants.js";
 import { resolveCloudConfig } from "./config.js";
@@ -164,6 +165,12 @@ export async function createCloudEnvironment(
     label: options.label,
     services: options.services,
     serviceVersion: options.version ?? ctx.config.phVersion ?? DEFAULT_PH_VERSION,
+    // Stamp the same registry the workdir publishes to (flag > PH_REGISTRY_URL
+    // > powerhouse.config.json > default) so the env installs from where we push.
+    defaultPackageRegistry: resolveRegistryUrl({
+      registry: ctx.config.registryUrl,
+      projectPath: ctx.workdir,
+    }),
   });
   // A studio-created deploy target belongs to this studio — link it so it
   // groups under the studio on /user/products (no-op outside a studio context).
