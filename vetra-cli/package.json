@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.1-dev.48",
+  "version": "0.0.1-dev.49",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.dev.vetra.io"
@@ -96,6 +96,6 @@
     "zod": "catalog:"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24"
   }
 }

@@ -1,18 +1,7 @@
 // Stopgap: deployed image lacks ph on PATH; remove once the image/builder installs ph-cmd globally.
 
-/**
- * Ensures the `ph` bin is runnable before any command (e.g.
- * `reactor-project-init`, which shells out to bare `ph init`) executes.
- *
- * `ph` is provided by the unscoped `ph-cmd` package. The deployed
- * clint-agent image installs only `vetra-cli` and never puts `ph` on PATH,
- * so this hook checks for it on boot and, when missing, installs
- * `ph-cmd@<DEFAULT_PH_VERSION>` (against `$CLINT_REGISTRY` when set) with pnpm,
- * or npm when pnpm isn't on PATH. It re-verifies afterwards and throws on
- * failure — `onInit` errors halt startup, preferable to a later `ph: not found`.
- *
- * No-op when `ph` already resolves, so it's safe to run every boot.
- */
+// Ensures `ph` (from ph-cmd) is runnable on boot: installs DEFAULT_PH_VERSION
+// when absent, else checks the present ph's version for compatibility.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { LifecycleHook, Logger } from "@powerhousedao/ph-clint";
@@ -40,10 +29,45 @@ async function run(
   }
 }
 
-/** True when a `ph` bin resolves and `ph --version` exits 0. */
-async function phAvailable(): Promise<boolean> {
-  const { success } = await run("ph", ["--version"], CHECK_TIMEOUT_MS);
-  return success;
+/** `ph --version` output when a `ph` bin resolves and exits 0, else null. */
+async function phVersionOutput(): Promise<string | null> {
+  const { success, output } = await run("ph", ["--version"], CHECK_TIMEOUT_MS);
+  return success ? output : null;
+}
+
+/** First `major.minor.patch` triple in a string (ignores any prerelease tag). */
+function parseVersion(
+  s: string,
+): { major: number; minor: number; patch: number; version: string } | null {
+  const m = s.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), version: m[0] };
+}
+
+const EXPECTED_PH = parseVersion(DEFAULT_PH_VERSION);
+
+// Major mismatch throws (halts startup); minor/patch drift warns.
+function checkPhCompatible(versionOutput: string, log: Logger): void {
+  const cur = parseVersion(versionOutput);
+  if (!EXPECTED_PH || !cur) {
+    log.warn(
+      `[ensure-ph] could not parse ph version (built against ${DEFAULT_PH_VERSION}); skipping compatibility check`,
+    );
+    return;
+  }
+  const fix = `install a matching ph-cmd: \`pnpm add -g ph-cmd@${DEFAULT_PH_VERSION}\``;
+  if (cur.major !== EXPECTED_PH.major) {
+    throw new Error(
+      `[ensure-ph] incompatible ph ${cur.version}: vetra-cli requires ph ${EXPECTED_PH.major}.x (built against ${DEFAULT_PH_VERSION}). To fix, ${fix}.`,
+    );
+  }
+  if (cur.minor !== EXPECTED_PH.minor || cur.patch !== EXPECTED_PH.patch) {
+    log.warn(
+      `[ensure-ph] ph ${cur.version} differs from the built-against ${DEFAULT_PH_VERSION}; proceeding — if you hit issues, ${fix}`,
+    );
+    return;
+  }
+  log.debug(`[ensure-ph] ph ${cur.version} matches the built-against version`);
 }
 
 export function ensurePh(): LifecycleHook {
@@ -52,8 +76,10 @@ export function ensurePh(): LifecycleHook {
     async onInit(ctx) {
       const log: Logger = ctx.log;
 
-      if (await phAvailable()) {
-        log.debug("[ensure-ph] ph already on PATH; skipping install");
+      const present = await phVersionOutput();
+      if (present !== null) {
+        log.debug("[ensure-ph] ph already on PATH; checking compatibility");
+        checkPhCompatible(present, log);
         return {};
       }
 
@@ -80,7 +106,7 @@ export function ensurePh(): LifecycleHook {
         );
       }
 
-      if (!(await phAvailable())) {
+      if ((await phVersionOutput()) === null) {
         throw new Error(
           `[ensure-ph] installed ${spec} but \`ph\` still does not resolve on PATH`,
         );
