@@ -12,9 +12,10 @@
  *     else the direct switchboard drive URL. Written into the bundle's
  *     runtime config (`powerhouse.config.json` →
  *     `connect.drives.defaultDrives`), which Connect reads at load time.
- *   - preview-server URL — `<proxy>/preview` when available, else the
- *     direct loopback port. Written into `studio.config.json`, which
- *     vetra-app's `preview-server-client.ts` fetches at load time. Both are
+ *   - preview-server URL (+ the package registry deploys stamp onto new envs)
+ *     — `<proxy>/preview` when available, else the direct loopback port.
+ *     Written into `studio.config.json`, which vetra-app's
+ *     `preview-server-client.ts` fetches at load time. Both are
  *     JSON configs the SPA reads at runtime — no JS asset is mutated, so the
  *     served bundle stays byte-identical to the build (the image's
  *     precompressed siblings exclude these two configs; see the Dockerfile).
@@ -26,6 +27,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { LifecycleHook } from "@powerhousedao/ph-clint";
+import { resolveRegistryUrl } from "@powerhousedao/shared/registry";
 import { DEFAULT_PREVIEW_SERVER_PORT } from "../preview-server/index.js";
 
 interface SwitchboardReadyEvent {
@@ -83,6 +85,17 @@ export function connectDriveUrlOnSwitchboardReady(
             ? ctx.config.environmentId
             : undefined;
 
+        // Registry the studio's deploys stamp onto new envs (flag >
+        // PH_REGISTRY_URL > vetra-app powerhouse.config.json > default).
+        const configuredRegistry =
+          typeof ctx.config.registryUrl === "string" && ctx.config.registryUrl
+            ? ctx.config.registryUrl
+            : undefined;
+        const packageRegistryUrl = resolveRegistryUrl({
+          registry: configuredRegistry,
+          projectPath: options.vetraAppDir,
+        });
+
         const bundleDir = path.join(options.vetraAppDir, connectDir);
         try {
           patchDefaultDrive(bundleDir, driveUrl, ctx.log);
@@ -91,7 +104,13 @@ export function connectDriveUrlOnSwitchboardReady(
           ctx.log.error(`[connect-drive-url] ${message}`);
         }
         try {
-          writeStudioConfig(bundleDir, previewServerUrl, environmentId, ctx.log);
+          writeStudioConfig(
+            bundleDir,
+            previewServerUrl,
+            environmentId,
+            packageRegistryUrl,
+            ctx.log,
+          );
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           ctx.log.error(`[connect-drive-url] ${message}`);
@@ -149,17 +168,20 @@ function writeStudioConfig(
   bundleDir: string,
   previewServerUrl: string,
   environmentId: string | undefined,
+  packageRegistryUrl: string,
   log: Log,
 ): void {
   if (!existsSync(bundleDir)) {
     throw new Error(`Connect bundle not found at ${bundleDir}`);
   }
   const file = path.join(bundleDir, "studio.config.json");
-  const next = `${JSON.stringify(
-    environmentId ? { previewServerUrl, environmentId } : { previewServerUrl },
-    null,
-    2,
-  )}\n`;
+  const config: {
+    previewServerUrl: string;
+    packageRegistryUrl: string;
+    environmentId?: string;
+  } = { previewServerUrl, packageRegistryUrl };
+  if (environmentId) config.environmentId = environmentId;
+  const next = `${JSON.stringify(config, null, 2)}\n`;
 
   if (existsSync(file) && readFileSync(file, "utf8") === next) {
     log.debug(
