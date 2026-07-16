@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Seeded end-to-end: global-setup boots a self-contained vetra-cli studio in
+ * Seeded end-to-end: global-setup boots a self-contained vetra studio in
  * REPLAY mode against a fresh empty workdir (see support/global-setup.ts), the
  * test drives the chat UI to build a todo-list for real, and asserts the
  * generated editor renders in the BUILD-pane iframe. global-teardown stops the

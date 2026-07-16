@@ -1,5 +1,5 @@
 // Drop @powerhousedao/codegen's graphql-codegen generation deps from the install;
-// vetra-cli shims codegen and defers generation to `ph generate` in the reactor-project.
+// vetra shims codegen and defers generation to `ph generate` in the reactor-project.
 const STRIP = new Set([
   "@graphql-codegen/cli",
   "@graphql-codegen/add",

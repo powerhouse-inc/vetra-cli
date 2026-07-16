@@ -90,7 +90,7 @@ describe("spec-list", () => {
   });
 
   it("falls back to workspace-level product specs on a non-reactor workdir", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    const dir = mkdtempSync(join(tmpdir(), "vetra-noreactor-"));
     try {
       // Seed a product spec at the workspace root — no powerhouse.config.json.
       await saveSpec(createSpecDocument(PRODUCT_TYPE, { name: "RootProduct" }), dir);
@@ -103,7 +103,7 @@ describe("spec-list", () => {
   });
 
   it("still requires a reactor project for --category project", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    const dir = mkdtempSync(join(tmpdir(), "vetra-noreactor-"));
     try {
       await expect(
         specList.execute({ category: "project" }, makeCtx(dir)),
@@ -142,7 +142,7 @@ describe("spec-create", () => {
   });
 
   it("creates a product spec at the workspace root on a non-reactor workdir", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    const dir = mkdtempSync(join(tmpdir(), "vetra-noreactor-"));
     try {
       const result = await specCreate.execute(
         { type: PRODUCT_TYPE, name: "RootFeature", dryRun: false },
@@ -167,7 +167,7 @@ describe("spec-create", () => {
   });
 
   it("still requires a reactor project for a project spec type", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    const dir = mkdtempSync(join(tmpdir(), "vetra-noreactor-"));
     try {
       await expect(
         specCreate.execute(
@@ -602,7 +602,7 @@ describe("spec-schema", () => {
 describe("workspace-level product specs (non-reactor workdir)", () => {
   let dir: string;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "vetra-cli-noreactor-"));
+    dir = mkdtempSync(join(tmpdir(), "vetra-noreactor-"));
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

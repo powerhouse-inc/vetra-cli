@@ -1,4 +1,4 @@
-# Isolated vetra-cli deploy lab. Host ports are the base lab's +200 so this
+# Isolated vetra deploy lab. Host ports are the base lab's +200 so this
 # runs alongside it (base lab holds 4900-4904).
 #
 #   client -> nginx (npm-cache-proxy, :5100) -> edge verdaccio (dual uplink, :5102)

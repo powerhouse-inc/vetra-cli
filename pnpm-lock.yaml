@@ -84,7 +84,7 @@ overrides:
   '@powerhousedao/vetra-cloud-package>@powerhousedao/connect': 6.2.0-rc.8
   '@powerhousedao/vetra-cloud-package>@powerhousedao/design-system': 6.2.0-rc.8
 
-pnpmfileChecksum: sha256-9qrkp0y9R8Yxn9byTRalJuJJzuV9FvL6ENnitcddtC0=
+pnpmfileChecksum: sha256-2NfTO+PGVqyb2TEwSjHrzNg/SaMA5dj5OdmeXo6ryFE=
 
 importers:
 

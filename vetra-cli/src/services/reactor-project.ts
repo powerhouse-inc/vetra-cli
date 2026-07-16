@@ -168,7 +168,7 @@ export const reactorProject = defineService({
     NODE_OPTIONS: reactorProjectNodeOptions(),
     // Opt-in: serve Connect's heavy stable deps from a prebuilt vendor bundle so
     // the long-lived Vite dev server never dep-optimizes them (~1 GB resident).
-    // Off unless a vetra-cli-level signal is set. See connect-vendor.ts.
+    // Off unless a vetra-level signal is set. See connect-vendor.ts.
     ...connectExternalizeVendorEnv(),
     // The preview reactor is a PUBLIC, no-login reactor. Override the auth env
     // the pod injects (inherited via process.env) so this child boots OPEN.

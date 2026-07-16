@@ -311,7 +311,7 @@ async function ensureFileNode(
 }
 
 /**
- * Sync each `.phd` path into the embedded reactor and the `vetra-cli` drive:
+ * Sync each `.phd` path into the embedded reactor and the `vetra` drive:
  *   1. materialize any document the reactor hasn't seen (empty doc, file id+type),
  *   2. replay content-scope operations via a single `loadBatch` (idempotent),
  *   3. attach each doc to the drive under a folder named after its project.
@@ -371,7 +371,7 @@ export async function applyFsChangesToReactor(
     }
   }
 
-  // 3. Attach to the vetra-cli drive under per-project folders.
+  // 3. Attach to the vetra drive under per-project folders.
   if (!driveId) {
     log?.warn?.(
       `[spec-fs-sync] no drive id — materialized ${loaded.length} doc(s) but skipped drive attachment`,

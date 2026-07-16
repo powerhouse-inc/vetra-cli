@@ -43,7 +43,7 @@ import { createAttachmentCommands } from '@powerhousedao/ph-clint/powerhouse';
 import { githubCommands } from './commands/github/index.js';
 import { existsSync } from 'node:fs';
 
-// Connect SPA dir: vetra-cli's own dist when built/published, else the
+// Connect SPA dir: vetra's own dist when built/published, else the
 // workspace vetra-app (dev, no build step). Lets vetra-app be a devDep.
 const CONNECT_ASSETS_ROOT = existsSync(path.join(CLI_ROOT, 'dist', 'connect', 'index.html'))
   ? CLI_ROOT

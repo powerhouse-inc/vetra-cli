@@ -1,7 +1,7 @@
 /**
  * Preview-server configuration.
  *
- * The server runs alongside the vetra-cli daemon and gives the embedded
+ * The server runs alongside the vetra daemon and gives the embedded
  * vetra-studio editor a way to resolve, on each render, the live URL of the
  * currently previewed reactor-project document — and to start the project if
  * it isn't running yet. The port stays fixed by default so the browser side

@@ -79,7 +79,7 @@ export async function loadEnvironmentState(
 }
 
 export type EnvironmentSummaryWithStudio = EnvironmentSummary & {
-  /** This env runs Vetra Studio (has `vetra-cli` installed) — not a deploy
+  /** This env runs Vetra Studio (has `vetra` installed) — not a deploy
    * target. */
   isStudio: boolean;
 };

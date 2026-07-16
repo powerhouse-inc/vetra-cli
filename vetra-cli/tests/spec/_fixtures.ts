@@ -9,7 +9,7 @@ import { createMemoryWorkdirStore } from "@powerhousedao/ph-clint";
  * `resolveReactorProjectPath` precondition.
  */
 export function makeWorkdir(): { workdir: string; cleanup: () => void } {
-  const workdir = mkdtempSync(join(tmpdir(), "vetra-cli-test-"));
+  const workdir = mkdtempSync(join(tmpdir(), "vetra-test-"));
   writeFileSync(join(workdir, "powerhouse.config.json"), "{}\n");
   return {
     workdir,

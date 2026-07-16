@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Option 2 (prod-close): publish LOCAL ph-clint + vetra-cli to the lab origin at
-# fresh versions, then build vetra-cli's own production Dockerfile the prod way
+# Option 2 (prod-close): publish LOCAL ph-clint + vetra to the lab origin at
+# fresh versions, then build vetra's own production Dockerfile the prod way
 # (hoisted `pnpm add -g` against the lab registry). Exercises real
 # packaging/resolution (catalog inlining, caret/exact pinning, hoisted global
 # install) AND the shipped image definition (entrypoint shim, template prewarm)
 # that the source-link path (option 1) skips.
 #
 # Flow:
-#   1. bump the 4 ph-clint packages vetra-cli depends on to PH_CLINT_VERSION,
+#   1. bump the 4 ph-clint packages vetra depends on to PH_CLINT_VERSION,
 #      rebuild dist, pnpm-pack + publish each to the lab origin.
-#   2. bump vetra-cli's catalog pin for those packages to PH_CLINT_VERSION.
-#   3. bump vetra-cli + vetra-app to VETRA_VERSION, pnpm-pack + publish.
-#   4. DOCKER_BUILDKIT=1 docker build vetra-cli's own production Dockerfile from
+#   2. bump vetra's catalog pin for those packages to PH_CLINT_VERSION.
+#   3. bump vetra + vetra-app to VETRA_VERSION, pnpm-pack + publish.
+#   4. DOCKER_BUILDKIT=1 docker build vetra's own production Dockerfile from
 #      the lab nginx (its entrypoint shim + `ph init` template prewarm).
 #
-# Isolation: the manifests this script mutates (vetra-cli pnpm-workspace.yaml +
+# Isolation: the manifests this script mutates (vetra pnpm-workspace.yaml +
 # the two package.json, the four ph-clint package.json) are snapshotted up front
 # and restored on exit (trap), so a run — pass or fail — leaves both checkouts'
 # manifests pristine. `pnpm pack` reads the catalog from pnpm-workspace.yaml and
@@ -41,8 +41,8 @@
 #
 # Parameters (env):
 #   PH_CLINT_VERSION   default 0.1.0-dev.84   version to publish ph-clint at
-#   VETRA_VERSION      default <pkg+1 dev>    version to publish vetra-cli/app at
-#   IMAGE_TAG          default vetra-cli:local-prodclose
+#   VETRA_VERSION      default <pkg+1 dev>    version to publish vetra/app at
+#   IMAGE_TAG          default vetra:local-prodclose
 #   BASE_IMAGE         default clint-runtime:labvcli
 #   NGINX_REGISTRY     default http://localhost:5100  (build-time, --network host)
 #   ORIGIN             default http://localhost:5101/  (publish target)
@@ -60,7 +60,7 @@ LAB_DIR="$(pwd)"
 VETRA_ROOT="${VETRA_ROOT:-$(cd "${LAB_DIR}/../.." && pwd)}"
 PH_CLINT_ROOT="${PH_CLINT_ROOT:-/Users/acaldas/dev/powerhouse/ph-clint}"
 PH_CLINT_VERSION="${PH_CLINT_VERSION:-0.1.0-dev.84}"
-IMAGE_TAG="${IMAGE_TAG:-vetra-cli:local-prodclose}"
+IMAGE_TAG="${IMAGE_TAG:-vetra:local-prodclose}"
 BASE_IMAGE="${BASE_IMAGE:-clint-runtime:labvcli}"
 # Build runs with --network host so the build container reaches the lab nginx at
 # localhost:5100 and the dist.tarball URLs (http://localhost:5100/...) resolve.
@@ -70,7 +70,7 @@ TOKEN_FILE="${TOKEN_FILE:-/tmp/labvcli_up_token}"
 OUT="${OUT:-/tmp/labvcli_tarballs}"
 TAG="${TAG:-dev}"
 
-# vetra-cli's 4 ph-clint deps (catalog-pinned), in dependency order so each
+# vetra's 4 ph-clint deps (catalog-pinned), in dependency order so each
 # pnpm pack inlines an already-bumped workspace:* sibling. The published name is
 # always @powerhousedao/<dir> — derived inline so this runs under bash 3.2
 # (macOS system bash, no associative arrays).
@@ -171,7 +171,7 @@ auth
 # a catalog already pointing at the lab-only PH_CLINT_VERSION would fail to
 # resolve from npmjs. Built against the dev tree's existing install (tsc + asset
 # copy), so the lockfile/manifests stay untouched.
-echo "==> building vetra-cli + vetra-app dist"
+echo "==> building vetra + vetra-app dist"
 ( cd "${VETRA_ROOT}/vetra-app" && pnpm build )
 # pnpm build (ph-cli build) emits dist/{browser,node,types} but NOT the Connect
 # SPA bundle the embedded connect-server serves. That is a separate command, and
@@ -224,12 +224,12 @@ if [ "${SKIP_PH_CLINT:-0}" != "1" ]; then
   done
 fi
 
-# --- step 2: bump vetra-cli catalog pin --------------------------------------
+# --- step 2: bump vetra catalog pin ------------------------------------------
 # Only when a local ph-clint was published. With SKIP_PH_CLINT=1 the catalog
 # already pins the released ph-clint versions, which is exactly what CI tests
-# vetra-cli against — leave them untouched.
+# vetra against — leave them untouched.
 if [ "${SKIP_PH_CLINT:-0}" != "1" ]; then
-  echo "==> bumping vetra-cli catalog pins to ${PH_CLINT_VERSION}"
+  echo "==> bumping vetra catalog pins to ${PH_CLINT_VERSION}"
   WS="${VETRA_ROOT}/pnpm-workspace.yaml"
   # Anchor on the catalog pin lines (leading two spaces + quote) so a commented
   # option-1 link: override on the same key is left alone.
@@ -239,51 +239,51 @@ if [ "${SKIP_PH_CLINT:-0}" != "1" ]; then
   grep -E "'\@powerhousedao/(ph-clint|clint-common)" "${WS}" | grep "${PH_CLINT_VERSION}" || true
 fi
 
-# --- step 3: publish vetra-cli + vetra-app -----------------------------------
+# --- step 3: publish vetra + vetra-app ---------------------------------------
 if [ -z "${VETRA_VERSION:-}" ]; then
   cur="$(node -p "require('${VETRA_ROOT}/vetra-cli/package.json').version")"
   # bump the dev.N suffix
   base="${cur%.*}"; n="${cur##*.}"; VETRA_VERSION="${base}.$((n+1))"
 fi
-echo "==> bumping vetra-cli + vetra-app to ${VETRA_VERSION}"
+echo "==> bumping vetra + vetra-app to ${VETRA_VERSION}"
 for pkg in vetra-cli vetra-app; do
   f="${VETRA_ROOT}/${pkg}/package.json"
   node -e "const fs=require('fs');const p=require('${f}');p.version='${VETRA_VERSION}';fs.writeFileSync('${f}', JSON.stringify(p,null,2)+'\n');"
 done
 
-echo "==> packing + publishing vetra-cli + vetra-app to ${ORIGIN}"
+echo "==> packing + publishing vetra + vetra-app to ${ORIGIN}"
 # pnpm pack inlines catalog: -> concrete and workspace:* -> ${VETRA_VERSION}
 # straight from pnpm-workspace.yaml; no install/lockfile step needed.
 ( cd "${VETRA_ROOT}/vetra-app" && pnpm pack --pack-destination "${OUT}" )
 ( cd "${VETRA_ROOT}/vetra-cli" && pnpm pack --pack-destination "${OUT}" )
-for pkg in vetra-app vetra-cli; do
+for pkg in vetra-app vetra; do
   npm publish "${OUT}/${pkg}-${VETRA_VERSION}.tgz" \
     --userconfig "${OUT}/.npmrc" --registry "${ORIGIN}" --tag "${TAG}"
 done
-echo "    published vetra-cli@${VETRA_VERSION} + vetra-app@${VETRA_VERSION}"
+echo "    published vetra@${VETRA_VERSION} + vetra-app@${VETRA_VERSION}"
 
 # Gate the build on the registry actually serving the freshly-published
-# versions (vetra-cli depends on vetra-app@${VETRA_VERSION}, so both must be
+# versions (vetra depends on vetra-app@${VETRA_VERSION}, so both must be
 # visible or `pnpm add -g` hits NO_MATCHING_VERSION mid-resolve). Also wait on
 # the ph-clint packages, which route from the local origin.
 echo "==> waiting for ${NGINX_REGISTRY} to serve the published versions"
 wait_for_version vetra-app "${VETRA_VERSION}"
-wait_for_version vetra-cli "${VETRA_VERSION}"
+wait_for_version vetra "${VETRA_VERSION}"
 if [ "${SKIP_PH_CLINT:-0}" != "1" ]; then
   for key in "${PH_CLINT_PKGS[@]}"; do
     wait_for_version "$(pkg_name "${key}")" "${PH_CLINT_VERSION}"
   done
 fi
 
-# --- step 4: build vetra-cli's own production image --------------------------
-echo "==> building vetra-cli image ${IMAGE_TAG} from ${NGINX_REGISTRY}"
+# --- step 4: build vetra's own production image ------------------------------
+echo "==> building vetra image ${IMAGE_TAG} from ${NGINX_REGISTRY}"
 # Build vetra-cli/Dockerfile (the shipped production image: hoisted `pnpm add
 # -g` + the vetra-run.sh entrypoint with the codegen NODE_PATH fix + the
 # `ph init` template prewarm), so the image definition itself is exercised,
 # not just package resolution.
-# CLINT_REGISTRY (vetra-cli) and PH_REGISTRY (ph-cmd + codegen prewarm) both
+# CLINT_REGISTRY (vetra) and PH_REGISTRY (ph-cmd + codegen prewarm) both
 # point at the lab nginx; PH_VERSION is left empty so the build reads
-# DEFAULT_PH_VERSION from the installed vetra-cli, matching prod.
+# DEFAULT_PH_VERSION from the installed vetra, matching prod.
 # Context is LAB_DIR (small); the Dockerfile COPYs nothing from it.
 DOCKER_BUILDKIT=1 docker build --network host -t "${IMAGE_TAG}" \
   -f "${VETRA_ROOT}/vetra-cli/Dockerfile" \

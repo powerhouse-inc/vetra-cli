@@ -9,7 +9,7 @@
 #   ./run-prodclose.sh [IMAGE_TAG]
 set -euo pipefail
 
-IMAGE="${1:-${IMAGE_TAG:-vetra-cli:local-prodclose}}"
+IMAGE="${1:-${IMAGE_TAG:-vetra:local-prodclose}}"
 NAME="${NAME:-vetra-studio-prodclose}"
 KEY="${VETRA_ANTHROPIC_API_KEY:-sk-ant-placeholder}"
 

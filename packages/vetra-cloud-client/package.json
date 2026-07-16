@@ -2,7 +2,7 @@
   "name": "@powerhousedao/vetra-cloud-client",
   "version": "0.0.1-dev.46",
   "private": true,
-  "description": "Environment-agnostic Vetra Cloud communication: GraphQL reads, the VetraCloudEnvironment document-model controller, and signed mutation sequences. Source-only internal package: consumed by vetra-cli (Node) and vetra-app (browser), each of which bundles this source into its own build. Not published; each consumer injects its own bearer-token source and signer.",
+  "description": "Environment-agnostic Vetra Cloud communication: GraphQL reads, the VetraCloudEnvironment document-model controller, and signed mutation sequences. Source-only internal package: consumed by vetra (Node) and vetra-app (browser), each of which bundles this source into its own build. Not published; each consumer injects its own bearer-token source and signer.",
   "license": "AGPL-3.0-only",
   "type": "module",
   "sideEffects": false,

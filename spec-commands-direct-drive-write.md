@@ -6,7 +6,7 @@ Status: **planned, not started.** Pick this up in a future session.
 
 Today the spec write commands (`spec-create`, `spec-update`, `spec-delete`,
 `spec-extract`) only write the filesystem (`<project>/specs/<subdir>/*.phd` via
-`registry.saveSpec`). The embedded `vetra-cli` drive that Vetra Studio reads is
+`registry.saveSpec`). The embedded `vetra` drive that Vetra Studio reads is
 updated **indirectly** by the `spec-fs-sync` chokidar watcher (FS → drive). That
 round-trip is fragile (we just fixed a chain of watch-root / glob / snapshot-vs-ops
 bugs) and asynchronous.
@@ -42,8 +42,8 @@ abandoned:
   - `folders?: FolderOperations` — wired **only** by the daemon's
     `startupSequence` and only when a personal drive exists.
 - `buildDefaultReactor` gives the configured drive `role: 'personal'`
-  (`ph-clint .../dist/integrations/powerhouse/index.js:40`), so the `vetra-cli`
-  drive (configured in `vetra-cli/src/cli.ts` `configureReactor`, name `vetra-cli`,
+  (`ph-clint .../dist/integrations/powerhouse/index.js:40`), so the `vetra`
+  drive (configured in `vetra-cli/src/cli.ts` `configureReactor`, name `vetra`,
   `preferredEditor: vetra-studio`) sets `personalDriveId`.
 - Therefore **`context.folders` presence = "reactor running" signal**: present in
   the daemon, absent in one-shot mode — a non-booting check. When it's present,
@@ -116,7 +116,7 @@ churn but harmless; optional later optimization to suppress self-echo.
 - New `tests/integration/spec-command-drive.integration.test.ts`: reuse the
   in-memory reactor harness from `spec-fs-sync.integration.test.ts`
   (`driveDocumentModelModule` + `@powerhousedao/vetra` + `vetra-app` models, a
-  `vetra-cli` drive). Build a fake `context` =
+  `vetra` drive). Build a fake `context` =
   `{ workdir, folders: {} /* truthy */, reactor: async()=>({client, personalDriveId, driveId}), log }`
   and call the command `execute`:
   - create → drive has project folder + file node, doc gettable, state correct.
@@ -129,7 +129,7 @@ churn but harmless; optional later optimization to suppress self-echo.
 1. `pnpm test`, `npx tsc --noEmit`, `npx eslint` (run from `vetra-cli/vetra-cli`).
 2. `pnpm dev`; agent: "create a brand sheet …". Immediately after the tool
    returns, `findDocuments(powerhouse/brand-sheet)` on `:59220` returns 1 and the
-   `vetra-cli` drive shows the project folder + file node — without depending on
+   `vetra` drive shows the project folder + file node — without depending on
    the `[spec-fs-sync]` watcher line.
 3. `spec-generate` still works (FS written synchronously by the command).
 4. Standalone `vetra spec-create …` (no daemon) writes FS only, does NOT boot a
@@ -139,7 +139,7 @@ churn but harmless; optional later optimization to suppress self-echo.
 - Adds reactor round-trips to write commands — fine in the daemon/agent path.
 - Redundant trigger churn (idempotent) as above.
 - Separate, out-of-scope known bug: the embedded drive id changes on every daemon
-  restart (`ensureDrive` in ph-clint not reusing the persisted `vetra-cli` drive)
+  restart (`ensureDrive` in ph-clint not reusing the persisted `vetra` drive)
   — synced specs don't survive restarts.
 - All changes in vetra-cli; no ph-clint edits.
 - Update `ARCHITECTURE.md` (Preview flow / Triggers: commands write the drive

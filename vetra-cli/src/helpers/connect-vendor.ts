@@ -9,13 +9,13 @@
  * libs to vendor.
  *
  * The reactor-project service spawns that dev server (`ph vetra`). This gates
- * the toggle on a vetra-cli-level signal so a harness can flip it without a
+ * the toggle on a vetra-level signal so a harness can flip it without a
  * code change, default OFF. Returns the child-env keys ONLY when armed; an
  * empty object otherwise, so the spawned env is byte-identical to before when
  * the signal is unset (turning it on by default is a separate decision).
  *
  * Signals (any truthy-"1" value arms it):
- *   VETRA_CONNECT_EXTERNALIZE_VENDOR  vetra-cli alias (preferred)
+ *   VETRA_CONNECT_EXTERNALIZE_VENDOR  vetra alias (preferred)
  *   PH_CONNECT_EXTERNALIZE_VENDOR     framework-native passthrough
  */
 function isArmed(): boolean {
