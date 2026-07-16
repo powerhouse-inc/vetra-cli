@@ -97,7 +97,7 @@ describe("spec-fs-sync FS → drive", () => {
       .buildModule();
     const drive = await module.client.createEmpty("powerhouse/document-drive");
     driveId = drive.header.id;
-    await module.client.rename(driveId, "vetra-cli");
+    await module.client.rename(driveId, "vetra");
   });
 
   async function driveNodes(): Promise<

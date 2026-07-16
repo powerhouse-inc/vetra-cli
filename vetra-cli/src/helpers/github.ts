@@ -112,7 +112,7 @@ export async function fetchPushToken(
 export async function fetchBotUserId(slug: string): Promise<number> {
   const login = `${slug}[bot]`;
   const res = await fetch(`https://api.github.com/users/${encodeURIComponent(login)}`, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'vetra-cli' },
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'vetra' },
   });
   if (!res.ok) {
     throw new Error(`Could not resolve bot user ${login}: ${res.status} ${res.statusText}`);

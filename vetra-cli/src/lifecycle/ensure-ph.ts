@@ -58,7 +58,7 @@ function checkPhCompatible(versionOutput: string, log: Logger): void {
   const fix = `install a matching ph-cmd: \`pnpm add -g ph-cmd@${DEFAULT_PH_VERSION}\``;
   if (cur.major !== EXPECTED_PH.major) {
     throw new Error(
-      `[ensure-ph] incompatible ph ${cur.version}: vetra-cli requires ph ${EXPECTED_PH.major}.x (built against ${DEFAULT_PH_VERSION}). To fix, ${fix}.`,
+      `[ensure-ph] incompatible ph ${cur.version}: vetra requires ph ${EXPECTED_PH.major}.x (built against ${DEFAULT_PH_VERSION}). To fix, ${fix}.`,
     );
   }
   if (cur.minor !== EXPECTED_PH.minor || cur.patch !== EXPECTED_PH.patch) {

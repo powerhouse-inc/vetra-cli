@@ -1,7 +1,7 @@
-# Mastra AI Builder Integration — vetra-cli adaptation
+# Mastra AI Builder Integration — vetra adaptation
 
 This document adapts the generic Mastra "AI builder with workflows + expert
-subagents + clarification broker" pattern to the existing vetra-cli plan.
+subagents + clarification broker" pattern to the existing vetra plan.
 The shape of the system (drive editor, reactor-project preview surface,
 chat-session document, workflow registry, local API) is already decided in
 `ARCHITECTURE.md` and `HANDOFF.md`. This file is about how Mastra workflows
@@ -20,18 +20,18 @@ For context, read first:
 
 ---
 
-## Mapping the generic model onto vetra-cli
+## Mapping the generic model onto vetra
 
-| Generic guide concept           | vetra-cli equivalent                                                                 |
+| Generic guide concept           | vetra equivalent                                                                     |
 | ------------------------------- | ------------------------------------------------------------------------------------ |
 | Chat UI                         | Vetra Studio drive editor (`vetra-app/editors/vetra-studio/`)                        |
 | Builder Agent                   | The Mastra agent in `vetra-cli/src/agents/agent.ts`                                  |
-| User-facing conversation        | Chat-session document in the vetra-cli drive (`chatSessionWatchTrigger` forwards)    |
+| User-facing conversation        | Chat-session document in the vetra drive (`chatSessionWatchTrigger` forwards)        |
 | Workflow tools on the agent     | Workflow registry tools: `start_workflow`, `set_step_content`, `complete_step`, …   |
 | Workflow runtime                | **MVP:** agent-driven registry, no engine. **V2:** Mastra workflow runners.          |
 | Nested workflows                | Per-concept-type workflows: document model, business logic, editor spec, component  |
 | Expert subagents                | Domain-scoped Mastra agents invoked from workflow steps (V2)                         |
-| Spec (source of truth)          | `.phd` spec documents in reactor-project source tree; mirrored to vetra-cli drive   |
+| Spec (source of truth)          | `.phd` spec documents in reactor-project source tree; mirrored to vetra drive       |
 | Generated code                  | Codegen output written into the reactor-project tree                                 |
 | Validation gates                | TBD — currently implicit in `ph-cli` codegen + tsc; needs an explicit gate (V2)      |
 | Build graph                     | **Not adopted as-is.** See "Build graph" below.                                      |
@@ -52,7 +52,7 @@ workflow run", `set_step_content` becomes "resume run with payload", etc.
 Carry these over verbatim:
 
 1. **Specs are the source of truth; generated code is derived.** Already
-   true in vetra-cli: `spec-create` / `spec-update` produce `.phd` files,
+   true in vetra: `spec-create` / `spec-update` produce `.phd` files,
    `spec-generate` derives code, the reactor-project Vite HMR cycle picks
    the code up. Keep this rule when adding Mastra workflows.
 
@@ -86,7 +86,7 @@ Carry these over verbatim:
 
 The generic guide pushes a `BuildGraph` of nodes-with-dependencies as the
 substrate that phase workflows read/update. We're not adopting that for
-vetra-cli.
+vetra.
 
 Reasons:
 
@@ -194,8 +194,8 @@ Key constraints preserved from the existing plan:
 - Workflow tool **inputs/outputs don't change** between MVP and V2.
   The agent's tool surface and the editor's render contract stay stable.
 - Spec writes still go through the reactor-project tree (so Vite HMR
-  picks them up) and are mirrored back into the vetra-cli drive by
-  `specFsSyncTrigger`. Don't write specs directly into the vetra-cli
+  picks them up) and are mirrored back into the vetra drive by
+  `specFsSyncTrigger`. Don't write specs directly into the vetra
   drive from a workflow step.
 - Workflow registry mutations still drive the local API's SSE channel.
   Whether the mutation source is "agent tool call" (MVP) or "Mastra
@@ -318,7 +318,7 @@ no `services/clarification-service.ts` — see "What we deviate from".
 
 ---
 
-## Guardrails (vetra-cli-specific)
+## Guardrails (vetra-specific)
 
 In addition to the generic guide's guardrails (which all still apply —
 specs are source of truth, derived code is derived, expert subagents
@@ -327,7 +327,7 @@ don't talk to users, etc.):
 1. **Don't change the workflow tool surface or editor render contract
    when adding Mastra workflows.** That's the entire point of decision
    12 in HANDOFF.md.
-2. **Don't write specs directly to the vetra-cli drive from workflow
+2. **Don't write specs directly to the vetra drive from workflow
    steps.** Always go through the reactor-project tree so `specFsSync`
    stays the single mirror direction.
 3. **Don't introduce a build graph or clarification broker without

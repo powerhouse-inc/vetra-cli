@@ -1,6 +1,6 @@
-# vetra-cli e2e (Playwright)
+# vetra e2e (Playwright)
 
-A **seeded** end-to-end test. It boots a self-contained vetra-cli studio against
+A **seeded** end-to-end test. It boots a self-contained vetra studio against
 a fresh **empty** workdir, drives the chat UI to build a todo-list, and asserts
 the generated editor renders inside the BUILD-pane iframe — exercising the whole
 loop: chat → agent → tools → reactor → studio.

@@ -1,7 +1,7 @@
 /**
- * Client-side bindings for the vetra-cli preview-server.
+ * Client-side bindings for the vetra preview-server.
  *
- * The server runs in the vetra-cli daemon (separate process from Connect),
+ * The server runs in the vetra daemon (separate process from Connect),
  * reached through the daemon's embedded proxy at `<proxy>/preview`. The
  * proxy URL isn't known at build time, so the daemon writes it into
  * `studio.config.json` (a sibling of `powerhouse.config.json`) on startup;
@@ -259,10 +259,10 @@ export async function fetchStart(args: {
   return (await res.json()) as StartResult;
 }
 
-/** Running versions of the vetra-cli daemon serving this studio. */
+/** Running versions of the vetra daemon serving this studio. */
 export type VersionInfo = { vetraCli: string; ph: string };
 
-/** Fetch the daemon's vetra-cli + ph versions (served from /version). */
+/** Fetch the daemon's vetra + ph versions (served from /version). */
 export async function fetchVersion(signal?: AbortSignal): Promise<VersionInfo> {
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/version`, { signal });

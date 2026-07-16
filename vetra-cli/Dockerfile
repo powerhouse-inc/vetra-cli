@@ -1,28 +1,28 @@
 # syntax=docker/dockerfile:1.7
 #
-# Prebuilt vetra-cli image. Derives from the generic clint-runtime base
-# and bakes `vetra-cli` (+ full dependency tree) globally at BUILD time
+# Prebuilt vetra image. Derives from the generic clint-runtime base
+# and bakes `vetra` (+ full dependency tree) globally at BUILD time
 # so container start is pull + exec, with no install-at-start.
 #
 # The entrypoint (tini + run.sh) is inherited from the base; run.sh
-# exec's whatever SERVICE_COMMAND is set at runtime. vetra-cli exposes
+# exec's whatever SERVICE_COMMAND is set at runtime. vetra exposes
 # the `vetra` binary, so a typical command looks like:
 #   SERVICE_COMMAND="vetra <subcommand> ..."
 #
 # Build args:
-#   CLINT_VERSION       vetra-cli version or dist-tag, e.g. 0.0.1-dev.0
-#   CLINT_REGISTRY      registry for vetra-cli install
+#   CLINT_VERSION       vetra version or dist-tag, e.g. 0.0.1-dev.0
+#   CLINT_REGISTRY      registry for vetra install
 #   PH_REGISTRY         registry for ph-cmd (defaults to host's local registry)
 #   PH_VERSION          ph-cli / ph-cmd version (or dist-tag). Empty by default —
 #                       the build reads DEFAULT_PH_VERSION from the installed
-#                       vetra-cli so the runtime config and template scaffolding
+#                       vetra so the runtime config and template scaffolding
 #                       agree out of the box. Override to pin a different version
 #                       and it propagates to the runtime VETRA_PH_VERSION env.
 #   REACTOR_TEMPLATE_DIR  where `ph init` runs to bake the warm template
 #   BASE_IMAGE          published clint-runtime image
 #
 # Build (local smoke, against local registry on the host):
-#   docker build -t vetra-cli:local \
+#   docker build -t vetra:local \
 #     --build-arg BASE_IMAGE=clint-runtime:dev-pnpm10 \
 #     --build-arg CLINT_VERSION=0.0.1-dev.0 \
 #     --build-arg CLINT_REGISTRY=https://registry.dev.vetra.io \
@@ -51,11 +51,11 @@ RUN corepack prepare "pnpm@${PNPM_VERSION}" --activate \
  && pnpm --version
 
 # --config.blockExoticSubdeps=false: pnpm 11 blocks URL-resolved subdeps;
-#   vetra-cli's closure hits this via viem -> ox. Global install also skips
+#   vetra's closure hits this via viem -> ox. Global install also skips
 #   postinstall scripts (no `allowBuilds`) — matches clint-agent behavior.
 # --config.minimumReleaseAge=0: pnpm 11 defaults to 1440min (24h). Local-registry
 #   packages are freshly published; disable the age check at build time.
-RUN pnpm add -g "vetra-cli@${CLINT_VERSION}" \
+RUN pnpm add -g "vetra@${CLINT_VERSION}" \
       --registry "${CLINT_REGISTRY}" \
       --config.blockExoticSubdeps=false \
       --config.minimumReleaseAge=0
@@ -69,7 +69,7 @@ RUN pnpm add -g "vetra-cli@${CLINT_VERSION}" \
 # rewrites the sources and sirv would otherwise serve a stale sibling (it never
 # re-stats). studio.config.json is written at boot, so its siblings won't exist.
 RUN set -eu; \
-    IDX=$(find -L "$(pnpm root -g)" -path "*/vetra-cli/dist/connect/index.html" -print -quit); \
+    IDX=$(find -L "$(pnpm root -g)" -path "*/vetra/dist/connect/index.html" -print -quit); \
     test -n "$IDX" || { echo "connect bundle not found under global install" >&2; exit 1; }; \
     DIST=$(dirname "$IDX"); \
     CONNECT_SERVER="$(dirname "$DIST")/connect-server.js" VETRA_DIST="$DIST" \
@@ -83,12 +83,12 @@ RUN set -eu; \
 # that runtime inits clone via `ph init --clone`. The cost of the install
 # + scaffold is paid here, once, so every runtime init is a directory copy.
 # Resolve the ph version: explicit PH_VERSION build-arg wins; otherwise read
-# DEFAULT_PH_VERSION from the just-installed vetra-cli so the runtime config
+# DEFAULT_PH_VERSION from the just-installed vetra so the runtime config
 # and template scaffold can't drift.
 RUN set -eu; \
     RESOLVED="${PH_VERSION}"; \
     if [ -z "$RESOLVED" ]; then \
-      VERSION_FILE=$(find -L "$(pnpm root -g)" -path "*/vetra-cli/dist/ph-version.gen.js" -print -quit 2>/dev/null); \
+      VERSION_FILE=$(find -L "$(pnpm root -g)" -path "*/vetra/dist/ph-version.gen.js" -print -quit 2>/dev/null); \
       if [ -n "$VERSION_FILE" ] && [ -f "$VERSION_FILE" ]; then \
         RESOLVED=$(node -e "import('file://${VERSION_FILE}').then(m => process.stdout.write(m.DEFAULT_PH_VERSION))" || true); \
       fi; \
@@ -167,7 +167,7 @@ ENV APOLLO_TELEMETRY_DISABLED=true
 # skips both the prompt and the on-disk decision — so nothing is baked here. A
 # non-TTY run without it defaults to denied.
 
-LABEL io.vetra.clint.package="vetra-cli" \
+LABEL io.vetra.clint.package="vetra" \
       io.vetra.clint.version="${CLINT_VERSION}"
 
 # Self-contained non-installing entrypoint. Inlined (instead of relying on
@@ -181,25 +181,25 @@ RUN printf '%s\n' \
       '  echo "==> ERROR: required env SERVICE_COMMAND is unset" >&2' \
       '  exit 1' \
       'fi' \
-      '# Propagate the build-resolved ph version to vetra-cli (ph-clint config' \
+      '# Propagate the build-resolved ph version to vetra (ph-clint config' \
       '# layer reads UPPER_SNAKE env vars; VETRA_PH_VERSION -> config.phVersion).' \
       'if [ -z "${VETRA_PH_VERSION:-}" ] && [ -f /home/clint/.ph-version ]; then' \
       '  VETRA_PH_VERSION=$(cat /home/clint/.ph-version)' \
       '  export VETRA_PH_VERSION' \
       'fi' \
       'if [ -n "${SERVICE_ANNOUNCE_URL:-}" ]; then' \
-      '  echo "==> vetra-cli: SERVICE_ANNOUNCE_URL is configured"' \
+      '  echo "==> vetra: SERVICE_ANNOUNCE_URL is configured"' \
       'fi' \
       '# Hosted image requires a key by default; set VETRA_REQUIRE_API_KEY=false to opt out.' \
       ': "${VETRA_REQUIRE_API_KEY:=true}"' \
       'export VETRA_REQUIRE_API_KEY' \
       '# No credential yet: hold without serving/announcing; a keyed restart supersedes this.' \
       'if [ "${VETRA_REQUIRE_API_KEY:-}" = "true" ] && [ -z "${VETRA_ANTHROPIC_API_KEY:-}" ]; then' \
-      '  echo "==> vetra-cli: no API key yet — holding, not serving (waiting for provisioning)" >&2' \
+      '  echo "==> vetra: no API key yet — holding, not serving (waiting for provisioning)" >&2' \
       '  trap "exit 0" TERM INT' \
       '  while true; do sleep 5 & wait $!; done' \
       'fi' \
-      'echo "==> vetra-cli: starting prebuilt agent"' \
+      'echo "==> vetra: starting prebuilt agent"' \
       'echo "    \$ ${SERVICE_COMMAND}"' \
       'exec sh -c "${SERVICE_COMMAND}"' \
     > /usr/local/bin/vetra-run.sh \

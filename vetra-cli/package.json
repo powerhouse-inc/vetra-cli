@@ -1,9 +1,8 @@
 {
-  "name": "vetra-cli",
+  "name": "vetra",
   "version": "0.0.1-dev.49",
   "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.dev.vetra.io"
+    "access": "public"
   },
   "type": "module",
   "bin": {

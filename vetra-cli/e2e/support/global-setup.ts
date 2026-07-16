@@ -144,7 +144,7 @@ function waitForStudio(child: ChildProcess): Promise<string> {
       cleanup();
       reject(
         new Error(
-          `vetra-cli exited (code ${code}) before the studio was ready. ` +
+          `vetra exited (code ${code}) before the studio was ready. ` +
             `Check the boot log above — common causes: port 8090 already in ` +
             `use (stop any running \`vetra\` studio), or a codegen/install failure.`,
         ),

@@ -1,4 +1,4 @@
-# vetra-cli e2e lab
+# vetra e2e lab
 
 A local, Docker-based reproduction of the `registry.dev.vetra.io` stack and the
 publish → build → run pipeline. It validates framework/CLI edits and the
@@ -19,7 +19,7 @@ script you run locally.
 - `base-image/` — the self-contained `clint-runtime` base image
   (`FROM node:24-bookworm-slim`, no ph-clint source). The entrypoint builds it
   locally when absent.
-- `run-local-e2e.sh` — option 1: run vetra-cli from source against the lab
+- `run-local-e2e.sh` — option 1: run vetra from source against the lab
   registry (no publish, no image build). Requires a local ph-clint link.
 
 ## Run prod-close e2e locally
@@ -38,7 +38,7 @@ That reproduces CI exactly. It:
 3. Builds the `clint-runtime` base image from `base-image/` if absent.
 4. Brings up the `prod` compose stack.
 5. Runs `publish-local-and-build.sh` with `SKIP_PH_CLINT=1` — publishes
-   vetra-cli + vetra-app to the local origin against the **released**
+   vetra + vetra-app to the local origin against the **released**
    (catalog-pinned) ph-clint resolved from public npm, then builds the
    clint-agent image the prod way (hoisted `pnpm add -g`).
 6. Runs `run-prodclose.sh` to start the image with the studio ports published.
@@ -77,7 +77,7 @@ base changes; otherwise the lab base drifts from prod.
 
 ## Option 1 — source run (local ph-clint)
 
-Run vetra-cli from source with local ph-clint linked, against the lab registry —
+Run vetra from source with local ph-clint linked, against the lab registry —
 no publish, no image build. Validates framework/CLI edits without cutting a
 `dev.N`.
 
@@ -129,7 +129,7 @@ Driver (manual, against released ph-clint — the CI path):
 cd lab/prod
 SKIP_PH_CLINT=1 VETRA_VERSION=0.0.1-e2e.1 BASE_IMAGE=clint-runtime:labvcli \
   ./publish-local-and-build.sh
-./run-prodclose.sh vetra-cli:local-prodclose
+./run-prodclose.sh vetra:local-prodclose
 ```
 
 To also publish a **local** ph-clint (dev workflow, needs a ph-clint checkout),
@@ -152,9 +152,9 @@ Params: `PH_CLINT_VERSION`, `VETRA_VERSION`, `IMAGE_TAG`, `BASE_IMAGE`,
    (`@powerhousedao/ph-clint`, `-observability`, `-dev`, `clint-common`) to
    `PH_CLINT_VERSION`, rebuilds dist, `pnpm pack` + publishes each to the local
    origin (`:5101`).
-2. (Skipped under `SKIP_PH_CLINT=1`) Bumps vetra-cli's catalog pins for those
+2. (Skipped under `SKIP_PH_CLINT=1`) Bumps vetra's catalog pins for those
    packages to the same version.
-3. Bumps vetra-cli + vetra-app to `VETRA_VERSION`, rebuilds their dist
+3. Bumps vetra + vetra-app to `VETRA_VERSION`, rebuilds their dist
    (`pnpm build`), `pnpm pack` (inlines catalog → concrete, `workspace:*` →
    `VETRA_VERSION`) + publishes both.
 4. Waits for the build registry (nginx `:5100`) to actually serve every
@@ -162,12 +162,12 @@ Params: `PH_CLINT_VERSION`, `VETRA_VERSION`, `IMAGE_TAG`, `BASE_IMAGE`,
    consecutive confirming reads of the **abbreviated** packument
    `Accept: application/vnd.npm.install-v1+json` that pnpm fetches) before
    building — so the build never races the cache layers.
-5. `DOCKER_BUILDKIT=1 docker build --network host` of vetra-cli's own
+5. `DOCKER_BUILDKIT=1 docker build --network host` of vetra's own
    `Dockerfile` (the shipped production image: hoisted `pnpm add -g` plus the
    `vetra-run.sh` entrypoint with the codegen NODE_PATH fix and the `ph init`
    template prewarm) with `CLINT_VERSION=<ver>`,
    `CLINT_REGISTRY=PH_REGISTRY=http://localhost:5100`, `BASE_IMAGE`, and
-   `PH_VERSION` left empty (read from the installed vetra-cli, as in prod). So
+   `PH_VERSION` left empty (read from the installed vetra, as in prod). So
    the image definition itself is exercised, not just package resolution.
 
 Isolation: every manifest the script edits (`pnpm-workspace.yaml`, the two

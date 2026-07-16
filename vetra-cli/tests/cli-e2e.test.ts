@@ -35,7 +35,7 @@ async function run(
   });
 }
 
-describe("vetra-cli spec-* (e2e)", () => {
+describe("vetra spec-* (e2e)", () => {
   // E2E spawns tsx; bump the per-test timeout to absorb the warm-up.
   const TIMEOUT = 60_000;
 
@@ -68,7 +68,7 @@ describe("vetra-cli spec-* (e2e)", () => {
   it(
     "walks a full CRUD lifecycle in a temp workdir",
     async () => {
-      const workdir = mkdtempSync(join(tmpdir(), "vetra-cli-e2e-"));
+      const workdir = mkdtempSync(join(tmpdir(), "vetra-e2e-"));
       writeFileSync(join(workdir, "powerhouse.config.json"), "{}\n");
       try {
         // list: empty

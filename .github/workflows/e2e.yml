@@ -43,7 +43,7 @@ jobs:
         with:
           node-version: 24
       # node 24 strips TS types natively — no install needed.
-      - name: Assert vetra-cli declares no runtime deps
+      - name: Assert vetra declares no runtime deps
         run: node vetra-cli/scripts/check-runtime-deps.ts
 
   e2e:
@@ -77,9 +77,9 @@ jobs:
           pnpm --filter vetra-app build
           pnpm --filter vetra-app build:connect
 
-      - name: Generate vetra-cli assets
+      - name: Generate vetra assets
         if: matrix.leg == 'source'
-        run: pnpm --filter vetra-cli build:assets
+        run: pnpm --filter vetra build:assets
 
       # The studio shells out to `ph` for the reactor-project; CI has no global
       # `ph`, so install ph-cmd onto a pnpm global-bin dir that's on PATH (the
@@ -111,11 +111,11 @@ jobs:
 
       - name: Install Playwright Chromium
         if: matrix.leg == 'source'
-        run: pnpm --filter vetra-cli exec playwright install --with-deps chromium
+        run: pnpm --filter vetra exec playwright install --with-deps chromium
 
       - name: Run seeded e2e
         if: matrix.leg == 'source'
-        run: pnpm --filter vetra-cli test:e2e
+        run: pnpm --filter vetra test:e2e
 
       - name: Dump studio + service logs on failure
         if: failure() && matrix.leg == 'source'
@@ -153,7 +153,7 @@ jobs:
 
       - name: Install Playwright Chromium
         if: matrix.leg == 'docker'
-        run: pnpm --filter vetra-cli exec playwright install --with-deps chromium
+        run: pnpm --filter vetra exec playwright install --with-deps chromium
 
       - name: Run prod-close e2e (image build + contract + seeded replay)
         if: matrix.leg == 'docker'
@@ -177,9 +177,9 @@ jobs:
 
   # Strongest global-install signal: prove the published package installs as a
   # plain global install on a vanilla node image AND boots the full seeded replay
-  # studio from that global bin. vetra-cli's runtime deps are public (the
+  # studio from that global bin. vetra's runtime deps are public (the
   # @powerhousedao/* entries are catalog: pins to versions on public npm; pnpm
-  # pack inlines catalog: -> concrete), so vetra-cli itself is the only non-public
+  # pack inlines catalog: -> concrete), so vetra itself is the only non-public
   # package — its tarball's whole closure resolves from public npm, no lab
   # registry needed. Build + pack run on the host runner (needs the pnpm
   # workspace); the global install + replay run inside a basic node:24 container
@@ -216,12 +216,12 @@ jobs:
           pnpm --filter vetra-app build
           pnpm --filter vetra-app build:connect
 
-      - name: Build vetra-cli
-        run: pnpm --filter vetra-cli build
+      - name: Build vetra
+        run: pnpm --filter vetra build
 
       # pnpm pack inlines catalog: -> concrete and workspace:* -> a real version,
       # so the tarball's deps are all public.
-      - name: Pack vetra-cli
+      - name: Pack vetra
         run: |
           cd vetra-cli
           TARBALL=$(pnpm pack | tail -1)
@@ -342,10 +342,10 @@ jobs:
           pnpm --filter vetra-app build
           pnpm --filter vetra-app build:connect
 
-      - name: Build vetra-cli
-        run: pnpm --filter vetra-cli build
+      - name: Build vetra
+        run: pnpm --filter vetra build
 
-      - name: Pack vetra-cli
+      - name: Pack vetra
         run: |
           cd vetra-cli
           TARBALL=$(pnpm pack | tail -1)

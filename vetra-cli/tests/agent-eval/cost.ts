@@ -3,7 +3,7 @@
  *
  * Source of truth for prices: litellm's `model_prices_and_context_window.json`,
  * a community-maintained JSON table that LiteLLM publishes on GitHub. We
- * fetch it on first use and cache to `~/.cache/vetra-cli/litellm-prices.json`
+ * fetch it on first use and cache to `~/.cache/vetra/litellm-prices.json`
  * with a 7-day TTL. The keys are LiteLLM's canonical model ids (eg.
  * `claude-sonnet-4-5-20250929`) — `MODEL_ID_ALIASES` maps the agent's
  * configured id (`anthropic/claude-sonnet-4-5`) onto a lookup key.
@@ -23,7 +23,7 @@ const PRICES_URL =
 const CACHE_PATH = join(
   homedir(),
   ".cache",
-  "vetra-cli",
+  "vetra",
   "litellm-prices.json",
 );
 

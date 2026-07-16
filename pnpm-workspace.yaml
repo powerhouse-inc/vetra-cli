@@ -52,12 +52,12 @@ overrides:
   graphql: '16.12.0'
 
   # Image-size dedupe (Trim 4): each collapses a duplicate-version train in the
-  # store. Reclaim measured against vetra-cli's prod closure; build/typecheck gated.
+  # store. Reclaim measured against vetra's prod closure; build/typecheck gated.
   'date-fns': '4.4.0'   # ~-11.5 MiB; all consumers on major 4 (leaner build)
   rolldown: '1.0.2'     # ~-19 MiB; collapses the rc.8/rc.17 binding train
 
   # Align @powerhousedao/vetra-cloud-package's transitive powerhouse deps onto
-  # vetra-cli's own rc line. The published tarball declares document-model +
+  # vetra's own rc line. The published tarball declares document-model +
   # these @powerhousedao packages at 6.2.0-dev.43; left alone, the
   # VetraCloudEnvironmentV1 model object loads a *different* document-model
   # instance (dev.43) than the rc.5 PHDocumentController it's fed into

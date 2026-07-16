@@ -57,7 +57,7 @@ function trimGenerateError(message: string): string {
 }
 
 // Run `ph generate <subcommand> --document <specFilePath>` in the reactor
-// project. The subprocess owns codegen; vetra-cli no longer generates in-process.
+// project. The subprocess owns codegen; vetra no longer generates in-process.
 async function generateOne(
   doc: PHDocument,
   specFilePath: string,
