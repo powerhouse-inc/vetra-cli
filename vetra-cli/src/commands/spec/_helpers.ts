@@ -737,7 +737,7 @@ const GRAPHQL_BUILTINS = new Set(["Int", "Float", "String", "Boolean", "ID"]);
  * `generatorTypeDefs` scalars (`@powerhousedao/document-engineering/graphql`)
  * plus the four locally-declared ones (`Unknown, DateTime, Address,
  * AttachmentRef`). Hard-coded because `graphql`/document-engineering are not
- * resolvable as direct deps of vetra-cli; keep in sync if the injected set
+ * resolvable as direct deps of vetra; keep in sync if the injected set
  * changes. */
 const INJECTED_SCALARS = new Set([
   "Unknown",

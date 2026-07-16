@@ -16,7 +16,7 @@ const PROJECT_ROOT = path.resolve(import.meta.dirname, '..');
 /**
  * Regenerate `src/ph-version.gen.ts` from the workspace catalog so the
  * default Powerhouse version for new reactor projects tracks the version
- * vetra-cli's runtime is built against. The catalog pins every
+ * vetra's runtime is built against. The catalog pins every
  * `@powerhousedao/*` package to the same version; we read `ph-cli` as the
  * marker since `ph init` installs that stack.
  */
@@ -99,7 +99,7 @@ async function bundleConnectServer(): Promise<void> {
 }
 await bundleConnectServer();
 
-// Ship the prebuilt Connect SPA in vetra-cli's own dist (served from
+// Ship the prebuilt Connect SPA in vetra's own dist (served from
 // CLI_ROOT/dist/connect) so vetra-app can be a devDep. Skips if already current.
 function copyConnectBundle(): void {
   const src = path.join(PROJECT_ROOT, '..', 'vetra-app', 'dist', 'connect');

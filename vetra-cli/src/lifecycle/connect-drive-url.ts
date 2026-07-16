@@ -1,7 +1,7 @@
 /**
  * Stamps live URLs into vetra-app's prebuilt Connect bundle.
  *
- * vetra-cli's drive id is a random UUID minted on first run, and the proxy
+ * vetra's drive id is a random UUID minted on first run, and the proxy
  * URL depends on local config — both unknown when vetra-app was built. Once
  * the embedded Switchboard resolves the drive (ph-clint emits
  * `powerhouse:switchboard:ready` with the composed URLs — direct and, when

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Repro: nested-studio drive URLs must carry the proxy origin when vetra-cli
+# Repro: nested-studio drive URLs must carry the proxy origin when vetra
 # runs behind its proxy (publicUrl set).
 #
-# Starts vetra-cli from source with VETRA_PROXY_PUBLIC_URL, scaffolds and
+# Starts vetra from source with VETRA_PROXY_PUBLIC_URL, scaffolds and
 # starts a reactor project the way the agent tools do (one-shot
 # reactor-project-init, then /reactor-project-start over the streaming REPL),
 # then asserts on the nested studio's served runtime config
@@ -104,14 +104,14 @@ if [ -n "${PH_CLI_LINK:-}" ]; then
     || fail "linking local ph-cli failed (see $INIT_LOG)"
 fi
 
-# ── 4. start vetra-cli with proxy publicUrl + start the project ──────────────
+# ── 4. start vetra with proxy publicUrl + start the project ──────────────
 # Isolated HOME: ph-clint persists service state user-scope (~/.ph/<cli>/
 # services) and adopts/restarts instances from other workdirs at boot, which
 # breaks the single-instance reactor-project start. PATH still resolves the
 # real `ph`/pnpm.
 FAKE_HOME="$WORKDIR/home"
 mkdir -p "$FAKE_HOME"
-log "starting vetra-cli (proxy publicUrl: $PROXY_URL); log: $LOG"
+log "starting vetra (proxy publicUrl: $PROXY_URL); log: $LOG"
 printf '/reactor-project-start --workdir %s\n' "$PROJECT_NAME" | \
   HOME="$FAKE_HOME" \
   VETRA_PROXY_PUBLIC_URL="$PROXY_URL" \
@@ -126,7 +126,7 @@ while :; do
     tail -60 "$LOG" >&2
     fail "reactor-project failed to start (full log: $LOG)"
   fi
-  kill -0 "$MAIN_PID" 2>/dev/null || { tail -60 "$LOG" >&2; fail "vetra-cli exited early (full log: $LOG)"; }
+  kill -0 "$MAIN_PID" 2>/dev/null || { tail -60 "$LOG" >&2; fail "vetra exited early (full log: $LOG)"; }
   [ "$SECONDS" -ge "$deadline" ] && { tail -60 "$LOG" >&2; fail "timed out waiting for Reactor Project (full log: $LOG)"; }
   sleep 2
 done

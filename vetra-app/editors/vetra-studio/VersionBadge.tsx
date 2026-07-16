@@ -1,4 +1,4 @@
-// Subtle info button in the studio header; click reveals vetra-cli + ph
+// Subtle info button in the studio header; click reveals vetra + ph
 // versions. Fetched once from /version; button absent until resolved.
 import { useEffect, useRef, useState } from "react";
 import {
@@ -48,7 +48,7 @@ export function VersionBadge() {
       {open ? (
         <div className="absolute left-0 top-7 z-10 whitespace-nowrap rounded-md border border-border bg-card px-3 py-2 text-[11px] shadow-md">
           <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">vetra-cli</span>
+            <span className="text-muted-foreground">vetra</span>
             <span className="font-mono text-foreground">{info.vetraCli}</span>
           </div>
           <div className="flex justify-between gap-4">

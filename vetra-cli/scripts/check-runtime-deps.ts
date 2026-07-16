@@ -1,4 +1,4 @@
-// Guard: vetra-cli ships zero declared runtime deps — everything is bundled by
+// Guard: vetra ships zero declared runtime deps — everything is bundled by
 // tsdown or vendored into dist/node_modules. Fails the build/CI if that breaks.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

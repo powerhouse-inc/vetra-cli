@@ -1,13 +1,13 @@
 # Edge registry — stands in for registry.dev.vetra.io's verdaccio.
 #
-# Dual-uplink build for the vetra-cli deploy lab:
+# Dual-uplink build for the vetra deploy lab:
 #   - `upstream` -> local origin verdaccio (via npm-cdn lag mock). Serves the
-#                   locally-published vetra-cli + vetra-app tarballs.
-#   - `npmjs`    -> real https://registry.npmjs.org/. Serves vetra-cli's
+#                   locally-published vetra + vetra-app tarballs.
+#   - `npmjs`    -> real https://registry.npmjs.org/. Serves vetra's
 #                   dependency closure (@powerhousedao/*, document-model,
 #                   @mastra/*, etc.), which all live on public npm.
 #
-# vetra-cli + vetra-app proxy from the local origin; everything else proxies
+# vetra + vetra-app proxy from the local origin; everything else proxies
 # from npmjs. This is the change that makes a real install resolvable inside
 # the lab without publishing the whole dep tree to the local origin.
 storage: /verdaccio/storage
@@ -36,7 +36,7 @@ uplinks:
 
 packages:
   # The two locally-published packages resolve ONLY from the local origin.
-  'vetra-cli':
+  'vetra':
     access: $all
     publish: $all
     unpublish: $all

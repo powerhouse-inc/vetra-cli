@@ -5,7 +5,7 @@
  *   GET  /resolve?project=&doc=   read-only; returns JSON `ResolveResult`.
  *   POST /start?project=          idempotent start; returns JSON `StartResult`.
  *   GET  /events                  SSE stream of reactor-project events.
- *   GET  /version                 running vetra-cli + ph versions.
+ *   GET  /version                 running vetra + ph versions.
  *   GET  /sessions                list chat sessions (gated).
  *   GET  /sessions/export?id=     zip of a session's doc/thread/log (gated).
  *   GET  /export?workspace=1      zip of selected workspace parts (gated).
