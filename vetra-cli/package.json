@@ -1,6 +1,6 @@
 {
   "name": "vetra-cli",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.vetra.io"
@@ -97,5 +97,9 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "author": {
+    "name": "Powerhouse",
+    "url": "https://powerhouse.inc"
   }
 }
