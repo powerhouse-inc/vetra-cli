@@ -97,5 +97,9 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "author": {
+    "name": "Powerhouse",
+    "url": "https://powerhouse.inc"
   }
 }
