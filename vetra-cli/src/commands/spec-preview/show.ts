@@ -10,6 +10,7 @@ import {
   browserDriveRemoteUrl,
   buildPreviewDocPath,
   buildPreviewDriveRootPath,
+  ensureReactorProjectReady,
   findPreviewByName,
   getPreviewAuthToken,
   resolveAppEditorId,
@@ -106,6 +107,9 @@ export const specPreviewShow = defineCommand({
       };
     }
 
+    await ensureReactorProjectReady(context.services, base, {
+      startParams: context.proxy?.url ? { proxyPublicUrl: context.proxy.url } : undefined,
+    });
     const { switchboardUrl, connectUrl, driveId: defaultDriveId } = resolvePreviewEndpoint(
       context.services,
       base,
