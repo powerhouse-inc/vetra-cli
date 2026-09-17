@@ -121,7 +121,8 @@ export const reactorProjectInit = defineCommand({
         const wsPath = path.join(projectPath, 'pnpm-workspace.yaml');
         const yaml = fs.existsSync(wsPath) ? fs.readFileSync(wsPath, 'utf8') : '';
         fs.writeFileSync(wsPath, withFederationOverrides(yaml, target));
-        const pin = await runProcess('pnpm install', {
+        // CI sets frozen-lockfile by default, and the overrides just changed.
+        const pin = await runProcess('pnpm install --no-frozen-lockfile', {
           label: 'pin-federation',
           cwd: projectPath,
           timeout: 300_000,
@@ -130,7 +131,7 @@ export const reactorProjectInit = defineCommand({
           throw new Error(
             formatProcessFailure(
               `pinning @apollo/* to ${target} failed`,
-              'pnpm install',
+              'pnpm install --no-frozen-lockfile',
               projectPath,
               pin.output,
             ),
