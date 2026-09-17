@@ -77,6 +77,10 @@ overrides:
   # - zod v3 coexists with v4: a dep hard-requires v3; forcing it is breaking for ~6 MiB.
 
 allowBuilds:
+  '@reown/appkit': true
+  bufferutil: true
+  keccak: true
+  'utf-8-validate': true
   '@apollo/protobufjs': true
   '@datadog/pprof': true
   '@parcel/watcher': true

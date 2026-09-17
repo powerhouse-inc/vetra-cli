@@ -119,6 +119,16 @@ RUN set -eu; \
       --config.minimumReleaseAge=0 \
       "@powerhousedao/codegen@${PH_VERSION}" \
       "vite-plugin-externalize-dependencies@^1.0.1" \
+ # @apollo/subgraph floats ahead of the @apollo/gateway reactor-api settles on,
+ # and a mismatched federation pair makes every subgraph fail supergraph
+ # composition ("doc.definitions is not iterable"), so the cloned project's
+ # switchboard never reaches readiness. Pin both to the resolved gateway version
+ # BEFORE the lockfile is rebuilt below: overrides are lockfile-recorded config,
+ # so changing them afterwards would fail the frozen install.
+ && node -e 'const fs=require("fs");const P="@apollo+gateway@";const g=[...new Set(fs.readdirSync("node_modules/.pnpm").filter(x=>x.startsWith(P)).map(x=>x.slice(P.length).split("_")[0]))];if(g.length!==1){console.log("[federation-pin] skipped, gateway="+g.join(","));process.exit(0);}const v=g[0];const f="pnpm-workspace.yaml";const drop=["\"@apollo/gateway\":","\"@apollo/subgraph\":","@apollo/gateway:","@apollo/subgraph:"];const kept=fs.readFileSync(f,"utf8").split("\n").filter(l=>!drop.some(k=>l.trim().startsWith(k))).join("\n");const pins="  \"@apollo/gateway\": \""+v+"\"\n  \"@apollo/subgraph\": \""+v+"\"";fs.writeFileSync(f,/^overrides:[ \t]*$/m.test(kept)?kept.replace(/^overrides:[ \t]*$/m,"overrides:\n"+pins):kept.replace(/\n*$/,"\n")+"overrides:\n"+pins+"\n");console.log("[federation-pin] pinned @apollo/* to "+v);' \
+ && pnpm install --no-frozen-lockfile \
+      --config.blockExoticSubdeps=false \
+      --config.minimumReleaseAge=0 \
  # storeDir pins the clone's offline install to this baked store; without it pnpm
  # picks a per-drive store on the workspace volume (empty) and fails offline. Only
  # a pnpm-workspace.yaml storeDir survives the relocation, and the clone copies it.
