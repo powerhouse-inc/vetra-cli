@@ -7,6 +7,7 @@ import { defineCommand } from '../../framework.js';
 import { requireOption, formatProcessFailure } from '../../helpers/cli-errors.js';
 import { ensureWorkspaceGitignore } from '../../helpers/workspace-git.js';
 import { phInitNodeOptions } from '../../helpers/node-memory.js';
+import { federationPinTarget, withFederationOverrides } from './federation-pin.js';
 import { DEFAULT_PH_VERSION } from '../../constants.js';
 
 const execFileAsync = promisify(execFile);
@@ -111,6 +112,32 @@ export const reactorProjectInit = defineCommand({
     }
 
     ensureWorkspaceGitignore(workdir);
+
+    // --clone installs from the template's lockfile, so its federation pair is
+    // already coherent; a fresh resolve is not.
+    if (!clonePath) {
+      const target = federationPinTarget(projectPath);
+      if (target) {
+        const wsPath = path.join(projectPath, 'pnpm-workspace.yaml');
+        const yaml = fs.existsSync(wsPath) ? fs.readFileSync(wsPath, 'utf8') : '';
+        fs.writeFileSync(wsPath, withFederationOverrides(yaml, target));
+        const pin = await runProcess('pnpm install', {
+          label: 'pin-federation',
+          cwd: projectPath,
+          timeout: 300_000,
+        });
+        if (!pin.success) {
+          throw new Error(
+            formatProcessFailure(
+              `pinning @apollo/* to ${target} failed`,
+              'pnpm install',
+              projectPath,
+              pin.output,
+            ),
+          );
+        }
+      }
+    }
 
     const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
     const hasConfig = fs.existsSync(path.join(projectPath, 'powerhouse.config.json'));
