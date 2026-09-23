@@ -1,6 +1,6 @@
 /**
  * Cloud (vetra.io) integration for the Deploy section. Constants + helpers live
- * in `@powerhousedao/vetra-cloud-client` (shared with vetra-cli); re-exported
+ * in `@powerhousedao/vetra-cloud-client` (shared with vetra); re-exported
  * here so the Studio deploy modules keep a stable local import path.
  */
 export {

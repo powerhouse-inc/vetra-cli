@@ -1,8 +1,8 @@
 # TODO
-- Stop `reactor-project` (and other vetra-cli services) when the CLI/agent
+- Stop `reactor-project` (and other vetra services) when the CLI/agent
   process exits. ph-clint spawns services `detached: true` by design
   (`types.ts:544-545`: "Services are spawned as detached processes that
-  survive CLI exit"), so today they outlive vetra-cli and the user must
+  survive CLI exit"), so today they outlive vetra and the user must
   run `<svc>-stop` manually. Approach without patching ph-clint: capture
   `ctx.context.services` from a tiny startup trigger into a module-level
   handle, then add a lifecycle hook whose `shutdown` calls
@@ -62,24 +62,24 @@
     `SubgraphHealth` types and a `supergraphHealth: SupergraphHealth!` root
     query that delegates to `this.graphqlManager.getSupergraphHealth()`
     (the reference is already injected at `graphql-manager.ts:421`).
-  vetra-cli consumer: `spec-generate` polls `supergraphHealth` for ~3s
+  vetra consumer: `spec-generate` polls `supergraphHealth` for ~3s
   post-codegen (Vite re-bundle is the async piece); `spec-preview-show`
   does a single read before returning the URL. Both filter by model
   subgraph name and throw a tool error carrying the upstream error
   string. Behind an interface (`checkSupergraphHealth(modelName)`) so the
   A2 log-tail fallback can stand in until the upstream lands. ~40 LOC in
-  graphql-manager.ts, ~25 LOC in system/subgraph.ts, plus the vetra-cli
+  graphql-manager.ts, ~25 LOC in system/subgraph.ts, plus the vetra
   side.
 
 ## Spec ownership migration
-Goal: vetra-cli owns the spec-document workflow; drop `@powerhousedao/vetra/codegen` coupling.
+Goal: vetra owns the spec-document workflow; drop `@powerhousedao/vetra/codegen` coupling.
 
-Motivation: we needed spec lookups (`spec-get`/`spec-update`/`spec-delete`/`spec-generate`) to accept `name | slug | id`, which required `spec-create` and `spec-extract` to actually populate `header.slug` (upstream `createDocument` leaves it `""`). The slug invariant currently lives only on the vetra-cli side of the upstream boundary, so any future caller going through `@powerhousedao/vetra/codegen` directly can still produce slug-less docs. Owning spec creation here makes the invariant universal.
+Motivation: we needed spec lookups (`spec-get`/`spec-update`/`spec-delete`/`spec-generate`) to accept `name | slug | id`, which required `spec-create` and `spec-extract` to actually populate `header.slug` (upstream `createDocument` leaves it `""`). The slug invariant currently lives only on the vetra side of the upstream boundary, so any future caller going through `@powerhousedao/vetra/codegen` directly can still produce slug-less docs. Owning spec creation here makes the invariant universal.
 
-- Inline a spec FS layer in vetra-cli (`getDocument(s)WithPaths`, `saveSpec`, `deleteDocument`, `specPath`/`specDir`, registry via `listSpecDocumentTypes`/`getSpecEntry`, `createDocument`, `addActions`/`validateActions`). Keep importing reducers/factories/jsonSpecs from the public `@powerhousedao/vetra/document-models/*` exports.
+- Inline a spec FS layer in vetra (`getDocument(s)WithPaths`, `saveSpec`, `deleteDocument`, `specPath`/`specDir`, registry via `listSpecDocumentTypes`/`getSpecEntry`, `createDocument`, `addActions`/`validateActions`). Keep importing reducers/factories/jsonSpecs from the public `@powerhousedao/vetra/document-models/*` exports.
 - Have the new `getDocuments` return `{ doc, path }` pairs so `findByName` no longer recomputes paths via `specPath` — fixes the wrong-file delete bug surfaced when two docs share a kebab-name but live under different extensions (`.editor.phd` vs `.phdm.phd`).
-- Move `extract*Documents` + `generate*FromDocument` adapters in too, so vetra-cli's `spec-extract`/`spec-generate` no longer reach into vetra/codegen.
-- Once vetra-cli is self-sufficient, decide ph-cli's fate:
+- Move `extract*Documents` + `generate*FromDocument` adapters in too, so vetra's `spec-extract`/`spec-generate` no longer reach into vetra/codegen.
+- Once vetra is self-sufficient, decide ph-cli's fate:
   - Option A: drop spec notion from ph-cli entirely (`--extract`/`--document` flags on `generate-*` commands go away). Direct codegen via args/JSON stays. Users use `vetra spec-extract`/`vetra spec-generate` for spec flows.
   - Option B: keep ph-cli `--document` by inlining the `.phd` loader there too — `document-model/node`'s `baseLoadFromFile` plus the 5 trivial `generate*FromDocument` wrappers. No vetra dep.
 - After ph-cli is detached, remove `@powerhousedao/vetra` from ph-cli's dependencies.

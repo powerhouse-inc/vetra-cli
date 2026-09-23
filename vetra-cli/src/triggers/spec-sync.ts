@@ -3,7 +3,7 @@
  *
  * Subscribes to spec document changes in the CLI's embedded reactor and writes
  * each doc to disk via `@powerhousedao/vetra/codegen#saveSpec`. The embedded
- * `vetra-cli` drive holds one folder per reactor project; each doc is routed to
+ * `vetra` drive holds one folder per reactor project; each doc is routed to
  * `<workdir>/<project>/specs/<subdir>/` by reading the doc's file node and its
  * parent folder name (the project) off the drive's node tree.
  *

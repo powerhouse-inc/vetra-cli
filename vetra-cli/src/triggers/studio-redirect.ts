@@ -1,5 +1,5 @@
 /**
- * Always-on studio routing for a deployed vetra-cli agent. Once the proxy and
+ * Always-on studio routing for a deployed vetra agent. Once the proxy and
  * reactor are up, registers two proxy routes unconditionally:
  *
  *   - a root redirect `/` → `/d/<driveId>` so the bare proxy origin lands on
@@ -10,7 +10,7 @@
  *     endpoint (vetra.io surfaces it as a clickable studio link) and `/d/<id>`
  *     keeps serving Connect rather than bouncing to switchboard.
  *
- * No config flag — this is the fixed behavior for vetra-cli. ph-clint provides
+ * No config flag — this is the fixed behavior for vetra. ph-clint provides
  * the generic redirect/addRoute capability; this trigger always uses it.
  */
 import { defineTrigger } from "../framework.js";

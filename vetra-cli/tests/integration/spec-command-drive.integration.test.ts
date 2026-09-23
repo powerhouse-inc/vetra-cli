@@ -4,7 +4,7 @@
  *
  * Each command writes the filesystem `specs/` unconditionally, and — when a
  * reactor is running (signalled by a truthy `context.folders`) — ALSO pushes
- * the change into the embedded `vetra-cli` drive synchronously, without the
+ * the change into the embedded `vetra` drive synchronously, without the
  * `spec-fs-sync` watcher round-trip. These tests build an in-memory reactor,
  * hand the command a fake `context` whose `reactor()` resolves it, and assert:
  *   - create  → drive gets a file node + a gettable doc with the right state
@@ -77,7 +77,7 @@ describe("spec-* commands → embedded drive", () => {
       .buildModule();
     const drive = await module.client.createEmpty("powerhouse/document-drive");
     driveId = drive.header.id;
-    await module.client.rename(driveId, "vetra-cli");
+    await module.client.rename(driveId, "vetra");
   });
 
   afterEach(async () => {

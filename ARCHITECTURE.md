@@ -1,6 +1,6 @@
-# Architecture: vetra-cli
+# Architecture: vetra
 
-This document describes how `vetra-cli` is put together — the components
+This document describes how `vetra` is put together — the components
 that run in-process, the services it spawns, and the preview pipeline
 that lets a freshly-generated document model be rendered live in a
 browser editor as the agent iterates.
@@ -13,7 +13,7 @@ of the open work.
 
 ```
                   ┌────────────────────────────────────────────────┐
-                  │              vetra-cli process                 │
+                  │              vetra process                     │
                   │                                                │
                   │  ┌─────────────────┐                           │
    user ────────► │  │ Interactive REPL│                           │
@@ -26,7 +26,7 @@ of the open work.
                   │  └────────┬────────┘    └────────┬─────────┘   │
                   │           │                      │             │
                   │  ┌────────▼─────────────────┐    │             │
-                  │  │ vetra-cli local API      │    │             │
+                  │  │ vetra local API          │    │             │
                   │  │ HTTP + SSE on 127.0.0.1  │    │             │
                   │  │ :5180 — resolve/start/   │    │             │
                   │  │ events (+ future surface)│    │             │
@@ -63,8 +63,8 @@ conversation logs (`<workdir>/.ph/vetra/logs/<agent>/`) live there.
 
 Internally:
 
-- The **reactor**, **agent**, **Switchboard**, and the **vetra-cli
-  local API** all run inside the vetra-cli node process.
+- The **reactor**, **agent**, **Switchboard**, and the **vetra
+  local API** all run inside the vetra node process.
 - The **routine** runs registered **triggers** on a poll loop in the
   same process (`chatSessionWatchTrigger`, spec-sync triggers).
 - **Connect** (serving vetra-app) and any **reactor-project** sessions
@@ -98,10 +98,10 @@ edits anywhere in this stack are picked up after a rebuild.
 
 Built by `cli.configureReactor` in `vetra-cli/src/cli.ts` via
 `buildDefaultReactor`. Composes the document models from `vetra-app`
-and `@powerhousedao/clint-common`. Primary drive name: `vetra-cli`.
+and `@powerhousedao/clint-common`. Primary drive name: `vetra`.
 Storage: `<workdir>/.ph/vetra/`.
 
-The vetra-cli drive holds: chat session documents, spec documents
+The vetra drive holds: chat session documents, spec documents
 (mirrored from the reactor-project filesystems by the spec-sync
 triggers), and any other domain content the studio surfaces.
 
@@ -129,7 +129,7 @@ that directory is produced.
 two artifact families and they are built separately:
 
 - `pnpm build` (= `ph-cli build`) emits `dist/{browser,node,types}` —
-  the package's consumable exports. This is what the vetra-cli node
+  the package's consumable exports. This is what the vetra node
   process imports at startup (document models, editor module
   registrations, processor factory).
 - `pnpm exec ph-cli connect build --outDir dist/connect
@@ -144,7 +144,7 @@ two artifact families and they are built separately:
 `pnpm build` does **not** rebuild `dist/connect/`. Editing
 `vetra-app/editors/*`, `vetra-app/powerhouse.manifest.json`, or
 anything the SPA loads requires running both commands and restarting
-vetra-cli (the connect-server is launched at vetra-cli startup with
+vetra (the connect-server is launched at vetra startup with
 `--dir` pointing at `dist/connect`; it has no watch). A common
 failure mode: the source manifest lists the new app under `apps[]`
 but the bundled SPA still carries the empty pre-edit manifest, so
@@ -154,7 +154,7 @@ editor never shows up.
 **Default-drive URL stamping.** Connect reads
 `PH_CONNECT_DEFAULT_DRIVES_URL` from a build-time literal
 (Vite-inlined `import.meta.env`); it cannot take the value from a
-runtime source. But vetra-cli's drive id is a random UUID minted on
+runtime source. But vetra's drive id is a random UUID minted on
 first run, unknown at bundle-build time. So the connect build bakes
 the `http://__ph_drive_url__` placeholder, and the
 `connect-drive-url` lifecycle hook
@@ -170,7 +170,7 @@ install where `ph-cli connect build` cannot run.
 
 The user's landing experience — `Vetra Studio` — is a custom **drive
 editor** registered against `powerhouse/document-drive` and selected
-via the vetra-cli drive's `preferredEditor` field. The editor renders:
+via the vetra drive's `preferredEditor` field. The editor renders:
 
 - Left rail: list of chat session documents in the drive, plus a
   "What will you build today?" entry point that creates a new session.
@@ -180,9 +180,9 @@ via the vetra-cli drive's `preferredEditor` field. The editor renders:
   iframe deep-linked into the chat session's current reactor-project
   Connect.
 
-### vetra-cli local API
+### vetra local API
 
-HTTP + SSE service hosted inside the vetra-cli node process on a fixed
+HTTP + SSE service hosted inside the vetra node process on a fixed
 loopback port. Default `127.0.0.1:5180`; see
 `vetra-cli/src/preview-server/config.ts` for the constant. CORS is
 permissive (`Access-Control-Allow-Origin: *`) because the loopback
@@ -327,11 +327,11 @@ browser-side editor. Each has a clearly-scoped purpose.
   subscriptions. The editor's "show this preview" signal is just the
   most recent relevant tool call in the session's history.
 
-- **vetra-cli local API (HTTP + SSE)** carries ephemeral runtime
+- **vetra local API (HTTP + SSE)** carries ephemeral runtime
   state that lives across or outside agent turns: project lifecycle,
   workflow live state (especially when V2 background tasks need to
   update state without an agent turn happening). Not persisted, not
-  replicated; recomputed on each vetra-cli boot.
+  replicated; recomputed on each vetra boot.
 
 The distinction is deliberate. Ephemeral runtime state in a CRDT
 document creates noise in history and forces the editor to constantly
@@ -342,7 +342,7 @@ class where it belongs keeps both subsystems simple.
 ### Drive editor (Vetra Studio) in vetra-app
 
 A custom editor registered for `powerhouse/document-drive`. Lives at
-`vetra-app/editors/vetra-studio/` (planned). The vetra-cli drive's
+`vetra-app/editors/vetra-studio/` (planned). The vetra drive's
 document sets `preferredEditor` to this editor's id so Connect picks
 it up automatically.
 
@@ -351,7 +351,7 @@ Composition:
 - Subscribes via `useDocument` to the drive doc itself (to list chat
   sessions) and to the currently-selected chat session (for messages,
   tool calls, and stage content derived from tool history).
-- Subscribes via `fetch` + `EventSource` to the vetra-cli local API
+- Subscribes via `fetch` + `EventSource` to the vetra local API
   for project and workflow live state.
 - Renders the active workflow scaffold (default = four-step vertical
   layout) in the right pane. Scaffold component reads tool-call
@@ -474,7 +474,7 @@ Registered in `cli.ts`. Run as part of ph-clint's routine loop.
 - `specSyncTrigger` — drive → filesystem mirror for spec documents.
   Routes each doc to `<workdir>/<project>/specs/` by reading the doc's
   file node and its parent folder (the project) off the embedded
-  `vetra-cli` drive; falls back to `<workdir>/specs/` for root-level
+  `vetra` drive; falls back to `<workdir>/specs/` for root-level
   docs (single-project layout).
 - `specFsSyncTrigger` — filesystem → drive (chokidar-based), the
   **external-change detector**: hand-edited `.phd`, `git pull`,
@@ -482,7 +482,7 @@ Registered in `cli.ts`. Run as part of ph-clint's routine loop.
   `specs/` subtrees for projects created after startup are picked up
   automatically (no `poll()` reconcile step), replays each `.phd`'s
   operations via
-  `loadBatch`, and attaches the doc to the embedded `vetra-cli` drive
+  `loadBatch`, and attaches the doc to the embedded `vetra` drive
   under an ADD_FOLDER node named after its project (idempotent
   ensure-folder + ensure-file). This is the project↔folder mapping
   `specSyncTrigger` reads back. The shared push/remove logic lives in
@@ -569,7 +569,7 @@ What happens when the agent previews an in-progress document model.
     │       │ also feeds reactor-project tree (project source)
     │       ↓ (ph vetra dev mode, Vite HMR)
     │   reactor-project picks up new document model (codegen)
-    └─→ vetra-cli drive  (direct, synchronous when reactor running;
+    └─→ vetra drive  (direct, synchronous when reactor running;
                           specFsSyncTrigger is the fallback for
                           external edits)
                               ↓ (ph vetra dev mode, Vite HMR)
@@ -619,7 +619,7 @@ Route sources:
   via `proxyRoot: true` (the embedded Connect does; single-website CLIs
   fall back to root implicitly).
 - **Static `proxyRoutes`** — in-process servers the ServiceManager doesn't
-  know about; vetra-cli registers `/preview` → preview-server (`:5180`).
+  know about; vetra registers `/preview` → preview-server (`:5180`).
 
 Browser-facing URL policy, per consumer. The `connect-drive-url` hook
 stamps absolute URLs into the prebuilt vetra-app bundle on
@@ -677,7 +677,7 @@ right-pane layout for a class of agent task. Scaffolds:
   timeline of step cards; future scaffolds can be single full-bleed
   iframes, side-by-side comparisons, etc.
 
-Workflow instances live in vetra-cli's in-memory registry. Each chat
+Workflow instances live in vetra's in-memory registry. Each chat
 session can have multiple instances; one is `primary` and renders in
 the right pane. Non-primary instances surface as a small indicator
 (badge / status strip).
@@ -710,7 +710,7 @@ vetra-cli/
     │   ├── framework.ts       ← config + secrets schemas
     │   ├── constants.ts       ← API port, proxy paths, default PH version
     │   ├── agents/agent.ts    ← Mastra agent factory
-    │   ├── preview-server/    ← vetra-cli local API (resolve/start/events)
+    │   ├── preview-server/    ← vetra local API (resolve/start/events)
     │   ├── commands/          ← spec-*, reactor-project-*, spec-preview-*
     │   ├── services/
     │   │   └── reactor-project.ts
@@ -729,7 +729,7 @@ vetra-cli/
 
 These are limitations of the current direction; not bugs.
 
-- **Workflow registry is in-memory.** vetra-cli restart drops all
+- **Workflow registry is in-memory.** vetra restart drops all
   active workflows; the editor reconnects to a fresh registry. For
   MVP this is fine. Persistence (and the resumable-vs-abandonable
   question that comes with it) is V2.
@@ -738,7 +738,7 @@ These are limitations of the current direction; not bugs.
   their current project by a transient handle (path or service
   instance id). Renaming or moving a project workdir invalidates
   references in any chat sessions that pointed at it. Promoting
-  project to a document model in the vetra-cli drive is phase 2;
+  project to a document model in the vetra drive is phase 2;
   it'll resolve this and let the editor enumerate projects via the
   reactor instead of a side-channel API.
 
@@ -748,12 +748,12 @@ These are limitations of the current direction; not bugs.
   thread) don't yet receive them. A `pushAgentNotice(message)` primitive
   in ph-clint, or a per-turn pending-context queue, would close it.
 
-- **Studio-mode parity.** Connect runs static in vetra-cli today
+- **Studio-mode parity.** Connect runs static in vetra today
   (vetra-app's prebuilt bundle exists). ph-clint's `connect-server.ts`
   serves the static SPA and applies the dynamic-base substitution; it no
   longer hosts a live package hot-reload channel. ph-clint still accepts
   a `registryUrl` on its Switchboard/Connect config (the `Packages`
-  subgraph + `PH_CONNECT_PACKAGES_REGISTRY`), but vetra-cli does not set
+  subgraph + `PH_CONNECT_PACKAGES_REGISTRY`), but vetra does not set
   it — the live preview path is reactor-project + Vite HMR, not dynamic
   package loading.
 

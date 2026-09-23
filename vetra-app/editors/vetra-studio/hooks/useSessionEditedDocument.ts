@@ -3,7 +3,7 @@
  * created/updated, from that session's own transcript.
  *
  * `spec-create` / `spec-update` tool results carry `{ data: { documentId,
- * documentType, name } }` (see the vetra-cli spec commands). We walk the
+ * documentType, name } }` (see the vetra spec commands). We walk the
  * transcript backward and return the latest non-error one, keyed by its
  * `toolCallId` so a consumer can tell a NEW edit apart from the same one
  * re-rendered. Reading the SELECTED session's messages is what scopes

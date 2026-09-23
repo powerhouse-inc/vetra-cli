@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One entrypoint for the prod-close e2e: the same script CI runs and a developer
 # runs locally with docker. Brings up the prod stack, publishes
-# vetra-cli + vetra-app to the disposable local origin against the released
+# vetra + vetra-app to the disposable local origin against the released
 # (catalog-pinned) ph-clint, builds the clint-agent image the prod way (hoisted
 # `pnpm add -g`), runs it, then drives the seeded Playwright replay against the
 # baked image — the real functional gate. A fast URL tripwire early-exits first
@@ -18,8 +18,8 @@
 #   BASE_IMAGE          default clint-runtime:labvcli  (built here if absent)
 #   BUILD_BASE_IMAGE    default 1 — build the base from lab/base-image if missing.
 #                       Set 0 + BASE_IMAGE=<pulled ref> to use a prebuilt base.
-#   IMAGE_TAG           default vetra-cli:prodclose-e2e
-#   VETRA_VERSION       default <vetra-cli pkg version + .e2e timestamp suffix>
+#   IMAGE_TAG           default vetra:prodclose-e2e
+#   VETRA_VERSION       default <vetra pkg version + .e2e timestamp suffix>
 #   KEEP_UP             default 0 — set 1 to leave the stack + studio running.
 set -euo pipefail
 
@@ -30,7 +30,7 @@ REPO_ROOT="$(cd "${LAB_DIR}/.." && pwd)"
 
 BASE_IMAGE="${BASE_IMAGE:-clint-runtime:labvcli}"
 BUILD_BASE_IMAGE="${BUILD_BASE_IMAGE:-1}"
-IMAGE_TAG="${IMAGE_TAG:-vetra-cli:prodclose-e2e}"
+IMAGE_TAG="${IMAGE_TAG:-vetra:prodclose-e2e}"
 STUDIO_NAME="${STUDIO_NAME:-vetra-studio-prodclose}"
 KEEP_UP="${KEEP_UP:-0}"
 
@@ -49,7 +49,7 @@ if [ -z "${VETRA_VERSION:-}" ]; then
 fi
 export VETRA_VERSION
 
-# publish-local-and-build.sh runs `pnpm build` in vetra-cli + vetra-app, which
+# publish-local-and-build.sh runs `pnpm build` in vetra + vetra-app, which
 # needs the workspace installed. Install once if it isn't (fresh CI checkout);
 # a local dev clone is usually already installed, so this is a no-op then.
 if [ ! -d "${REPO_ROOT}/vetra-cli/node_modules" ] || [ "${FORCE_INSTALL:-0}" = "1" ]; then
@@ -160,10 +160,10 @@ if [ "${RUN_REPLAY:-1}" != "1" ]; then
   exit 0
 fi
 echo "==> seeded replay against the prod-close image (the functional gate)"
-( cd "${REPO_ROOT}" && pnpm --filter vetra-cli exec playwright install --with-deps chromium )
+( cd "${REPO_ROOT}" && pnpm --filter vetra exec playwright install --with-deps chromium )
 if ! ( cd "${REPO_ROOT}" \
     && VETRA_E2E_BASE_URL="http://localhost:8090" VETRA_E2E_DRIVE_ID="${DRIVE}" \
-       pnpm --filter vetra-cli test:e2e ); then
+       pnpm --filter vetra test:e2e ); then
   echo "!! seeded replay failed against the prod image — dumping studio logs" >&2
   docker logs "${STUDIO_NAME}" 2>&1 | tail -120
   exit 1

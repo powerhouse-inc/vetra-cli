@@ -3,14 +3,14 @@
  *
  * The commands write the filesystem `specs/` unconditionally (codegen's source
  * of truth) and, when a reactor is already running, ALSO push the change into
- * the embedded `vetra-cli` drive so Vetra Studio reflects it directly — without
+ * the embedded `vetra` drive so Vetra Studio reflects it directly — without
  * waiting on the `spec-fs-sync` watcher round-trip.
  *
  * `context.folders` is the non-booting "reactor running" signal: the daemon's
  * startup sequence wires it only when a personal drive exists, and one-shot CLI
  * never does. Calling `ctx.reactor()` blindly would lazily boot a full reactor
  * just to write a spec — so we gate on `folders` first and only then resolve the
- * already-cached reactor. The configured `vetra-cli` drive has role 'personal',
+ * already-cached reactor. The configured `vetra` drive has role 'personal',
  * so `personalDriveId` is set; fall back to `driveId` for safety.
  */
 import type { ReactorContext } from "@powerhousedao/ph-clint";

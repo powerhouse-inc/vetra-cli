@@ -1,12 +1,12 @@
 /**
  * Vetra Studio environment detection. A cloud environment that runs Vetra Studio
- * has the published `vetra-cli` package installed. Those environments host the
+ * has the published `vetra` package installed. Those environments host the
  * Studio itself and must never be used as package-deploy targets.
  */
 
 /** The package a Vetra Studio environment runs. Its presence marks an env as a
  * Studio host. */
-export const STUDIO_ENV_PACKAGE = "vetra-cli";
+export const STUDIO_ENV_PACKAGE = "vetra";
 
 /** True when an environment's installed package names include the Studio package
  * — i.e. the env runs Vetra Studio and is not a deploy target. Accepts any

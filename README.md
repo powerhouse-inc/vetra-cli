@@ -110,7 +110,7 @@ control, auth, and more).
 ## Installing the published CLI
 
 The released CLI ships as the `vetra` binary. Install it with the one-liner —
-it installs `ph-cmd` + `vetra-cli` globally. Claude auth is set up on the first
+it installs `ph-cmd` + `vetra` globally. Claude auth is set up on the first
 `vetra` launch, not by the installer:
 
 ```sh
@@ -127,8 +127,8 @@ sh install.sh
 Advanced / manual install — the CLI needs both packages:
 
 ```sh
-# vetra-cli lives on the pre-release registry until it ships to npmjs.
-npm install -g ph-cmd vetra-cli --registry=https://registry.vetra.io # or: pnpm add -g ...
+# vetra lives on the pre-release registry until it ships to npmjs.
+npm install -g ph-cmd vetra --registry=https://registry.vetra.io # or: pnpm add -g ...
 vetra                                    # launch the agent REPL
 ```
 
@@ -136,7 +136,7 @@ vetra                                    # launch the agent REPL
 `VETRA_PACKAGE_MANAGER` to force `npm`/`pnpm`/`yarn`/`bun`).
 
 Installer env knobs (non-exhaustive — see the header of `install.sh`):
-`VETRA_VERSION`, `PH_VERSION`, `VETRA_REGISTRY` (registry for the `vetra-cli`
+`VETRA_VERSION`, `PH_VERSION`, `VETRA_REGISTRY` (registry for the `vetra`
 package; defaults to the pre-release registry `https://registry.vetra.io`),
 `VETRA_PM=npm|pnpm` (installer PM),
 `VETRA_PACKAGE_MANAGER` (PM for scaffolded projects), `VETRA_SKIP_PH=1`,
@@ -173,7 +173,7 @@ Connect, and Switchboard ports from the CLI name with no fallback. Free those
 ports (stop any prior `vetra-studio`) before starting.
 - **Agent types but never replies / a profile is missing.** Agent profiles and
 skills are generated into `gen/`. After editing agents or skills run
-`pnpm --filter vetra-cli build:assets` and restart the REPL — `pnpm dev`
+`pnpm --filter vetra build:assets` and restart the REPL — `pnpm dev`
 does not regenerate them.
 
 More detail on the dev-daemon model and reload story lives in

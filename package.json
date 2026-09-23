@@ -1,18 +1,18 @@
 {
-  "name": "vetra",
+  "name": "vetra-monorepo",
   "version": "0.0.1-dev.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.5.0",
   "scripts": {
-    "build": "pnpm --filter vetra-app build && pnpm --filter vetra-app build:connect && pnpm --filter vetra-cli build",
+    "build": "pnpm --filter vetra-app build && pnpm --filter vetra-app build:connect && pnpm --filter vetra build",
     "test": "pnpm -r run test",
-    "dev": "pnpm --filter vetra-cli dev",
-    "dev:reset": "pnpm --filter vetra-cli dev:reset",
-    "start": "pnpm --filter vetra-cli start",
+    "dev": "pnpm --filter vetra dev",
+    "dev:reset": "pnpm --filter vetra dev:reset",
+    "start": "pnpm --filter vetra start",
     "lint": "pnpm -r run lint",
-    "publish:dev": "pnpm --filter vetra-cli exec ph-publish dev -c ../publish.config.js --verify-connect",
-    "publish:staging": "pnpm --filter vetra-cli exec ph-publish staging -c ../publish.config.js --verify-connect",
-    "publish:production": "pnpm --filter vetra-cli exec ph-publish production -c ../publish.config.js --verify-connect"
+    "publish:dev": "pnpm --filter vetra exec ph-publish dev -c ../publish.config.js --verify-connect",
+    "publish:staging": "pnpm --filter vetra exec ph-publish staging -c ../publish.config.js --verify-connect",
+    "publish:production": "pnpm --filter vetra exec ph-publish production -c ../publish.config.js --verify-connect"
   }
 }

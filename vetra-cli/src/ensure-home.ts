@@ -19,10 +19,10 @@ if (!process.env.HOME) {
   const home = resolveHome();
   if (home) {
     process.env.HOME = home;
-    console.log(`vetra-cli: HOME was unset; defaulted to ${home}`);
+    console.log(`vetra: HOME was unset; defaulted to ${home}`);
   } else {
     console.warn(
-      'vetra-cli: HOME is unset and could not be resolved from the OS user; ' +
+      'vetra: HOME is unset and could not be resolved from the OS user; ' +
         'file watching may fail. Set HOME in the container environment.',
     );
   }

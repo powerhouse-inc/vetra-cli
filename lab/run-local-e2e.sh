@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Run vetra-cli from source with local ph-clint linked, against the lab
+# Run vetra from source with local ph-clint linked, against the lab
 # registry. No publish, no image build. See vetra/CLAUDE.md ->
 # "Testing local ph-clint/vetra-cli changes e2e on the lab".
 #

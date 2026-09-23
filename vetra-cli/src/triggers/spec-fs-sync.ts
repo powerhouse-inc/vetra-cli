@@ -2,7 +2,7 @@
  * Spec-fs-sync trigger — filesystem → Vetra-drive mirror for EXTERNAL edits.
  *
  * Watches every reactor project's `specs/**\/*.phd` under the workdir and pushes
- * changes into the embedded reactor + `vetra-cli` drive via
+ * changes into the embedded reactor + `vetra` drive via
  * `applyFsChangesToReactor` (shared with the `spec-*` write commands, in
  * `helpers/spec-drive-sync.ts`). Command-originated writes already push the
  * drive directly and synchronously, so this watcher's job is the rest:

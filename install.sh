@@ -3,22 +3,22 @@
 #
 #   curl -fsSL https://get.vetra.io | sh
 #
-# Installs `ph-cmd` (the `ph` bin) and `vetra-cli` (the `vetra` bin) globally.
+# Installs `ph-cmd` (the `ph` bin) and `vetra` (the `vetra` bin) globally.
 # Claude auth is set up on first `vetra` launch, not here. Advanced users can
-# skip this script and run:  npm install -g ph-cmd vetra-cli --registry=https://registry.vetra.io
+# skip this script and run:  npm install -g ph-cmd vetra --registry=https://registry.vetra.io
 #
 # Env knobs (all optional):
-#   VETRA_VERSION    vetra-cli version to install            (default: latest)
-#   VETRA_INSTALL_SPEC  install this spec instead of vetra-cli@$VERSION (e.g. a local tarball; used in CI)
-#   PH_VERSION       ph-cmd version to install               (default: pin baked into vetra-cli)
-#   VETRA_REGISTRY   registry for the vetra-cli package only  (default: https://registry.vetra.io, the pre-release registry; ph-cmd + deps always use your npm default)
+#   VETRA_VERSION    vetra version to install            (default: latest)
+#   VETRA_INSTALL_SPEC  install this spec instead of vetra@$VERSION (e.g. a local tarball; used in CI)
+#   PH_VERSION       ph-cmd version to install               (default: pin baked into vetra)
+#   VETRA_REGISTRY   registry for the vetra package only  (default: https://registry.vetra.io, the pre-release registry; ph-cmd + deps always use your npm default)
 #   VETRA_PM         package manager: npm | pnpm             (default: pnpm — offers to install it if missing, else npm)
 #   VETRA_SKIP_PH=1  don't install ph-cmd (rely on first-boot ensure-ph)
 #   VETRA_YES=1      non-interactive: accept defaults, never prompt
 #   VETRA_NO_LAUNCH=1  install only, don't offer to launch
 set -eu
 
-VETRA_PKG="vetra-cli"
+VETRA_PKG="vetra"
 VETRA_BIN="vetra"
 PH_PKG="ph-cmd"
 PH_BIN="ph"
@@ -203,11 +203,11 @@ install_vetra() {
 }
 
 # ph-cmd is a separate package with its own dependency closure. Pin it to the
-# version vetra-cli was built against (baked into the shipped bundle) so first
+# version vetra was built against (baked into the shipped bundle) so first
 # boot isn't a slow surprise install by the ensure-ph safety net.
 resolve_ph_version() {
   [ -n "${PH_VERSION:-}" ] && { printf '%s' "$PH_VERSION"; return 0; }
-  # Ask the just-installed CLI — its banner reads "vetra-cli vX (ph <ver>)".
+  # Ask the just-installed CLI — its banner reads "vetra vX (ph <ver>)".
   vbin=$(vetra_path 2>/dev/null || true)
   [ -n "$vbin" ] || return 1
   "$vbin" --version 2>/dev/null | sed -n 's/.*(ph \([^)]*\)).*/\1/p' | head -1
@@ -242,7 +242,7 @@ ensure_path() {
   if [ -f "$prof" ] && grep -Fq "$line" "$prof" 2>/dev/null; then
     :
   else
-    { printf '\n# vetra-cli (global bin)\n%s\n' "$line" >> "$prof"; } 2>/dev/null \
+    { printf '\n# vetra (global bin)\n%s\n' "$line" >> "$prof"; } 2>/dev/null \
       && info "added the global bin to PATH in $prof" \
       || warn "add \"$bin\" to your PATH — the \`vetra\`/\`ph\` bins live there."
   fi

@@ -1,5 +1,5 @@
 // Side-effecting startup banner. Imported first in main.ts so it logs the
-// running vetra-cli version before the rest of the import graph evaluates —
+// running vetra version before the rest of the import graph evaluates —
 // a crash in a downstream import (e.g. a mismatched ph-clint dependency)
 // still leaves the version in the logs. Reads package.json directly to avoid
 // importing ph-clint.

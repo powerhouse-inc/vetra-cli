@@ -1,4 +1,4 @@
-# vetra-cli — agent instructions
+# vetra — agent instructions
 
 This directory holds three durable documents that together carry the project
 state across sessions. Read them in this order at the start of any
@@ -86,7 +86,7 @@ service with the built-in before re-running `pnpm dev`:
 ```
 vetra vetra-studio-stop          # built (dist) CLI
 # in dev without a build:
-pnpm --filter vetra-cli exec tsx src/main.ts vetra-studio-stop
+pnpm --filter vetra exec tsx src/main.ts vetra-studio-stop
 ```
 
 Don't `pkill -f` the processes — the managed `*-stop` command is the
@@ -115,7 +115,7 @@ are a stale artifact, not a real bug.
 | You changed… | To see it |
 |---|---|
 | Studio UI / editors / document models (`vetra-app` source) | Nothing — `ph vetra` dev mode runs **Vite HMR**, saves live-reload in the Studio. |
-| `vetra-cli` source (`src/` — CLI, agents, triggers) | Restart the REPL: Ctrl+C, `pnpm dev`. `dev` is `tsx src/main.ts` (no build step). |
+| `vetra` source (`src/` — CLI, agents, triggers) | Restart the REPL: Ctrl+C, `pnpm dev`. `dev` is `tsx src/main.ts` (no build step). |
 | **Agents or skills** (`src/cli.ts` `prompts.agents`, anything under `prompts/`) | **`pnpm build:assets`, then restart the REPL** — see "Generated assets" below. |
 | The built Studio **BUILD preview** pane (`vetra-app/dist/connect`) | `pnpm --filter vetra-app build && build:connect`, then cycle the service. |
 | A linked framework package (`clint-common` / `ph-clint`) | Rebuild it (`pnpm --filter @powerhousedao/<pkg> build`), then `vetra vetra-studio-stop && pnpm dev`. No HMR across a built-dep boundary. |
@@ -132,7 +132,7 @@ never runs (e.g. a chat box that types but never replies).
 already exists. So adding/renaming an agent or skill in `src/cli.ts`
 and just running `pnpm dev` silently uses a **stale profile**. The full
 root `pnpm build` *does* regenerate `gen/` (via
-`vetra-cli build` → `build:assets && tsc`), but dev does not.
+`vetra build` → `build:assets && tsc`), but dev does not.
 
 After touching `prompts.agents` or `prompts/`: run `pnpm build:assets`,
 then restart the REPL. (Profiles are read once at agent-definition time,
