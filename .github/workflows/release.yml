@@ -1,6 +1,7 @@
 name: release
 
-# Publish vetra-app + vetra-cli to the Vetra npm registries.
+# Publish vetra-app + the CLI (published as `vetra`, directory `vetra-cli`)
+# to the Vetra npm registries.
 # Version bumps / dep updates happen in a prior manual commit — this workflow
 # builds and publishes whatever version is committed on the branch it runs from.
 #
@@ -91,6 +92,14 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./vetra-cli/package.json').version")
+          # Package NAMES, read from the manifests rather than hardcoded. The
+          # directory is still `vetra-cli`, but the package it publishes was
+          # renamed to `vetra`, and a literal here silently published nothing:
+          # the skip-if-exists probe asked the registry for the OLD name, found
+          # the old package's version, and reported "already on ... — ensuring
+          # dist-tag" for a package this build never produced.
+          APP_NAME=$(node -p "require('./vetra-app/package.json').name")
+          CLI_NAME=$(node -p "require('./vetra-cli/package.json').name")
 
           # Mint a fresh Renown bearer token per registry (aud = the registry
           # URL) via the SDK, using the provisioned app did:key + address. The
@@ -125,17 +134,19 @@ jobs:
 
           for reg in $REGISTRIES; do
             mint_token "$reg"
-            # vetra-app first so vetra-cli never references an unpublished dep.
-            publish_one "$VETRA_APP_TGZ" vetra-app "$reg"
-            publish_one "$VETRA_CLI_TGZ" vetra-cli "$reg"
+            # the app first so the CLI never references an unpublished dep.
+            publish_one "$VETRA_APP_TGZ" "$APP_NAME" "$reg"
+            publish_one "$VETRA_CLI_TGZ" "$CLI_NAME" "$reg"
           done
 
       # npm view serves stale data for minutes after a publish — use the
       # cache-busted dist-tags endpoint.
       - name: Verify dist-tags
         run: |
+          APP_NAME=$(node -p "require('./vetra-app/package.json').name")
+          CLI_NAME=$(node -p "require('./vetra-cli/package.json').name")
           for reg in $REGISTRIES; do
-            for pkg in vetra-app vetra-cli; do
+            for pkg in "$APP_NAME" "$CLI_NAME"; do
               echo "== $reg  $pkg"
               curl -s "$reg/-/package/$pkg/dist-tags?cb=$RANDOM"; echo
             done
