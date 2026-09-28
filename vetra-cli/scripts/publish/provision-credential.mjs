@@ -81,11 +81,26 @@ async function gql(query, variables) {
     body: JSON.stringify({ query, variables }),
   });
   const body = await res.json();
-  if (!res.ok || body.errors)
-    throw new Error(
+  if (!res.ok || body.errors) {
+    const error = new Error(
       `switchboard error: ${JSON.stringify(body.errors || res.status)}`,
     );
+    error.graphQLErrors = body.errors;
+    throw error;
+  }
   return body.data;
+}
+
+// True when `error` is a GraphQL "Cannot query field" failure for `fieldName`,
+// i.e. the switchboard predates that mutation.
+function isUnknownField(error, fieldName) {
+  return Boolean(
+    error?.graphQLErrors?.some(
+      (e) =>
+        typeof e.message === "string" &&
+        e.message.includes(`Cannot query field "${fieldName}"`),
+    ),
+  );
 }
 
 const action = (type, input) => ({
@@ -96,20 +111,39 @@ const action = (type, input) => ({
   timestampUtcMs: Date.now(),
 });
 
-const created = await gql(
-  `mutation ($documentType: String!) {
-    createEmptyDocument(documentType: $documentType) { id }
-  }`,
-  { documentType: "powerhouse/renown-credential" },
-);
-const docId = created.createEmptyDocument.id;
+// Legacy path for a switchboard that doesn't yet expose renown_issueCredential:
+// create the document directly and apply the signed credential as a raw INIT.
+async function provisionViaLegacyMutation() {
+  const created = await gql(
+    `mutation ($documentType: String!) {
+      createEmptyDocument(documentType: $documentType) { id }
+    }`,
+    { documentType: "powerhouse/renown-credential" },
+  );
+  const docId = created.createEmptyDocument.id;
 
-await gql(
-  `mutation ($documentIdentifier: String!, $actions: [JSONObject!]!) {
-    mutateDocument(documentIdentifier: $documentIdentifier, actions: $actions) { id }
-  }`,
-  { documentIdentifier: docId, actions: [action("INIT", initInput)] },
-);
+  await gql(
+    `mutation ($documentIdentifier: String!, $actions: [JSONObject!]!) {
+      mutateDocument(documentIdentifier: $documentIdentifier, actions: $actions) { id }
+    }`,
+    { documentIdentifier: docId, actions: [action("INIT", initInput)] },
+  );
+  return docId;
+}
+
+let docId;
+try {
+  const result = await gql(
+    `mutation ($input: RenownCredential_InitInput!) {
+      renown_issueCredential(input: $input)
+    }`,
+    { input: initInput },
+  );
+  docId = result.renown_issueCredential;
+} catch (error) {
+  if (!isUnknownField(error, "renown_issueCredential")) throw error;
+  docId = await provisionViaLegacyMutation();
+}
 
 console.log("Provisioned delegation credential:");
 console.log(`  owner:      ${vc.issuer.id}`);
