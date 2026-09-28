@@ -8,6 +8,7 @@ import {
   NodeKeyStorage,
   RenownCryptoBuilder,
 } from "@renown/sdk/node";
+import { isMissingMutationSchema } from "./lib/is-missing-mutation-schema.mjs";
 
 const walletKey = process.env.VETRA_REGISTRY_WALLET_KEY;
 const switchboardUrl = process.env.PH_RENOWN_SWITCHBOARD_URL;
@@ -91,18 +92,6 @@ async function gql(query, variables) {
   return body.data;
 }
 
-// True when `error` is a GraphQL "Cannot query field" failure for `fieldName`,
-// i.e. the switchboard predates that mutation.
-function isUnknownField(error, fieldName) {
-  return Boolean(
-    error?.graphQLErrors?.some(
-      (e) =>
-        typeof e.message === "string" &&
-        e.message.includes(`Cannot query field "${fieldName}"`),
-    ),
-  );
-}
-
 const action = (type, input) => ({
   id: globalThis.crypto.randomUUID(),
   type,
@@ -141,7 +130,8 @@ try {
   );
   docId = result.renown_issueCredential;
 } catch (error) {
-  if (!isUnknownField(error, "renown_issueCredential")) throw error;
+  if (!isMissingMutationSchema(error, "renown_issueCredential", "RenownCredential_InitInput"))
+    throw error;
   docId = await provisionViaLegacyMutation();
 }
 
