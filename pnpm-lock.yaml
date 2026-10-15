@@ -262,6 +262,9 @@ importers:
       '@mastra/memory':
         specifier: ^1.20.2
         version: 1.20.2(@mastra/core@1.41.0(@grpc/grpc-js@1.14.3)(express@4.22.2)(zod@4.3.6))(zod@4.3.6)
+      '@openrouter/ai-sdk-provider':
+        specifier: 1.5.4
+        version: 1.5.4(zod@4.3.6)
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
@@ -2179,6 +2182,16 @@ packages:
 
   '@openpanel/web@1.4.1':
     resolution: {integrity: sha512-DgUWeocZw+b57YiJjefZPg+6sceR7TdOF8x7Ut75lu3CwcwqGi5jZNPXjikNemGL37aNWXCB4buhcoNan2j7RA==}
+
+  '@openrouter/ai-sdk-provider@1.5.4':
+    resolution: {integrity: sha512-xrSQPUIH8n9zuyYZR0XK7Ba0h2KsjJcMkxnwaYfmv13pKs3sDkjPzVPPhlhzqBGddHb5cFEwJ9VFuFeDcxCDSw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      ai: ^5.0.0
+      zod: 4.3.6
+
+  '@openrouter/sdk@0.1.27':
+    resolution: {integrity: sha512-RH//L10bSmc81q25zAZudiI4kNkLgxF2E+WU42vghp3N6TEvZ6F0jK7uT3tOxkEn91gzmMw9YVmDENy7SJsajQ==}
 
   '@opentelemetry/api-logs@0.205.0':
     resolution: {integrity: sha512-wBlPk1nFB37Hsm+3Qy73yQSobVn28F4isnWIBvKpd5IUH/eat8bwcL02H9yzmHyyPmukeccSl2mbN5sDQZYnPg==}
@@ -12163,7 +12176,7 @@ snapshots:
 
   '@openfeature/env-var-provider@0.3.1(@openfeature/server-sdk@1.19.0(@openfeature/core@1.9.1))':
     dependencies:
-      '@openfeature/server-sdk': 1.19.0(@openfeature/core@1.9.1)
+      '@openfeature/server-sdk': 1.19.0(@openfeature/core@1.10.0)
 
   '@openfeature/server-sdk@1.19.0(@openfeature/core@1.10.0)':
     dependencies:
@@ -12184,6 +12197,15 @@ snapshots:
       '@openpanel/sdk': 1.3.1
       '@rrweb/types': 2.0.0-alpha.20
       rrweb: 2.0.0-alpha.20
+
+  '@openrouter/ai-sdk-provider@1.5.4(zod@4.3.6)':
+    dependencies:
+      '@openrouter/sdk': 0.1.27
+      zod: 4.3.6
+
+  '@openrouter/sdk@0.1.27':
+    dependencies:
+      zod: 4.3.6
 
   '@opentelemetry/api-logs@0.205.0':
     dependencies:
@@ -20351,7 +20373,7 @@ snapshots:
   knex-pglite@0.13.0(@electric-sql/pglite@0.3.15)(knex@3.1.0(pg@8.18.0)):
     dependencies:
       '@electric-sql/pglite': 0.3.15
-      knex: 3.1.0(pg@8.18.0)
+      knex: 3.1.0(pg@8.21.0)
 
   knex@3.1.0(pg@8.18.0):
     dependencies:
@@ -20397,7 +20419,7 @@ snapshots:
 
   kysely-knex@0.2.0(knex@3.1.0(pg@8.18.0))(kysely@0.28.16):
     dependencies:
-      knex: 3.1.0(pg@8.18.0)
+      knex: 3.1.0(pg@8.21.0)
       kysely: 0.28.16
 
   kysely-pglite-dialect@1.2.0(@electric-sql/pglite@0.3.15)(kysely@0.27.6):
