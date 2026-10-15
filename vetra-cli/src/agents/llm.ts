@@ -122,7 +122,7 @@ const contextLimits = new Map<string, number>();
 
 /**
  * The TokenLimiterProcessor ceiling for a model: min(80% of its OpenRouter
- * context_length, 200k) (fetched once per model per process, public endpoint, no
+ * context_length, 200k) (fetched once per model per process on success, public endpoint, no
  * key), else 80% of 200k when the list is unreachable or lacks the model.
  */
 export async function resolveContextTokenLimit(
@@ -132,6 +132,9 @@ export async function resolveContextTokenLimit(
   const cached = contextLimits.get(modelId);
   if (cached !== undefined) return cached;
   let contextLength = DEFAULT_CONTEXT_LENGTH;
+  // Only a successfully fetched list is cached. A transient failure or timeout
+  // uses the fallback for this call without pinning it for the process.
+  let fetched = false;
   try {
     const res = await (opts.fetch ?? fetch)(OPENROUTER_MODELS_URL, {
       signal: AbortSignal.timeout(opts.timeoutMs ?? 5_000),
@@ -140,12 +143,13 @@ export async function resolveContextTokenLimit(
       const body = (await res.json()) as { data?: Array<{ id?: unknown; context_length?: unknown }> };
       const hit = body.data?.find((m) => m.id === modelId);
       if (typeof hit?.context_length === 'number' && hit.context_length > 0) contextLength = hit.context_length;
+      fetched = true;
     }
   } catch {
     // Offline or slow: keep the fallback.
   }
   const limit = Math.min(Math.floor(contextLength * CONTEXT_LIMIT_RATIO), MAX_CONTEXT_TOKEN_LIMIT);
-  contextLimits.set(modelId, limit);
+  if (fetched) contextLimits.set(modelId, limit);
   return limit;
 }
 

@@ -157,4 +157,29 @@ describe("resolveContextTokenLimit", () => {
     const empty = (async () => new Response(JSON.stringify({ data: [] }), { status: 200 })) as unknown as typeof fetch;
     expect(await resolveContextTokenLimit("x/unknown", { fetch: empty })).toBe(160_000);
   });
+  it("does not pin the fallback after a transient failure: the next call fetches and uses the real value", async () => {
+    let n = 0;
+    const flaky = (async () => {
+      n++;
+      if (n === 1) throw new Error("timeout");
+      return new Response(JSON.stringify({ data: [{ id: "x/flaky", context_length: 100_000 }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await resolveContextTokenLimit("x/flaky", { fetch: flaky })).toBe(160_000);
+    expect(await resolveContextTokenLimit("x/flaky", { fetch: flaky })).toBe(80_000);
+    expect(n).toBe(2);
+    expect(await resolveContextTokenLimit("x/flaky", { fetch: flaky })).toBe(80_000);
+    expect(n).toBe(2);
+  });
+
+  it("does not pin the fallback after a non-OK response either", async () => {
+    let n = 0;
+    const f = (async () => {
+      n++;
+      return n === 1
+        ? new Response("busy", { status: 503 })
+        : new Response(JSON.stringify({ data: [{ id: "x/busy", context_length: 50_000 }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await resolveContextTokenLimit("x/busy", { fetch: f })).toBe(160_000);
+    expect(await resolveContextTokenLimit("x/busy", { fetch: f })).toBe(40_000);
+  });
 });
