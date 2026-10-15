@@ -46,6 +46,12 @@ export function getPreviewDriveId(projectPath: string): string {
   return `${PREVIEW_DRIVE_PREFIX}-${hash}`;
 }
 
+// Compare project paths by canonical (realpath) form — a running instance
+// registers a realpath'd workdir (macOS /var → /private/var) a raw compare misses.
+function sameProjectPath(a: string | undefined, b: string): boolean {
+  return a !== undefined && canonicalProjectPath(a) === canonicalProjectPath(b);
+}
+
 function canonicalProjectPath(projectPath: string): string {
   try {
     return fs.realpathSync(projectPath);
@@ -78,7 +84,7 @@ export function resolvePreviewEndpoint(
   const instances = services.list("reactor-project");
   const live = instances.find(
     (i) =>
-      i.workdir === projectPath &&
+      sameProjectPath(i.workdir, projectPath) &&
       (i.status === "ready" || i.status === "starting"),
   );
   if (!live) {
@@ -100,6 +106,61 @@ export function resolvePreviewEndpoint(
     connectUrl: live.endpoints?.["vetra-studio"],
     driveId: getPreviewDriveId(projectPath),
   };
+}
+
+// Default wait matches the reactor service's own cold-start readiness budget
+// (VETRA_REACTOR_READINESS_TIMEOUT_MS, default 90s) plus a margin.
+const READY_POLL_TIMEOUT_MS =
+  (Number(process.env.VETRA_REACTOR_READINESS_TIMEOUT_MS) || 90_000) + 30_000;
+
+// Bring the reactor-project to "ready" (Switchboard up) before a preview tool
+// talks to it. Throws an actionable error rather than a vague "not running".
+export async function ensureReactorProjectReady(
+  services: ServiceManager | undefined,
+  projectPath: string,
+  opts?: { startParams?: Record<string, unknown>; timeoutMs?: number },
+): Promise<void> {
+  if (!services) return;
+  const matches = (i: { workdir?: string }) => sameProjectPath(i.workdir, projectPath);
+  // Filter by status inside the find — a stale stopped/failed entry for the
+  // same path must not shadow the actual ready instance.
+  const readyInstance = () =>
+    services
+      .list("reactor-project")
+      .find((i) => matches(i) && i.status === "ready" && Boolean(i.endpoints?.["vetra-switchboard"]));
+  if (readyInstance()) return;
+
+  const pending = services
+    .list("reactor-project")
+    .some((i) => matches(i) && (i.status === "ready" || i.status === "starting"));
+  if (!pending) {
+    try {
+      await services.start("reactor-project", {
+        workdir: projectPath,
+        cwd: projectPath,
+        params: opts?.startParams,
+      });
+    } catch (err) {
+      // The single reactor slot is held by a different project — fail fast with
+      // the fix, not a poll that ends in a misleading "not running".
+      const other = services
+        .list("reactor-project")
+        .find((i) => !matches(i) && (i.status === "ready" || i.status === "starting"));
+      if (other) {
+        throw new Error(
+          `Cannot start the reactor for this project — another reactor project ("${path.basename(other.workdir ?? "?")}") is running. Stop it first with \`reactor-project-stop\`.`,
+        );
+      }
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  const deadline = Date.now() + (opts?.timeoutMs ?? READY_POLL_TIMEOUT_MS);
+  while (Date.now() < deadline) {
+    if (readyInstance()) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`Timed out waiting for reactor project at ${projectPath} to become ready.`);
 }
 
 /**

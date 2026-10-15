@@ -7,6 +7,7 @@ import {
 } from "../../helpers/project.js";
 import {
   createEmptyPreviewDocument,
+  ensureReactorProjectReady,
   getPreviewAuthToken,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
@@ -42,6 +43,9 @@ export const specPreviewCreate = defineCommand({
       "type",
       "Pass any document type the running reactor knows about.",
     );
+    await ensureReactorProjectReady(context.services, base, {
+      startParams: context.proxy?.url ? { proxyPublicUrl: context.proxy.url } : undefined,
+    });
     const { switchboardUrl, driveId: defaultDriveId } = resolvePreviewEndpoint(
       context.services,
       base,

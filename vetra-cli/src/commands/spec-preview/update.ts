@@ -9,6 +9,7 @@ import {
   getPreviewAuthToken,
   getPreviewDocument,
   mutatePreviewDocument,
+  ensureReactorProjectReady,
   resolvePreviewEndpoint,
 } from "../../helpers/reactor-project-preview.js";
 import {
@@ -67,6 +68,9 @@ export const specPreviewUpdate = defineCommand({
   }),
   execute: async (input, context) => {
     const base = await resolveReactorProjectPath(context.workdir, input.project);
+    await ensureReactorProjectReady(context.services, base, {
+      startParams: context.proxy?.url ? { proxyPublicUrl: context.proxy.url } : undefined,
+    });
     const { switchboardUrl, driveId: defaultDriveId } = resolvePreviewEndpoint(
       context.services,
       base,
