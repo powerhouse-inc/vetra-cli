@@ -3,21 +3,29 @@ import {
   type ReactorGraphQLClient,
 } from "@powerhousedao/vetra-cloud-client";
 import { resolveStudioCloudSwitchboardUrl } from "../hooks/preview-server-client.js";
-import { CLOUD_SWITCHBOARD_URL } from "./config.js";
 
 let endpointPromise: Promise<string> | undefined;
 
+/** Thrown when this studio has no cloud switchboard in studio.config.json. */
+export const CLOUD_NOT_CONFIGURED =
+  "This studio has no Vetra Cloud switchboard configured, so it can't deploy. Restart the studio, or contact support if it persists.";
+
 /**
- * GraphQL endpoint of the cloud switchboard: the one the agent was pointed at
- * (studio.config.json), else the shared default (staging). A prod studio must
- * not talk to staging — its prod credentials are rejected there (401).
+ * GraphQL endpoint of the cloud switchboard the agent was pointed at
+ * (studio.config.json). No default: guessing staging sent prod studios'
+ * credentials to staging (401).
  */
 export function resolveCloudGraphqlEndpoint(): Promise<string> {
   endpointPromise ??= resolveStudioCloudSwitchboardUrl()
     .catch(() => null)
-    .then(
-      (url) => `${(url ?? CLOUD_SWITCHBOARD_URL).replace(/\/$/, "")}/graphql`,
-    );
+    .then((url) => {
+      if (!url) throw new Error(CLOUD_NOT_CONFIGURED);
+      return `${url.replace(/\/$/, "")}/graphql`;
+    });
+  // A missing config is retried on the next call (studio.config.json may land later).
+  endpointPromise.catch(() => {
+    endpointPromise = undefined;
+  });
   return endpointPromise;
 }
 
@@ -74,17 +82,20 @@ function resolveClient(): Promise<ReactorGraphQLClient> {
   clientPromise ??= resolveCloudGraphqlEndpoint().then((endpoint) =>
     createReactorClient(endpoint, resolveToken),
   );
+  clientPromise.catch(() => {
+    clientPromise = undefined;
+  });
   return clientPromise;
 }
 
 /**
  * Reactor GraphQL client for signed action push/pull against the cloud. The
  * endpoint is only known once studio.config.json loads, so every method
- * forwards to the client built for it; the shape (which methods exist) comes
- * from a client on the default endpoint, which never sends a request.
+ * forwards to the client built for it.
  */
 export const client: ReactorGraphQLClient = new Proxy(
-  createReactorClient(`${CLOUD_SWITCHBOARD_URL}/graphql`, resolveToken),
+  // Shape only (which methods exist); never sends a request.
+  createReactorClient("https://unconfigured.invalid/graphql", resolveToken),
   {
     get(shape, prop, receiver) {
       const value: unknown = Reflect.get(shape, prop, receiver);

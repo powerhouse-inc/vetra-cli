@@ -1,7 +1,8 @@
 import type { CloudServiceType } from "./types.js";
 
-/** GraphQL switchboard that owns the environment documents. */
-export const CLOUD_SWITCHBOARD_URL = "https://switchboard.staging.vetra.io";
+// No default switchboard, registry or app URL: every consumer is configured
+// explicitly (VETRA_CLOUD_SWITCHBOARD_URL / PH_REGISTRY_URL / studio.config.json)
+// so nothing silently talks to staging or the dev registry.
 
 /** Renown identity service: hosts the console login flow and issues the
  * verifiable credential the bearer token is built from. */
@@ -9,15 +10,6 @@ export const CLOUD_RENOWN_URL = "https://www.renown.id";
 
 /** Base domain for environments (`<subdomain>.vetra.io`). */
 export const CLOUD_BASE_DOMAIN = "vetra.io";
-
-/** Fallback package registry stamped onto new environments. Consumers resolve
- * their own (CLI: config/PH_REGISTRY_URL/powerhouse.config.json; studio:
- * `studio.config.json`) and pass `defaultPackageRegistry`; this is the default
- * when none resolves. */
-export const CLOUD_DEFAULT_PACKAGE_REGISTRY = "https://registry.dev.vetra.io";
-
-/** vetra.to web app base — deep links to an environment's cloud page. */
-export const VETRA_CLOUD_APP_URL = "https://staging.vetra.io";
 
 export function cloudGraphqlEndpoint(switchboardUrl: string): string {
   return `${switchboardUrl}/graphql`;
@@ -51,7 +43,10 @@ export const SERVICE_SLUGS: Record<CloudServiceType, string> = {
 
 /** Services the user can toggle, with their default slug (mirrors the order
  * the studio renders them). */
-export const MANAGEABLE_SERVICES: { type: CloudServiceType; serviceSlug: string }[] = [
+export const MANAGEABLE_SERVICES: {
+  type: CloudServiceType;
+  serviceSlug: string;
+}[] = [
   { type: "CONNECT", serviceSlug: "connect" },
   { type: "SWITCHBOARD", serviceSlug: "switchboard" },
   { type: "FUSION", serviceSlug: "fusion" },

@@ -21,10 +21,10 @@ import {
   type ListScope,
   type VetraCloudEnvironmentGlobalState,
 } from "@powerhousedao/vetra-cloud-client";
-import { resolveRegistryUrl } from "@powerhousedao/shared/registry";
+import { resolveRegistryUrl } from "./registry-url.js";
 import { getBearerToken, getRenown } from "../auth/renown.js";
 import { DEFAULT_PH_VERSION } from "../constants.js";
-import { resolveCloudConfig } from "./config.js";
+import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from "./config.js";
 import {
   listMyEnvironments,
   NOT_AUTHENTICATED,
@@ -47,7 +47,8 @@ interface WriteSession {
 /** Resolve the signer, drive, and authenticated reactor client for a write.
  * Throws the actionable not-authorized error when the agent isn't signed in. */
 async function getWriteSession(ctx: ReadContext): Promise<WriteSession> {
-  const { renownUrl, graphqlEndpoint } = resolveCloudConfig(ctx.config);
+  const { renownUrl } = resolveCloudConfig(ctx.config);
+  const graphqlEndpoint = resolveCloudGraphqlEndpoint(ctx.config);
   const renown = await getRenown(ctx.workdir, renownUrl);
   if (!renown.user) throw new Error(NOT_AUTHENTICATED);
   return {
@@ -164,7 +165,8 @@ export async function createCloudEnvironment(
     address: session.address,
     label: options.label,
     services: options.services,
-    serviceVersion: options.version ?? ctx.config.phVersion ?? DEFAULT_PH_VERSION,
+    serviceVersion:
+      options.version ?? ctx.config.phVersion ?? DEFAULT_PH_VERSION,
     // Stamp the same registry the workdir publishes to (flag > PH_REGISTRY_URL
     // > powerhouse.config.json > default) so the env installs from where we push.
     defaultPackageRegistry: resolveRegistryUrl({

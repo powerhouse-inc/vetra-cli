@@ -27,7 +27,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { LifecycleHook } from "@powerhousedao/ph-clint";
-import { resolveRegistryUrl } from "@powerhousedao/shared/registry";
 import { DEFAULT_PREVIEW_SERVER_PORT } from "../preview-server/index.js";
 
 interface SwitchboardReadyEvent {
@@ -86,16 +85,16 @@ export function connectDriveUrlOnSwitchboardReady(
             ? ctx.config.environmentId
             : undefined;
 
-        // Registry the studio's deploys stamp onto new envs (flag >
-        // PH_REGISTRY_URL > vetra-app powerhouse.config.json > default).
+        // Registry the studio's deploys stamp onto new envs: the flag, else
+        // PH_REGISTRY_URL. Not vetra-app's bundled powerhouse.config.json (that
+        // names the dev registry) and no default: unset leaves it out and the
+        // Deploy view says so.
         const configuredRegistry =
           typeof ctx.config.registryUrl === "string" && ctx.config.registryUrl
             ? ctx.config.registryUrl
             : undefined;
-        const packageRegistryUrl = resolveRegistryUrl({
-          registry: configuredRegistry,
-          projectPath: options.vetraAppDir,
-        });
+        const packageRegistryUrl =
+          configuredRegistry ?? (process.env.PH_REGISTRY_URL?.trim() || null);
 
         // The cloud switchboard the browser-side Deploy view talks to. Without
         // it the bundle falls back to its staging default, so a prod studio's
@@ -179,7 +178,7 @@ function writeStudioConfig(
   bundleDir: string,
   previewServerUrl: string,
   environmentId: string | undefined,
-  packageRegistryUrl: string,
+  packageRegistryUrl: string | null,
   cloudSwitchboardUrl: string | undefined,
   log: Log,
 ): void {
@@ -189,10 +188,11 @@ function writeStudioConfig(
   const file = path.join(bundleDir, "studio.config.json");
   const config: {
     previewServerUrl: string;
-    packageRegistryUrl: string;
+    packageRegistryUrl?: string;
     environmentId?: string;
     cloudSwitchboardUrl?: string;
-  } = { previewServerUrl, packageRegistryUrl };
+  } = { previewServerUrl };
+  if (packageRegistryUrl) config.packageRegistryUrl = packageRegistryUrl;
   if (environmentId) config.environmentId = environmentId;
   if (cloudSwitchboardUrl) config.cloudSwitchboardUrl = cloudSwitchboardUrl;
   const next = `${JSON.stringify(config, null, 2)}\n`;

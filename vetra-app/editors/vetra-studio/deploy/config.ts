@@ -4,10 +4,7 @@
  * here so the Studio deploy modules keep a stable local import path.
  */
 export {
-  CLOUD_SWITCHBOARD_URL,
   CLOUD_BASE_DOMAIN,
-  CLOUD_DEFAULT_PACKAGE_REGISTRY,
-  VETRA_CLOUD_APP_URL,
   CLOUD_DRIVE_SCOPE,
   resolveCloudDriveId,
   MANAGEABLE_SERVICES,

@@ -14,7 +14,10 @@ import { deployEnvironmentWait } from "../../src/commands/deploy/wait.js";
 // writes refuse (no signed-in user) before any network call.
 function cloudCtx() {
   const workdir = mkdtempSync(join(tmpdir(), "vetra-deploy-test-"));
-  return { workdir, config: {} } as never;
+  return {
+    workdir,
+    config: { cloudSwitchboardUrl: "http://localhost:5555" },
+  } as never;
 }
 
 describe("deploy-environment command shapes", () => {
@@ -30,7 +33,9 @@ describe("deploy-environment command shapes", () => {
 
     expect(deployEnvironmentCreate.id).toBe("deploy-environment-create");
     expect(deployEnvironmentCreate.inputSchema.shape).toHaveProperty("name");
-    expect(deployEnvironmentCreate.inputSchema.shape).toHaveProperty("services");
+    expect(deployEnvironmentCreate.inputSchema.shape).toHaveProperty(
+      "services",
+    );
 
     expect(deployEnvironmentUpdate.id).toBe("deploy-environment-update");
     expect(deployEnvironmentUpdate.inputSchema.shape).toHaveProperty("label");
@@ -56,7 +61,10 @@ describe("deploy reads require cloud auth", () => {
 
   it("get throws not-authorized while resolving an environment", async () => {
     await expect(
-      deployEnvironmentGet.execute({ name: "anything", full: false }, cloudCtx()),
+      deployEnvironmentGet.execute(
+        { name: "anything", full: false },
+        cloudCtx(),
+      ),
     ).rejects.toThrow(/Not authorized/);
   });
 
@@ -68,7 +76,10 @@ describe("deploy reads require cloud auth", () => {
 
   it("wait throws not-authorized while resolving an environment", async () => {
     await expect(
-      deployEnvironmentWait.execute({ name: "anything", timeout: 30 }, cloudCtx()),
+      deployEnvironmentWait.execute(
+        { name: "anything", timeout: 30 },
+        cloudCtx(),
+      ),
     ).rejects.toThrow(/Not authorized/);
   });
 
@@ -100,7 +111,10 @@ describe("deploy writes require cloud auth", () => {
 
   it("update still requires a name first", async () => {
     await expect(
-      deployEnvironmentUpdate.execute({ name: "", label: "Renamed" }, cloudCtx()),
+      deployEnvironmentUpdate.execute(
+        { name: "", label: "Renamed" },
+        cloudCtx(),
+      ),
     ).rejects.toThrow(/Missing required option --name/);
   });
 });

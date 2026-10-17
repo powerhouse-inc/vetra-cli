@@ -8,7 +8,9 @@ async function gql<T>(
   variables: Record<string, unknown>,
   token?: string | null,
 ): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(endpoint, {

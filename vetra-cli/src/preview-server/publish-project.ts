@@ -11,7 +11,7 @@
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { resolveRegistryUrl } from "@powerhousedao/shared/registry";
+import { resolveRegistryUrl } from "../cloud/registry-url.js";
 import { getRegistryToken } from "../auth/renown.js";
 import { fetchPackument } from "../cloud/registry-packument.js";
 import {

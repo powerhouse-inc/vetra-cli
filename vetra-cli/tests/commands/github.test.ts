@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -12,13 +19,12 @@ const getBearerToken = jest.fn<
   (workdir: string, renownUrl: string) => Promise<string | null>
 >(async () => "user_bearer");
 
-jest.unstable_mockModule("../../src/auth/renown.js", () => ({ getBearerToken }));
+jest.unstable_mockModule("../../src/auth/renown.js", () => ({
+  getBearerToken,
+}));
 jest.unstable_mockModule("../../src/cloud/config.js", () => ({
-  resolveCloudConfig: () => ({
-    switchboardUrl: "http://localhost:5555",
-    renownUrl: "http://localhost:5555/renown",
-    graphqlEndpoint: "http://localhost:5555/graphql",
-  }),
+  resolveCloudConfig: () => ({ renownUrl: "http://localhost:5555/renown" }),
+  resolveCloudGraphqlEndpoint: () => "http://localhost:5555/graphql",
 }));
 
 const { githubPush } = await import("../../src/commands/github/push.js");
@@ -54,7 +60,11 @@ function ctx(workdir: string, runProcess: unknown) {
  */
 function mockGithub(
   fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>,
-  opts: { connected?: boolean; repoFullName?: string; pushTokenError?: string } = {},
+  opts: {
+    connected?: boolean;
+    repoFullName?: string;
+    pushTokenError?: string;
+  } = {},
 ) {
   const connected = opts.connected ?? true;
   const repoFullName = opts.repoFullName ?? REPO;
@@ -71,7 +81,11 @@ function mockGithub(
       return json({ id: 999 });
     }
     const query = String(
-      (JSON.parse(String((init as RequestInit)?.body ?? "{}")) as { query?: string }).query ?? "",
+      (
+        JSON.parse(String((init as RequestInit)?.body ?? "{}")) as {
+          query?: string;
+        }
+      ).query ?? "",
     );
     if (query.includes("myGithubConnection")) {
       return json({
@@ -94,10 +108,16 @@ function mockGithub(
     }
     if (query.includes("getPushToken")) {
       if (opts.pushTokenError) {
-        return json({ errors: [{ extensions: { code: opts.pushTokenError } }] });
+        return json({
+          errors: [{ extensions: { code: opts.pushTokenError } }],
+        });
       }
       return json({
-        data: { VetraGithubAuth: { getPushToken: { token: "ghs_token", expiresAt: "x" } } },
+        data: {
+          VetraGithubAuth: {
+            getPushToken: { token: "ghs_token", expiresAt: "x" },
+          },
+        },
       });
     }
     return json({});
@@ -141,20 +161,27 @@ describe("github commands", () => {
     expect(result.text).toMatch(/Pushed alice\/widget/);
     const commands = runProcess.mock.calls.map((c) => String(c[0]));
     expect(commands.some((c) => c.startsWith("git init"))).toBe(true);
-    expect(commands.some((c) => c.includes("user.name='vetra-studio[bot]'"))).toBe(true);
-    const pushCall = runProcess.mock.calls.find((c) => String(c[0]).includes(" push "));
+    expect(
+      commands.some((c) => c.includes("user.name='vetra-studio[bot]'")),
+    ).toBe(true);
+    const pushCall = runProcess.mock.calls.find((c) =>
+      String(c[0]).includes(" push "),
+    );
     expect(pushCall).toBeDefined();
     expect(String(pushCall?.[0])).toContain("github.com/alice/widget.git");
     expect(String(pushCall?.[0])).not.toContain("ghs_token");
-    expect((pushCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN).toBe(
-      "ghs_token",
-    );
+    expect(
+      (pushCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN,
+    ).toBe("ghs_token");
   });
 
   it("github-push keeps the agent's .ph dir out of the commit", async () => {
     mockGithub(fetchSpy);
     const runProcess = fakeRun({ success: true, output: "" });
-    await githubPush.execute({ branch: "main", message: "x" }, ctx(workdir, runProcess));
+    await githubPush.execute(
+      { branch: "main", message: "x" },
+      ctx(workdir, runProcess),
+    );
     const gitignore = readFileSync(join(workdir, ".gitignore"), "utf8");
     expect(gitignore).toContain(".ph/");
     const commands = runProcess.mock.calls.map((c) => String(c[0]));
@@ -168,16 +195,21 @@ describe("github commands", () => {
   it("github-pull fast-forwards from the repo", async () => {
     mockGithub(fetchSpy);
     const runProcess = fakeRun({ success: true, output: "" });
-    const result = await githubPull.execute({ branch: "main" }, ctx(workdir, runProcess));
+    const result = await githubPull.execute(
+      { branch: "main" },
+      ctx(workdir, runProcess),
+    );
     expect(result.text).toMatch(/Pulled alice\/widget/);
-    const pullCall = runProcess.mock.calls.find((c) => String(c[0]).includes(" pull "));
+    const pullCall = runProcess.mock.calls.find((c) =>
+      String(c[0]).includes(" pull "),
+    );
     expect(pullCall).toBeDefined();
     expect(String(pullCall?.[0])).toContain("--ff-only");
     expect(String(pullCall?.[0])).toContain("github.com/alice/widget.git");
     expect(String(pullCall?.[0])).not.toContain("ghs_token");
-    expect((pullCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN).toBe(
-      "ghs_token",
-    );
+    expect(
+      (pullCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN,
+    ).toBe("ghs_token");
   });
 
   it("github-clone clones from a clean URL with the token in the env", async () => {
@@ -185,20 +217,25 @@ describe("github commands", () => {
     const runProcess = fakeRun({ success: true, output: "" });
     const result = await githubClone.execute({}, ctx(workdir, runProcess));
     expect(result.text).toMatch(/Cloned alice\/widget/);
-    const cloneCall = runProcess.mock.calls.find((c) => String(c[0]).includes(" clone "));
+    const cloneCall = runProcess.mock.calls.find((c) =>
+      String(c[0]).includes(" clone "),
+    );
     expect(cloneCall).toBeDefined();
     expect(String(cloneCall?.[0])).toContain("github.com/alice/widget.git");
     expect(String(cloneCall?.[0])).not.toContain("ghs_token");
-    expect((cloneCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN).toBe(
-      "ghs_token",
-    );
+    expect(
+      (cloneCall?.[1] as { env?: Record<string, string> })?.env?.VETRA_GH_TOKEN,
+    ).toBe("ghs_token");
   });
 
   it("errors when the agent is not authorized for the user", async () => {
     getBearerToken.mockResolvedValueOnce(null);
     const runProcess = fakeRun({ success: true, output: "" });
     await expect(
-      githubPush.execute({ branch: "main", message: "x" }, ctx(workdir, runProcess)),
+      githubPush.execute(
+        { branch: "main", message: "x" },
+        ctx(workdir, runProcess),
+      ),
     ).rejects.toThrow(/not authorized/i);
     expect(runProcess).not.toHaveBeenCalled();
   });
@@ -207,7 +244,10 @@ describe("github commands", () => {
     mockGithub(fetchSpy, { connected: false });
     const runProcess = fakeRun({ success: true, output: "" });
     await expect(
-      githubPush.execute({ branch: "main", message: "x" }, ctx(workdir, runProcess)),
+      githubPush.execute(
+        { branch: "main", message: "x" },
+        ctx(workdir, runProcess),
+      ),
     ).rejects.toThrow(/not connected/i);
     expect(runProcess).not.toHaveBeenCalled();
   });
@@ -216,7 +256,10 @@ describe("github commands", () => {
     mockGithub(fetchSpy, { pushTokenError: "APP_NOT_INSTALLED" });
     const runProcess = fakeRun({ success: true, output: "" });
     await expect(
-      githubPush.execute({ branch: "main", message: "x" }, ctx(workdir, runProcess)),
+      githubPush.execute(
+        { branch: "main", message: "x" },
+        ctx(workdir, runProcess),
+      ),
     ).rejects.toThrow(/isn't installed/i);
     expect(runProcess).not.toHaveBeenCalled();
   });
@@ -225,7 +268,8 @@ describe("github commands", () => {
     mockGithub(fetchSpy);
     const runProcess = fakeRun({
       success: false,
-      output: "fatal: auth failed at https://x-access-token:ghs_token@github.com/alice/widget.git",
+      output:
+        "fatal: auth failed at https://x-access-token:ghs_token@github.com/alice/widget.git",
     });
     const err = await githubPush
       .execute({ branch: "main", message: "x" }, ctx(workdir, runProcess))
