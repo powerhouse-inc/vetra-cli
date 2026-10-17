@@ -16,6 +16,13 @@ import {
   startGithubDeviceFlow,
 } from "./githubConnect.js";
 
+// A provisioned studio: the agent wrote its switchboard into studio.config.json.
+vi.mock("../hooks/preview-server-client.js", () => ({
+  resolveStudioCloudSwitchboardUrl: vi.fn(
+    async () => "https://switchboard.vetra.io",
+  ),
+}));
+
 const CONNECTION = {
   environmentId: "env-1",
   repoFullName: "alice/widget",

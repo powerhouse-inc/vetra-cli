@@ -8,19 +8,29 @@
 import type { Config } from "../framework.js";
 import {
   CLOUD_RENOWN_URL,
-  CLOUD_SWITCHBOARD_URL,
   cloudGraphqlEndpoint,
 } from "@powerhousedao/vetra-cloud-client";
 
-/** Resolve the cloud endpoints from config, defaulting to the shared constants. */
-export function resolveCloudConfig(
-  config: Pick<Config, "cloudSwitchboardUrl" | "cloudRenownUrl">,
-): { switchboardUrl: string; renownUrl: string; graphqlEndpoint: string } {
-  const switchboardUrl = config.cloudSwitchboardUrl ?? CLOUD_SWITCHBOARD_URL;
-  const renownUrl = config.cloudRenownUrl ?? CLOUD_RENOWN_URL;
-  return {
-    switchboardUrl,
-    renownUrl,
-    graphqlEndpoint: cloudGraphqlEndpoint(switchboardUrl),
-  };
+/** The Renown identity service for the login flow (config, else www.renown.id). */
+export function resolveCloudConfig(config: Pick<Config, "cloudRenownUrl">): {
+  renownUrl: string;
+} {
+  return { renownUrl: config.cloudRenownUrl ?? CLOUD_RENOWN_URL };
+}
+
+/**
+ * The cloud switchboard's GraphQL endpoint. No default: an unset switchboard
+ * must fail loudly rather than silently talk to staging (which rejected prod
+ * studios' credentials with 401).
+ */
+export function resolveCloudGraphqlEndpoint(
+  config: Pick<Config, "cloudSwitchboardUrl">,
+): string {
+  const url = config.cloudSwitchboardUrl?.trim();
+  if (!url) {
+    throw new Error(
+      "No Vetra Cloud switchboard configured: set VETRA_CLOUD_SWITCHBOARD_URL (e.g. https://switchboard.vetra.io).",
+    );
+  }
+  return cloudGraphqlEndpoint(url.replace(/\/$/, ""));
 }

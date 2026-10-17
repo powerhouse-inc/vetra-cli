@@ -133,7 +133,10 @@ export function useGithubConnect(environmentId: string) {
       const alive = (): boolean => runRef.current === run;
       const deviceCode = deviceCodeRef.current;
       if (!deviceCode) {
-        setPhase({ kind: "error", message: "The authorization expired. Try again." });
+        setPhase({
+          kind: "error",
+          message: "The authorization expired. Try again.",
+        });
         return;
       }
       setPhase({ kind: "creating" });

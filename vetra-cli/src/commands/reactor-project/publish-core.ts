@@ -11,7 +11,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { npmPublish, resolveRegistryUrl } from "@powerhousedao/shared/registry";
+import { npmPublish } from "@powerhousedao/shared/registry";
+import { resolveRegistryUrl } from "../../cloud/registry-url.js";
 import { getRegistryToken } from "../../auth/renown.js";
 import {
   computeProjectContentHash,

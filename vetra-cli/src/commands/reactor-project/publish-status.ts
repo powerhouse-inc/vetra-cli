@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { resolveRegistryUrl } from '@powerhousedao/shared/registry';
+import { resolveRegistryUrl } from '../../cloud/registry-url.js';
 import { defineCommand } from '../../framework.js';
 import { getRegistryToken } from '../../auth/renown.js';
 import { resolveCloudConfig } from '../../cloud/config.js';

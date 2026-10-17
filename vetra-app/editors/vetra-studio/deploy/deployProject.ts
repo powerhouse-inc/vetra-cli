@@ -18,6 +18,17 @@ import {
 import { canApprove, isPendingApproval } from "./envStatus.js";
 import { isAuthError } from "./utils.js";
 
+/** The registry new envs install from; no default (never the dev registry). */
+async function requireStudioPackageRegistry(): Promise<string> {
+  const registry = await resolveStudioPackageRegistry();
+  if (!registry) {
+    throw new Error(
+      "This studio has no package registry configured (PH_REGISTRY_URL), so it can't deploy.",
+    );
+  }
+  return registry;
+}
+
 /** Where a deploy is headed: an existing environment (installing for the first
  * time or bumping its version) or a brand-new one created on the fly. */
 export type DeployTarget =
@@ -159,8 +170,7 @@ export async function deployProject(opts: {
         label: target.label,
         services: DEPLOY_SERVICES,
         serviceVersion: frameworkVersion?.ph,
-        defaultPackageRegistry:
-          (await resolveStudioPackageRegistry()) ?? undefined,
+        defaultPackageRegistry: await requireStudioPackageRegistry(),
       });
       controller.addPackage({ packageName, version });
       onPhase?.("approving");

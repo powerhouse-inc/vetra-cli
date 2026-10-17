@@ -1,5 +1,5 @@
 import { getBearerToken } from '../auth/renown.js';
-import { resolveCloudConfig } from '../cloud/config.js';
+import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from '../cloud/config.js';
 
 const NOT_AUTHORIZED =
   "Not authorized — the agent can't act as the user until they connect their " +
@@ -156,7 +156,8 @@ export async function resolveRepoRemote(ctx: {
   if (!environmentId) {
     throw new Error('No environment id configured (set VETRA_ENVIRONMENT_ID).');
   }
-  const { renownUrl, graphqlEndpoint } = resolveCloudConfig(ctx.config);
+  const { renownUrl } = resolveCloudConfig(ctx.config);
+  const graphqlEndpoint = resolveCloudGraphqlEndpoint(ctx.config);
   const bearer = await getBearerToken(ctx.workdir, renownUrl);
   if (!bearer) throw new Error(NOT_AUTHORIZED);
   const status = await fetchConnection(graphqlEndpoint, environmentId, bearer);

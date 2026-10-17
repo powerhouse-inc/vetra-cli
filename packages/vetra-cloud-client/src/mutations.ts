@@ -1,8 +1,4 @@
-import {
-  CLOUD_BASE_DOMAIN,
-  CLOUD_DEFAULT_PACKAGE_REGISTRY,
-  SERVICE_SLUGS,
-} from "./config.js";
+import { CLOUD_BASE_DOMAIN, SERVICE_SLUGS } from "./config.js";
 import type { EnvironmentController } from "./controller.js";
 import { generateSubdomain } from "./subdomain.js";
 import type { CloudServiceType, EnvironmentChanges } from "./types.js";
@@ -17,7 +13,9 @@ function serviceSlugFor(
   controller: EnvironmentController,
   type: CloudServiceType,
 ): string {
-  const existing = controller.state.global.services.find((s) => s.type === type);
+  const existing = controller.state.global.services.find(
+    (s) => s.type === type,
+  );
   return existing?.prefix || SERVICE_SLUGS[type];
 }
 
@@ -40,7 +38,10 @@ export function ensureServicesEnabled(
       (s) => s.type === type,
     );
     if (existing?.enabled) continue;
-    controller.enableService({ type, prefix: serviceSlugFor(controller, type) });
+    controller.enableService({
+      type,
+      prefix: serviceSlugFor(controller, type),
+    });
   }
 }
 
@@ -53,7 +54,10 @@ export function applyEnvironmentUpdate(
 ): void {
   if (changes.label) controller.setLabel({ label: changes.label });
   for (const type of changes.enableServices ?? []) {
-    controller.enableService({ type, prefix: serviceSlugFor(controller, type) });
+    controller.enableService({
+      type,
+      prefix: serviceSlugFor(controller, type),
+    });
   }
   for (const type of changes.disableServices ?? []) {
     controller.disableService({ type });
@@ -81,7 +85,8 @@ export function applyCreateEnvironment(
     label: string;
     services?: CloudServiceType[];
     baseDomain?: string;
-    defaultPackageRegistry?: string;
+    /** Required: the registry the env installs from (no default). */
+    defaultPackageRegistry: string;
     serviceVersion?: string;
   },
 ): void {
@@ -90,8 +95,7 @@ export function applyCreateEnvironment(
   controller.initialize({
     genericSubdomain: generateSubdomain(globalThis.crypto.randomUUID()),
     genericBaseDomain: options.baseDomain ?? CLOUD_BASE_DOMAIN,
-    defaultPackageRegistry:
-      options.defaultPackageRegistry ?? CLOUD_DEFAULT_PACKAGE_REGISTRY,
+    defaultPackageRegistry: options.defaultPackageRegistry,
   });
   const services: CloudServiceType[] = options.services?.length
     ? options.services

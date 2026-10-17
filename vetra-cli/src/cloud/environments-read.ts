@@ -11,7 +11,7 @@ import {
   type ListScope,
 } from "@powerhousedao/vetra-cloud-client";
 import { getBearerToken, getRenownStatus } from "../auth/renown.js";
-import { resolveCloudConfig } from "./config.js";
+import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from "./config.js";
 
 export interface ReadContext {
   workdir: string;
@@ -31,7 +31,8 @@ export async function listMyEnvironments(
   ctx: ReadContext,
   scope: ListScope = "MINE",
 ): Promise<EnvironmentSummary[]> {
-  const { renownUrl, graphqlEndpoint } = resolveCloudConfig(ctx.config);
+  const { renownUrl } = resolveCloudConfig(ctx.config);
+  const graphqlEndpoint = resolveCloudGraphqlEndpoint(ctx.config);
   const token = await getBearerToken(ctx.workdir, renownUrl);
   if (!token) throw new Error(NOT_AUTHENTICATED);
   const items = await fetchMyEnvironments(graphqlEndpoint, scope, token);
