@@ -81,7 +81,8 @@ export function connectDriveUrlOnSwitchboardReady(
           : `http://127.0.0.1:${DEFAULT_PREVIEW_SERVER_PORT}`;
 
         const environmentId =
-          typeof ctx.config.environmentId === "string" && ctx.config.environmentId
+          typeof ctx.config.environmentId === "string" &&
+          ctx.config.environmentId
             ? ctx.config.environmentId
             : undefined;
 
@@ -96,6 +97,15 @@ export function connectDriveUrlOnSwitchboardReady(
           projectPath: options.vetraAppDir,
         });
 
+        // The cloud switchboard the browser-side Deploy view talks to. Without
+        // it the bundle falls back to its staging default, so a prod studio's
+        // Deploy view sends prod credentials to staging (401).
+        const cloudSwitchboardUrl =
+          typeof ctx.config.cloudSwitchboardUrl === "string" &&
+          ctx.config.cloudSwitchboardUrl
+            ? ctx.config.cloudSwitchboardUrl
+            : undefined;
+
         const bundleDir = path.join(options.vetraAppDir, connectDir);
         try {
           patchDefaultDrive(bundleDir, driveUrl, ctx.log);
@@ -109,6 +119,7 @@ export function connectDriveUrlOnSwitchboardReady(
             previewServerUrl,
             environmentId,
             packageRegistryUrl,
+            cloudSwitchboardUrl,
             ctx.log,
           );
         } catch (err: unknown) {
@@ -169,6 +180,7 @@ function writeStudioConfig(
   previewServerUrl: string,
   environmentId: string | undefined,
   packageRegistryUrl: string,
+  cloudSwitchboardUrl: string | undefined,
   log: Log,
 ): void {
   if (!existsSync(bundleDir)) {
@@ -179,8 +191,10 @@ function writeStudioConfig(
     previewServerUrl: string;
     packageRegistryUrl: string;
     environmentId?: string;
+    cloudSwitchboardUrl?: string;
   } = { previewServerUrl, packageRegistryUrl };
   if (environmentId) config.environmentId = environmentId;
+  if (cloudSwitchboardUrl) config.cloudSwitchboardUrl = cloudSwitchboardUrl;
   const next = `${JSON.stringify(config, null, 2)}\n`;
 
   if (existsSync(file) && readFileSync(file, "utf8") === next) {
