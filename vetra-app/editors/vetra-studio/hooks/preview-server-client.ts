@@ -34,6 +34,9 @@ interface PreviewConfig {
   // Registry to stamp onto envs this studio deploys; undefined outside a
   // provisioned studio (falls back to the shared client default).
   packageRegistryUrl?: string;
+  // Cloud switchboard the Deploy view talks to; undefined outside a
+  // provisioned studio (falls back to the shared client default).
+  cloudSwitchboardUrl?: string;
 }
 
 // Origin+prefix for a proxied `/preview` mount (`https://host/x/preview` ->
@@ -71,6 +74,7 @@ function resolvePreviewConfig(): Promise<PreviewConfig> {
           previewServerUrl?: string;
           environmentId?: string;
           packageRegistryUrl?: string;
+          cloudSwitchboardUrl?: string;
         };
         if (cfg.previewServerUrl) {
           return {
@@ -78,6 +82,7 @@ function resolvePreviewConfig(): Promise<PreviewConfig> {
             proxyBase: computeProxyBase(cfg.previewServerUrl),
             environmentId: cfg.environmentId,
             packageRegistryUrl: cfg.packageRegistryUrl,
+            cloudSwitchboardUrl: cfg.cloudSwitchboardUrl,
           };
         }
       }
@@ -101,6 +106,15 @@ export async function resolveStudioEnvironmentId(): Promise<string | null> {
 export async function resolveStudioPackageRegistry(): Promise<string | null> {
   const config = await resolvePreviewConfig();
   return config.packageRegistryUrl ?? null;
+}
+
+/** The cloud switchboard this studio's Deploy view talks to, from
+ * `studio.config.json`; null outside a provisioned studio. */
+export async function resolveStudioCloudSwitchboardUrl(): Promise<
+  string | null
+> {
+  const config = await resolvePreviewConfig();
+  return config.cloudSwitchboardUrl ?? null;
 }
 
 export type ResolveResult =

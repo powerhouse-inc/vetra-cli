@@ -1,4 +1,4 @@
-import { cloudGraphqlEndpoint } from "./cloudClient.js";
+import { resolveCloudGraphqlEndpoint } from "./cloudClient.js";
 
 /** Slug of the Vetra GitHub App; drives the install URL. */
 const GITHUB_APP_SLUG = "vetra-studio";
@@ -80,7 +80,7 @@ async function gql<T>(
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   try {
-    const res = await fetch(cloudGraphqlEndpoint, {
+    const res = await fetch(await resolveCloudGraphqlEndpoint(), {
       method: "POST",
       headers,
       body: JSON.stringify({ query, variables }),
