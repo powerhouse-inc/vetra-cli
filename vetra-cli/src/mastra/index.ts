@@ -19,11 +19,11 @@ const projectRoot = path.basename(CLI_ROOT) === '.mastra'
 
 const rt = await cli.bootstrap({ workdir: projectRoot });
 
-// Workaround: Mastra Studio checks process.env for API keys directly.
-// Bridge the ph-clint resolved keys so Studio's provider detection works.
+// Workaround: Mastra Studio checks process.env for provider keys directly.
+// Bridge the ph-clint resolved OpenRouter key so Studio's provider detection works.
 {
-  const key = rt.config.anthropicApiKey as string | undefined;
-  if (key && !process.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = key;
+  const key = rt.config.openrouterApiKey as string | undefined;
+  if (key && !process.env.OPENROUTER_API_KEY) process.env.OPENROUTER_API_KEY = key;
 }
 
 const mastraAgent = await rt.mastraAgent as Agent | undefined;

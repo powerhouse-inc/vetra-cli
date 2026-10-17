@@ -38,12 +38,12 @@ export const agentRun = defineCommand({
   execute: async ({ prompt, threadId, maxWallMs }, ctx) => {
     if (!ctx.agent) {
       throw new Error(
-        "Agent not configured. The CLI must be built with an agent factory (ANTHROPIC_API_KEY required).",
+        "Agent not configured. The CLI must be built with an agent factory (OPENROUTER_API_KEY required).",
       );
     }
     const agent = await ctx.agent();
     if (!agent) {
-      throw new Error("Agent factory returned undefined (likely missing API key).");
+      throw new Error("Agent factory returned undefined.");
     }
 
     const start = Date.now();

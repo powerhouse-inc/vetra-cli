@@ -16,10 +16,9 @@ import { DEFAULT_PH_VERSION } from './constants.js';
 
 export const configSchema = z.object({
   // @clint:begin framework-config
-  model: z.string().default('anthropic/claude-sonnet-4-6').describe('LLM model for the main agent (sub-agent models come from the spec)'),
+  model: z.string().default('anthropic/claude-sonnet-4.6').describe('OpenRouter model id for the main agent (env VETRA_MODEL)'),
   agentLogging: z.boolean().default(false).describe('Enable agent conversation logging'),
-  requireApiKey: z.preprocess((v) => (typeof v === 'string' ? v === 'true' : v), z.boolean()).default(false).describe('Refuse to start the agent unless an Anthropic API key (or Claude subscription) is available. Set true (env VETRA_REQUIRE_API_KEY) for provisioned cloud/studio envs.'),
-  memoryModel: z.string().default('anthropic/claude-haiku-4-5').describe('Model for observational memory (background compression of long chat histories)'),
+  memoryModel: z.string().default('qwen/qwen3.8-flash').describe('Model for observational memory (background compression of long chat histories)'),
   phVersion: z.string().optional().describe(`Powerhouse version for new reactor projects (defaults to ${DEFAULT_PH_VERSION})`),
   reactorProjectClonePath: z.string().optional().describe('Path to a pre-scaffolded reactor-project. When set, reactor-project-init clones it via `ph init --clone` (fast path). Typically baked into container images.'),
   registryUrl: z.string().optional().describe('Registry URL to use when publishing packages. When unset, resolution falls through to PH_REGISTRY_URL, powerhouse.config.json, then the default vetra registry (https://registry.dev.vetra.io)'),
@@ -45,12 +44,28 @@ export const configSchema = z.object({
     .describe(
       'Package manager for `ph init` on fresh reactor projects. Unset: prefer pnpm when installed, else npm. An unrecognized value is ignored (falls back to inference). The --clone fast path always uses pnpm (ph requires it). Env VETRA_PACKAGE_MANAGER.',
     ),
+  subagentModel: z
+    .string()
+    .optional()
+    .describe('OpenRouter model id for the sub-agents (env VETRA_SUBAGENT_MODEL); defaults to the main model'),
+  modelFallbacks: z
+    .string()
+    .optional()
+    .describe('Comma list of up to 3 OpenRouter fallback model ids (env VETRA_MODEL_FALLBACKS)'),
+  llmAllowDataCollection: z
+    .preprocess((v) => (typeof v === 'string' ? v === 'true' : v), z.boolean())
+    .default(false)
+    .describe('Allow OpenRouter providers that may collect prompt data (env VETRA_LLM_ALLOW_DATA_COLLECTION); default deny'),
 });
 
 export const secretsSchema = z.object({
   // @clint:begin framework-secrets
   anthropicApiKey: z.string().optional().describe('anthropic API key'),
   // @clint:end framework-secrets
+  openrouterApiKey: z
+    .string()
+    .optional()
+    .describe('OpenRouter API key (env VETRA_OPENROUTER_API_KEY; a bare OPENROUTER_API_KEY is read too)'),
 });
 
 export type Config = z.infer<typeof configSchema> &

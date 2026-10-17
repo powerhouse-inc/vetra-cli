@@ -1,5 +1,5 @@
-// First-run Claude auth: on a bare interactive launch with no credential, offer
-// the installer's paths — paste a key or skip.
+// First-run model auth: on a bare interactive launch with no OpenRouter key,
+// offer the installer's paths — paste a key or skip.
 import fs from 'node:fs';
 import readline from 'node:readline/promises';
 import {
@@ -9,15 +9,10 @@ import {
   userConfigPath,
   type CommandContext,
 } from '@powerhousedao/ph-clint';
-import {
-  createSession,
-  createUserTokenStore,
-} from '@powerhousedao/ph-clint-claude-subscription';
 import { CLI_NAME } from './config.js';
 import { configSchema, secretsSchema } from './framework.js';
 
-const KEY_ENV = configKeyToEnvVar(CLI_NAME, 'anthropicApiKey'); // VETRA_ANTHROPIC_API_KEY
-const REQUIRE_ENV = configKeyToEnvVar(CLI_NAME, 'requireApiKey'); // VETRA_REQUIRE_API_KEY
+const KEY_ENV = configKeyToEnvVar(CLI_NAME, 'openrouterApiKey'); // VETRA_OPENROUTER_API_KEY
 
 // Value-taking pre-command flags whose following token must be skipped, not read
 // as a subcommand (subset of ph-clint's private frameworkFlags, core/cli.ts).
@@ -52,17 +47,18 @@ export function resolveWorkdir(argv: string[]): string {
   return process.cwd();
 }
 
-// Resolve the key across the same layers as resolveConfig (minus --config): env,
-// then the workdir's local config, then the user config file.
+// Resolve the key across the same layers the agent uses (minus --config): env
+// (VETRA_OPENROUTER_API_KEY, then the bare OPENROUTER_API_KEY a provisioned
+// Studio gets), then the workdir's local config, then the user config file.
 function resolveApiKey(workdir: string): string | undefined {
-  const fromEnv = process.env[KEY_ENV];
+  const fromEnv = process.env[KEY_ENV] || process.env.OPENROUTER_API_KEY;
   if (fromEnv) return fromEnv;
   return readKey(localConfigPath(workdir, CLI_NAME)) ?? readKey(userConfigPath(CLI_NAME));
 }
 
 function readKey(file: string): string | undefined {
   try {
-    const v = (JSON.parse(fs.readFileSync(file, 'utf8')) as { anthropicApiKey?: unknown }).anthropicApiKey;
+    const v = (JSON.parse(fs.readFileSync(file, 'utf8')) as { openrouterApiKey?: unknown }).openrouterApiKey;
     return typeof v === 'string' && v ? v : undefined;
   } catch {
     return undefined;
@@ -82,7 +78,7 @@ async function persistApiKey(key: string): Promise<string> {
   // scope 'user' targets userConfigPath regardless of workdir; the returned
   // text echoes the value uncensored, so discard it in favor of the path.
   await configCommand.execute(
-    { name: 'anthropicApiKey', write: key, scope: 'user' },
+    { name: 'openrouterApiKey', write: key, scope: 'user' },
     { workdir: process.cwd() } as unknown as CommandContext,
   );
   return userConfigPath(CLI_NAME);
@@ -128,9 +124,9 @@ async function promptSetup(): Promise<void> {
   process.stdout.write(
     [
       '',
-      'Set up Claude authentication.',
+      'Connect a model (OpenRouter).',
       'How do you want to authenticate?',
-      '  [1] Paste an Anthropic API key  (console.anthropic.com)',
+      '  [1] Paste an OpenRouter API key  (openrouter.ai/keys)',
       '  [2] Skip — set it up later',
       '',
     ].join('\n'),
@@ -143,10 +139,10 @@ async function promptSetup(): Promise<void> {
     rl.close(); // release stdin before raw read
   }
   if (choice === '1') {
-    const key = (await readSecret('Paste your Anthropic API key (hidden): ')).trim();
+    const key = (await readSecret('Paste your OpenRouter API key (hidden): ')).trim();
     if (!key) { process.stdout.write('No key entered — skipping.\n'); return; }
     try {
-      await persistApiKey(key)
+      await persistApiKey(key);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stdout.write(`Could not save the API key (${msg}); it is set for this session — export ${KEY_ENV} to persist it.\n`);
@@ -154,27 +150,19 @@ async function promptSetup(): Promise<void> {
     return;
   }
   process.stdout.write(
-    `Skipped. Authenticate later with \`export ${KEY_ENV}=sk-ant-...\`.\n`,
+    `Skipped. Connect a model later with \`export ${KEY_ENV}=sk-or-...\`.\n`,
   );
 }
 
-// Prompt for Claude auth on a bare interactive launch when none is configured.
-// Best-effort: any failure is swallowed so the CLI always starts.
-export async function ensureClaudeAuth(argv: string[]): Promise<void> {
+// Prompt for an OpenRouter key on a bare interactive launch when none is
+// configured. Best-effort: any failure is swallowed so the CLI always starts
+// (without a key the agent answers "No model is connected…").
+export async function ensureModelAuth(argv: string[]): Promise<void> {
   try {
-    // Provisioned env (VETRA_REQUIRE_API_KEY=true): no interactive setup — the
-    // entrypoint hold + agent.ts assertion own the "no key" path.
-    if (process.env[REQUIRE_ENV] === 'true') return;
     if (!isInteractiveLaunch(argv)) return;
-    if (resolveApiKey(resolveWorkdir(argv))) return; // API key configured
-    try {
-      const session = createSession({ store: createUserTokenStore({ cliName: CLI_NAME }) });
-      if (await session.isAuthenticated()) return; // valid subscription session
-    } catch {
-      // corrupt/unreadable token file → treat as unconfigured and prompt
-    }
+    if (resolveApiKey(resolveWorkdir(argv))) return;
     await promptSetup();
   } catch {
-    // agent.ts still guides the user if unconfigured
+    // the no-model agent still guides the user
   }
 }
