@@ -5,7 +5,7 @@ describe("OpenRouter config", () => {
   it("defaults the main and memory models to verified OpenRouter ids", () => {
     const c = configSchema.parse({});
     expect(c.model).toBe("anthropic/claude-sonnet-4.6");
-    expect(c.memoryModel).toBe("deepseek/deepseek-v4.1-flash");
+    expect(c.memoryModel).toBe("deepseek/deepseek-v4.1-flash-1017");
     expect(c.subagentModel).toBeUndefined();
     expect(c.modelFallbacks).toBeUndefined();
     expect(c.llmAllowDataCollection).toBe(false);
