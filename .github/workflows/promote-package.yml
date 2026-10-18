@@ -1,0 +1,96 @@
+name: promote-package
+
+# Copy an already-published package version from one Vetra registry to another
+# (byte-identical tarball, integrity checked) and point a dist-tag at it, with
+# the same Renown publisher credential the release workflow uses. Used to put
+# a stable build that only reached the dev registry onto registry.vetra.io.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package name, e.g. @powerhousedao/vetra-builder-package"
+        required: true
+      version:
+        description: "Exact version, e.g. 5.2.0"
+        required: true
+      from:
+        description: "Source registry"
+        required: true
+        default: https://registry.dev.vetra.io
+      to:
+        description: "Target registry"
+        required: true
+        default: https://registry.vetra.io
+      tag:
+        description: "Dist-tag to point at the version on the target"
+        required: true
+        default: latest
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The token minter needs @renown/sdk from the workspace.
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Guard registry credentials
+        env:
+          RENOWN_KEY: ${{ secrets.VETRA_REGISTRY_RENOWN_KEY }}
+          RENOWN_ADDRESS: ${{ secrets.VETRA_REGISTRY_RENOWN_ADDRESS }}
+        run: |
+          for s in RENOWN_KEY RENOWN_ADDRESS; do
+            [ -n "${!s}" ] || { echo "::error::secret VETRA_REGISTRY_$s is not set"; exit 1; }
+          done
+
+      - name: Copy and tag
+        env:
+          PKG: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+          TAG: ${{ inputs.tag }}
+          RENOWN_ADDRESS: ${{ secrets.VETRA_REGISTRY_RENOWN_ADDRESS }}
+          PH_RENOWN_PRIVATE_KEY: ${{ secrets.VETRA_REGISTRY_RENOWN_KEY }}
+        run: |
+          set -euo pipefail
+          token=$(cd vetra-cli && node scripts/publish/mint-renown-token.mjs "$TO")
+          echo "::add-mask::$token"
+          echo "//${TO#https://}/:_authToken=$token" >> ~/.npmrc
+          who=$(curl -sf -H "Authorization: Bearer $token" "$TO/-/whoami" || true)
+          case "$who" in
+            *did:pkh:*) echo "authenticated to $TO as $who" ;;
+            *) echo "::error::Renown auth failed on $TO"; exit 1 ;;
+          esac
+
+          encoded=$(node -p 'encodeURIComponent(process.argv[1]).replace("%40","@")' "$PKG")
+          want=$(curl -sf "$FROM/$encoded/$VERSION" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).dist.integrity))')
+          [ -n "$want" ] || { echo "::error::$PKG@$VERSION not found on $FROM"; exit 1; }
+
+          if curl -sfo /dev/null "$TO/$encoded/$VERSION?cb=$RANDOM"; then
+            got=$(curl -sf "$TO/$encoded/$VERSION?cb=$RANDOM" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).dist.integrity))')
+            [ "$got" = "$want" ] || { echo "::error::$PKG@$VERSION already on $TO with different content"; exit 1; }
+            echo "$PKG@$VERSION already on $TO (same integrity)"
+          else
+            mkdir -p "$RUNNER_TEMP/promote"
+            tgz=$(cd "$RUNNER_TEMP/promote" && npm pack "$PKG@$VERSION" --registry "$FROM" --silent | tail -1)
+            got="sha512-$(openssl dgst -sha512 -binary "$RUNNER_TEMP/promote/$tgz" | base64 -w0)"
+            [ "$got" = "$want" ] || { echo "::error::downloaded tarball integrity mismatch"; exit 1; }
+            npm publish "$RUNNER_TEMP/promote/$tgz" --registry "$TO" --tag "$TAG"
+          fi
+          npm dist-tag add "$PKG@$VERSION" "$TAG" --registry "$TO"
+          curl -sf "$TO/$encoded?cb=$RANDOM" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log("dist-tags:", JSON.stringify(JSON.parse(s)["dist-tags"])))'

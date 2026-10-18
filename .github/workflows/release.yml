@@ -11,6 +11,11 @@ name: release
 
 on:
   workflow_dispatch:
+    inputs:
+      also-tag:
+        description: "Also point this dist-tag at the version (e.g. latest); empty = only the branch tag"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -87,6 +92,7 @@ jobs:
       - name: Publish
         env:
           TAG: ${{ steps.meta.outputs.tag }}
+          ALSO_TAG: ${{ inputs.also-tag }}
           RENOWN_ADDRESS: ${{ secrets.VETRA_REGISTRY_RENOWN_ADDRESS }}
           PH_RENOWN_PRIVATE_KEY: ${{ secrets.VETRA_REGISTRY_RENOWN_KEY }}
         run: |
@@ -137,6 +143,12 @@ jobs:
             # the app first so the CLI never references an unpublished dep.
             publish_one "$VETRA_APP_TGZ" "$APP_NAME" "$reg"
             publish_one "$VETRA_CLI_TGZ" "$CLI_NAME" "$reg"
+            if [ -n "$ALSO_TAG" ]; then
+              for name in "$APP_NAME" "$CLI_NAME"; do
+                echo "pointing $name@$VERSION at dist-tag '$ALSO_TAG' on $reg"
+                npm dist-tag add "$name@$VERSION" "$ALSO_TAG" --registry "$reg"
+              done
+            fi
           done
 
       # npm view serves stale data for minutes after a publish — use the
