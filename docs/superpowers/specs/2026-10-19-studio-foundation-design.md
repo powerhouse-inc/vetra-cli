@@ -25,7 +25,7 @@ Projects 2–6 each get their own design. Foundation must not pre-empt their UX 
 - **G4 Messages always reach the agent, and the customer can tell.** A sent message is delivered and picked up, or the UI says it isn't.
 - **G5 GitHub errors are actionable.** Creating the repo for a Studio App works for personal accounts and orgs; when GitHub refuses, the customer gets a specific reason and next step, never "internal server error".
 - **G6 One honest Renown login link.** The `[object Object]` link is found and fixed.
-- **G7 We know before the customer does.** Sessions entering error, Studio crash loops/OOMs, deployments marked failed, and stuck deploys raise an alert to us; dead environments stop being polled.
+- **G7 We can see what fails.** Failures that matter (session errors, Studio crash loops/OOMs, failed or stuck deploys) are logged at error level with context; dead environments stop being polled. Alert routing comes later.
 - **G8 The website doesn't promise what doesn't exist.** Landing claims ("Nothing is written until you approve", "Every step is a commit", "Data may be lost between versions") are made true or softened.
 
 ## Non-goals
@@ -97,7 +97,7 @@ Reproduce in the customer app's preview Connect and in vetra.io/Connect login en
 
 ### F7 — Platform health (G7)
 
-- Alerts (to us) for: session turn failures/ERROR, Studio container OOM/crash loops, environments entering `DEPLOYMENT_FAILED`, deploys stuck in progress, and Studio messages not picked up. Use the existing monitoring stack (k8s-monitoring / Sentry / alerting already in the cluster); the plan picks the concrete channel.
+- Alert routing is deferred (Frank, 2026-10-19). Foundation still emits the signals alerts will use later: session turn failures, Studio OOM/crash loops, `DEPLOYMENT_FAILED` environments, stuck deploys and unpicked messages are logged at error level with context.
 - The observability pull worker stops polling environments whose document is deleted or whose namespace is gone.
 - Prod logging keeps warn level but every unexpected server error in Studio-facing resolvers is logged at error level with enough context to debug (no secrets).
 
@@ -115,22 +115,21 @@ Soften or remove the landing claims that aren't true yet, on vetra.io **main and
 
 ## Decisions taken (my calls — Frank can override)
 
-- **Powerhouse target:** stable `6.2.3` unless the plan's compatibility check proves a specific `6.2.3-dev.N` is required to match prod.
+- **Powerhouse target:** stable `6.2.3` for the Studio and both platform switchboards (Frank's answer 1).
 - **Output caps:** main agent 8k, code-writing sub-agents 16k output tokens (adjusted if measurement shows truncation).
 - **Default fallback chain:** configured model → `deepseek/deepseek-v4.1-flash` → `google/gemini-3.1-flash-lite` (all measured this week: tool calls work; multiple providers).
 - **Budgets:** staging default $10/Studio/month; the investor-demo Studio gets an explicit invite-code budget of $50; prod default stays $1 until pricing is decided (Frank), but the 80% warning and clear out-of-budget state make the limit visible instead of mysterious.
 - **Retry policy:** up to 3 automatic retries per turn with backoff, then the turn fails visibly with Retry.
-- **Alert channel:** see Open questions (Alertmanager currently routes everything to `null`; Discord was rejected on 2026-09-23).
 - **Customer projects' Powerhouse version:** F1 moves the Studio (agent + bundled Connect) and **new** customer projects to the new line. Existing customer projects in claimed Studios stay on their version until the customer opts in; a migration path for them is Project 3. Nothing is migrated silently.
 - **Base branches:** vetra-cloud-package work starts from `origin/main`; staging is first brought up to main (its 9 missing commits) so staging validation tests the right code. The earlier environment fixes are already on main.
 - **F5 test identities:** the existing GitHub App installations on personal account `froid1911` and org `web3-berlin` are used for the personal/org reproduction; staging Harbor and Renown are used as they are.
 
-## Open questions (Frank)
+## Frank's answers (2026-10-19)
 
-1. **Platform switchboard version.** Staging runs switchboard `v6.2.3-dev.45`, prod runs `v6.2.3-dev.28`, so staging can't prove the prod pairing. Proposal: bring both to stable `v6.2.3` (staging first) as part of F1.
-2. **Alert channel and recipients** for G7.
-3. **What the customer sees when the budget runs out.** Proposal: a "Request more budget" button that notifies us; we raise it with one admin command.
-4. **Investor demo target.** Which Studio and environment (proposal: prod `vivid-slug`, owner Frank), and is there a date that should drive order?
+1. **Platform switchboards → stable `v6.2.3`, staging first, then prod**, as part of F1. Staging and prod then run the same reactor, so staging proves the prod pairing.
+2. **Alert routing is out of scope for now** ("ignore the Alertmanager"). G7 keeps the observability worker fix and error-level logging of unexpected Studio-facing errors; alert rules/receivers come later.
+3. **Out of budget:** the customer sees a clear "budget used up" state with a **"Request more budget"** button; the request reaches us and we raise that Studio's budget with one admin command.
+4. **Investor demo:** prod Studio **`vivid-slug`** (owner Frank). No fixed date; order by risk, and the demo Studio gets the $50 budget and the owner-signed agent upgrade once prod has the release.
 
 ## Left to the builder
 
