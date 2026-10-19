@@ -165,10 +165,11 @@ describe("authorizeGithub", () => {
       gqlResponse({ errors: [{ extensions: { code: "BOOM" } }] }),
     );
 
-    expect(await authorizeGithub("dev", "tok")).toEqual({
-      status: "error",
-      message: "BOOM",
-    });
+    const result = await authorizeGithub("dev", "tok");
+    expect(result.status).toBe("error");
+    expect(result.status === "error" && result.message).toContain(
+      "(BOOM). Try again",
+    );
   });
 });
 
@@ -215,9 +216,65 @@ describe("connectGithub", () => {
       gqlResponse({ errors: [{ extensions: { code: "SOMETHING_ELSE" } }] }),
     );
 
+    const result = await connectGithub("dev", "widget", "env-1", "tok");
+    expect(result.status).toBe("error");
+    expect(result.status === "error" && result.message).toContain(
+      "(SOMETHING_ELSE). Try again",
+    );
+  });
+
+  it("maps REPO_EXISTS like REPO_ALREADY_EXISTS", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({ errors: [{ extensions: { code: "REPO_EXISTS" } }] }),
+    );
+    expect(await connectGithub("dev", "widget", "env-1", "tok")).toEqual({
+      status: "repoExists",
+    });
+  });
+
+  const MESSAGE_CASES: Array<[string, RegExp]> = [
+    [
+      "INSUFFICIENT_PERMISSION",
+      /Install the Vetra GitHub app.*Administration permission/,
+    ],
+    ["GITHUB_NOT_CONNECTED", /Reconnect GitHub/],
+    ["GITHUB_UNAVAILABLE", /GitHub is not responding\. Try again in a minute/],
+    ["ORG_POLICY", /organisation.*Ask an owner/],
+    ["DEPLOY_SETUP_FAILED", /rolled back.*try again/i],
+    ["INTERNAL_SERVER_ERROR", /Try again/],
+  ];
+
+  it.each(MESSAGE_CASES)(
+    "explains %s with a next step",
+    async (code, message) => {
+      fetchSpy.mockResolvedValue(
+        gqlResponse({ errors: [{ message: code, extensions: { code } }] }),
+      );
+      const result = await connectGithub("dev", "widget", "env-1", "tok");
+      expect(result.status).toBe("error");
+      expect(result.status === "error" && result.message).toMatch(message);
+    },
+  );
+
+  it("includes GitHub's reason for REPO_NAME_INVALID", async () => {
+    fetchSpy.mockResolvedValue(
+      gqlResponse({
+        errors: [
+          {
+            message:
+              "GitHub did not accept this repository name (name is invalid).",
+            extensions: {
+              code: "REPO_NAME_INVALID",
+              reason: "name is invalid",
+            },
+          },
+        ],
+      }),
+    );
     expect(await connectGithub("dev", "widget", "env-1", "tok")).toEqual({
       status: "error",
-      message: "SOMETHING_ELSE",
+      message:
+        "GitHub did not accept this repository name (name is invalid). Choose another name.",
     });
   });
 });
