@@ -41,3 +41,6 @@ yarn-error.log*
 .claude/worktrees/
 vetra-cli/.npmrc
 .npmrc
+
+# brainstorm mockups, SDD ledgers and other agent scratch
+.superpowers/
