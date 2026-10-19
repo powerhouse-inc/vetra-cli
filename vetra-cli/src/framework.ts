@@ -14,6 +14,9 @@ import { createTypes } from '@powerhousedao/ph-clint';
 import { registry } from './framework.gen.js';
 import { DEFAULT_PH_VERSION } from './constants.js';
 
+/** Fallback chain when VETRA_MODEL_FALLBACKS is unset or blank (a model is never its own fallback). */
+export const DEFAULT_MODEL_FALLBACKS = ['deepseek/deepseek-v4.1-flash', 'google/gemini-3.1-flash-lite'] as const;
+
 export const configSchema = z.object({
   // @clint:begin framework-config
   model: z.string().default('anthropic/claude-sonnet-4.6').describe('OpenRouter model id for the main agent (env VETRA_MODEL)'),
@@ -51,7 +54,9 @@ export const configSchema = z.object({
   modelFallbacks: z
     .string()
     .optional()
-    .describe('Comma list of up to 3 OpenRouter fallback model ids (env VETRA_MODEL_FALLBACKS)'),
+    .describe(
+      `Comma list of up to 3 OpenRouter fallback model ids (env VETRA_MODEL_FALLBACKS). Unset or blank: ${DEFAULT_MODEL_FALLBACKS.join(', ')}; \`none\`: no fallbacks`,
+    ),
   llmAllowDataCollection: z
     .preprocess((v) => (typeof v === 'string' ? v === 'true' : v), z.boolean())
     .default(false)

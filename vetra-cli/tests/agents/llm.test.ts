@@ -2,16 +2,22 @@ import { describe, it, expect, beforeEach } from "@jest/globals";
 import {
   CONTEXT_LIMIT_RATIO,
   DEFAULT_CONTEXT_LENGTH,
+  INPUT_TOKEN_CAP,
+  MAIN_MAX_OUTPUT_TOKENS,
+  MEMORY_MAX_OUTPUT_TOKENS,
+  SUBAGENT_MAX_OUTPUT_TOKENS,
   OPENROUTER_ATTRIBUTION_HEADERS,
   clearContextLimitCache,
   createLlmModels,
   parseFallbacks,
   requestExtras,
   resolveContextTokenLimit,
+  resolveFallbacks,
   resolveLlmSettings,
   resolveOpenRouterKey,
   type LlmSettings,
 } from "../../src/agents/llm.js";
+import { DEFAULT_MODEL_FALLBACKS } from "../../src/framework.js";
 
 const BASE = { model: "anthropic/claude-sonnet-4.6", memoryModel: "anthropic/claude-haiku-4.5", llmAllowDataCollection: false };
 
@@ -58,9 +64,43 @@ describe("resolveOpenRouterKey / resolveLlmSettings", () => {
       {},
     )!;
     expect(s.subagentModel).toBe("anthropic/claude-sonnet-4.6");
-    expect(s.fallbacks).toStrictEqual(["openai/gpt-5", "google/gemini-3-pro", "x/a"]);
+    expect(resolveFallbacks(s.model, s.fallbacks)).toStrictEqual(["openai/gpt-5", "google/gemini-3-pro", "x/a"]);
     expect(resolveLlmSettings({ ...BASE, subagentModel: "x/sub", openrouterApiKey: "k" }, {})!.subagentModel).toBe("x/sub");
-    expect(parseFallbacks(undefined)).toStrictEqual([]);
+    expect(parseFallbacks(undefined)).toBeUndefined();
+  });
+
+  it("blank VETRA_MODEL_FALLBACKS uses the default chain", () => {
+    expect(parseFallbacks("")).toBeUndefined();
+    expect(parseFallbacks("  \t ")).toBeUndefined();
+    const s = resolveLlmSettings({ ...BASE, modelFallbacks: "   ", openrouterApiKey: "k" }, {})!;
+    expect(resolveFallbacks(s.model, s.fallbacks)).toStrictEqual([...DEFAULT_MODEL_FALLBACKS]);
+  });
+
+  it("none disables fallbacks", () => {
+    expect(parseFallbacks("none")).toStrictEqual([]);
+    expect(parseFallbacks(" NoNe ")).toStrictEqual([]);
+    const s = resolveLlmSettings({ ...BASE, modelFallbacks: "None", openrouterApiKey: "k" }, {})!;
+    expect(resolveFallbacks(s.model, s.fallbacks)).toStrictEqual([]);
+  });
+});
+
+describe("resolveFallbacks", () => {
+  it("default fallbacks are used when none are configured and never repeat the primary", () => {
+    expect(DEFAULT_MODEL_FALLBACKS).toStrictEqual(["deepseek/deepseek-v4.1-flash", "google/gemini-3.1-flash-lite"]);
+    expect(resolveFallbacks("deepseek/deepseek-v4.1-flash-1017", undefined)).toStrictEqual([
+      "deepseek/deepseek-v4.1-flash",
+      "google/gemini-3.1-flash-lite",
+    ]);
+    expect(resolveFallbacks("deepseek/deepseek-v4.1-flash", undefined)).toStrictEqual(["google/gemini-3.1-flash-lite"]);
+  });
+
+  it("configured fallbacks win", () => {
+    expect(resolveFallbacks("x/main", ["openai/gpt-5"])).toStrictEqual(["openai/gpt-5"]);
+    expect(resolveFallbacks("x/main", [])).toStrictEqual([]);
+  });
+
+  it("drops the primary and duplicates before capping at MAX_FALLBACKS", () => {
+    expect(resolveFallbacks("x/main", ["x/main", "x/a", "x/a", "x/b", "x/c", "x/d"])).toStrictEqual(["x/a", "x/b", "x/c"]);
   });
 });
 
@@ -118,15 +158,50 @@ describe("createLlmModels", () => {
     });
   });
 
-  it("builds the sub-agent and memory models on their own ids; memory gets no fallbacks", async () => {
+  it("builds the sub-agent and memory models on their own ids; memory gets fallbacks too", async () => {
     const { calls, fetchImpl } = captureFetch();
     const models = createLlmModels(settings, { fetch: fetchImpl });
     await models.subagent.doGenerate({ prompt: PROMPT });
     await models.memory.doGenerate({ prompt: PROMPT });
     expect(calls[0].body.model).toBe("openai/gpt-5");
     expect(calls[0].body).not.toHaveProperty("cache_control");
+    expect(calls[0].body).not.toHaveProperty("models");
     expect(calls[1].body.model).toBe("anthropic/claude-haiku-4.5");
-    expect(calls[1].body).not.toHaveProperty("models");
+    expect(calls[1].body.models).toStrictEqual(["anthropic/claude-haiku-4.5", "openai/gpt-5"]);
+  });
+
+  it("main requests send max_tokens 8192", async () => {
+    const { calls, fetchImpl } = captureFetch();
+    // Even when the caller asks for more (the prod incident asked for 131072).
+    await createLlmModels(settings, { fetch: fetchImpl }).main.doGenerate({ prompt: PROMPT, maxOutputTokens: 131072 });
+    expect(MAIN_MAX_OUTPUT_TOKENS).toBe(8192);
+    expect(calls[0].body.max_tokens).toBe(8192);
+  });
+
+  it("subagent requests send max_tokens 16384", async () => {
+    const { calls, fetchImpl } = captureFetch();
+    await createLlmModels(settings, { fetch: fetchImpl }).subagent.doGenerate({ prompt: PROMPT, maxOutputTokens: 131072 });
+    expect(SUBAGENT_MAX_OUTPUT_TOKENS).toBe(16384);
+    expect(calls[0].body.max_tokens).toBe(16384);
+  });
+
+  it("memory requests send max_tokens 4096", async () => {
+    const { calls, fetchImpl } = captureFetch();
+    await createLlmModels(settings, { fetch: fetchImpl }).memory.doGenerate({ prompt: PROMPT });
+    expect(MEMORY_MAX_OUTPUT_TOKENS).toBe(4096);
+    expect(calls[0].body.max_tokens).toBe(4096);
+  });
+
+  it("uses the default fallback chain when none are configured", async () => {
+    const { calls, fetchImpl } = captureFetch();
+    await createLlmModels({ ...settings, fallbacks: undefined }, { fetch: fetchImpl }).main.doGenerate({ prompt: PROMPT });
+    expect(calls[0].body.models).toStrictEqual(["anthropic/claude-sonnet-4.6", ...DEFAULT_MODEL_FALLBACKS]);
+  });
+});
+
+describe("INPUT_TOKEN_CAP", () => {
+  it("caps the TokenLimiter input ceiling at 64000 tokens", () => {
+    expect(INPUT_TOKEN_CAP).toBe(64_000);
   });
 });
 

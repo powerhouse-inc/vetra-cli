@@ -8,7 +8,7 @@ import type { WrapAgentOptions } from '@powerhousedao/ph-clint/mastra';
 import { CLI_NAME } from '../config.js';
 import type { Config } from '../framework.js';
 import { VETRA_AGENT_IMAGE } from './agent-image.js';
-import { createLlmModels, resolveContextTokenLimit, resolveLlmSettings } from './llm.js';
+import { INPUT_TOKEN_CAP, createLlmModels, resolveContextTokenLimit, resolveLlmSettings } from './llm.js';
 import { createNoModelAgent } from './no-model-agent.js';
 import { createReplayAgent } from './replay-agent.js';
 
@@ -38,13 +38,12 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
   const models = createLlmModels(settings);
 
   // Hard input-token ceiling at every step of the agentic loop: 80% of the
-  // model's OpenRouter context_length (200k fallback). Oldest messages are
-  // trimmed when exceeded, so a long run degrades instead of failing with
-  // "prompt is too long".
-  const [mainLimit, subLimit] = await Promise.all([
-    resolveContextTokenLimit(settings.model),
-    resolveContextTokenLimit(settings.subagentModel),
-  ]);
+  // model's OpenRouter context_length (200k fallback), capped at
+  // INPUT_TOKEN_CAP to bound per-step cost. Oldest messages are trimmed when
+  // exceeded, so a long run degrades instead of failing with "prompt is too long".
+  const [mainLimit, subLimit] = (
+    await Promise.all([resolveContextTokenLimit(settings.model), resolveContextTokenLimit(settings.subagentModel)])
+  ).map((limit) => Math.min(limit, INPUT_TOKEN_CAP));
 
   const m = createMastraHelpers(ctx);
   // Observer/Reflector model for observational memory — compresses long chat
@@ -114,7 +113,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
 
   const store = createWorkdirStore(ctx.workdir, CLI_NAME);
   const wrapOpts: WrapAgentOptions = {
-    maxSteps: 80,
+    maxSteps: 40,
     enableLogging: ctx.config.agentLogging,
     logDirectory: store.getStoreFolder('logs'),
     // No cacheControl here: ph-clint sends it as providerOptions.anthropic,
