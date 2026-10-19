@@ -120,7 +120,17 @@ Soften or remove the landing claims that aren't true yet, on vetra.io **main and
 - **Default fallback chain:** configured model → `deepseek/deepseek-v4.1-flash` → `google/gemini-3.1-flash-lite` (all measured this week: tool calls work; multiple providers).
 - **Budgets:** staging default $10/Studio/month; the investor-demo Studio gets an explicit invite-code budget of $50; prod default stays $1 until pricing is decided (Frank), but the 80% warning and clear out-of-budget state make the limit visible instead of mysterious.
 - **Retry policy:** up to 3 automatic retries per turn with backoff, then the turn fails visibly with Retry.
-- **Alert channel:** whatever the cluster's monitoring stack already routes to (the plan confirms); no new paging service.
+- **Alert channel:** see Open questions (Alertmanager currently routes everything to `null`; Discord was rejected on 2026-09-23).
+- **Customer projects' Powerhouse version:** F1 moves the Studio (agent + bundled Connect) and **new** customer projects to the new line. Existing customer projects in claimed Studios stay on their version until the customer opts in; a migration path for them is Project 3. Nothing is migrated silently.
+- **Base branches:** vetra-cloud-package work starts from `origin/main`; staging is first brought up to main (its 9 missing commits) so staging validation tests the right code. The earlier environment fixes are already on main.
+- **F5 test identities:** the existing GitHub App installations on personal account `froid1911` and org `web3-berlin` are used for the personal/org reproduction; staging Harbor and Renown are used as they are.
+
+## Open questions (Frank)
+
+1. **Platform switchboard version.** Staging runs switchboard `v6.2.3-dev.45`, prod runs `v6.2.3-dev.28`, so staging can't prove the prod pairing. Proposal: bring both to stable `v6.2.3` (staging first) as part of F1.
+2. **Alert channel and recipients** for G7.
+3. **What the customer sees when the budget runs out.** Proposal: a "Request more budget" button that notifies us; we raise it with one admin command.
+4. **Investor demo target.** Which Studio and environment (proposal: prod `vivid-slug`, owner Frank), and is there a date that should drive order?
 
 ## Left to the builder
 
