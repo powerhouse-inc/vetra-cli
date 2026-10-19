@@ -29,7 +29,12 @@ function mockGqlResponses(
   responses: ReadonlyArray<Record<string, unknown>>,
 ) {
   let i = 0;
-  fetchSpy.mockImplementation(() => {
+  fetchSpy.mockImplementation((input) => {
+    // Renown (6.2.3+) probes `{renownUrl}/api/switchboard` on build; answer
+    // only switchboard GraphQL calls from the queue.
+    if (String(input) !== SWITCHBOARD_URL) {
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
     const payload = responses[i++] ?? {};
     return Promise.resolve(
       new Response(JSON.stringify({ data: payload }), {
@@ -38,6 +43,11 @@ function mockGqlResponses(
       }),
     );
   });
+}
+
+/** The switchboard GraphQL calls, without Renown's discovery probe. */
+function gqlCalls(fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>) {
+  return fetchSpy.mock.calls.filter(([input]) => String(input) === SWITCHBOARD_URL);
 }
 
 const SAMPLE_ITEM = {
@@ -206,15 +216,15 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
     expect(result.text).toMatch(/Created/);
     expect(result.text).toContain("doc-1");
     expect(result.text).toMatch(/Alpha/);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(gqlCalls(fetchSpy)).toHaveLength(2);
     const createBody = JSON.parse(
-      String(fetchSpy.mock.calls[0]?.[1]?.body ?? "{}"),
+      String(gqlCalls(fetchSpy)[0]?.[1]?.body ?? "{}"),
     ) as { query: string; variables: Record<string, unknown> };
     expect(createBody.query).toMatch(/createEmptyDocument/);
     expect(createBody.variables.documentType).toBe("powerhouse/workout-tracker");
     expect(createBody.variables.parentIdentifier).toBeDefined();
     const renameBody = JSON.parse(
-      String(fetchSpy.mock.calls[1]?.[1]?.body ?? "{}"),
+      String(gqlCalls(fetchSpy)[1]?.[1]?.body ?? "{}"),
     ) as { query: string; variables: Record<string, unknown> };
     expect(renameBody.query).toMatch(/renameDocument/);
     expect(renameBody.variables.name).toBe("Alpha");
@@ -240,9 +250,9 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
     );
     expect(result.text).toMatch(/Applied 1 action/);
     expect(result.text).toMatch(/now 3 op/);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(gqlCalls(fetchSpy)).toHaveLength(2);
     const mutateBody = JSON.parse(
-      String(fetchSpy.mock.calls[1]?.[1]?.body ?? "{}"),
+      String(gqlCalls(fetchSpy)[1]?.[1]?.body ?? "{}"),
     ) as { variables: { actions: Array<Record<string, unknown>> } };
     const [sentAction] = mutateBody.variables.actions;
     expect(typeof sentAction.id).toBe("string");
@@ -263,6 +273,6 @@ describe("spec-preview commands against a live (mocked) reactor-project", () => 
       withLiveReactorProject(workdir),
     );
     expect(result.text).toMatch(/Deleted "Alpha"/);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(gqlCalls(fetchSpy)).toHaveLength(2);
   });
 });

@@ -67,13 +67,15 @@ describe("spec-* commands → embedded drive", () => {
     // resolveReactorProjectPath only checks for this file's existence.
     await fs.writeFile(path.join(tmpDir, "powerhouse.config.json"), "{}");
 
-    const builder = new ReactorBuilder().withDocumentModels([
+    const builder = new ReactorBuilder().withDocumentModelSources([
       driveDocumentModelModule,
       ...(driveDocumentModels as unknown as any[]),
       ...(vetraDocumentModels as unknown as any[]),
     ]);
     module = await new ReactorClientBuilder()
       .withReactorBuilder(builder)
+      // The client is unsigned; 6.2.3 defaults new documents to v2-required.
+      .withCreateSignaturePolicy("legacy")
       .buildModule();
     const drive = await module.client.createEmpty("powerhouse/document-drive");
     driveId = drive.header.id;

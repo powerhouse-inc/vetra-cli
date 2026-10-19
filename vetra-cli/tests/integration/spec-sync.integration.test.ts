@@ -55,7 +55,7 @@ describe('spec-sync drive → FS integration', () => {
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'spec-sync-it-'));
     // Drive model must be registered or reactor builder rejects.
-    const builder = new ReactorBuilder().withDocumentModels([
+    const builder = new ReactorBuilder().withDocumentModelSources([
       driveDocumentModelModule,
       ...(driveDocumentModels as unknown as any[]),
       ...(vetraDocumentModels as unknown as any[]),
