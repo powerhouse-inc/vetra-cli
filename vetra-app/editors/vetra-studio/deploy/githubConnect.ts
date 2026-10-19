@@ -102,8 +102,9 @@ type GqlResponse<T> = {
   }[];
 };
 
-/** POSTs a GraphQL operation; returns the data and the first error code. */
-async function gql<T>(
+/** POSTs a GraphQL operation to the cloud switchboard; returns the data and
+ * the first error code (or message). Shared by the Studio's cloud clients. */
+export async function gql<T>(
   query: string,
   variables: Record<string, unknown>,
   token?: string | null,

@@ -11,6 +11,7 @@ import type {
 } from "@powerhousedao/shared/document-drive";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentAuthButton } from "./AgentAuthButton.js";
+import { StudioBudgetMeter } from "./budget/BudgetMeter.js";
 import { BuildSection } from "./BuildSection.js";
 import { ChatPane, CHAT_SESSION_DOCUMENT_TYPE } from "./ChatPane.js";
 import { DeploySection } from "./DeploySection.js";
@@ -594,6 +595,7 @@ function AutoNavToggle({
     <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-1.5 min-h-10">
       <VersionBadge />
       <div className="flex-1" />
+      <StudioBudgetMeter />
       <AgentAuthButton />
       {enabled && paused ? (
         <span className="text-[11px] text-muted-foreground">
