@@ -6,7 +6,7 @@ import {
   getSpecEntry as getBuiltinSpecEntry,
   listSpecDocumentTypes as listBuiltinTypes,
 } from "@powerhousedao/vetra/codegen/spec";
-import { baseCreateDocument, protocolVersionsFor } from "document-model";
+import { withSignaturePolicy } from "document-model";
 import { baseLoadFromFile, baseSaveToFile } from "document-model/node";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { documentModels as vetraAppModels } from "../../vetra-app-models.js";
@@ -137,12 +137,9 @@ export function createSpecDocument(
   documentType: string,
   opts: { name?: string; initialState?: unknown } = {},
 ): PHDocument {
-  const seeded = resolveSpecEntry(documentType).createDocument(opts.initialState);
-  const doc = baseCreateDocument(
-    () => structuredClone(seeded.initialState),
-    undefined,
-    documentType,
-    protocolVersionsFor("legacy"),
+  const doc = withSignaturePolicy(
+    resolveSpecEntry(documentType).createDocument(opts.initialState),
+    "legacy",
   );
   if (opts.name) doc.header.name = opts.name;
   return doc;
