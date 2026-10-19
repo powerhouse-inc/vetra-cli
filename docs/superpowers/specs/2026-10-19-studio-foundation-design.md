@@ -115,7 +115,8 @@ Soften or remove the landing claims that aren't true yet, on vetra.io **main and
 
 ## Decisions taken (my calls — Frank can override)
 
-- **Powerhouse target:** stable `6.2.3` for the Studio and both platform switchboards (Frank's answer 1).
+- **Powerhouse target:** stable `6.2.3` for the Studio; prod switchboard/connect forward to `v6.2.3`; staging switchboard stays on its newer dev line (see answer 1).
+- **ph-clint must change too:** at Powerhouse 6.2.3 its embedded reactor has no signer, so its fixed-id drive creation fails (`ID_MISMATCH`) and its folder documents are created `v2-required` and then refuse unsigned writes (`UNSIGNED_REQUIRED`). Foundation fixes ph-clint for 6.2.3 and releases it before the Studio upgrade.
 - **Output caps:** main agent 8k, code-writing sub-agents 16k output tokens (adjusted if measurement shows truncation).
 - **Default fallback chain:** configured model → `deepseek/deepseek-v4.1-flash` → `google/gemini-3.1-flash-lite` (all measured this week: tool calls work; multiple providers).
 - **Budgets:** staging default $10/Studio/month; the investor-demo Studio gets an explicit invite-code budget of $50; prod default stays $1 until pricing is decided (Frank), but the 80% warning and clear out-of-budget state make the limit visible instead of mysterious.
@@ -126,7 +127,7 @@ Soften or remove the landing claims that aren't true yet, on vetra.io **main and
 
 ## Frank's answers (2026-10-19)
 
-1. **Platform switchboards → stable `v6.2.3`, staging first, then prod**, as part of F1. Staging and prod then run the same reactor, so staging proves the prod pairing.
+1. **Platform switchboards → stable `v6.2.3`, staging first, then prod**, as part of F1. *Adjusted after research (2026-10-19):* staging runs `v6.2.3-dev.45`, which has already applied DB migrations 024–026 that `v6.2.3` lacks; switchboard migrations are forward-only, so staging **cannot** move back to `v6.2.3` and stays on its newer line. Prod moves `v6.2.3-dev.28` → `v6.2.3` (a clean forward upgrade: migrations 021–023). This is enough for G1: a Studio on Powerhouse `6.2.3` signs v2 and works against both `dev.28`/`v6.2.3` (prod) and `dev.45` (staging) — the `totalCount` field the 6.2.1 client needed was removed in `dev.26`.
 2. **Alert routing is out of scope for now** ("ignore the Alertmanager"). G7 keeps the observability worker fix and error-level logging of unexpected Studio-facing errors; alert rules/receivers come later.
 3. **Out of budget:** the customer sees a clear "budget used up" state with a **"Request more budget"** button; the request reaches us and we raise that Studio's budget with one admin command.
 4. **Investor demo:** prod Studio **`vivid-slug`** (owner Frank). No fixed date; order by risk, and the demo Studio gets the $50 budget and the owner-signed agent upgrade once prod has the release.
