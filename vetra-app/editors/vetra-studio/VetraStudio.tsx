@@ -19,7 +19,11 @@ import {
   isProductDebugEnabled,
 } from "./debug/ProductDebugPanel.js";
 import { DeploySection } from "./DeploySection.js";
-import { ideaStartStatus, startProduct } from "./idea/startProduct.js";
+import {
+  ideaStartStatus,
+  sessionToOpen,
+  startProduct,
+} from "./idea/startProduct.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
@@ -249,7 +253,9 @@ export function VetraStudio({
   const startFromIdea =
     documents !== undefined && ideaStartStatus(document, documents) === "idea"
       ? async (idea: string) =>
-          (await startProduct({ drive: documentRef.current, idea })).sessionId
+          sessionToOpen(
+            await startProduct({ drive: documentRef.current, idea }),
+          )
       : undefined;
   const [showProductDebug] = useState(isProductDebugEnabled);
 

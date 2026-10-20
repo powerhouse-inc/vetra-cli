@@ -63,7 +63,7 @@ export type ChatPaneProps = {
   /** Temporary (M0): while set, the pane shows the idea box, and this starts
    *  (or resumes) the product from the idea; resolves to the first
    *  conversation's id. Unset once the first message is in. */
-  onStartFromIdea?: (idea: string) => Promise<string>;
+  onStartFromIdea?: (idea: string) => Promise<string | undefined>;
 };
 
 export function ChatPane({
@@ -346,7 +346,7 @@ function IdeaStart({
   onStart,
   onStarted,
 }: {
-  onStart: (idea: string) => Promise<string>;
+  onStart: (idea: string) => Promise<string | undefined>;
   onStarted: (sessionId: string) => void;
 }) {
   const [idea, setIdea] = useState("");

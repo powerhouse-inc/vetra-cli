@@ -3,6 +3,7 @@ import type { Action, PHDocument } from "document-model";
 import { describe, expect, it, vi } from "vitest";
 import {
   ideaStartStatus,
+  sessionToOpen,
   startProduct,
   type StartProductDeps,
   type StartProductDrive,
@@ -374,5 +375,78 @@ describe("startProduct on launched or broken products", () => {
     expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
     await startProduct({ drive: s.drive, idea: "" }, s.deps);
     expect(s.dispatched).toHaveLength(1);
+  });
+});
+
+describe("the binding started rule (fix round 3)", () => {
+  const firstBuild = (status: string, chatSessionId: string) => ({
+    idea: "todo app",
+    createdAt: AT,
+    activeChangeId: "c",
+    changes: [{ id: "c", kind: "FIRST_BUILD", status, chatSessionId }],
+  });
+
+  it("resumes a stranded first build into its linked conversation, ignoring an unrelated used one", async () => {
+    const s = store();
+    s.add("used", CHAT_TYPE, { messages: [{ role: "USER" }] });
+    s.add("linked", CHAT_TYPE, { messages: [] });
+    s.add("p", PRODUCT_TYPE, firstBuild("BUILDING", "linked"));
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("idea");
+
+    const result = await startProduct({ drive: s.drive, idea: "" }, s.deps);
+
+    expect(result).toEqual({ productId: "p", sessionId: "linked" });
+    expect(s.dispatched).toEqual([
+      { id: "linked", types: ["ADD_USER_MESSAGE"] },
+    ]);
+    expect(s.created).toHaveLength(0);
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+  });
+
+  it("a launched first build whose conversation was deleted stays started and opens nothing", async () => {
+    const s = store();
+    s.add("p", PRODUCT_TYPE, firstBuild("LAUNCHED", "deleted"));
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+
+    const result = await startProduct({ drive: s.drive, idea: "x" }, s.deps);
+
+    expect(result).toEqual({ productId: "p", sessionId: "" });
+    expect(sessionToOpen(result)).toBeUndefined();
+    expect(sessionToOpen({ productId: "p", sessionId: "s" })).toBe("s");
+    expect(s.dispatched).toHaveLength(0);
+  });
+
+  it.each(["READY", "LAUNCHING", "CLOSED", "DISCARDED", "FAILED", "PAUSED"])(
+    "a first build in %s counts as started",
+    (status) => {
+      const s = store();
+      s.add("s", CHAT_TYPE, { messages: [] });
+      s.add("p", PRODUCT_TYPE, firstBuild(status, "s"));
+      expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+    },
+  );
+
+  it("a listed but unloaded linked conversation hides the box but doesn't count as started", async () => {
+    const s = store();
+    s.add("p", PRODUCT_TYPE, firstBuild("BUILDING", "linked"));
+    s.add("linked", CHAT_TYPE, { messages: [] });
+    const withoutSession = s.documents().filter((d) => d.header.id === "p");
+    expect(ideaStartStatus(s.drive, withoutSession)).toBe("started");
+
+    const loading = {
+      ...s.deps,
+      getDocument: (id: string) =>
+        id === "linked" ? Promise.resolve(undefined) : s.deps.getDocument(id),
+    };
+    await expect(
+      startProduct({ drive: s.drive, idea: "" }, loading),
+    ).rejects.toThrow("still loading");
+    expect(s.dispatched).toHaveLength(0);
+
+    // Once it loads, a retry sends the first message.
+    await startProduct({ drive: s.drive, idea: "" }, s.deps);
+    expect(s.dispatched).toEqual([
+      { id: "linked", types: ["ADD_USER_MESSAGE"] },
+    ]);
   });
 });

@@ -95,6 +95,8 @@ interface ProductView {
   hasChanges: boolean;
   /** A change other than the first build (e.g. adopted BEFORE_VERSIONS). */
   hasOtherChanges: boolean;
+  /** The first build's status, when there is one. */
+  firstBuildStatus: string | null;
   /** The first build's conversation, when it has one. */
   firstBuildSessionId: string | null;
 }
@@ -110,7 +112,11 @@ function productView(doc: PHDocument | undefined): ProductView {
   const g = globalOf(doc) as {
     idea?: string | null;
     createdAt?: string | null;
-    changes?: { kind?: string; chatSessionId?: string | null }[];
+    changes?: {
+      kind?: string;
+      status?: string;
+      chatSessionId?: string | null;
+    }[];
   };
   const changes = g.changes ?? [];
   const firstBuild = changes.find((c) => c.kind === "FIRST_BUILD");
@@ -119,6 +125,7 @@ function productView(doc: PHDocument | undefined): ProductView {
     initialised: (g.idea ?? null) !== null || (g.createdAt ?? null) !== null,
     hasChanges: changes.length > 0,
     hasOtherChanges: changes.some((c) => c.kind !== "FIRST_BUILD"),
+    firstBuildStatus: firstBuild ? (firstBuild.status ?? "BUILDING") : null,
     firstBuildSessionId: firstBuild?.chatSessionId ?? null,
   };
 }
@@ -130,20 +137,31 @@ interface SessionInfo {
 }
 
 /**
- * Whether a product's first start is complete, so the idea box must not
- * come back (a launched product keeps an old activeChangeId, so this never
- * looks at the active change). Started once the product has a change other
- * than the first build, or once any conversation in the drive has a user
- * message (a first build linked to a missing conversation counts too), or
- * while a conversation is listed but not loaded (unknown counts as used).
+ * Whether a product's first start is complete (binding rule, Task 0.6 fix
+ * round 3). `yes` when any of:
+ * (a) a change whose kind is not FIRST_BUILD (e.g. adopted BEFORE_VERSIONS);
+ * (b) the FIRST_BUILD's status is anything but BUILDING (a launched product
+ *     keeps an old activeChangeId, so the active change is never consulted);
+ * (c) the FIRST_BUILD's linked conversation is listed and has a user message;
+ * (d) only when that conversation is not listed: any conversation in the
+ *     drive has a user message (legacy fallback).
+ * `unknown` while the conversation that decides is listed but not loaded:
+ * the box stays hidden, and a retry after it loads can still send.
  */
 function productStarted(
   product: ProductView,
   sessions: readonly SessionInfo[],
-): boolean {
-  if (!product.hasChanges) return false;
-  if (product.hasOtherChanges) return true;
-  return sessions.some((s) => !s.doc || hasUserMessage(s.doc));
+): "yes" | "no" | "unknown" {
+  if (!product.hasChanges) return "no";
+  if (product.hasOtherChanges) return "yes";
+  if (product.firstBuildStatus !== "BUILDING") return "yes";
+  const linked = sessions.find((x) => x.id === product.firstBuildSessionId);
+  if (linked) {
+    if (!linked.doc) return "unknown";
+    return hasUserMessage(linked.doc) ? "yes" : "no";
+  }
+  if (sessions.some((x) => x.doc && hasUserMessage(x.doc))) return "yes";
+  return sessions.some((x) => !x.doc) ? "unknown" : "no";
 }
 
 function messagesOf(doc: PHDocument | undefined): { role?: string }[] {
@@ -192,7 +210,9 @@ export function ideaStartStatus(
       id: n.id,
       doc: byId.get(n.id),
     }));
-    return productStarted(productView(doc), sessions) ? "started" : "idea";
+    return productStarted(productView(doc), sessions) === "no"
+      ? "idea"
+      : "started";
   }
   const hasProject = drive.state.global.nodes.some(
     (n) => n.kind === "file" && SPECIFY_TYPES.has((n as FileNode).documentType),
@@ -203,6 +223,12 @@ export function ideaStartStatus(
     return !doc || messagesOf(doc).length > 0;
   });
   return usedSession ? "legacy" : "idea";
+}
+
+/** The conversation to open after a start, or undefined for none ("" is
+ *  returned when the product's conversation is no longer in the drive). */
+export function sessionToOpen(result: StartProductResult): string | undefined {
+  return result.sessionId || undefined;
 }
 
 /* One start per drive at a time: a double submit joins the first one. */
@@ -234,23 +260,35 @@ async function run(
     listed.map(async (n) => ({ id: n.id, doc: await deps.getDocument(n.id) })),
   );
 
+  const linked = product?.firstBuildSessionId ?? null;
+  const linkedListed = linked !== null && listed.some((n) => n.id === linked);
+  const started = product ? productStarted(product, sessions) : "no";
   // Finished already (also a launched or adopted product): start nothing.
-  if (productNode && product && productStarted(product, sessions)) {
-    return {
-      productId: productNode.id,
-      sessionId: product.firstBuildSessionId ?? "",
-    };
+  // The conversation is returned only while the drive still lists it.
+  if (productNode && started === "yes") {
+    return { productId: productNode.id, sessionId: linkedListed ? linked : "" };
+  }
+  if (started === "unknown") {
+    throw new Error(
+      "Your conversation is still loading. Try again in a moment.",
+    );
   }
 
   const text = (product?.idea ?? idea).trim();
   if (!text) throw new Error("Describe your idea first.");
   const at = deps.now();
 
-  // The first build's conversation when it is still in the drive; a missing
-  // one is replaced by an unused or new conversation (it can't be relinked).
-  const linked = product?.firstBuildSessionId;
+  // The first build's conversation when it is still in the drive. A change
+  // whose conversation is gone can't be relinked (no such operation): the
+  // first message goes to an unused or new conversation, which then counts
+  // as started by rule (d), so this doesn't loop.
+  if (product?.hasChanges && !linkedListed) {
+    console.warn(
+      `[startProduct] first build's conversation ${linked ?? "(none)"} is not in the drive; sending the idea to another conversation`,
+    );
+  }
   const sessionId =
-    (linked && listed.some((n) => n.id === linked) ? linked : undefined) ??
+    (linkedListed ? linked : null) ??
     sessions.find((x) => x.doc && messagesOf(x.doc).length === 0)?.id ??
     (
       await deps.addDocument(
