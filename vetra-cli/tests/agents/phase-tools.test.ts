@@ -37,7 +37,16 @@ async function registeredToolNames(): Promise<string[]> {
     });
     const workspaceTools = Object.keys(await createWorkspaceTools(workspace));
     const skillTools = Object.keys(createSkillTools(undefined as never));
-    return [...commands, ...workspaceTools, ...skillTools, ...SUB_AGENT_KEYS.map((k) => `agent-${k}`)];
+    // The running project's reactor MCP tools are discovered at runtime as
+    // `${service.id}-mcp__<tool>`; one stands in for them here.
+    const mcpTools = ['reactor-project-mcp__addActions'];
+    return [
+      ...commands,
+      ...workspaceTools,
+      ...skillTools,
+      ...SUB_AGENT_KEYS.map((k) => `agent-${k}`),
+      ...mcpTools,
+    ];
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -99,15 +108,18 @@ describe('phase tool sets', () => {
       'reactor-project-init',
       'reactor-project-check',
       'agent-agentDocumentModel',
+      'reactor-project-mcp__addActions',
       'product-progress',
       'skill',
     ]) {
       expect(tools).toContain(t);
     }
-    for (const t of ['spec-preview-create', 'agent-agentEditor', 'agent-agentApp', 'deploy-environment-create', 'github-push']) {
+    for (const t of ['agent-agentEditor', 'agent-agentApp', 'deploy-environment-create', 'github-push']) {
       expect(tools).not.toContain(t);
     }
-    expect(tools!.length).toBeLessThan(names.length / 2);
+    // Nothing advanced-only is visible mid-build.
+    expect(tools!.filter((n) => matchesAny(n, ADVANCED_ONLY))).toEqual([]);
+    expect(tools!.length).toBeLessThan(names.length);
   });
 
   it('LIVE step exposes no deploy tools', async () => {
@@ -141,6 +153,36 @@ describe('phase tool sets', () => {
     expect(tools).toContain('spec-create');
     expect(tools).not.toContain('reactor-project-init');
     expect(tools).not.toContain('deploy-environment-list');
+  });
+
+  it('DATA done and EDITORS not started → the EDITORS set, not every tool (F18)', async () => {
+    const read = (async () => ({
+      id: 'p',
+      state: {
+        activeChangeId: 'c',
+        changes: [
+          {
+            id: 'c',
+            status: 'BUILDING',
+            steps: [
+              { kind: 'PLAN', status: 'DONE' },
+              { kind: 'DATA', status: 'DONE' },
+              { kind: 'EDITORS', status: 'NOT_STARTED' },
+              { kind: 'TESTS', status: 'NOT_STARTED' },
+            ],
+          },
+        ],
+      },
+    })) as unknown as typeof getProductDoc;
+    const result = await new PhaseToolsProcessor({}, read).processInputStep(stepArgs({}));
+    const tools = result?.activeTools;
+    expect(tools).toBeDefined();
+    expect(tools).toContain('agent-agentEditor');
+    expect(tools).toContain('spec-preview-show');
+    expect(tools).not.toContain('agent-agentDocumentModel');
+    expect(tools).not.toContain('reactor-project-init');
+    expect(tools!.filter((n) => /^(deploy|github)-/.test(n))).toEqual([]);
+    expect(tools!.length).toBeLessThan(names.length);
   });
 
   it('an active change with no steps yet gets the plan tools', async () => {

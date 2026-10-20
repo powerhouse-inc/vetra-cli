@@ -41,6 +41,15 @@ export const ALWAYS_ON: readonly string[] = [
 /** The spec tools that build models and editors (F2). */
 const SPEC_BUILD = ['spec-create', 'spec-update', 'spec-get', 'spec-list', 'spec-schema*', 'spec-generate'];
 const WORKSPACE_WRITE = ['mastra_workspace_write_file', 'mastra_workspace_edit_file'];
+/** Shell, for installs and leftover skill steps (tests and builds go through the recorded tools). */
+const SHELL = 'mastra_workspace_execute_command';
+/**
+ * The running project's reactor MCP tools (ph-clint names them
+ * `${service.id}-mcp__*`): test and preview documents only — models are
+ * built through `spec-*` (F2).
+ */
+export const PROJECT_MCP = 'reactor-project-mcp__*';
+const ATTACHMENTS = ['attachment-preprocess', 'attachment-upload'];
 
 export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
   // Product specs at the workspace root (and naming the product).
@@ -48,14 +57,17 @@ export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
   // Bootstrap + Model: project, spec-driven model, hand-written reducers.
   DATA: [
     ...SPEC_BUILD,
+    'spec-preview-*',
     ...WORKSPACE_WRITE,
+    SHELL,
     'reactor-project-init',
     'reactor-project-start',
+    'reactor-project-stop',
     'reactor-project-restart',
     'reactor-project-check',
     'reactor-project-build',
-    'attachment-preprocess',
-    'attachment-upload',
+    PROJECT_MCP,
+    ...ATTACHMENTS,
     'agent-agentDocumentModel',
   ],
   // Editor + Preview + App.
@@ -63,14 +75,18 @@ export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
     ...SPEC_BUILD,
     'spec-preview-*',
     ...WORKSPACE_WRITE,
+    SHELL,
     'reactor-project-start',
     'reactor-project-restart',
     'reactor-project-check',
+    'reactor-project-build',
+    PROJECT_MCP,
+    ...ATTACHMENTS,
     'agent-agentEditor',
     'agent-agentApp',
   ],
   // Checks, reducer tests, preview smoke.
-  TESTS: ['reactor-project-check', 'reactor-project-build', ...WORKSPACE_WRITE],
+  TESTS: ['reactor-project-check', 'reactor-project-build', ...WORKSPACE_WRITE, SHELL, PROJECT_MCP],
   // Launch is automatic (§6.5): nothing beyond ALWAYS_ON, no deploy tools.
   LIVE: [],
   // No product or no active change: every tool, unchanged behaviour.
@@ -87,17 +103,15 @@ export const ADVANCED_ONLY: readonly string[] = [
   'github-*',
   'reactor-project-publish',
   'reactor-project-publish-status',
-  'reactor-project-stop',
   'reactor-project-manage',
   'vetra-studio-*',
   'vetra-agent-run',
   'claude-*',
   'config',
   'cli-docs',
-  // Destructive or unscoped workspace tools.
+  // Destructive or process-level workspace tools.
   'mastra_workspace_delete',
   'mastra_workspace_mkdir',
-  'mastra_workspace_execute_command',
   'mastra_workspace_get_process_output',
   'mastra_workspace_kill_process',
   'mastra_workspace_lsp_inspect',
