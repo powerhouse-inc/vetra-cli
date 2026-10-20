@@ -60,8 +60,9 @@ export type ChatPaneProps = {
    *  Until then a session absent from `nodes` is sync lag, not a missing
    *  record, so "not found" must wait. */
   driveLoaded: boolean;
-  /** Temporary (M0): on a new Studio the empty state takes the idea and this
-   *  starts the product from it; resolves to the first conversation's id. */
+  /** Temporary (M0): while set, the pane shows the idea box, and this starts
+   *  (or resumes) the product from the idea; resolves to the first
+   *  conversation's id. Unset once the first message is in. */
   onStartFromIdea?: (idea: string) => Promise<string>;
 };
 
@@ -105,6 +106,14 @@ export function ChatPane({
     sessions.length,
     onSelectSession,
   );
+
+  if (onStartFromIdea) {
+    return (
+      <div className="flex h-full flex-col bg-card">
+        <IdeaStart onStart={onStartFromIdea} onStarted={onSelectSession} />
+      </div>
+    );
+  }
 
   if (selectedSessionId) {
     const knownSession = sessions.find((s) => s.id === selectedSessionId);
@@ -156,7 +165,6 @@ export function ChatPane({
       driveId={document.header.id}
       sessions={sessions}
       onSelectSession={onSelectSession}
-      onStartFromIdea={onStartFromIdea}
     />
   );
 }
@@ -199,15 +207,9 @@ type SessionListProps = {
   driveId: string;
   sessions: FileNode[];
   onSelectSession: (sessionId: string) => void;
-  onStartFromIdea?: (idea: string) => Promise<string>;
 };
 
-function SessionList({
-  driveId,
-  sessions,
-  onSelectSession,
-  onStartFromIdea,
-}: SessionListProps) {
+function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
   const [, startTransition] = useTransition();
   const [pendingSessionId, setPendingSessionId] = useState<string | undefined>(
     undefined,
@@ -256,9 +258,7 @@ function SessionList({
           )}
         </button>
       </header>
-      {sessions.length === 0 && onStartFromIdea ? (
-        <IdeaStart onStart={onStartFromIdea} onStarted={selectSession} />
-      ) : sessions.length === 0 ? (
+      {sessions.length === 0 ? (
         <EmptyState
           onNewSession={() => void createSession()}
           creating={creating}
@@ -353,20 +353,35 @@ function IdeaStart({
   const [starting, setStarting] = useState(false);
   const toast = usePHToast();
 
-  async function submit() {
-    const text = idea.trim();
-    if (!text || starting) return;
+  async function start(text: string) {
     setStarting(true);
     try {
       const sessionId = await onStart(text);
       if (sessionId) onStarted(sessionId);
     } catch (err) {
-      toast?.(err instanceof Error ? err.message : "Could not start", {
-        type: "error",
-      });
       console.error("Failed to start the product", err);
       setStarting(false);
+      // A retry resumes where the start stopped (startProduct is resumable).
+      toast?.(
+        <span className="flex items-center gap-2">
+          <span>Your build couldn&apos;t start.</span>
+          <button
+            type="button"
+            onClick={() => void start(text)}
+            className="rounded px-1.5 py-0.5 font-medium underline"
+          >
+            Try again
+          </button>
+        </span>,
+        { type: "error" },
+      );
     }
+  }
+
+  function submit() {
+    const text = idea.trim();
+    if (!text || starting) return;
+    void start(text);
   }
 
   return (
@@ -374,7 +389,7 @@ function IdeaStart({
       className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center"
       onSubmit={(e) => {
         e.preventDefault();
-        void submit();
+        submit();
       }}
     >
       <VetraMitosis size={48} active={starting} />
@@ -387,7 +402,7 @@ function IdeaStart({
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            void submit();
+            submit();
           }
         }}
         rows={3}

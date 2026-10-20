@@ -1,13 +1,15 @@
 /**
  * Start a Studio's product from the customer's idea (M0, Task 0.6).
  *
- * Creates the product document, the first conversation, the first change
+ * Creates the first conversation, the product document, the first change
  * (FIRST_BUILD, linked to that conversation) and sends the idea as the first
  * message, which starts the agent. Both documents are written by the agent
  * server-side, so they are created under the legacy signature policy (R17).
  *
- * Idempotent: a drive that already has a product document starts nothing and
- * gets that product back.
+ * Resumable: each call does only the parts that are missing (a session, the
+ * product, INIT_PRODUCT, START_CHANGE, the first message), so a start that
+ * failed half-way completes on retry. A product whose change already has its
+ * first message starts nothing and is returned as is.
  */
 import { actions as chatActions } from "@powerhousedao/clint-common/document-models/chat-session";
 import { dispatchActions } from "@powerhousedao/reactor-browser";
@@ -22,6 +24,9 @@ import { addAgentWritableDocument } from "../addAgentWritableDocument.js";
 import { SPECIFY_TYPES } from "../specify/projects.js";
 
 export const CHAT_SESSION_TYPE = "powerhouse/chat-session";
+
+/** Change statuses that can still be worked on (mirrors the reducer). */
+const OPEN_CHANGE = ["BUILDING", "PAUSED", "READY", "LAUNCHING"];
 
 /** The parts of a drive document startProduct reads. */
 export interface StartProductDrive {
@@ -48,8 +53,8 @@ export interface StartProductDeps {
     documentType: string,
   ) => Promise<{ id: string }>;
   dispatch: (documentId: string, actions: Action[]) => Promise<void>;
-  /** Reads an existing product to return its conversation; optional. */
-  getDocument?: (documentId: string) => Promise<PHDocument | undefined>;
+  /** Reads a document; resolves undefined when it can't be read (yet). */
+  getDocument: (documentId: string) => Promise<PHDocument | undefined>;
   now: () => string;
   newId: () => string;
 }
@@ -65,13 +70,67 @@ async function dispatchOrThrow(
   if (failure) throw failure;
 }
 
+async function readDocument(id: string): Promise<PHDocument | undefined> {
+  const client = window.ph?.reactorClientModule?.client;
+  if (!client) return undefined;
+  try {
+    return await client.get(id);
+  } catch {
+    return undefined;
+  }
+}
+
 const defaultDeps: StartProductDeps = {
   addDocument: (driveId, name, documentType) =>
     addAgentWritableDocument(driveId, name, documentType),
   dispatch: dispatchOrThrow,
+  getDocument: readDocument,
   now: () => new Date().toISOString(),
   newId: generateId,
 };
+
+/* ── Reading the documents (structural, tolerant of older documents) ── */
+
+interface ProductView {
+  idea: string | null;
+  initialised: boolean;
+  change: { id: string; chatSessionId: string | null } | null;
+}
+
+function globalOf(doc: PHDocument | undefined): Record<string, unknown> {
+  const global = (doc?.state as { global?: unknown } | undefined)?.global;
+  return global && typeof global === "object"
+    ? (global as Record<string, unknown>)
+    : {};
+}
+
+function productView(doc: PHDocument | undefined): ProductView {
+  const g = globalOf(doc) as {
+    idea?: string | null;
+    createdAt?: string | null;
+    activeChangeId?: string | null;
+    changes?: { id: string; status?: string; chatSessionId?: string | null }[];
+  };
+  const change = (g.changes ?? []).find(
+    (c) => c.id === g.activeChangeId && OPEN_CHANGE.includes(c.status ?? ""),
+  );
+  return {
+    idea: g.idea ?? null,
+    initialised: (g.idea ?? null) !== null || (g.createdAt ?? null) !== null,
+    change: change
+      ? { id: change.id, chatSessionId: change.chatSessionId ?? null }
+      : null,
+  };
+}
+
+function messagesOf(doc: PHDocument | undefined): { role?: string }[] {
+  const messages = globalOf(doc).messages;
+  return Array.isArray(messages) ? (messages as { role?: string }[]) : [];
+}
+
+function hasUserMessage(doc: PHDocument | undefined): boolean {
+  return messagesOf(doc).some((m) => m.role === "USER");
+}
 
 function filesOfType(drive: StartProductDrive, documentType: string) {
   return drive.state.global.nodes.filter(
@@ -88,33 +147,58 @@ export function findProductNode(
 }
 
 /**
- * True when the drive is a new Studio: no product document, no conversation
- * and no project documents (F4 — older Studios keep today's page).
+ * Where the drive stands for the temporary idea start:
+ * - `idea`: no product has a started change with a first message yet — show
+ *   the idea box (also after a start that failed half-way, so it can resume);
+ * - `started`: the product's change has its first message;
+ * - `legacy`: no product, but conversations with messages or project
+ *   documents — an older Studio keeps today's page (F4).
+ * `documents` are the drive's loaded documents; one not loaded yet counts as
+ * started/used, so the box never offers a second first message.
  */
-export function canStartFromIdea(drive: StartProductDrive): boolean {
-  return !drive.state.global.nodes.some(
-    (n) =>
-      n.kind === "file" &&
-      ((n as FileNode).documentType === studioProductDocumentType ||
-        (n as FileNode).documentType === CHAT_SESSION_TYPE ||
-        SPECIFY_TYPES.has((n as FileNode).documentType)),
+export function ideaStartStatus(
+  drive: StartProductDrive,
+  documents: readonly PHDocument[],
+): "idea" | "started" | "legacy" {
+  const byId = new Map(documents.map((d) => [d.header.id, d]));
+  const product = findProductNode(drive);
+  if (product) {
+    const doc = byId.get(product.id);
+    if (!doc) return "started";
+    const { change } = productView(doc);
+    if (!change?.chatSessionId) return "idea";
+    const session = byId.get(change.chatSessionId);
+    if (!session) {
+      // Not synced yet: started only if the drive already lists it.
+      return filesOfType(drive, CHAT_SESSION_TYPE).some(
+        (n) => n.id === change.chatSessionId,
+      )
+        ? "started"
+        : "idea";
+    }
+    return hasUserMessage(session) ? "started" : "idea";
+  }
+  const hasProject = drive.state.global.nodes.some(
+    (n) => n.kind === "file" && SPECIFY_TYPES.has((n as FileNode).documentType),
   );
+  if (hasProject) return "legacy";
+  const usedSession = filesOfType(drive, CHAT_SESSION_TYPE).some((n) => {
+    const doc = byId.get(n.id);
+    return !doc || messagesOf(doc).length > 0;
+  });
+  return usedSession ? "legacy" : "idea";
 }
 
-/** The conversation of an existing product's active change, if readable. */
-async function existingSessionId(
-  productId: string,
+/** An existing conversation with no messages, left by an earlier attempt. */
+async function unusedSession(
+  drive: StartProductDrive,
   deps: StartProductDeps,
-): Promise<string> {
-  const doc = await deps.getDocument?.(productId).catch(() => undefined);
-  const global = (doc?.state as { global?: unknown } | undefined)?.global as
-    | {
-        activeChangeId?: string | null;
-        changes?: { id: string; chatSessionId?: string | null }[];
-      }
-    | undefined;
-  const change = global?.changes?.find((c) => c.id === global.activeChangeId);
-  return change?.chatSessionId ?? "";
+): Promise<string | undefined> {
+  for (const node of filesOfType(drive, CHAT_SESSION_TYPE)) {
+    const doc = await deps.getDocument(node.id);
+    if (doc && messagesOf(doc).length === 0) return node.id;
+  }
+  return undefined;
 }
 
 /* One start per drive at a time: a double submit joins the first one. */
@@ -136,51 +220,72 @@ async function run(
   { drive, idea, name }: StartProductInput,
   deps: StartProductDeps,
 ): Promise<StartProductResult> {
-  const existing = findProductNode(drive);
-  if (existing) {
-    return {
-      productId: existing.id,
-      sessionId: await existingSessionId(existing.id, deps),
-    };
-  }
-  const text = idea.trim();
-  if (!text) throw new Error("Describe your idea first.");
-  const productName = name?.trim() || placeholderName(text);
   const driveId = drive.header.id;
+  const productNode = findProductNode(drive);
+  const product = productNode
+    ? productView(await deps.getDocument(productNode.id))
+    : null;
+  const change = product?.change ?? null;
+
+  // Finished already: the change's conversation has its first message.
+  if (productNode && change?.chatSessionId) {
+    const session = await deps.getDocument(change.chatSessionId);
+    if (hasUserMessage(session)) {
+      return { productId: productNode.id, sessionId: change.chatSessionId };
+    }
+  }
+
+  const text = (product?.idea ?? idea).trim();
+  if (!text) throw new Error("Describe your idea first.");
   const at = deps.now();
 
-  const sessionCount = filesOfType(drive, CHAT_SESSION_TYPE).length;
-  const session = await deps.addDocument(
-    driveId,
-    `Session ${sessionCount + 1}`,
-    CHAT_SESSION_TYPE,
-  );
-  const product = await deps.addDocument(
-    driveId,
-    productName,
-    studioProductDocumentType,
-  );
-  await deps.dispatch(product.id, [
-    productActions.initProduct({
-      name: productName,
-      idea: text,
-      createdAt: at,
-    }),
-    productActions.startChange({
-      id: deps.newId(),
-      kind: "FIRST_BUILD",
-      request: text,
-      chatSessionId: session.id,
-      startedAt: at,
-    }),
-  ]);
+  const sessionId =
+    change?.chatSessionId ??
+    (await unusedSession(drive, deps)) ??
+    (
+      await deps.addDocument(
+        driveId,
+        `Session ${filesOfType(drive, CHAT_SESSION_TYPE).length + 1}`,
+        CHAT_SESSION_TYPE,
+      )
+    ).id;
+
+  const productName = name?.trim() || placeholderName(text);
+  const productId =
+    productNode?.id ??
+    (await deps.addDocument(driveId, productName, studioProductDocumentType))
+      .id;
+
+  const productOps: Action[] = [];
+  if (!product?.initialised) {
+    productOps.push(
+      productActions.initProduct({
+        name: productName,
+        idea: text,
+        createdAt: at,
+      }),
+    );
+  }
+  if (!change) {
+    productOps.push(
+      productActions.startChange({
+        id: deps.newId(),
+        kind: "FIRST_BUILD",
+        request: text,
+        chatSessionId: sessionId,
+        startedAt: at,
+      }),
+    );
+  }
+  if (productOps.length > 0) await deps.dispatch(productId, productOps);
+
   // Last: the message starts the agent, which expects the product to exist.
-  await deps.dispatch(session.id, [
+  await deps.dispatch(sessionId, [
     chatActions.addUserMessage({
       id: deps.newId(),
       content: [{ id: deps.newId(), type: "TEXT", text }],
       createdAt: at,
     }),
   ]);
-  return { productId: product.id, sessionId: session.id };
+  return { productId, sessionId };
 }

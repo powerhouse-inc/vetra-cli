@@ -19,7 +19,7 @@ import {
   isProductDebugEnabled,
 } from "./debug/ProductDebugPanel.js";
 import { DeploySection } from "./DeploySection.js";
-import { canStartFromIdea, startProduct } from "./idea/startProduct.js";
+import { ideaStartStatus, startProduct } from "./idea/startProduct.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
@@ -243,10 +243,11 @@ export function VetraStudio({
   // `undefined` until the drive loads (ChatPane reads it as `driveLoaded`).
   const documents = useDriveDocuments();
 
-  // Temporary (M0): a new Studio (no product, conversation or project) starts
-  // its first conversation from the idea typed into the chat pane.
+  // Temporary (M0): a new Studio starts its first conversation from the idea
+  // typed into the chat pane, and a start that stopped half-way resumes from
+  // the same box. Older Studios (F4) and started products keep today's pane.
   const startFromIdea =
-    documents !== undefined && canStartFromIdea(document)
+    documents !== undefined && ideaStartStatus(document, documents) === "idea"
       ? async (idea: string) =>
           (await startProduct({ drive: documentRef.current, idea })).sessionId
       : undefined;
