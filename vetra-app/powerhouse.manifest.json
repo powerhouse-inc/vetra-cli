@@ -26,6 +26,10 @@
     {
       "id": "powerhouse/work-breakdown-structure",
       "name": "Work Breakdown Structure"
+    },
+    {
+      "id": "vetra/studio-product",
+      "name": "Studio Product"
     }
   ],
   "apps": [

@@ -1,0 +1,401 @@
+scalar Unknown
+scalar DateTime
+scalar Address
+scalar AttachmentRef
+scalar Amount_Tokens
+scalar EthereumAddress
+scalar EmailAddress
+scalar Amount_Percentage
+scalar Date
+scalar URL
+scalar Amount_Money
+scalar OLabel
+scalar Currency
+scalar PHID
+scalar OID
+scalar Amount_Fiat
+scalar Amount_Currency
+scalar Amount_Crypto
+scalar Amount
+scalar Upload
+
+# Studio Product: the single read model the Studio page renders from.
+# Natural keys (F54): ProductStep, CheckResult and LaunchLine are keyed by
+# their `kind`, Version by `number`, PackageVersion by `name`; reducers keep
+# them unique within their list.
+
+enum StepKind {
+  PLAN
+  DATA
+  EDITORS
+  TESTS
+  LIVE
+}
+
+enum StepStatus {
+  NOT_STARTED
+  WORKING
+  DONE
+  NEEDS_YOU
+  STOPPED
+  LIVE
+}
+
+enum ChangeKind {
+  FIRST_BUILD
+  CHANGE
+  UNDO
+  BEFORE_VERSIONS
+}
+
+enum ChangeStatus {
+  BUILDING
+  PAUSED
+  READY
+  LAUNCHING
+  LAUNCHED
+  DISCARDED
+  FAILED
+  CLOSED
+}
+
+enum CheckKind {
+  GENERATE
+  TYPECHECK
+  LINT
+  REDUCER_TESTS
+  SMOKE
+}
+
+enum ProductAccess {
+  SIGNED_IN
+  OWNER_ONLY
+}
+
+enum LiveHealth {
+  UNKNOWN
+  HEALTHY
+  UNHEALTHY
+}
+
+enum PermissionState {
+  UNKNOWN
+  GRANTED
+  MISSING
+  EXPIRED
+}
+
+enum RequestKind {
+  LAUNCH
+  ROLLBACK
+  DISCARD
+  RESTART
+  MIRROR
+}
+
+enum VersionStatus {
+  LAUNCHING
+  LIVE
+  PREVIOUS
+  FAILED
+}
+
+enum LaunchLineKind {
+  SNAPSHOT
+  PUBLISH
+  DEPLOY
+  VERIFY
+  MIRROR
+}
+
+enum LineStatus {
+  WAITING
+  RUNNING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+enum SuggestionStatus {
+  OPEN
+  USED
+  DISMISSED
+}
+
+enum GithubStatus {
+  NOT_CONNECTED
+  CONNECTED
+  DISCONNECTED
+  PUSH_FAILED
+}
+
+type ProductStep {
+  kind: StepKind!
+  status: StepStatus!
+  done: Int
+  total: Int
+  label: String
+  reason: String
+  updatedAt: DateTime
+}
+
+type Milestone {
+  id: OID!
+  text: String!
+  at: DateTime!
+  recovered: Boolean!
+}
+
+type CheckResult {
+  kind: CheckKind!
+  passed: Boolean!
+  reason: String
+}
+
+type CheckRun {
+  id: OID!
+  at: DateTime!
+  results: [CheckResult!]!
+}
+
+type Stuck {
+  reason: String!
+  tried: [String!]!
+  at: DateTime!
+}
+
+type ChangeMetrics {
+  steps: Int!
+  firstPreviewAt: DateTime
+  readyAt: DateTime
+  liveAt: DateTime
+}
+
+type Change {
+  id: OID!
+  kind: ChangeKind!
+  request: String!
+  title: String
+  chatSessionId: PHID
+  chatSessionIds: [PHID!]!
+  status: ChangeStatus!
+  startedAt: DateTime!
+  steps: [ProductStep!]!
+  milestones: [Milestone!]!
+  checkRuns: [CheckRun!]!
+  stuck: Stuck
+  metrics: ChangeMetrics!
+  lintWaivedAt: DateTime
+}
+
+type PackageVersion {
+  name: String!
+  version: String!
+}
+
+type LaunchLine {
+  kind: LaunchLineKind!
+  status: LineStatus!
+  detail: String
+}
+
+type Version {
+  number: Int!
+  title: String!
+  summary: String
+  changeId: OID
+  gitTag: String!
+  sha: String!
+  packages: [PackageVersion!]!
+  deploymentId: String
+  launchedAt: DateTime
+  launchedBy: String!
+  trigger: String!
+  status: VersionStatus!
+  lines: [LaunchLine!]!
+  changedFiles: [String!]!
+  failure: String
+  rollbackBlockedReason: String
+}
+
+type PendingRequest {
+  kind: RequestKind!
+  changeId: OID
+  targetVersion: Int
+  requestedAt: DateTime!
+  requestedBy: String!
+}
+
+type Suggestion {
+  id: OID!
+  text: String!
+  afterVersion: Int!
+  status: SuggestionStatus!
+}
+
+type GithubLink {
+  status: GithubStatus!
+  repoFullName: String
+  lastError: String
+  externalChangesSha: String
+}
+
+type StudioProductState {
+  name: String
+  idea: String
+  slug: String
+  liveUrl: URL
+  appId: String
+  productionEnvironmentId: String
+  productDriveId: PHID
+  createdAt: DateTime
+  access: ProductAccess!
+  changes: [Change!]!
+  activeChangeId: OID
+  liveVersion: Int
+  versions: [Version!]!
+  health: LiveHealth!
+  pendingRequest: PendingRequest
+  launchPermission: PermissionState!
+  suggestions: [Suggestion!]!
+  github: GithubLink!
+}
+
+
+# product
+
+input InitProductInput {
+  name: String!
+  idea: String!
+  createdAt: DateTime!
+}
+
+input RenameProductInput {
+  name: String!
+}
+
+input SetAccessInput {
+  access: ProductAccess!
+}
+
+# change
+
+input StartChangeInput {
+  id: OID!
+  kind: ChangeKind!
+  request: String!
+  chatSessionId: PHID
+  startedAt: DateTime!
+}
+
+input AdoptExistingInput {
+  changeId: OID!
+  request: String!
+  chatSessionIds: [PHID!]!
+  doneSteps: [StepKind!]!
+  at: DateTime!
+}
+
+input PlanStepInput {
+  kind: StepKind!
+  total: Int
+}
+
+input PlanStepsInput {
+  changeId: OID!
+  steps: [PlanStepInput!]!
+}
+
+input StartStepInput {
+  changeId: OID!
+  kind: StepKind!
+  label: String
+  at: DateTime!
+}
+
+input CountStepInput {
+  changeId: OID!
+  kind: StepKind!
+  done: Int!
+  total: Int!
+}
+
+input CompleteStepInput {
+  changeId: OID!
+  kind: StepKind!
+  at: DateTime!
+}
+
+input ReopenStepInput {
+  changeId: OID!
+  kind: StepKind!
+  reason: String!
+  at: DateTime!
+}
+
+input AddMilestoneInput {
+  changeId: OID!
+  id: OID!
+  text: String!
+  recovered: Boolean
+  at: DateTime!
+}
+
+input CheckResultInput {
+  kind: CheckKind!
+  passed: Boolean!
+  reason: String
+}
+
+input RecordCheckRunInput {
+  changeId: OID!
+  id: OID!
+  at: DateTime!
+  results: [CheckResultInput!]!
+}
+
+input MarkStuckInput {
+  changeId: OID!
+  reason: String!
+  tried: [String!]!
+  at: DateTime!
+}
+
+input ClearStuckInput {
+  changeId: OID!
+}
+
+input SetStepAttentionInput {
+  changeId: OID!
+  kind: StepKind!
+  status: StepStatus!
+  reason: String
+  at: DateTime!
+}
+
+input PauseChangeInput {
+  changeId: OID!
+  at: DateTime!
+}
+
+input ResumeChangeInput {
+  changeId: OID!
+  at: DateTime!
+}
+
+input RecordChangeMetricsInput {
+  changeId: OID!
+  steps: Int!
+  firstPreviewAt: DateTime
+  readyAt: DateTime
+}
+
+input SetChangeTitleInput {
+  changeId: OID!
+  title: String!
+}
+
+input WaiveLintInput {
+  changeId: OID!
+  at: DateTime!
+}

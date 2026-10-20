@@ -5,6 +5,7 @@ import {
   BrandSheetV1,
   FeatureV1,
   ProblemSheetV1,
+  StudioProductV1,
   WorkBreakdownStructureV1,
 } from 'vetra-app/document-models';
 
@@ -13,5 +14,6 @@ export const documentModels = [
   BrandSheetV1,
   FeatureV1,
   ProblemSheetV1,
+  StudioProductV1,
   WorkBreakdownStructureV1,
 ];
