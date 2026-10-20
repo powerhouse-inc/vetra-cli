@@ -1,6 +1,6 @@
 {
   "name": "vetra-app",
-  "version": "0.0.8-dev.3",
+  "version": "0.0.8-dev.4",
   "license": "AGPL-3.0-only",
   "publishConfig": {
     "access": "public",
@@ -115,7 +115,7 @@
     "tailwindcss": "^4.1.16",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
-    "vite": "^8.0.8",
+    "vite": "8.3.4",
     "vite-tsconfig-paths": "6.1.1",
     "vitest": "4.1.1",
     "zod": "catalog:"

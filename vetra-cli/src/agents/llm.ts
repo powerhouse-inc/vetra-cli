@@ -1,5 +1,5 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import type { Config } from '../framework.js';
+import { DEFAULT_MODEL_FALLBACKS, type Config } from '../framework.js';
 
 /**
  * Every Mastra model of the agent (main, sub-agents, observational memory)
@@ -17,13 +17,20 @@ export const DEFAULT_CONTEXT_LENGTH = 200_000;
 export const CONTEXT_LIMIT_RATIO = 0.8;
 export const MAX_CONTEXT_TOKEN_LIMIT = 200_000;
 export const MAX_FALLBACKS = 3;
+/** Output caps per request (max_tokens). Without them a request asks for the model's full output window. */
+export const MAIN_MAX_OUTPUT_TOKENS = 8192;
+export const SUBAGENT_MAX_OUTPUT_TOKENS = 16384;
+export const MEMORY_MAX_OUTPUT_TOKENS = 4096;
+/** Hard ceiling on the TokenLimiterProcessor input limit, whatever the model's context window. */
+export const INPUT_TOKEN_CAP = 64_000;
 
 export interface LlmSettings {
   apiKey: string;
   model: string;
   subagentModel: string;
   memoryModel: string;
-  fallbacks: string[];
+  /** The configured fallbacks; undefined means the default chain (see resolveFallbacks). */
+  fallbacks: string[] | undefined;
   allowDataCollection: boolean;
 }
 
@@ -44,12 +51,27 @@ export function resolveOpenRouterKey(
   return key ? key : undefined;
 }
 
-export function parseFallbacks(raw: string | undefined): string[] {
-  return (raw ?? '')
+/**
+ * VETRA_MODEL_FALLBACKS: unset or blank → undefined (use the default chain);
+ * `none` (any case) → [] (no fallbacks); else the trimmed, non-empty entries.
+ */
+export function parseFallbacks(raw: string | undefined): string[] | undefined {
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.toLowerCase() === 'none') return [];
+  return trimmed
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, MAX_FALLBACKS);
+    .filter(Boolean);
+}
+
+/**
+ * The fallbacks for one primary model: the configured list, else the default
+ * chain; never the primary itself, no duplicates, at most MAX_FALLBACKS.
+ */
+export function resolveFallbacks(primary: string, configured: string[] | undefined): string[] {
+  const chain = configured ?? DEFAULT_MODEL_FALLBACKS;
+  return [...new Set(chain.filter((f) => f !== primary))].slice(0, MAX_FALLBACKS);
 }
 
 /** Anthropic prompt caching only applies to Anthropic models. */
@@ -69,7 +91,7 @@ export function usesAnthropicCache(modelId: string): boolean {
  */
 export function requestExtras(
   modelId: string,
-  s: Pick<LlmSettings, 'fallbacks' | 'allowDataCollection'>,
+  s: { fallbacks: string[]; allowDataCollection: boolean },
 ): Record<string, unknown> {
   const extras: Record<string, unknown> = {
     provider: { data_collection: s.allowDataCollection ? 'allow' : 'deny' },
@@ -105,16 +127,20 @@ export function createLlmModels(s: LlmSettings, opts: { fetch?: typeof fetch } =
     compatibility: 'strict',
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
   });
-  const make = (modelId: string, fallbacks: string[]) =>
+  // max_tokens goes in extraBody, which the provider merges last, so it caps
+  // whatever maxOutputTokens the caller (Mastra) asks for.
+  const make = (modelId: string, fallbacks: string[], maxOutputTokens: number) =>
     provider.chat(modelId, {
       usage: { include: true },
-      extraBody: requestExtras(modelId, { fallbacks, allowDataCollection: s.allowDataCollection }),
+      extraBody: {
+        ...requestExtras(modelId, { fallbacks, allowDataCollection: s.allowDataCollection }),
+        max_tokens: maxOutputTokens,
+      },
     });
   return {
-    main: make(s.model, s.fallbacks),
-    subagent: make(s.subagentModel, s.fallbacks),
-    // Observational memory runs in the background: no fallbacks.
-    memory: make(s.memoryModel, []),
+    main: make(s.model, resolveFallbacks(s.model, s.fallbacks), MAIN_MAX_OUTPUT_TOKENS),
+    subagent: make(s.subagentModel, resolveFallbacks(s.subagentModel, s.fallbacks), SUBAGENT_MAX_OUTPUT_TOKENS),
+    memory: make(s.memoryModel, resolveFallbacks(s.memoryModel, s.fallbacks), MEMORY_MAX_OUTPUT_TOKENS),
   };
 }
 

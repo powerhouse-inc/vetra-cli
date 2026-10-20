@@ -26,7 +26,11 @@ import { randomUUID } from "node:crypto";
 import { baseLoadFromFile } from "document-model/node";
 import type { ReactorContext } from "@powerhousedao/ph-clint";
 import type { LoadJobPlan } from "@powerhousedao/reactor";
-import { listSpecTypes, resolveSpecEntry } from "../commands/spec/registry.js";
+import {
+  createSpecDocument,
+  listSpecTypes,
+  resolveSpecEntry,
+} from "../commands/spec/registry.js";
 
 export const SPECS_DIRNAME = "specs";
 
@@ -184,7 +188,7 @@ async function materializeIfAbsent(
     () => false,
   );
   if (exists) return false;
-  const fresh = resolveSpecEntry(doc.header.documentType).createDocument() as {
+  const fresh = createSpecDocument(doc.header.documentType) as {
     header: { id: string; name: string; documentType: string };
   };
   fresh.header.id = doc.header.id;

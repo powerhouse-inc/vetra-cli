@@ -43,6 +43,8 @@ function msg(role: Message["role"], content: ContentPart[]): Message {
     usage: null,
     finishedAt: null,
     finishReason: null,
+    failure: null,
+    pickedUpAt: null,
   };
 }
 

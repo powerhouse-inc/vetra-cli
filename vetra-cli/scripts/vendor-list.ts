@@ -8,4 +8,7 @@ export const VENDOR = [
   "graphql",
   "devcert",
   "fsevents",
+  // Required at runtime (createRequire) by @powerhousedao/shared's CLI helpers
+  // (`semver/functions/*`), which tsdown leaves unbundled.
+  "semver",
 ];

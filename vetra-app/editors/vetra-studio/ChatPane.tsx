@@ -1,15 +1,18 @@
-import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
+import {
+  isChatSessionDocument,
+  type TurnFailure,
+} from "@powerhousedao/clint-common/document-models/chat-session";
 import {
   createRemoteAttachmentService,
   type IAttachmentService,
 } from "@powerhousedao/reactor-attachments";
 import {
-  addDocument,
   DEFAULT_SWITCHBOARD_URL,
   useDefaultDrivesUrl,
   usePHToast,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
+import { addAgentWritableDocument } from "./addAgentWritableDocument.js";
 import { useSafeDocument } from "./SafeDocument.js";
 import type {
   DocumentDriveAction,
@@ -25,6 +28,8 @@ import {
   useTransition,
 } from "react";
 import VetraMitosis from "./VetraMitosis.js";
+import { budgetFailureAction } from "./budget/BudgetFailureAction.js";
+import { useStudioBudget } from "./budget/useStudioBudget.js";
 import { vetraToolRenderers } from "./tool-renderers/index.js";
 
 const ChatSession = lazy(() =>
@@ -166,7 +171,11 @@ function useCreateSession(
     setCreating(true);
     try {
       const name = `Session ${sessionCount + 1}`;
-      const node = await addDocument(driveId, name, CHAT_SESSION_DOCUMENT_TYPE);
+      const node = await addAgentWritableDocument(
+        driveId,
+        name,
+        CHAT_SESSION_DOCUMENT_TYPE,
+      );
       onCreated(node.id);
     } catch (err) {
       const message =
@@ -380,6 +389,9 @@ function SessionView({
     sessionId,
     isChatSessionDocument,
   );
+  // Shared with the top-bar meter: a BUDGET_EXHAUSTED turn offers the same
+  // "Request more budget" action and state.
+  const budget = useStudioBudget();
 
   // The document cache doesn't react to `Created` events and may cache a
   // rejected "not found" promise. Once the session appears in the drive's node
@@ -413,6 +425,9 @@ function SessionView({
       attachments={attachments}
       agentAvatar={AgentMitosisAvatar}
       toolRenderers={vetraToolRenderers}
+      renderFailureAction={(failure: TurnFailure) =>
+        budgetFailureAction(failure, budget)
+      }
     />
   );
 }

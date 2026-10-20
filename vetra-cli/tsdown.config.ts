@@ -37,6 +37,8 @@ export default defineConfig({
     "@powerhousedao/pglite-fs",
     "graphql",
     "fsevents",
+    "semver",
+    /^semver\//,
     // Optional leaves of the bundled embedded Switchboard, absent by design
     // (knex uses pglite; codegen runs via `ph generate`; ink devtools unused).
     "@graphql-codegen/cli",

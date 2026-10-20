@@ -87,7 +87,7 @@ describe("spec-fs-sync FS → drive", () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "spec-fs-sync-it-"));
-    const builder = new ReactorBuilder().withDocumentModels([
+    const builder = new ReactorBuilder().withDocumentModelSources([
       driveDocumentModelModule,
       ...(driveDocumentModels as unknown as any[]),
       ...(vetraDocumentModels as unknown as any[]),
@@ -195,7 +195,7 @@ describe("spec-fs-sync FS → drive", () => {
     // a teammate's reactor, an editor running standalone, or a previous
     // session. Its operations land on disk; we then sync that file into
     // `module` (which has no prior knowledge of the doc).
-    const producerBuilder = new ReactorBuilder().withDocumentModels([
+    const producerBuilder = new ReactorBuilder().withDocumentModelSources([
       driveDocumentModelModule,
       ...(driveDocumentModels as unknown as any[]),
       ...(vetraDocumentModels as unknown as any[]),

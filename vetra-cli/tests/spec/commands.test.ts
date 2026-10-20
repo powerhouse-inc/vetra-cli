@@ -17,6 +17,18 @@ import { makeCtx, makeWorkdir } from "./_fixtures.js";
 const DOC_TYPE = "powerhouse/document-model";
 const PRODUCT_TYPE = "powerhouse/feature";
 
+describe("createSpecDocument", () => {
+  // Specs are applied unsigned and mirrored into the drive under their file
+  // id, so they stay legacy-signature documents on 6.2.3 (v2 by default).
+  it("creates a legacy-signature document whose id is not header-derived", () => {
+    const doc = createSpecDocument("powerhouse/app", { name: "Legacy App" });
+    expect(doc.header.protocolVersions).toEqual({ "base-reducer": 2 });
+    expect(doc.header.sig.nonce).toBe("");
+    expect(doc.header.name).toBe("Legacy App");
+    expect(doc.header.documentType).toBe("powerhouse/app");
+  });
+});
+
 describe("spec-list", () => {
   let workdir: string;
   let cleanup: () => void;

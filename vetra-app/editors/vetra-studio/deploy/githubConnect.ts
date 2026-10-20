@@ -59,21 +59,60 @@ const CONNECT_ERROR_STATUS: Partial<Record<string, PollStatus>> = {
   DEVICE_CODE_EXPIRED: "expired",
   ACCESS_DENIED: "denied",
   REPO_ALREADY_EXISTS: "repoExists",
+  REPO_EXISTS: "repoExists",
   APP_NOT_INSTALLED: "appNotInstalled",
   UNAUTHENTICATED: "unauthenticated",
 };
 
-type GqlResponse<T> = {
-  data?: T;
-  errors?: { message?: string; extensions?: { code?: string } }[];
+/** Customer-readable text, with the next step, for the backend's GitHub and
+ * deploy-setup error codes. */
+const GITHUB_ERROR_MESSAGES: Partial<Record<string, string>> = {
+  REPO_EXISTS:
+    "A repository with this name already exists on GitHub. Choose another name, or connect the existing repository.",
+  INSUFFICIENT_PERMISSION:
+    "Vetra does not have permission to create repositories in this GitHub account. Install the Vetra GitHub app on the account or organisation with the repository Administration permission, then try again.",
+  GITHUB_NOT_CONNECTED:
+    "Your GitHub connection has expired or was removed. Reconnect GitHub, then try again.",
+  GITHUB_UNAVAILABLE: "GitHub is not responding. Try again in a minute.",
+  ORG_POLICY:
+    "A policy of your GitHub organisation does not allow this. Ask an owner of the organisation to allow it, then try again.",
+  DEPLOY_SETUP_FAILED:
+    "Setting up the deployment failed after the repository was created. Everything was rolled back; try again.",
 };
 
-/** POSTs a GraphQL operation; returns the data and the first error code. */
-async function gql<T>(
+/** The message shown for a backend error code (`reason`: GitHub's own words). */
+export function githubErrorMessage(
+  code: string | null,
+  reason?: string | null,
+): string {
+  if (code === "REPO_NAME_INVALID")
+    return reason
+      ? `GitHub did not accept this repository name (${reason}). Choose another name.`
+      : "GitHub did not accept this repository name. Choose another name.";
+  const known = code ? GITHUB_ERROR_MESSAGES[code] : undefined;
+  if (known) return known;
+  return `Something went wrong while connecting GitHub (${code ?? "UNKNOWN"}). Try again in a moment.`;
+}
+
+type GqlResponse<T> = {
+  data?: T;
+  errors?: {
+    message?: string;
+    extensions?: { code?: string; reason?: string };
+  }[];
+};
+
+/** POSTs a GraphQL operation to the cloud switchboard; returns the data and
+ * the first error code (or message). Shared by the Studio's cloud clients. */
+export async function gql<T>(
   query: string,
   variables: Record<string, unknown>,
   token?: string | null,
-): Promise<{ data: T | null; errorMessage: string | null }> {
+): Promise<{
+  data: T | null;
+  errorMessage: string | null;
+  errorReason?: string | null;
+}> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -91,6 +130,7 @@ async function gql<T>(
     return {
       data: json.data ?? null,
       errorMessage: err?.extensions?.code ?? err?.message ?? null,
+      errorReason: err?.extensions?.reason ?? null,
     };
   } catch {
     return { data: null, errorMessage: "NETWORK_ERROR" };
@@ -195,7 +235,7 @@ export async function authorizeGithub(
     case "UNAUTHENTICATED":
       return { status: "unauthenticated" };
     default:
-      return { status: "error", message: errorMessage ?? "UNKNOWN" };
+      return { status: "error", message: githubErrorMessage(errorMessage) };
   }
 }
 
@@ -227,7 +267,7 @@ export async function connectGithub(
   environmentId: string,
   token: string,
 ): Promise<ConnectResult> {
-  const { data, errorMessage } = await gql<{
+  const { data, errorMessage, errorReason } = await gql<{
     VetraGithubAuth: { connectGithub: GithubConnectionStatus };
   }>(
     `mutation ($deviceCode: String!, $repoName: String!, $environmentId: String!) {
@@ -248,7 +288,10 @@ export async function connectGithub(
     const mapped = CONNECT_ERROR_STATUS[errorMessage];
     return mapped
       ? { status: mapped }
-      : { status: "error", message: errorMessage };
+      : {
+          status: "error",
+          message: githubErrorMessage(errorMessage, errorReason),
+        };
   }
-  return { status: "error", message: "UNKNOWN" };
+  return { status: "error", message: githubErrorMessage(null) };
 }

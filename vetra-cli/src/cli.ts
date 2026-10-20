@@ -97,7 +97,7 @@ export const cli = defineCli({
       'vetra-agent': {
         name: 'vetra-agent',
         sections: ['base.md', 'tools.md', 'workflow.md'],
-        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation', 'deploy'],
+        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation', 'deploy', 'product-specs'],
       },
       'agent-document-model': {
         name: 'agent-document-model',
@@ -129,6 +129,9 @@ export const cli = defineCli({
         instructionTemplate:
           'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
       },
+      'product-specs': {
+        description: 'Create and refine product specs at the workspace root — brand, problem and audience sheets, features and their work breakdown structure (ordering, outcome links, feature bets, WBS tasks).',
+      },
       'reactor-project-management': {
         description: 'Initialize, build, and publish Reactor Package projects',
         inputSchema: z.object({
@@ -156,7 +159,7 @@ export const cli = defineCli({
           'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
       },
       'document-editor-creation': {
-        description: 'Build React editor components for Powerhouse document types',
+        description: 'Build React editor components for Powerhouse document types, then preview them with sample data in the BUILD pane',
         inputSchema: z.object({
           mode: z
             .enum(['expert', 'discovery', 'one-shot'])
