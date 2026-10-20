@@ -87,6 +87,23 @@ describe('main agent builds by default (R18)', () => {
   });
 });
 
+// R20: the staging run spent ~4 steps on `reactor-project-start` of the
+// workspace root (its powerhouse.config.json looked like a project) before
+// `reactor-project-init`.
+describe('empty workspace goes straight to init (R20)', () => {
+  it('workflow routes an empty workspace to reactor-project-init and never starts the root', async () => {
+    const text = flat(await mainInstructions());
+    expect(text).toMatch(/Empty workspace \(`reactor-project-ls` lists no project\): go straight to `reactor-project-init`/);
+    expect(text).toMatch(/The workspace root is not a project.{0,80}never `reactor-project-start` it/);
+  }, 60_000);
+
+  it('the bootstrap skill says the same', () => {
+    const preamble = flat(readFileSync(path.join(PROMPTS_DIR, 'skills-tpl', 'reactor-project-management', '.preamble.md'), 'utf-8'));
+    expect(preamble).toMatch(/Empty workspace[^.]*call `reactor-project-init` next/);
+    expect(preamble).toMatch(/The workspace root is not a project — never start it/);
+  });
+});
+
 const BUILD_FLOW_SKILLS = [
   'reactor-project-management',
   'document-modeling',

@@ -28,6 +28,11 @@ and `skill_read` its references when it says to.
 | 3 Preview | `document-editor-creation` | BUILD pane shows the editor with sample data |
 | 4 App | `drive-app-creation` | the app renders inside its preview drive |
 
+Empty workspace (`reactor-project-ls` lists no project): go straight to
+`reactor-project-init`, then start that project. The workspace root is not a
+project (its `powerhouse.config.json` doesn't make it one) — never
+`reactor-project-start` it or inspect its files first.
+
 Product specs (brand/problem/audience sheets, feature, WBS) live at the
 workspace root — `spec-create { type, name }` with no `project` — and the
 `product-specs` skill carries their rules. Only an explicit spec-only request
