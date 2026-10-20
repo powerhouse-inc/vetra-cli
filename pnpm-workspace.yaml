@@ -5,30 +5,32 @@ packages:
 
 catalog:
   # @powerhousedao/monorepo packages (pinned together for local-link compatibility)
-  '@powerhousedao/builder-tools': '6.2.3'
-  '@powerhousedao/codegen': '6.2.3'
-  '@powerhousedao/common': '6.2.3'
-  '@powerhousedao/config': '6.2.3'
-  '@powerhousedao/connect': '6.2.3'
-  '@powerhousedao/design-system': '6.2.3'
-  '@powerhousedao/opentelemetry-instrumentation-reactor': '6.2.3'
+  '@powerhousedao/builder-tools': '6.2.3-dev.65'
+  '@powerhousedao/codegen': '6.2.3-dev.65'
+  '@powerhousedao/common': '6.2.3-dev.65'
+  '@powerhousedao/config': '6.2.3-dev.65'
+  '@powerhousedao/connect': '6.2.3-dev.65'
+  '@powerhousedao/design-system': '6.2.3-dev.65'
+  '@powerhousedao/opentelemetry-instrumentation-reactor': '6.2.3-dev.65'
+  # Not published on the dev train past 6.2.3-dev.44; stable 6.2.3 is newest.
   '@powerhousedao/pglite-fs': '6.2.3'
-  '@powerhousedao/ph-cli': '6.2.3'
-  '@powerhousedao/powerhouse-vetra-packages': '6.2.3'
-  '@powerhousedao/reactor': '6.2.3'
-  '@powerhousedao/reactor-api': '6.2.3'
-  '@powerhousedao/reactor-attachments': '6.2.3'
-  '@powerhousedao/reactor-browser': '6.2.3'
-  '@powerhousedao/reactor-drive': '6.2.3'
+  '@powerhousedao/ph-cli': '6.2.3-dev.65'
+  '@powerhousedao/powerhouse-vetra-packages': '6.2.3-dev.65'
+  '@powerhousedao/reactor': '6.2.3-dev.65'
+  '@powerhousedao/reactor-api': '6.2.3-dev.65'
+  '@powerhousedao/reactor-attachments': '6.2.3-dev.65'
+  '@powerhousedao/reactor-browser': '6.2.3-dev.65'
+  '@powerhousedao/reactor-drive': '6.2.3-dev.65'
+  # Not published at 6.2.3-dev.65 (dev train stops at dev.64); unused here.
   '@powerhousedao/reactor-hypercore': '6.2.3'
-  '@powerhousedao/reactor-mcp': '6.2.3'
-  '@powerhousedao/registry': '6.2.3'
-  '@powerhousedao/shared': '6.2.3'
-  '@powerhousedao/switchboard': '6.2.3'
-  '@powerhousedao/vetra': '6.2.3'
-  '@renown/sdk': '6.2.3'
-  document-model: '6.2.3'
-  ph-cmd: '6.2.3'
+  '@powerhousedao/reactor-mcp': '6.2.3-dev.65'
+  '@powerhousedao/registry': '6.2.3-dev.65'
+  '@powerhousedao/shared': '6.2.3-dev.65'
+  '@powerhousedao/switchboard': '6.2.3-dev.65'
+  '@powerhousedao/vetra': '6.2.3-dev.65'
+  '@renown/sdk': '6.2.3-dev.65'
+  document-model: '6.2.3-dev.65'
+  ph-cmd: '6.2.3-dev.65'
 
   # other shared deps
   '@powerhousedao/clint-common': '0.1.0-dev.105'
@@ -39,7 +41,7 @@ catalog:
   eslint-config-prettier: '^10.1.8'
   graphql: '16.12.0'
   # Vendored into vetra's dist: @powerhousedao/shared's CLI helpers require it
-  # at runtime. Matches shared@6.2.3's exact pin.
+  # at runtime. Matches shared@6.2.3(-dev.65)'s exact pin.
   semver: '7.7.4'
   typescript: '^6.0.2'
   typescript-eslint: '^8.46.2'
@@ -58,7 +60,7 @@ overrides:
   # store. Reclaim measured against vetra's prod closure; build/typecheck gated.
   'date-fns': '4.4.0'   # ~-11.5 MiB; all consumers on major 4 (leaner build)
   # ~-19 MiB; collapses the rolldown binding train. MUST satisfy the vite that
-  # builder-tools builds Connect with (6.2.3 -> vite 8.3.0, rolldown ~1.2.6):
+  # builder-tools builds Connect with (6.2.3-dev.65 -> vite 8.3.4, rolldown ~1.2.12):
   # vite 8.3 emits `import.meta.ROLLDOWN_FILE_URL_*` asset refs that rolldown
   # 1.0.x doesn't know, leaving PGlite's .data/.wasm URLs undefined in the
   # studio bundle (Connect crashes: "Invalid FS bundle size").
@@ -72,12 +74,12 @@ overrides:
   # (packages/vetra-cloud-client/src/controller.ts) — a class-identity hazard.
   # Scoped to this package only, so the unrelated 6.0.0-dev.244 train (ph-clint
   # /otel) is untouched. Keep in lockstep with the catalog rc pin above.
-  '@powerhousedao/vetra-cloud-package>document-model': '6.2.3'
-  '@powerhousedao/vetra-cloud-package>@powerhousedao/shared': '6.2.3'
-  '@powerhousedao/vetra-cloud-package>@powerhousedao/builder-tools': '6.2.3'
-  '@powerhousedao/vetra-cloud-package>@powerhousedao/common': '6.2.3'
-  '@powerhousedao/vetra-cloud-package>@powerhousedao/connect': '6.2.3'
-  '@powerhousedao/vetra-cloud-package>@powerhousedao/design-system': '6.2.3'
+  '@powerhousedao/vetra-cloud-package>document-model': '6.2.3-dev.65'
+  '@powerhousedao/vetra-cloud-package>@powerhousedao/shared': '6.2.3-dev.65'
+  '@powerhousedao/vetra-cloud-package>@powerhousedao/builder-tools': '6.2.3-dev.65'
+  '@powerhousedao/vetra-cloud-package>@powerhousedao/common': '6.2.3-dev.65'
+  '@powerhousedao/vetra-cloud-package>@powerhousedao/connect': '6.2.3-dev.65'
+  '@powerhousedao/vetra-cloud-package>@powerhousedao/design-system': '6.2.3-dev.65'
   #
   # Not applied:
   # - @powerhousedao/shared dev-train: already collapsed by reactor-attachments -> catalog.
