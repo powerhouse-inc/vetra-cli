@@ -59,7 +59,7 @@ export const reactorProjectCheck = defineCommand({
       skipTypecheck,
     });
     const { diagnostics, notes } = outcome;
-    const observed: ObservedCheck[] = checkResultsFromOutcome(outcome);
+    const observed: ObservedCheck[] = checkResultsFromOutcome(outcome, base);
     if (tests) {
       const reducerTests = await runReducerTests(base, runProcess);
       if (reducerTests) observed.push(reducerTests);
@@ -100,7 +100,8 @@ export const reactorProjectCheck = defineCommand({
     }
     for (const r of observed.filter((o) => o.kind === "REDUCER_TESTS" || o.kind === "SMOKE")) {
       const label = r.kind === "SMOKE" ? "Preview smoke" : "Reducer tests";
-      lines.push(`${r.passed ? "✓" : "✗"} ${label}${r.reason ? ` — ${r.reason}` : ""}`);
+      const why = r.detail ?? r.reason;
+      lines.push(`${r.passed ? "✓" : "✗"} ${label}${why ? ` — ${why}` : ""}`);
     }
 
     return attachCheckResults({ text: lines.join("\n") }, observed);

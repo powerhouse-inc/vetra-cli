@@ -67,7 +67,9 @@ describe("runSmoke", () => {
       expect(result).toEqual({
         kind: "SMOKE",
         passed: false,
-        reason: 'The preview could not load editors/todo-editor/editor.tsx: Transform failed with 1 error:',
+        reason: "A screen didn't load: editors/todo-editor/editor.tsx.",
+        // Vite's own message is for the agent only.
+        detail: "The preview could not load: editors/todo-editor/editor.tsx: Transform failed with 1 error:",
       });
     } finally {
       await vite.close();
@@ -96,9 +98,16 @@ describe("runSmoke", () => {
       previewUrl: "http://127.0.0.1:1",
       build: async () => ({ success: false, output: "line\nError: cannot find module x" }),
     });
-    expect(failed).toMatchObject({ passed: false, reason: expect.stringContaining("The package build failed") });
+    expect(failed).toMatchObject({
+      passed: false,
+      reason: "The app didn't build.",
+      detail: expect.stringContaining("cannot find module x"),
+    });
 
     const stopped = await runSmoke(project, { build: okBuild });
-    expect(stopped).toMatchObject({ passed: false, reason: expect.stringContaining("preview is not running") });
+    expect(stopped).toMatchObject({
+      passed: false,
+      reason: "The preview isn't running, so the screens couldn't be checked.",
+    });
   });
 });

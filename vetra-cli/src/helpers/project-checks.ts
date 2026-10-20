@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { checkNodeOptions } from "./node-memory.js";
+import { capReason, type ObservedCheck } from "../product/check-results.js";
 
 export interface GenDiagnostic {
   source: "tsc" | "eslint";
@@ -345,27 +346,31 @@ function formatDiagnostic(d: GenDiagnostic): string {
   return `${d.file}:${d.line}:${d.column} ${d.code} ${d.message}`;
 }
 
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
 /**
  * The TYPECHECK and LINT results a check outcome supports, for the product
  * document's check runs. A pass that did not run is omitted. TYPECHECK passes
  * with no tsc errors; LINT passes with no lint errors, warnings go in the
- * reason (Ruling F14). A pass whose run failed counts as not passed.
+ * reason (Ruling F14). A pass whose run failed counts as not passed. Reasons
+ * are plain one-liners for the customer; the raw diagnostics go in `detail`.
  */
-export function checkResultsFromOutcome(outcome: CheckOutcome): Array<{
-  kind: "TYPECHECK" | "LINT";
-  passed: boolean;
-  reason: string | null;
-}> {
-  const out: Array<{ kind: "TYPECHECK" | "LINT"; passed: boolean; reason: string | null }> = [];
+export function checkResultsFromOutcome(
+  outcome: CheckOutcome,
+  base?: string,
+): ObservedCheck[] {
+  const out: ObservedCheck[] = [];
   const passes = [
-    { source: "tsc", kind: "TYPECHECK", noun: "type" },
-    { source: "eslint", kind: "LINT", noun: "lint" },
+    { source: "tsc", kind: "TYPECHECK", noun: "type", check: "type check" },
+    { source: "eslint", kind: "LINT", noun: "lint", check: "lint check" },
   ] as const;
-  for (const { source, kind, noun } of passes) {
+  for (const { source, kind, noun, check } of passes) {
     const run = outcome.ran?.[source];
     if (!run) continue;
     if (run.failedToRun) {
-      out.push({ kind, passed: false, reason: run.failedToRun.slice(0, 400) });
+      out.push({ kind, passed: false, reason: `The ${check} couldn't run.`, detail: run.failedToRun });
       continue;
     }
     const mine = outcome.diagnostics.filter((d) => d.source === source);
@@ -373,22 +378,22 @@ export function checkResultsFromOutcome(outcome: CheckOutcome): Array<{
     const warnings = mine.length - errors.length;
     const parts: string[] = [];
     if (errors.length > 0) {
-      parts.push(
-        `${errors.length} ${noun} error(s): ${errors.slice(0, 3).map(formatDiagnostic).join("; ")}`,
-      );
+      const first = errors[0];
+      parts.push(`${plural(errors.length, `${noun} error`)}, first in ${first.file} line ${first.line}.`);
     }
-    if (warnings > 0) parts.push(`${warnings} warning(s)`);
-    const reason = parts.join("; ");
+    if (warnings > 0) parts.push(`${plural(warnings, `${noun} warning`)}.`);
+    const reason = parts.join(" ");
     out.push({
       kind,
       passed: errors.length === 0,
-      reason: reason ? reason.slice(0, 400) : null,
+      reason: reason ? capReason(reason, { base }) : null,
+      detail: mine.length > 0 ? mine.slice(0, 5).map(formatDiagnostic).join("\n") : undefined,
     });
   }
   return out;
 }
 
-/** Last lines of the reducer test output that say what failed. */
+/** Last lines of the reducer test output that say what failed (for the agent). */
 function testFailureSummary(output: string): string {
   const lines = output
     .split("\n")
@@ -396,8 +401,15 @@ function testFailureSummary(output: string): string {
     .filter(Boolean);
   const failing = lines.filter((l) => /FAIL|✗|×|AssertionError|Error:/.test(l)).slice(0, 3);
   const summary = lines.filter((l) => /^Tests?\s/.test(l)).slice(-1);
-  const picked = [...failing, ...summary].join("; ") || lines.slice(-3).join("; ");
-  return picked.length > 400 ? `${picked.slice(0, 399)}…` : picked;
+  const picked = [...failing, ...summary].join("\n") || lines.slice(-3).join("\n");
+  return picked.length > 1000 ? `${picked.slice(0, 999)}…` : picked;
+}
+
+/** "1 of 3 tests failed." from vitest's summary line, when it has one. */
+function testFailureReason(output: string): string {
+  const m = /Tests\s+(\d+)\s+failed.*?\((\d+)\)/.exec(output);
+  if (m) return `${m[1]} of ${plural(Number(m[2]), "test")} failed.`;
+  return "The tests failed.";
 }
 
 /**
@@ -407,7 +419,7 @@ function testFailureSummary(output: string): string {
 export async function runReducerTests(
   base: string,
   runProcess: RunProcess,
-): Promise<{ kind: "REDUCER_TESTS"; passed: boolean; reason: string | null } | null> {
+): Promise<ObservedCheck | null> {
   let scripts: Record<string, string> | undefined;
   try {
     scripts = (
@@ -424,11 +436,14 @@ export async function runReducerTests(
     timeout: 300_000,
     env: { CI: "1", NODE_OPTIONS: checkNodeOptions() },
   });
-  return {
-    kind: "REDUCER_TESTS",
-    passed: success,
-    reason: success ? null : testFailureSummary(output),
-  };
+  return success
+    ? { kind: "REDUCER_TESTS", passed: true, reason: null }
+    : {
+        kind: "REDUCER_TESTS",
+        passed: false,
+        reason: testFailureReason(output),
+        detail: testFailureSummary(output),
+      };
 }
 
 export function summarizeDiagnostics(diagnostics: GenDiagnostic[]): {

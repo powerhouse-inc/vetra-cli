@@ -82,12 +82,15 @@ function buildActions(
         ok: `Planned ${steps.map((s) => STEP_NAMES[s.kind]).join(" → ")}.`,
       };
     }
-    case "start":
+    case "start": {
       if (!step) return { refused: missing("step", "start") };
+      const bad = rephrase(input.label);
+      if (bad) return { refused: bad };
       return {
         actions: [a.startStep({ changeId, kind: step, label: input.label ?? null, at })],
         ok: `${STEP_NAMES[step]} started.`,
       };
+    }
     case "count":
       if (!step) return { refused: missing("step", "count") };
       if (input.done === undefined || input.total === undefined) {
@@ -106,13 +109,16 @@ function buildActions(
         actions: [a.completeStep({ changeId, kind: step, at })],
         ok: `${STEP_NAMES[step]} done.`,
       };
-    case "back":
+    case "back": {
       if (!step) return { refused: missing("step", "back") };
       if (!input.reason) return { refused: missing("reason", "back") };
+      const bad = rephrase(input.reason);
+      if (bad) return { refused: bad };
       return {
         actions: [a.reopenStep({ changeId, kind: step, reason: input.reason, at })],
         ok: `Back to ${STEP_NAMES[step]}.`,
       };
+    }
     case "milestone": {
       if (!input.text) return { refused: missing("text", "milestone") };
       const bad = rephrase(input.text);

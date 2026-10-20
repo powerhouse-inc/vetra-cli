@@ -59,8 +59,9 @@ function describeFailure(status: number, body: string): string {
   return `HTTP ${status}`;
 }
 
-function fail(reason: string): CheckResult {
-  return { kind: "SMOKE", passed: false, reason: capReason(reason) };
+/* `reason` is stored and shown to the customer; `detail` is for the agent. */
+function fail(reason: string, detail: string, base: string): CheckResult {
+  return { kind: "SMOKE", passed: false, reason: capReason(reason, { base }), detail };
 }
 
 export async function runSmoke(projectPath: string, deps: SmokeDeps = {}): Promise<CheckResult> {
@@ -68,32 +69,43 @@ export async function runSmoke(projectPath: string, deps: SmokeDeps = {}): Promi
   const built = await build(projectPath);
   if (!built.success) {
     const tail = built.output.trim().split("\n").slice(-5).join("\n");
-    return fail(`The package build failed: ${tail || "(no output)"}`);
+    return fail("The app didn't build.", `ph build failed: ${tail || "(no output)"}`, projectPath);
   }
 
   const modules = listModules(projectPath);
   if (modules.length === 0) {
-    return { kind: "SMOKE", passed: true, reason: "No editor or app modules to check." };
+    return { kind: "SMOKE", passed: true, reason: "There are no screens to check." };
   }
   if (!deps.previewUrl) {
-    return fail("The preview is not running (start it with reactor-project-start), so the editors could not be checked.");
+    return fail(
+      "The preview isn't running, so the screens couldn't be checked.",
+      "The preview is not running; start it with reactor-project-start, then check again.",
+      projectPath,
+    );
   }
 
   const doFetch = deps.fetch ?? fetch;
   const base = deps.previewUrl.endsWith("/") ? deps.previewUrl : `${deps.previewUrl}/`;
-  const failures: string[] = [];
+  const failures: Array<{ rel: string; why: string }> = [];
   for (const rel of modules) {
     try {
       const res = await doFetch(new URL(rel, base), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       const body = await res.text();
       if (res.status !== 200 || OVERLAY.test(body)) {
-        failures.push(`${rel}: ${describeFailure(res.status, body)}`);
+        failures.push({ rel, why: describeFailure(res.status, body) });
       }
     } catch (err) {
-      failures.push(`${rel}: ${err instanceof Error ? err.message : String(err)}`);
+      failures.push({ rel, why: err instanceof Error ? err.message : String(err) });
     }
     if (failures.length >= 3) break;
   }
-  if (failures.length > 0) return fail(`The preview could not load ${failures.join("; ")}`);
+  if (failures.length > 0) {
+    const files = failures.map((f) => f.rel).join(", ");
+    return fail(
+      failures.length === 1 ? `A screen didn't load: ${files}.` : `Some screens didn't load: ${files}.`,
+      `The preview could not load: ${failures.map((f) => `${f.rel}: ${f.why}`).join("; ")}`,
+      projectPath,
+    );
+  }
   return { kind: "SMOKE", passed: true, reason: null };
 }

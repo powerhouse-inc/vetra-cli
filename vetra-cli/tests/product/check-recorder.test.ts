@@ -5,9 +5,10 @@ import path from "node:path";
 import { StudioProductV1 } from "vetra-app/document-models";
 import { checkRecorder } from "../../src/lifecycle/check-recorder.js";
 import { reactorProjectCheck } from "../../src/commands/reactor-project/check.js";
-import { attachCheckResults, readCheckResults } from "../../src/product/check-results.js";
+import { attachCheckResults, capReason, readCheckResults } from "../../src/product/check-results.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
 import { productHarness, type ProductHarness } from "./helpers.js";
+import { runProgress } from "../../src/commands/product/progress.js";
 import { specCreate } from "../../src/commands/spec/create.js";
 import { specGenerate } from "../../src/commands/spec/generate.js";
 import { makeCtx } from "../spec/_fixtures.js";
@@ -66,6 +67,8 @@ describe("check-recorder", () => {
     });
     const result = (await tool.execute({}, {})) as { text: string };
     expect(result.text).toContain("1 error(s), 1 warning(s)");
+    // The raw diagnostic stays in the agent's text.
+    expect(result.text).toContain("TS2322");
     // The observed results never reach the model's JSON.
     expect(JSON.stringify(result)).not.toContain("TYPECHECK");
 
@@ -75,10 +78,10 @@ describe("check-recorder", () => {
       {
         kind: "TYPECHECK",
         passed: false,
-        reason: expect.stringContaining("1 type error(s): editors/todo/editor.tsx:3:7 TS2322"),
+        reason: "1 type error, first in editors/todo/editor.tsx line 3.",
       },
       // F14: warnings alone don't fail LINT; they go into the reason.
-      { kind: "LINT", passed: true, reason: "1 warning(s)" },
+      { kind: "LINT", passed: true, reason: "1 lint warning." },
     ]);
   });
 
@@ -157,7 +160,7 @@ describe("check-recorder", () => {
     await tool.execute({ skipChecks: true }, {});
     const runs = (await h.state()).changes[0].checkRuns;
     expect(runs.map((r) => r.results)).toEqual([
-      [{ kind: "GENERATE", passed: false, reason: 'Todo: Unknown type "Foo"' }],
+      [{ kind: "GENERATE", passed: false, reason: "Code couldn't be generated for Todo." }],
       [{ kind: "GENERATE", passed: true, reason: null }],
     ]);
   });
@@ -226,5 +229,99 @@ describe("check-recorder", () => {
     });
     expect(await tool.execute({}, {})).toBe(result);
     expect(readCheckResults(result)).toHaveLength(1);
+  });
+
+  it("stamps a check with its start, so one started before generate finished is older", async () => {
+    h = await productHarness();
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "TESTS" }] });
+    let t = Date.parse("2026-10-20T11:00:00.000Z");
+    const now = () => new Date((t += 1000));
+    const handle = checkRecorder({ context: () => h!.ctx, now }).onInit({ log: {} } as never) as {
+      contribute: { tool: (n: string, t: Tool) => Tool };
+    };
+    let finishCheck!: () => void;
+    const check = handle.contribute.tool("reactor-project-check", {
+      execute: () =>
+        new Promise((resolve) => {
+          finishCheck = () =>
+            resolve(
+              attachCheckResults({ text: "ok" }, [
+                { kind: "TYPECHECK", passed: true, reason: null },
+                { kind: "LINT", passed: true, reason: null },
+                { kind: "REDUCER_TESTS", passed: true, reason: null },
+                { kind: "SMOKE", passed: true, reason: null },
+              ]),
+            );
+        }),
+    });
+    const generate = handle.contribute.tool("spec-generate", {
+      execute: async () => attachCheckResults({ text: "ok" }, [{ kind: "GENERATE", passed: true, reason: null }]),
+    });
+    // Check starts, generate runs to completion, then the check finishes.
+    const checking = check.execute({ tests: true }, {});
+    await generate.execute({}, {});
+    finishCheck();
+    await checking;
+
+    const runs = (await h.state()).changes[0].checkRuns;
+    const gen = runs.find((r) => r.results[0].kind === "GENERATE")!;
+    const chk = runs.find((r) => r.results[0].kind === "TYPECHECK")!;
+    expect(Date.parse(chk.at)).toBeLessThan(Date.parse(gen.at));
+    expect(await runProgress(h.ctx, { action: "done", step: "TESTS" })).toBe(
+      "Refused: Tests can't be done: the latest TYPECHECK is older than GENERATE.",
+    );
+  });
+
+  it("stores reasons as one plain line without local paths or forbidden words", async () => {
+    h = await productHarness();
+    const home = os.homedir();
+    const tool = wrapWith(h, "reactor-project-check", {
+      execute: async () =>
+        attachCheckResults({ text: "x" }, [
+          {
+            kind: "SMOKE",
+            passed: false,
+            reason: `Failed in ${home}/projects/todo/editors/a.tsx\nthe package ${project}/editors/b.tsx\n  broke`,
+          },
+        ]),
+    });
+    await tool.execute({}, {});
+    const reason = (await h.state()).changes[0].checkRuns[0].results[0].reason!;
+    // The recorder doesn't know the project; any other absolute path → file name.
+    expect(reason).toBe("Failed in projects/todo/editors/a.tsx the app b.tsx broke");
+    expect(reason).not.toMatch(/\n|\/home\/|package/i);
+    // Producers pass the project base, which becomes relative.
+    expect(capReason(`Broke:\n${project}/editors/b.tsx in the Package`, { base: project })).toBe(
+      "Broke: editors/b.tsx in the app",
+    );
+  });
+
+  it("gives up recording after the timeout without failing the tool", async () => {
+    h = await productHarness();
+    const warnings: string[] = [];
+    const stalled = { folders: {}, reactor: () => new Promise<never>(() => {}) };
+    const handle = checkRecorder({ context: () => stalled, timeoutMs: 20 }).onInit({
+      log: { warn: (m: string) => warnings.push(m) },
+    } as never) as { contribute: { tool: (n: string, t: Tool) => Tool } };
+    const result = { text: "ok" };
+    const tool = handle.contribute.tool("reactor-project-check", {
+      execute: async () => attachCheckResults(result, [{ kind: "LINT", passed: true, reason: null }]),
+    });
+    expect(await tool.execute({}, {})).toBe(result);
+    expect(warnings[0]).toMatch(/timed out after 20 ms/);
+  });
+
+  it("the hidden results survive ph-clint's command → Mastra tool adapter", async () => {
+    h = await productHarness();
+    const { commandsToMastraTools } = await import("@powerhousedao/ph-clint/mastra");
+    const tools = await commandsToMastraTools([reactorProjectCheck as never], {
+      workdir: project,
+      runProcess,
+      stdout: () => {},
+    } as never);
+    const tool = wrapWith(h, "reactor-project-check", tools["reactor-project-check"] as unknown as Tool);
+    await tool.execute({}, {});
+    const runs = (await h.state()).changes[0].checkRuns;
+    expect(runs[0].results.map((r) => r.kind)).toEqual(["TYPECHECK", "LINT"]);
   });
 });

@@ -113,9 +113,17 @@ describe("product-progress", () => {
     expect(
       await runProgress(h.ctx, { action: "stuck", reason: "Cannot load", tried: ["restart the Switchboard"] }),
     ).toBe("Refused: Rephrase in the customer's words without: switchboard.");
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] });
+    expect(await runProgress(h.ctx, { action: "start", step: "PLAN", label: "Set up the environment" })).toBe(
+      "Refused: Rephrase in the customer's words without: environment.",
+    );
+    expect(await runProgress(h.ctx, { action: "back", step: "PLAN", reason: "New Docker image" })).toBe(
+      "Refused: Rephrase in the customer's words without: image.",
+    );
     const state = await h.state();
     expect(state.name).toBe("Create a todo app");
     expect(state.changes[0]).toMatchObject({ title: null, milestones: [], stuck: null });
+    expect(state.changes[0].steps[0]).toMatchObject({ status: "NOT_STARTED", label: null });
     expect(FORBIDDEN_WORDS).toContain("device code");
   });
 

@@ -87,8 +87,14 @@ async function generateOne(
   }
 }
 
-function generateResult(passed: boolean, reason: string | null): ObservedCheck {
-  return { kind: "GENERATE", passed, reason: reason ? capReason(reason) : null };
+/* `reason` is stored and shown to the customer; `detail` is for the agent. */
+function generateResult(
+  base: string,
+  passed: boolean,
+  reason: string | null,
+  detail?: string,
+): ObservedCheck {
+  return { kind: "GENERATE", passed, reason: reason ? capReason(reason, { base }) : null, detail };
 }
 
 export const specGenerate = defineCommand({
@@ -157,11 +163,18 @@ export const specGenerate = defineCommand({
           if (input.name) {
             throw attachCheckResults(
               new Error(`${type} — ${doc.header.name}: ${reason}`),
-              [generateResult(false, `${doc.header.name}: ${reason}`)],
+              [
+                generateResult(
+                  base,
+                  false,
+                  `Code couldn't be generated for ${doc.header.name}.`,
+                  reason,
+                ),
+              ],
             );
           }
           skipped.push({ name: doc.header.name, type, reason });
-          failed.push(`${doc.header.name}: ${reason}`);
+          failed.push(doc.header.name);
         }
       }
 
@@ -187,7 +200,14 @@ export const specGenerate = defineCommand({
           new Error(
             `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
           ),
-          [generateResult(false, `Generated code has ${summary.errors} error(s): ${head}`)],
+          [
+            generateResult(
+              base,
+              false,
+              `The generated code has ${summary.errors} error(s).`,
+              head,
+            ),
+          ],
         );
       }
 
@@ -222,15 +242,17 @@ export const specGenerate = defineCommand({
       // GENERATE only when some codegen actually ran (Ruling F1).
       const ranAny = generated.length > 0 || failed.length > 0;
       const problems = [
-        ...failed,
+        ...(failed.length > 0
+          ? [`Code couldn't be generated for ${failed.join(", ")}.`]
+          : []),
         ...(summary.errors > 0
-          ? [`generated code has ${summary.errors} error(s)`]
+          ? [`The generated code has ${summary.errors} error(s).`]
           : []),
       ];
       return attachCheckResults(
         { text: lines.join("\n") },
         ranAny
-          ? [generateResult(problems.length === 0, problems.join("; ") || null)]
+          ? [generateResult(base, problems.length === 0, problems.join(" ") || null)]
           : [],
       );
     });
