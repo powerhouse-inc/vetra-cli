@@ -104,6 +104,25 @@ describe('empty workspace goes straight to init (R20)', () => {
   });
 });
 
+// Review guard: one-shot covers the build phases only; deploy and
+// destructive/costly steps keep their own confirmations.
+describe('one-shot does not waive deploy or destructive confirmations', () => {
+  it('workflow keeps confirmations for deploy, deletes, publishing and paid or irreversible steps', async () => {
+    const text = flat(await mainInstructions());
+    const guard = /One-shot covers the build phases only:[^]*?confirmations?[^.]*\./.exec(text)?.[0];
+    expect(guard).toBeDefined();
+    for (const term of [/deploy/i, /delet/i, /publish/i, /money|cost/i, /undone|irreversible/i]) {
+      expect(guard).toMatch(term);
+    }
+    // It sits right after the "proceed without confirmation" rule.
+    const proceedAt = text.search(/proceed without confirmation/);
+    const guardAt = text.search(/One-shot covers the build phases only/);
+    expect(proceedAt).toBeGreaterThan(-1);
+    expect(guardAt).toBeGreaterThan(proceedAt);
+    expect(guardAt - proceedAt).toBeLessThan(400);
+  }, 60_000);
+});
+
 const BUILD_FLOW_SKILLS = [
   'reactor-project-management',
   'document-modeling',
