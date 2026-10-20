@@ -65,7 +65,7 @@ describe("product-progress", () => {
     expect((await h.state()).changes[0].steps[0].status).toBe("DONE");
   });
 
-  it("done PLAN is refused until the product is named, then allowed", async () => {
+  it("done PLAN is refused until the product is named and the change titled, then allowed", async () => {
     // INIT_PRODUCT name = placeholderName(idea) → "Create a todo app".
     h = await productHarness({ name: "Create a todo app" });
     await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] });
@@ -75,6 +75,11 @@ describe("product-progress", () => {
     expect(await runProgress(h.ctx, { action: "name", text: "Team Tasks" })).toBe(
       'Product named "Team Tasks".',
     );
+    expect(await runProgress(h.ctx, { action: "done", step: "PLAN" })).toBe(
+      "Refused: Title this change first (product-progress title).",
+    );
+    expect((await h.state()).changes[0].steps[0].status).not.toBe("DONE");
+    await runProgress(h.ctx, { action: "title", text: "First version" });
     expect(await runProgress(h.ctx, { action: "done", step: "PLAN" })).toBe("Plan done.");
     expect((await h.state()).name).toBe("Team Tasks");
   });
@@ -83,10 +88,10 @@ describe("product-progress", () => {
     h = await productHarness();
     await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] });
     await runProgress(h.ctx, { action: "name", text: "Team Tasks" });
-    await runProgress(h.ctx, { action: "done", step: "PLAN" });
     expect(await runProgress(h.ctx, { action: "title", text: "First version" })).toBe(
       'Change titled "First version".',
     );
+    await runProgress(h.ctx, { action: "done", step: "PLAN" });
     expect(await runProgress(h.ctx, { action: "milestone", text: "Tasks can be added" })).toBe(
       "Milestone recorded.",
     );

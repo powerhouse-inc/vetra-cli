@@ -32,6 +32,7 @@ import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url
 import { connectExternalPackagesLayerOrder } from './lifecycle/connect-layer-order.js';
 import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
+import { shellGuard } from './lifecycle/shell-guard.js';
 import { tsCheck } from './lifecycle/ts-check.js';
 import { serializableToolErrors } from './lifecycle/tool-errors.js';
 import { checkRecorder } from './lifecycle/check-recorder.js';
@@ -244,6 +245,8 @@ export const cli = defineCli({
     proxyBasePathHook(),
     observability(),
     genGuard(),
+    // The shell is for installs: checks, builds and git go through recorded tools.
+    shellGuard(),
     tsCheck(),
     connectDriveUrlOnSwitchboardReady({
       vetraAppDir: CONNECT_ASSETS_ROOT,

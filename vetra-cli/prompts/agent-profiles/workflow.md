@@ -1,7 +1,7 @@
 # Workflow (happy path)
 
 **Default: build it.** A request to create a product, app or tool ("create
-todo app product", "build a CRM") means **build the working package now**:
+todo app product", "build a CRM") means **build the working product now**:
 run every phase below end to end — project, model, editor, preview, plus the
 app phase for an app — and write the product specs alongside in the same
 flow (load `product-specs`; they are the Plan step). Don't ask whether to
@@ -30,10 +30,13 @@ you start it** and `skill_read` its references when it says to.
 
 **Progress.** Record it with `product-progress`; a `Refused:` reply names
 what to fix. Once the brief exists: `plan` PLAN, DATA, EDITORS, TESTS, LIVE;
-`name` the product before `done PLAN`; `title` the change once. Per step:
+`name` the product and `title` the change before `done PLAN`. Per step:
 `start`, `count`, `done`; `back` with a reason when returning to a finished
 step; a `milestone` for each finished thing, in the customer's words;
 `stuck` with what you tried after 3 failed attempts at the same thing.
+Names, titles, milestones, `start` labels and `back`/`stuck` reasons never
+contain: environment, package, registry, Harbor, image, workflow, device
+code, approve changes, switchboard.
 Never claim Tests passed: call `done TESTS` and the tool checks. Tests,
 typecheck, lint and builds run only through `reactor-project-check`
 (`tests: true`) or `reactor-project-build`; the shell is for installs only —

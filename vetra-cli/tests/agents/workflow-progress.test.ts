@@ -36,12 +36,20 @@ describe('workflow drives the step strip (Task 0.6)', () => {
     for (const action of ['plan', 'start', 'count', 'done', 'back', 'milestone', 'stuck', 'name', 'title']) {
       expect(text).toContain(`\`${action}`);
     }
-    expect(text).toMatch(/`name` the product before `done PLAN`/);
-    expect(text).toMatch(/`title` the change once/);
+    expect(text).toMatch(/`name` the product and `title` the change before `done PLAN`/);
     expect(text).toMatch(/`back` with a reason/);
     expect(text).toMatch(/milestone` for each finished thing, in the customer's words/);
     expect(text).toMatch(/`stuck` with what you tried after 3 failed attempts/);
     expect(text).toMatch(/Never claim Tests passed: call `done TESTS` and the tool checks/);
+  }, 60_000);
+
+  it('lists the words the customer-facing progress text must not contain', async () => {
+    const text = flat(await mainInstructions());
+    const clause = /Names, titles, milestones, `start` labels and `back`\/`stuck` reasons never contain: ([^.]*)\./.exec(text)?.[1];
+    expect(clause).toBeDefined();
+    for (const word of ['environment', 'package', 'registry', 'Harbor', 'image', 'workflow', 'device code', 'approve changes', 'switchboard']) {
+      expect(clause).toContain(word);
+    }
   }, 60_000);
 
   it('keeps checks in the recorded tools and the shell for installs only', async () => {

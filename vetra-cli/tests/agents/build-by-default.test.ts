@@ -39,7 +39,7 @@ describe('main agent builds by default (R18)', () => {
       expect(REGRESSED_PROMPT).toContain(word);
       expect(rule).toMatch(new RegExp(`\\b${word}\\b`, 'i'));
     }
-    expect(rule).toMatch(/build the working package now/i);
+    expect(rule).toMatch(/build the working product now/i);
     expect(rule).toMatch(/product specs alongside/i);
     expect(rule).toMatch(/don't ask whether to build/i);
     expect(rule).toMatch(/genuinely unclear \*what\* to build/i);
@@ -54,7 +54,7 @@ describe('main agent builds by default (R18)', () => {
       expect(m[0]).toMatch(/explicit|don't offer/i);
     }
     // The build rule comes before any product-spec routing.
-    const buildAt = text.search(/build the working package now/i);
+    const buildAt = text.search(/build the working product now/i);
     const specsAt = text.search(/`spec-create \{ type, name \}`/);
     expect(buildAt).toBeGreaterThan(-1);
     expect(buildAt).toBeLessThan(specsAt);

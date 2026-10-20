@@ -33,7 +33,7 @@ const inputSchema = z.object({
   action: z
     .enum(["plan", "start", "count", "done", "back", "milestone", "stuck", "suggest", "name", "title"])
     .describe(
-      "plan: set the steps (`steps`). start: begin `step` (optional `label`). count: progress on `step` (`done` of `total`). done: finish `step` (refused until its checks pass). back: return to a finished `step` (`reason`). milestone: one finished thing in the customer's words (`text`). stuck: after 3 failed attempts at the same thing (`reason`, `tried`). name: name the product (`text`, before finishing PLAN). title: title this change (`text`). suggest: ideas for next time (`items`).",
+      "plan: set the steps (`steps`). start: begin `step` (optional `label`). count: progress on `step` (`done` of `total`). done: finish `step` (refused until its checks pass). back: return to a finished `step` (`reason`). milestone: one finished thing in the customer's words (`text`). stuck: after 3 failed attempts at the same thing (`reason`, `tried`). name: name the product (`text`, before finishing PLAN). title: title this change (`text`, before finishing PLAN). suggest: ideas for next time (`items`).",
     ),
   step: stepKind.optional().describe("The step this action is about."),
   steps: z
@@ -69,8 +69,9 @@ function rephrase(...texts: Array<string | undefined>): string | null {
 function buildActions(
   input: Input,
   state: NonNullable<Awaited<ReturnType<typeof getProductDoc>>>["state"],
-  changeId: string,
+  change: { id: string; title?: string | null } | null,
 ): { actions: Action[]; ok: string } | { refused: string } {
+  const changeId = change?.id ?? "";
   const at = new Date().toISOString();
   const { step } = input;
   switch (input.action) {
@@ -104,6 +105,9 @@ function buildActions(
       if (!step) return { refused: missing("step", "done") };
       if (step === "PLAN" && (!state.name || (state.idea && state.name === placeholderName(state.idea)))) {
         return { refused: "Choose the product name first (product-progress name)." };
+      }
+      if (step === "PLAN" && !change?.title) {
+        return { refused: "Title this change first (product-progress title)." };
       }
       return {
         actions: [a.completeStep({ changeId, kind: step, at })],
@@ -171,7 +175,7 @@ export async function runProgress(ctx: ProductContext, input: Input): Promise<st
   if (!change && input.action !== "name") {
     return "There is no active change; nothing was recorded.";
   }
-  const built = buildActions(input, product.state, change?.id ?? "");
+  const built = buildActions(input, product.state, change);
   if ("refused" in built) return `Refused: ${built.refused}`;
   try {
     await dispatchProduct(ctx, built.actions);
