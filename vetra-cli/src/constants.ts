@@ -9,12 +9,17 @@
 export const REACTOR_PROJECT_CONNECT_PROXY_PATH = "/reactor-project/vetra-studio";
 
 /**
- * Shared Renown localStorage namespace. Both the Studio Connect and the
- * preview reactor's Connect use this so the preview iframe reuses the owner's
- * already-established Renown session instead of prompting a second login.
- * Must match the literal in vetra-app's `build:connect` script.
+ * Renown localStorage namespace of the preview reactor's Connect (the BUILD
+ * iframe). Deliberately NOT the Studio Connect's (`vetra-studio`, set by
+ * vetra-app's `build:connect`): both apps are same-origin, so a shared
+ * namespace is one shared session, and the preview verifies it against the
+ * project's Renown (www.renown.id) rather than the Studio's (RENOWN_URL /
+ * cloud Renown). Where those differ, the preview's boot-time revalidation
+ * logs the shared session out and the Studio's sync turns anonymous
+ * mid-session (switchboard: Forbidden). The preview reactor is public and
+ * needs no login.
  */
-export const RENOWN_NAMESPACE = "vetra-studio";
+export const PREVIEW_RENOWN_NAMESPACE = "vetra-studio-preview";
 
 /**
  * Proxy path prefix for a reactor-project's Switchboard. Routes registered by
