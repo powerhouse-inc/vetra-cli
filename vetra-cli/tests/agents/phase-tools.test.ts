@@ -251,6 +251,44 @@ describe('phase tool sets', () => {
     expect(r?.activeTools).not.toContain('agent-agentDocumentModel');
   });
 
+  // Real Mastra step records leave `toolCalls`/`content` empty and carry the
+  // calls only in `response.messages` (found in the Task 0.6 real-model run:
+  // the tool set stayed on PLAN after `start DATA`).
+  it('re-reads after product-progress when the call is only in response.messages', async () => {
+    let steps = [{ kind: 'PLAN', status: 'WORKING' }];
+    const read = jest.fn(async () => ({
+      id: 'p',
+      state: { activeChangeId: 'c', changes: [{ id: 'c', status: 'BUILDING', steps }] },
+    })) as unknown as typeof getProductDoc;
+    const processor = new PhaseToolsProcessor({}, read);
+    const state: Record<string, unknown> = {};
+    const mastraStep = (toolName: string) => ({
+      content: [],
+      toolCalls: [],
+      response: {
+        messages: [
+          { role: 'assistant', content: [{ type: 'tool-call', toolName: 'spec-create' }] },
+          { role: 'tool', content: [] },
+          { role: 'assistant', content: [{ type: 'tool-call', toolName }] },
+          { role: 'tool', content: [] },
+        ],
+      },
+    });
+    const args = (s: unknown[]) => stepArgs(state, s as Parameters<typeof stepArgs>[1]);
+
+    let r = await processor.processInputStep(args([]));
+    expect(r?.activeTools).not.toContain('reactor-project-init');
+    steps = [
+      { kind: 'PLAN', status: 'DONE' },
+      { kind: 'DATA', status: 'WORKING' },
+    ];
+    r = await processor.processInputStep(args([mastraStep('product-progress')]));
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(r?.activeTools).toContain('reactor-project-init');
+    r = await processor.processInputStep(args([mastraStep('product-progress'), mastraStep('spec-generate')]));
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it('github-push is turned off while a product exists (F25)', async () => {
     h = await productHarness();
     const result = await githubPush.execute({ branch: 'main', message: 'x' }, h.ctx as never);

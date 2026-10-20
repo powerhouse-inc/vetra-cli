@@ -161,14 +161,40 @@ export function selectTools(toolNames: readonly string[], phases: StepKind[] | n
 }
 
 interface ToolCallLike {
+  type?: string;
   toolName?: string;
   payload?: { toolName?: string };
 }
 
+interface StepLike {
+  toolCalls?: ToolCallLike[];
+  content?: ToolCallLike[];
+  response?: { messages?: Array<{ role?: string; content?: unknown }> };
+}
+
+/**
+ * Tool names the latest step called. Mastra's step records can carry them in
+ * `toolCalls`, in `content`, or only in the latest assistant message of
+ * `response.messages` (where `toolCalls` and `content` are empty), so all
+ * three are read.
+ */
+function lastStepToolNames(steps: ProcessInputStepArgs['steps']): string[] {
+  const last = steps.at(-1) as StepLike | undefined;
+  if (!last) return [];
+  const calls: ToolCallLike[] = [
+    ...(last.toolCalls ?? []),
+    ...(last.content ?? []).filter((c) => c.type === 'tool-call'),
+  ];
+  const assistant = [...(last.response?.messages ?? [])].reverse().find((m) => m.role === 'assistant');
+  if (Array.isArray(assistant?.content)) {
+    calls.push(...(assistant.content as ToolCallLike[]).filter((c) => c.type === 'tool-call'));
+  }
+  return calls.map((c) => c.toolName ?? c.payload?.toolName ?? '');
+}
+
 /** Whether the latest finished model step called `toolName`. */
 function lastStepCalled(steps: ProcessInputStepArgs['steps'], toolName: string): boolean {
-  const last = steps.at(-1) as { toolCalls?: ToolCallLike[] } | undefined;
-  return (last?.toolCalls ?? []).some((c) => (c.toolName ?? c.payload?.toolName) === toolName);
+  return lastStepToolNames(steps).includes(toolName);
 }
 
 const CACHE_KEY = 'phases';
