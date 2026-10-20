@@ -63,6 +63,9 @@ catalogs:
     eslint-config-prettier:
       specifier: ^10.1.8
       version: 10.1.8
+    semver:
+      specifier: 7.7.4
+      version: 7.7.4
     typescript:
       specifier: ^6.0.2
       version: 6.0.3
@@ -397,6 +400,9 @@ importers:
       proper-lockfile:
         specifier: ^4.1.2
         version: 4.1.2
+      semver:
+        specifier: 'catalog:'
+        version: 7.7.4
       ts-jest:
         specifier: ^29.4.6
         version: 29.4.9(@babel/core@7.29.0)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.0))(esbuild@0.28.0)(jest-util@30.4.1)(jest@30.4.2(@types/node@25.8.0)(babel-plugin-macros@3.1.0))(typescript@6.0.3)
@@ -22894,7 +22900,7 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.9
       estree-walker: 2.0.2
-      picomatch: 4.0.4
+      picomatch: 4.0.7
     optionalDependencies:
       rollup: 4.62.2
 

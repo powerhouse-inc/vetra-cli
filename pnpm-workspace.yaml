@@ -38,6 +38,9 @@ catalog:
   '@types/node': '^25.5.2'
   eslint-config-prettier: '^10.1.8'
   graphql: '16.12.0'
+  # Vendored into vetra's dist: @powerhousedao/shared's CLI helpers require it
+  # at runtime. Matches shared@6.2.3's exact pin.
+  semver: '7.7.4'
   typescript: '^6.0.2'
   typescript-eslint: '^8.46.2'
   zod: '4.3.6'
