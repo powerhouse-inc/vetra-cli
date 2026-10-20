@@ -12,6 +12,13 @@
  *     else the direct switchboard drive URL. Written into the bundle's
  *     runtime config (`powerhouse.config.json` →
  *     `connect.drives.defaultDrives`), which Connect reads at load time.
+ *   - Renown URL — the cloud Renown (`cloudRenownUrl`), when configured, into
+ *     `connect.renown.url`. The cloud switchboard only accepts a bearer whose
+ *     delegation credential lives on the Renown it verifies against; logging
+ *     in on the bundled www.renown.id puts the credential elsewhere, so every
+ *     Deploy-view call 401s ("Credentials no longer valid") on staging. The
+ *     embedded switchboard is pointed at the same Renown (RENOWN_URL) so the
+ *     studio's own drive accepts that login too.
  *   - preview-server URL (+ the package registry deploys stamp onto new envs)
  *     — `<proxy>/preview` when available, else the direct loopback port.
  *     Written into `studio.config.json`, which vetra-app's
@@ -47,6 +54,8 @@ interface ConnectDriveUrlOptions {
   vetraAppDir: string;
   /** Relative path to the prebuilt Connect bundle. Defaults to "dist/connect". */
   connectDir?: string;
+  /** Environment the embedded switchboard reads RENOWN_URL from. Defaults to process.env. */
+  env?: NodeJS.ProcessEnv;
 }
 
 interface Log {
@@ -65,6 +74,16 @@ export function connectDriveUrlOnSwitchboardReady(
     name: "connect-drive-url",
     onInit(ctx) {
       let handled = false;
+
+      const renownUrl =
+        typeof ctx.config.cloudRenownUrl === "string" &&
+        ctx.config.cloudRenownUrl.trim()
+          ? ctx.config.cloudRenownUrl.trim()
+          : undefined;
+      // Runs before the runtime starts the embedded switchboard, whose
+      // reactor-api reads RENOWN_URL at startup. An explicit RENOWN_URL wins.
+      const env = options.env ?? process.env;
+      if (renownUrl && !env.RENOWN_URL?.trim()) env.RENOWN_URL = renownUrl;
 
       const handler = (raw: unknown) => {
         if (handled) return;
@@ -107,7 +126,7 @@ export function connectDriveUrlOnSwitchboardReady(
 
         const bundleDir = path.join(options.vetraAppDir, connectDir);
         try {
-          patchDefaultDrive(bundleDir, driveUrl, ctx.log);
+          patchRuntimeConfig(bundleDir, driveUrl, renownUrl, ctx.log);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           ctx.log.error(`[connect-drive-url] ${message}`);
@@ -138,10 +157,14 @@ export function connectDriveUrlOnSwitchboardReady(
   };
 }
 
-/** Points `connect.drives.defaultDrives` in the runtime config at the live drive. */
-function patchDefaultDrive(
+/**
+ * Points `connect.drives.defaultDrives` in the runtime config at the live
+ * drive and, when configured, `connect.renown.url` at the cloud Renown.
+ */
+function patchRuntimeConfig(
   bundleDir: string,
   driveUrl: string,
+  renownUrl: string | undefined,
   log: Log,
 ): void {
   const configFile = path.join(bundleDir, "powerhouse.config.json");
@@ -152,24 +175,38 @@ function patchDefaultDrive(
   const config = JSON.parse(readFileSync(configFile, "utf8")) as {
     connect?: {
       drives?: { defaultDrives?: Array<{ url?: string | null }> };
+      renown?: { url?: string };
     };
   };
   const connect = (config.connect ??= {});
   const drives = (connect.drives ??= {});
   const current = drives.defaultDrives?.[0];
 
-  if (current?.url === driveUrl && drives.defaultDrives?.length === 1) {
+  const driveChanged =
+    current?.url !== driveUrl || drives.defaultDrives?.length !== 1;
+  const renownChanged =
+    renownUrl !== undefined && connect.renown?.url !== renownUrl;
+
+  if (!driveChanged && !renownChanged) {
     log.debug(
       `[connect-drive-url] Runtime config already points at ${driveUrl}; skipping drive URL.`,
     );
     return;
   }
 
-  drives.defaultDrives = [{ ...current, url: driveUrl }];
+  if (driveChanged) drives.defaultDrives = [{ ...current, url: driveUrl }];
+  if (renownChanged) connect.renown = { ...connect.renown, url: renownUrl };
   writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
-  log.info(
-    `[connect-drive-url] Pointed drive URL at ${driveUrl}. Reload your browser to apply.`,
-  );
+  if (driveChanged) {
+    log.info(
+      `[connect-drive-url] Pointed drive URL at ${driveUrl}. Reload your browser to apply.`,
+    );
+  }
+  if (renownChanged) {
+    log.info(
+      `[connect-drive-url] Pointed Renown login at ${renownUrl}. Reload your browser and sign in again to apply.`,
+    );
+  }
 }
 
 // Writes the studio runtime config the Connect SPA fetches at load time. Kept
