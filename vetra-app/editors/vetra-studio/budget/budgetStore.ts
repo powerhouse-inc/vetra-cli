@@ -7,6 +7,9 @@ export const BUDGET_REQUEST_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** A BUDGET_EXHAUSTED failure older than this (e.g. last month's, still in a
  * session's history) no longer marks the meter used up. */
 const FAILURE_RECENT_MS = 24 * 60 * 60 * 1000;
+/** The cloud caches `studioLlmUsage` for 60 s: a poll made sooner after a
+ * failure may still show the spend from before it. */
+const USAGE_CACHE_MS = 60 * 1000;
 const REQUEST_STORAGE_PREFIX = "vetra-studio:budget-requested:";
 
 export type BudgetRequestState =
@@ -135,6 +138,8 @@ export function createBudgetStore(deps: BudgetDeps): BudgetStore {
   let envPromise: Promise<string | null> | null = null;
   /** Limit at the time of the failure; a higher one means it was raised. */
   let failureLimit: number | null | undefined;
+  /** When the failure happened (ms); null when none is pending. */
+  let failureAt: number | null = null;
   const seenFailures = new Set<string>();
 
   function set(next: Partial<BudgetSnapshot>): void {
@@ -175,21 +180,39 @@ export function createBudgetStore(deps: BudgetDeps): BudgetStore {
     if (snapshot.request.kind === "requested" && !requestStillOpen())
       set({ request: { kind: "idle" } });
     const token = await deps.getToken();
-    if (!token) return;
+    if (!token) {
+      // Signed out: hide the meter rather than show a stale value.
+      failureLimit = undefined;
+      failureAt = null;
+      if (snapshot.usage || snapshot.exhaustedByFailure)
+        set({ usage: null, exhaustedByFailure: false });
+      return;
+    }
+    const startedAt = deps.now();
     const usage = await deps.fetchUsage(env, token);
     // Keep the last known value through a failed fetch.
     if (!usage) return;
     if (failureLimit === undefined && snapshot.exhaustedByFailure)
       failureLimit = usage.limitUsd;
-    const raised =
+    const limit = usage.limitUsd;
+    const cleared =
       snapshot.exhaustedByFailure &&
-      failureLimit !== undefined &&
-      failureLimit !== null &&
-      (usage.limitUsd === null || usage.limitUsd > failureLimit);
-    if (raised) failureLimit = undefined;
+      // Unlimited now.
+      (limit === null ||
+        // Raised above the limit the failure hit.
+        (failureLimit != null && limit > failureLimit) ||
+        // Monthly reset (or a limit that was unknown/unlimited at the
+        // failure): a poll made past the cloud's usage cache shows headroom.
+        (failureAt !== null &&
+          startedAt - failureAt >= USAGE_CACHE_MS &&
+          usage.usageUsd < limit));
+    if (cleared) {
+      failureLimit = undefined;
+      failureAt = null;
+    }
     set({
       usage,
-      exhaustedByFailure: raised ? false : snapshot.exhaustedByFailure,
+      exhaustedByFailure: cleared ? false : snapshot.exhaustedByFailure,
     });
   }
 
@@ -234,6 +257,7 @@ export function createBudgetStore(deps: BudgetDeps): BudgetStore {
     if (!Number.isFinite(at) || deps.now() - at > FAILURE_RECENT_MS) return;
     if (snapshot.exhaustedByFailure) return;
     failureLimit = snapshot.usage ? snapshot.usage.limitUsd : undefined;
+    failureAt = at;
     set({ exhaustedByFailure: true });
   }
 

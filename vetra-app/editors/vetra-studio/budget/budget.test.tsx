@@ -198,6 +198,63 @@ describe("budget store", () => {
   });
 });
 
+describe("budget store review fixes", () => {
+  it("hides the meter after sign-out", async () => {
+    let token: string | null = "tok";
+    const store = createBudgetStore(
+      fakeDeps({
+        getToken: vi.fn(() => Promise.resolve(token)),
+        fetchUsage: vi.fn(() => Promise.resolve(usage(1, 5))),
+      }),
+    );
+    await store.refresh();
+    expect(budgetView(store.getSnapshot())).not.toBeNull();
+    token = null;
+    await store.refresh();
+    expect(store.getSnapshot().usage).toBeNull();
+    expect(meter(store.getSnapshot())).toBe("");
+  });
+
+  it("used-up clears after a monthly reset", async () => {
+    let now = NOW;
+    let current = usage(5, 5);
+    const store = createBudgetStore(
+      fakeDeps({
+        now: () => now,
+        fetchUsage: vi.fn(() => Promise.resolve(current)),
+      }),
+    );
+    await store.refresh();
+    store.markExhausted(new Date(NOW - 30_000).toISOString());
+    // A poll inside the cloud's 60 s usage cache may still show stale spend.
+    current = usage(4.9, 5);
+    await store.refresh();
+    expect(budgetView(store.getSnapshot())?.level).toBe("exhausted");
+    // The month rolled over: a fresh poll shows spend below the same limit.
+    now = NOW + 5 * 60_000;
+    current = usage(0.1, 5);
+    await store.refresh();
+    expect(budgetView(store.getSnapshot())?.level).toBe("ok");
+
+    // Failure while the limit was unknown/unlimited (failureLimit null).
+    let now2 = NOW;
+    let current2 = usage(3, null);
+    const other = createBudgetStore(
+      fakeDeps({
+        now: () => now2,
+        fetchUsage: vi.fn(() => Promise.resolve(current2)),
+      }),
+    );
+    await other.refresh();
+    other.markExhausted(new Date(NOW - 30_000).toISOString());
+    expect(budgetView(other.getSnapshot())?.level).toBe("exhausted");
+    now2 = NOW + 5 * 60_000;
+    current2 = usage(0.2, 5);
+    await other.refresh();
+    expect(budgetView(other.getSnapshot())?.level).toBe("ok");
+  });
+});
+
 describe("chat failure action", () => {
   it("chat failure action renders request for BUDGET_EXHAUSTED", () => {
     const budget = {
