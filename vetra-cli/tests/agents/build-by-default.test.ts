@@ -72,4 +72,24 @@ describe('main agent builds by default (R18)', () => {
     const description = cli.getMetadata().prompts?.skills?.['product-specs']?.description ?? '';
     expect(description).toMatch(/alongside the build/i);
   }, 60_000);
+
+  // R19: build requests run without check-in questions. The agent loads phase
+  // skills itself (no `mode` input reaches it — that only exists on the
+  // user-typed skill commands), so the mode is fixed in the text it reads.
+  it('runs the build-flow skills in one-shot mode, not confirm-first expert mode', async () => {
+    const text = flat(await mainInstructions());
+    expect(text).toMatch(/Run every phase skill in `one-shot` mode/);
+    expect(text).toMatch(/never the expert\/discovery "confirm with the user" step/);
+    for (const skill of BUILD_FLOW_SKILLS) {
+      const preamble = flat(readFileSync(path.join(PROMPTS_DIR, 'skills-tpl', skill, '.preamble.md'), 'utf-8'));
+      expect(preamble.slice(0, 400)).toMatch(/\*\*Mode:\*\* in the build flow, follow the `one-shot` steps/);
+    }
+  });
 });
+
+const BUILD_FLOW_SKILLS = [
+  'reactor-project-management',
+  'document-modeling',
+  'document-editor-creation',
+  'drive-app-creation',
+];

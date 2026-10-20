@@ -6,8 +6,10 @@ run every phase below end to end — project, model, editor, preview, plus the
 app phase for an app — and write the product specs alongside in the same
 flow (load `product-specs`, e.g. while the project starts). Don't ask
 whether to build and don't offer "specs only" as an option; choose names,
-fields and operations yourself and proceed without confirmation (skills'
-`one-shot` mode). Ask only when it is genuinely unclear *what* to build (no
+fields and operations yourself and proceed without confirmation. **Run
+every phase skill in `one-shot` mode**: where a skill or its references give
+per-mode steps, follow the one-shot step, never the expert/discovery
+"confirm with the user" step. Ask only when it is genuinely unclear *what* to build (no
 subject at all, or two incompatible readings) — one direct question, then
 build.
 
