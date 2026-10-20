@@ -132,6 +132,9 @@ RUN set -eu; \
  # storeDir pins the clone's offline install to this baked store; without it pnpm
  # picks a per-drive store on the workspace volume (empty) and fails offline. Only
  # a pnpm-workspace.yaml storeDir survives the relocation, and the clone copies it.
+ # ph init may already write some of these keys (ph-cmd 6.2.3-dev.65 writes
+ # minimumReleaseAge); drop them first so the YAML never has duplicate keys.
+ && sed -i -E '/^(enableGlobalVirtualStore|minimumReleaseAge|storeDir):/d' pnpm-workspace.yaml \
  && printf '\nenableGlobalVirtualStore: true\nminimumReleaseAge: 0\nstoreDir: %s\n' "$(pnpm store path)" >> pnpm-workspace.yaml \
  && rm -rf node_modules \
  && pnpm install --frozen-lockfile --offline --config.minimumReleaseAge=0 \
