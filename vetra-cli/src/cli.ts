@@ -130,7 +130,7 @@ export const cli = defineCli({
           'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
       },
       'product-specs': {
-        description: 'Create and refine product specs at the workspace root — brand, problem and audience sheets, features and their work breakdown structure (ordering, outcome links, feature bets, WBS tasks).',
+        description: 'Create and refine product specs at the workspace root — brand, problem and audience sheets, features and their work breakdown structure (ordering, outcome links, feature bets, WBS tasks). For a product/app request, write them alongside the build, never instead of it.',
       },
       'reactor-project-management': {
         description: 'Initialize, build, and publish Reactor Package projects',
