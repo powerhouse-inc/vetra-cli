@@ -12,6 +12,14 @@ import { INPUT_TOKEN_CAP, createLlmModels, resolveContextTokenLimit, resolveLlmS
 import { createNoModelAgent } from './no-model-agent.js';
 import { createReplayAgent } from './replay-agent.js';
 import { bindRecorderContext } from '../lifecycle/check-recorder.js';
+import { PhaseToolsProcessor } from './phase-tools.js';
+
+/**
+ * The main agent's sub-agents; Mastra exposes each as the tool `agent-<key>`
+ * (the phase tool sets name them).
+ */
+export const SUB_AGENT_KEYS = ['agentDocumentModel', 'agentEditor', 'agentApp'] as const;
+type SubAgentKey = (typeof SUB_AGENT_KEYS)[number];
 
 /**
  * Agent factory for the CLI.
@@ -99,7 +107,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     inputProcessors: [new TokenLimiterProcessor({ limit: subLimit })],
   });
 
-  const subAgents: Record<string, Agent> = { agentDocumentModel, agentEditor, agentApp };
+  const subAgents: Record<SubAgentKey, Agent> = { agentDocumentModel, agentEditor, agentApp };
 
   const main = new Agent({
     id: 'vetra-agent',
@@ -113,7 +121,9 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     workspace: await m.createWorkspace(),
     memory,
     agents: subAgents,
-    inputProcessors: [new TokenLimiterProcessor({ limit: mainLimit })],
+    // Tool filter before the token count (F17b): the agent sees only the
+    // tools of the active change's current step.
+    inputProcessors: [new PhaseToolsProcessor(ctx.context), new TokenLimiterProcessor({ limit: mainLimit })],
   });
 
   const store = createWorkdirStore(ctx.workdir, CLI_NAME);

@@ -8,6 +8,11 @@ import {
   shq,
 } from '../../helpers/github.js';
 import { ensureWorkspaceGitignore } from '../../helpers/workspace-git.js';
+import { getProductDoc } from '../../product/product-doc.js';
+
+/** A Studio product's code reaches GitHub only through the launch mirror (F25). */
+export const PUSH_OFF_FOR_PRODUCT =
+  'Code is saved with each launch; pushing by hand is turned off for this product.';
 
 const BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
@@ -24,7 +29,11 @@ export const githubPush = defineCommand({
   description:
     'Commit the workspace and push it to the GitHub repo connected to this studio environment, as the Vetra bot.',
   inputSchema,
-  execute: async ({ branch, message }, { workdir, config, runProcess }) => {
+  execute: async ({ branch, message }, ctx) => {
+    const { workdir, config, runProcess } = ctx;
+    if (await getProductDoc(ctx)) {
+      return { text: PUSH_OFF_FOR_PRODUCT };
+    }
     if (!BRANCH_PATTERN.test(branch)) {
       throw new Error(`Invalid branch name "${branch}".`);
     }
