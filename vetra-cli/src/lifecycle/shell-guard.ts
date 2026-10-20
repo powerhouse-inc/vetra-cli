@@ -8,7 +8,8 @@
  * which saves the code itself. So `mastra_workspace_execute_command` refuses
  * a command when any part of it (`a && b`, `a; b`, `a | b`, `sh -c "…"`)
  * starts one of those programs; installs (`pnpm add/install`, `npm install`)
- * and everything else still run.
+ * and everything else still run. Not caught: programs started inside command
+ * substitution (`$(…)`, backticks) or from a script file.
  *
  * Same hook point as gen-guard: a `tool` wrap on the workspace tool.
  */
@@ -63,10 +64,17 @@ function refuseSimple(segment: string): string | null {
   }
   const prog = program(words[0]);
   if (!prog) return null;
-  if ((prog === "sh" || prog === "bash" || prog === "zsh") && words.includes("-c")) {
-    const inner = segment.slice(segment.indexOf("-c") + 2).trim();
-    return refuseCommand(unquote(inner));
+  if (prog === "sh" || prog === "bash" || prog === "zsh") {
+    // `-c`, `-lc`, `-ec`, …: any short-flag cluster containing `c`.
+    const flag = words.find((w) => /^-[a-z]*c[a-z]*$/.test(w));
+    if (flag) {
+      const at = segment.indexOf(` ${flag}`) + flag.length + 1;
+      return refuseCommand(unquote(segment.slice(at).trim()));
+    }
+    return null;
   }
+  // `node node_modules/.bin/vitest …` runs the runner directly.
+  if (prog === "node" && RUNNERS.has(program(firstArg(words, 1)?.word))) return CHECKS_REFUSAL;
   if (RUNNERS.has(prog)) return CHECKS_REFUSAL;
   if (prog === "pnpm" || prog === "yarn" || prog === "bun") {
     const arg = firstArg(words, 1);

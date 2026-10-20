@@ -25,9 +25,6 @@ import { SPECIFY_TYPES } from "../specify/projects.js";
 
 export const CHAT_SESSION_TYPE = "powerhouse/chat-session";
 
-/** Change statuses that can still be worked on (mirrors the reducer). */
-const OPEN_CHANGE = ["BUILDING", "PAUSED", "READY", "LAUNCHING"];
-
 /** The parts of a drive document startProduct reads. */
 export interface StartProductDrive {
   header: { id: string };
@@ -94,7 +91,12 @@ const defaultDeps: StartProductDeps = {
 interface ProductView {
   idea: string | null;
   initialised: boolean;
-  change: { id: string; chatSessionId: string | null } | null;
+  /** Any change at all (launched, closed and adopted ones included). */
+  hasChanges: boolean;
+  /** A change other than the first build (e.g. adopted BEFORE_VERSIONS). */
+  hasOtherChanges: boolean;
+  /** The first build's conversation, when it has one. */
+  firstBuildSessionId: string | null;
 }
 
 function globalOf(doc: PHDocument | undefined): Record<string, unknown> {
@@ -108,19 +110,40 @@ function productView(doc: PHDocument | undefined): ProductView {
   const g = globalOf(doc) as {
     idea?: string | null;
     createdAt?: string | null;
-    activeChangeId?: string | null;
-    changes?: { id: string; status?: string; chatSessionId?: string | null }[];
+    changes?: { kind?: string; chatSessionId?: string | null }[];
   };
-  const change = (g.changes ?? []).find(
-    (c) => c.id === g.activeChangeId && OPEN_CHANGE.includes(c.status ?? ""),
-  );
+  const changes = g.changes ?? [];
+  const firstBuild = changes.find((c) => c.kind === "FIRST_BUILD");
   return {
     idea: g.idea ?? null,
     initialised: (g.idea ?? null) !== null || (g.createdAt ?? null) !== null,
-    change: change
-      ? { id: change.id, chatSessionId: change.chatSessionId ?? null }
-      : null,
+    hasChanges: changes.length > 0,
+    hasOtherChanges: changes.some((c) => c.kind !== "FIRST_BUILD"),
+    firstBuildSessionId: firstBuild?.chatSessionId ?? null,
   };
+}
+
+/** A conversation listed in the drive; `doc` undefined while not loaded. */
+interface SessionInfo {
+  id: string;
+  doc: PHDocument | undefined;
+}
+
+/**
+ * Whether a product's first start is complete, so the idea box must not
+ * come back (a launched product keeps an old activeChangeId, so this never
+ * looks at the active change). Started once the product has a change other
+ * than the first build, or once any conversation in the drive has a user
+ * message (a first build linked to a missing conversation counts too), or
+ * while a conversation is listed but not loaded (unknown counts as used).
+ */
+function productStarted(
+  product: ProductView,
+  sessions: readonly SessionInfo[],
+): boolean {
+  if (!product.hasChanges) return false;
+  if (product.hasOtherChanges) return true;
+  return sessions.some((s) => !s.doc || hasUserMessage(s.doc));
 }
 
 function messagesOf(doc: PHDocument | undefined): { role?: string }[] {
@@ -165,18 +188,11 @@ export function ideaStartStatus(
   if (product) {
     const doc = byId.get(product.id);
     if (!doc) return "started";
-    const { change } = productView(doc);
-    if (!change?.chatSessionId) return "idea";
-    const session = byId.get(change.chatSessionId);
-    if (!session) {
-      // Not synced yet: started only if the drive already lists it.
-      return filesOfType(drive, CHAT_SESSION_TYPE).some(
-        (n) => n.id === change.chatSessionId,
-      )
-        ? "started"
-        : "idea";
-    }
-    return hasUserMessage(session) ? "started" : "idea";
+    const sessions = filesOfType(drive, CHAT_SESSION_TYPE).map((n) => ({
+      id: n.id,
+      doc: byId.get(n.id),
+    }));
+    return productStarted(productView(doc), sessions) ? "started" : "idea";
   }
   const hasProject = drive.state.global.nodes.some(
     (n) => n.kind === "file" && SPECIFY_TYPES.has((n as FileNode).documentType),
@@ -187,18 +203,6 @@ export function ideaStartStatus(
     return !doc || messagesOf(doc).length > 0;
   });
   return usedSession ? "legacy" : "idea";
-}
-
-/** An existing conversation with no messages, left by an earlier attempt. */
-async function unusedSession(
-  drive: StartProductDrive,
-  deps: StartProductDeps,
-): Promise<string | undefined> {
-  for (const node of filesOfType(drive, CHAT_SESSION_TYPE)) {
-    const doc = await deps.getDocument(node.id);
-    if (doc && messagesOf(doc).length === 0) return node.id;
-  }
-  return undefined;
 }
 
 /* One start per drive at a time: a double submit joins the first one. */
@@ -225,27 +229,33 @@ async function run(
   const product = productNode
     ? productView(await deps.getDocument(productNode.id))
     : null;
-  const change = product?.change ?? null;
+  const listed = filesOfType(drive, CHAT_SESSION_TYPE);
+  const sessions: SessionInfo[] = await Promise.all(
+    listed.map(async (n) => ({ id: n.id, doc: await deps.getDocument(n.id) })),
+  );
 
-  // Finished already: the change's conversation has its first message.
-  if (productNode && change?.chatSessionId) {
-    const session = await deps.getDocument(change.chatSessionId);
-    if (hasUserMessage(session)) {
-      return { productId: productNode.id, sessionId: change.chatSessionId };
-    }
+  // Finished already (also a launched or adopted product): start nothing.
+  if (productNode && product && productStarted(product, sessions)) {
+    return {
+      productId: productNode.id,
+      sessionId: product.firstBuildSessionId ?? "",
+    };
   }
 
   const text = (product?.idea ?? idea).trim();
   if (!text) throw new Error("Describe your idea first.");
   const at = deps.now();
 
+  // The first build's conversation when it is still in the drive; a missing
+  // one is replaced by an unused or new conversation (it can't be relinked).
+  const linked = product?.firstBuildSessionId;
   const sessionId =
-    change?.chatSessionId ??
-    (await unusedSession(drive, deps)) ??
+    (linked && listed.some((n) => n.id === linked) ? linked : undefined) ??
+    sessions.find((x) => x.doc && messagesOf(x.doc).length === 0)?.id ??
     (
       await deps.addDocument(
         driveId,
-        `Session ${filesOfType(drive, CHAT_SESSION_TYPE).length + 1}`,
+        `Session ${listed.length + 1}`,
         CHAT_SESSION_TYPE,
       )
     ).id;
@@ -266,7 +276,7 @@ async function run(
       }),
     );
   }
-  if (!change) {
+  if (!product?.hasChanges) {
     productOps.push(
       productActions.startChange({
         id: deps.newId(),

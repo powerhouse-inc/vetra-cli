@@ -271,16 +271,108 @@ describe("ideaStartStatus", () => {
     // Change linked to a listed session that is not loaded yet.
     s.docs.set("p", {
       activeChangeId: "c",
-      changes: [{ id: "c", status: "BUILDING", chatSessionId: "s" }],
+      changes: [
+        {
+          id: "c",
+          kind: "FIRST_BUILD",
+          status: "BUILDING",
+          chatSessionId: "s",
+        },
+      ],
     });
     s.add("s", CHAT_TYPE, { messages: [] });
     const loaded = s.documents().filter((d) => d.header.id === "p");
     expect(ideaStartStatus(s.drive, loaded)).toBe("started");
-    // Linked session not even listed yet: still resumable.
-    s.docs.set("p", {
+  });
+
+  it("keeps a launched product on its own view", () => {
+    // activeChangeId still points at the LAUNCHED change (never cleared).
+    const s = store();
+    s.add("s", CHAT_TYPE, {
+      messages: [{ role: "USER" }, { role: "ASSISTANT" }],
+    });
+    s.add("p", PRODUCT_TYPE, {
+      idea: "todo app",
       activeChangeId: "c",
-      changes: [{ id: "c", status: "BUILDING", chatSessionId: "gone" }],
+      changes: [
+        {
+          id: "c",
+          kind: "FIRST_BUILD",
+          status: "LAUNCHED",
+          chatSessionId: "s",
+        },
+      ],
+    });
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+  });
+
+  it("keeps an adopted Studio (closed BEFORE_VERSIONS change) on its own view", () => {
+    const s = store();
+    s.add("p", PRODUCT_TYPE, {
+      idea: "old studio",
+      activeChangeId: "a",
+      changes: [
+        {
+          id: "a",
+          kind: "BEFORE_VERSIONS",
+          status: "CLOSED",
+          chatSessionIds: [],
+        },
+      ],
+    });
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+  });
+});
+
+describe("startProduct on launched or broken products", () => {
+  it("starts nothing on a launched product", async () => {
+    const s = store();
+    s.add("s", CHAT_TYPE, { messages: [{ role: "USER" }] });
+    s.add("p", PRODUCT_TYPE, {
+      idea: "todo app",
+      createdAt: AT,
+      activeChangeId: "c",
+      changes: [
+        {
+          id: "c",
+          kind: "FIRST_BUILD",
+          status: "LAUNCHED",
+          chatSessionId: "s",
+        },
+      ],
+    });
+    const result = await startProduct({ drive: s.drive, idea: "x" }, s.deps);
+    expect(result).toEqual({ productId: "p", sessionId: "s" });
+    expect(s.dispatched).toHaveLength(0);
+    expect(s.created).toHaveLength(0);
+  });
+
+  it("sends the first message to a new conversation when the linked one is gone", async () => {
+    const s = store();
+    s.add("p", PRODUCT_TYPE, {
+      idea: "todo app",
+      createdAt: AT,
+      activeChangeId: "c",
+      changes: [
+        {
+          id: "c",
+          kind: "FIRST_BUILD",
+          status: "BUILDING",
+          chatSessionId: "gone",
+        },
+      ],
     });
     expect(ideaStartStatus(s.drive, s.documents())).toBe("idea");
+
+    const result = await startProduct({ drive: s.drive, idea: "" }, s.deps);
+
+    expect(s.created).toEqual([{ name: "Session 1", type: CHAT_TYPE }]);
+    expect(s.dispatched).toEqual([
+      { id: result.sessionId, types: ["ADD_USER_MESSAGE"] },
+    ]);
+    // No loop: the box is gone and a retry starts nothing.
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+    await startProduct({ drive: s.drive, idea: "" }, s.deps);
+    expect(s.dispatched).toHaveLength(1);
   });
 });

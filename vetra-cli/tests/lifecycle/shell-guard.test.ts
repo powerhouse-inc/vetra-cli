@@ -36,6 +36,10 @@ describe("refuseCommand", () => {
     "npm run build",
     "CI=1 pnpm test",
     'sh -c "vitest run"',
+    'bash -lc "cd todo && pnpm test"',
+    "sh -ec 'npx tsc --noEmit'",
+    "node node_modules/.bin/vitest run",
+    "cd todo && node ./node_modules/.bin/eslint .",
   ])("refuses check runner %s", (command) => {
     expect(refuseCommand(command)).toBe(CHECKS_REFUSAL);
   });
@@ -57,6 +61,8 @@ describe("refuseCommand", () => {
     "git status",
     "ls -la",
     "cat package.json | grep vitest",
+    'bash -lc "pnpm install"',
+    "node scripts/seed.js",
   ])("allows %s", (command) => {
     expect(refuseCommand(command)).toBeNull();
   });
