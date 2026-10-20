@@ -11,6 +11,11 @@ import { DOCUMENT_MODEL_TYPE } from "./document-model.js";
 import { withProjectCodegenLock } from "../../helpers/project-lock.js";
 import { phBuildNodeOptions } from "../../helpers/node-memory.js";
 import { findByName, getDocumentsWithPaths } from "./_helpers.js";
+import {
+  attachCheckResults,
+  capReason,
+  type ObservedCheck,
+} from "../../product/check-results.js";
 
 // documentType → `ph generate <subcommand>`. The five builder types each map to
 // a subcommand; domain (vetra-app product) spec types have no codegen path.
@@ -82,6 +87,10 @@ async function generateOne(
   }
 }
 
+function generateResult(passed: boolean, reason: string | null): ObservedCheck {
+  return { kind: "GENERATE", passed, reason: reason ? capReason(reason) : null };
+}
+
 export const specGenerate = defineCommand({
   id: "spec-generate",
   description:
@@ -120,6 +129,8 @@ export const specGenerate = defineCommand({
 
       const generated: { name: string; type: string }[] = [];
       const skipped: { name: string; type: string; reason: string }[] = [];
+      /* Specs whose codegen ran and failed (not those without codegen). */
+      const failed: string[] = [];
 
       for (const { doc, path } of targets) {
         const type = doc.header.documentType;
@@ -144,9 +155,13 @@ export const specGenerate = defineCommand({
             err instanceof Error ? err.message : String(err),
           );
           if (input.name) {
-            throw new Error(`${type} — ${doc.header.name}: ${reason}`);
+            throw attachCheckResults(
+              new Error(`${type} — ${doc.header.name}: ${reason}`),
+              [generateResult(false, `${doc.header.name}: ${reason}`)],
+            );
           }
           skipped.push({ name: doc.header.name, type, reason });
+          failed.push(`${doc.header.name}: ${reason}`);
         }
       }
 
@@ -168,8 +183,11 @@ export const specGenerate = defineCommand({
               `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
           )
           .join("\n  ");
-        throw new Error(
-          `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
+        throw attachCheckResults(
+          new Error(
+            `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
+          ),
+          [generateResult(false, `Generated code has ${summary.errors} error(s): ${head}`)],
         );
       }
 
@@ -201,9 +219,20 @@ export const specGenerate = defineCommand({
         lines.push(`  · ${note}`);
       }
 
-      return {
-        text: lines.join("\n"),
-      };
+      // GENERATE only when some codegen actually ran (Ruling F1).
+      const ranAny = generated.length > 0 || failed.length > 0;
+      const problems = [
+        ...failed,
+        ...(summary.errors > 0
+          ? [`generated code has ${summary.errors} error(s)`]
+          : []),
+      ];
+      return attachCheckResults(
+        { text: lines.join("\n") },
+        ranAny
+          ? [generateResult(problems.length === 0, problems.join("; ") || null)]
+          : [],
+      );
     });
   },
 });

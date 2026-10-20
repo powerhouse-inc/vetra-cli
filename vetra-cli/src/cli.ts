@@ -23,6 +23,7 @@ import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { deployCommands } from './commands/deploy/index.js';
 import { authCommands } from './commands/auth/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
+import { productCommands } from './commands/product/index.js';
 import { reactorProject, proxyBasePathHook } from './services/reactor-project.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
@@ -33,6 +34,7 @@ import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
 import { tsCheck } from './lifecycle/ts-check.js';
 import { serializableToolErrors } from './lifecycle/tool-errors.js';
+import { checkRecorder } from './lifecycle/check-recorder.js';
 import { ensurePh } from './lifecycle/ensure-ph.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { studioRedirectTrigger } from './triggers/studio-redirect.js';
@@ -66,6 +68,7 @@ export const cli = defineCli({
     ...deployCommands,
     ...authCommands,
     ...reactorProjectCommands,
+    ...productCommands,
     ...createAttachmentCommands(),
     agentRun,
     // claude-login / claude-logout / claude-status — Claude.ai subscription
@@ -248,6 +251,10 @@ export const cli = defineCli({
     connectExternalPackagesLayerOrder({
       vetraAppDir: CONNECT_ASSETS_ROOT,
     }),
+    // Records spec-generate / reactor-project-check outcomes as check runs on
+    // the product's active change. Inside tool-errors so its rethrows keep
+    // their serializable message.
+    checkRecorder(),
     // Outermost wrap: thrown tool errors keep their message through JSON
     // serialization to the model. Must stay last to catch inner hooks' throws.
     serializableToolErrors(),

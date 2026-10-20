@@ -11,6 +11,7 @@ import { VETRA_AGENT_IMAGE } from './agent-image.js';
 import { INPUT_TOKEN_CAP, createLlmModels, resolveContextTokenLimit, resolveLlmSettings } from './llm.js';
 import { createNoModelAgent } from './no-model-agent.js';
 import { createReplayAgent } from './replay-agent.js';
+import { bindRecorderContext } from '../lifecycle/check-recorder.js';
 
 /**
  * Agent factory for the CLI.
@@ -22,6 +23,10 @@ import { createReplayAgent } from './replay-agent.js';
  * connect-a-model mode.
  */
 export async function createAgent(ctx: AgentSetupContext<Config>): Promise<AgentProvider> {
+  // The check recorder (a lifecycle tool wrap) reaches the product document
+  // through the agent's command context.
+  bindRecorderContext(ctx.context);
+
   // Deterministic e2e: replay a recorded tool sequence against the real
   // reactor instead of calling an LLM. Gated so it never affects production.
   const replayFixture = process.env.VETRA_REPLAY_FIXTURE;
