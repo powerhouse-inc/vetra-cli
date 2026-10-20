@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from '@jest/globals';
 import type { LifecycleInitContext } from '@powerhousedao/ph-clint';
 import {
@@ -61,12 +62,31 @@ describe('reactor-project --base', () => {
 });
 
 describe('reactor-project --renown-namespace', () => {
-  it('shares the Studio Renown namespace with the preview Connect', () => {
+  // The Studio Connect and the preview Connect are same-origin apps. A shared
+  // Renown namespace means one localStorage session for both, but the preview
+  // Connect verifies it against the project's Renown (www.renown.id), not the
+  // Studio's (RENOWN_URL / cloud Renown). Where those differ, the preview's
+  // boot-time revalidation finds no credential and logs out the shared session:
+  // the Studio's sync goes anonymous mid-session and the switchboard answers
+  // Forbidden (staging 2026-10-20, zesty-ibis). The preview reactor is public
+  // and needs no login, so it gets a namespace of its own.
+  const studioNamespace = (): string => {
+    const pkg = JSON.parse(
+      readFileSync(new URL('../../../vetra-app/package.json', import.meta.url), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    const match = /--renown-namespace\s+(\S+)/.exec(pkg.scripts['build:connect'] ?? '');
+    if (!match) throw new Error('vetra-app build:connect sets no --renown-namespace');
+    return match[1];
+  };
+
+  it('keeps the preview Connect out of the Studio Renown session', () => {
     const { command } = reactorProject;
     if (typeof command !== 'function')
       throw new Error('expected command function');
     const cmd = command({ config: {} } as unknown as Parameters<typeof command>[0]);
-    expect(cmd).toContain('--renown-namespace vetra-studio');
+    const previewNamespace = /--renown-namespace\s+(\S+)/.exec(cmd)?.[1];
+    expect(previewNamespace).toBeDefined();
+    expect(previewNamespace).not.toBe(studioNamespace());
   });
 });
 
