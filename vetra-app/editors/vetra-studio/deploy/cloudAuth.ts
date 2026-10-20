@@ -22,6 +22,9 @@ export function useCloudAuth(): CloudAuth {
     authorized: auth.status === "authorized",
     loading: auth.status === "loading" || auth.status === "checking",
     address: auth.address,
-    login: auth.login,
+    // Wrapped: callers wire this straight to onClick, and useRenownAuth().login
+    // takes an optional wallet session first — the click event would be taken
+    // as that session (and signed in with an undefined address/chain).
+    login: () => auth.login(),
   };
 }
