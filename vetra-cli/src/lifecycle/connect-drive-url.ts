@@ -12,8 +12,8 @@
  *     else the direct switchboard drive URL. Written into the bundle's
  *     runtime config (`powerhouse.config.json` →
  *     `connect.drives.defaultDrives`), which Connect reads at load time.
- *   - Renown URL — the cloud Renown (`cloudRenownUrl`), when configured, into
- *     `connect.renown.url`. The cloud switchboard only accepts a bearer whose
+ *   - Renown URL — RENOWN_URL, else the cloud Renown (`cloudRenownUrl`), else
+ *     the www.renown.id default, into `connect.renown.url`. The cloud switchboard only accepts a bearer whose
  *     delegation credential lives on the Renown it verifies against; logging
  *     in on the bundled www.renown.id puts the credential elsewhere, so every
  *     Deploy-view call 401s ("Credentials no longer valid") on staging. The
@@ -75,15 +75,18 @@ export function connectDriveUrlOnSwitchboardReady(
     onInit(ctx) {
       let handled = false;
 
-      const renownUrl =
-        typeof ctx.config.cloudRenownUrl === "string" &&
-        ctx.config.cloudRenownUrl.trim()
-          ? ctx.config.cloudRenownUrl.trim()
-          : undefined;
-      // Runs before the runtime starts the embedded switchboard, whose
-      // reactor-api reads RENOWN_URL at startup. An explicit RENOWN_URL wins.
+      // ONE Renown for the browser login and the embedded switchboard, or the
+      // studio's own drive rejects its own login. RENOWN_URL wins over
+      // cloudRenownUrl; neither set leaves both on the www.renown.id default.
+      // Set here because onInit runs before the runtime starts the embedded
+      // switchboard, whose reactor-api reads RENOWN_URL at startup.
       const env = options.env ?? process.env;
-      if (renownUrl && !env.RENOWN_URL?.trim()) env.RENOWN_URL = renownUrl;
+      const renownUrl = resolveStudioRenownUrl(
+        env.RENOWN_URL,
+        ctx.config.cloudRenownUrl,
+        ctx.log,
+      );
+      if (renownUrl) env.RENOWN_URL = renownUrl;
 
       const handler = (raw: unknown) => {
         if (handled) return;
@@ -126,7 +129,12 @@ export function connectDriveUrlOnSwitchboardReady(
 
         const bundleDir = path.join(options.vetraAppDir, connectDir);
         try {
-          patchRuntimeConfig(bundleDir, driveUrl, renownUrl, ctx.log);
+          patchRuntimeConfig(
+            bundleDir,
+            driveUrl,
+            renownUrl ?? DEFAULT_CONNECT_RENOWN_URL,
+            ctx.log,
+          );
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           ctx.log.error(`[connect-drive-url] ${message}`);
@@ -157,6 +165,30 @@ export function connectDriveUrlOnSwitchboardReady(
   };
 }
 
+/** The Renown login URL vetra-app's Connect bundle ships with. */
+export const DEFAULT_CONNECT_RENOWN_URL = "https://www.renown.id/";
+
+/**
+ * The Renown both the browser login and the embedded switchboard use:
+ * RENOWN_URL, else cloudRenownUrl (VETRA_CLOUD_RENOWN_URL), else undefined
+ * (both keep the www.renown.id default). Warns when both are set and differ.
+ */
+export function resolveStudioRenownUrl(
+  renownUrlEnv: unknown,
+  cloudRenownUrl: unknown,
+  log: Pick<Log, "warn">,
+): string | undefined {
+  const fromEnv = typeof renownUrlEnv === "string" ? renownUrlEnv.trim() : "";
+  const fromCloud =
+    typeof cloudRenownUrl === "string" ? cloudRenownUrl.trim() : "";
+  if (fromEnv && fromCloud && fromEnv !== fromCloud) {
+    log.warn(
+      `[connect-drive-url] RENOWN_URL (${fromEnv}) and VETRA_CLOUD_RENOWN_URL (${fromCloud}) differ; the studio logs in on and verifies against RENOWN_URL.`,
+    );
+  }
+  return fromEnv || fromCloud || undefined;
+}
+
 /**
  * Points `connect.drives.defaultDrives` in the runtime config at the live
  * drive and, when configured, `connect.renown.url` at the cloud Renown.
@@ -164,7 +196,7 @@ export function connectDriveUrlOnSwitchboardReady(
 function patchRuntimeConfig(
   bundleDir: string,
   driveUrl: string,
-  renownUrl: string | undefined,
+  renownUrl: string,
   log: Log,
 ): void {
   const configFile = path.join(bundleDir, "powerhouse.config.json");
@@ -184,8 +216,7 @@ function patchRuntimeConfig(
 
   const driveChanged =
     current?.url !== driveUrl || drives.defaultDrives?.length !== 1;
-  const renownChanged =
-    renownUrl !== undefined && connect.renown?.url !== renownUrl;
+  const renownChanged = connect.renown?.url !== renownUrl;
 
   if (!driveChanged && !renownChanged) {
     log.debug(

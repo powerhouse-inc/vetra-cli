@@ -78,6 +78,7 @@ describe("connect-drive-url studio.config.json", () => {
 async function runtimeConfigAfterReady(
   config: Record<string, unknown>,
   env: NodeJS.ProcessEnv = {},
+  bundledRenownUrl = "https://www.renown.id/",
 ) {
   const vetraAppDir = mkdtempSync(path.join(tmpdir(), "vetra-app-"));
   const bundleDir = path.join(vetraAppDir, "dist/connect");
@@ -86,15 +87,21 @@ async function runtimeConfigAfterReady(
     path.join(bundleDir, "powerhouse.config.json"),
     JSON.stringify({
       connect: {
-        renown: { url: "https://www.renown.id/" },
+        renown: { url: bundledRenownUrl },
         drives: { defaultDrives: [{ url: "http://__ph_drive__" }] },
       },
     }),
   );
   const handlers: Array<(e: unknown) => void> = [];
+  const log = {
+    warn: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    error: jest.fn(),
+  };
   const ctx = {
     config,
-    log: { warn: jest.fn(), debug: jest.fn(), info: jest.fn(), error: jest.fn() },
+    log,
     eventBus: {
       on: (_: string, h: (e: unknown) => void) => handlers.push(h),
       off: () => {},
@@ -111,36 +118,50 @@ async function runtimeConfigAfterReady(
       drives: { defaultDrives: Array<{ url: string }> };
     };
   };
-  return { runtime, env };
+  return { runtime, env, log };
 }
 
 describe("connect-drive-url Renown instance", () => {
-  it("points Connect's login at the configured cloud Renown", async () => {
-    const { runtime } = await runtimeConfigAfterReady({
-      cloudRenownUrl: "https://renown-staging.vetra.io",
-    });
-    expect(runtime.connect.renown.url).toBe("https://renown-staging.vetra.io");
-    expect(runtime.connect.drives.defaultDrives[0]?.url).toBe(READY.proxy.driveUrl);
-  });
+  const STAGING = "https://renown-staging.vetra.io";
+  const OTHER = "https://renown.example";
+  const DEFAULT = "https://www.renown.id/";
 
-  it("makes the embedded switchboard verify against the same Renown", async () => {
-    const { env } = await runtimeConfigAfterReady({
-      cloudRenownUrl: "https://renown-staging.vetra.io",
-    });
-    expect(env.RENOWN_URL).toBe("https://renown-staging.vetra.io");
-  });
+  it.each([
+    ["neither set", {}, {}, undefined, DEFAULT],
+    ["only cloudRenownUrl", { cloudRenownUrl: STAGING }, {}, STAGING, STAGING],
+    ["only RENOWN_URL", {}, { RENOWN_URL: OTHER }, OTHER, OTHER],
+    ["both, differing (RENOWN_URL wins)", { cloudRenownUrl: STAGING }, { RENOWN_URL: OTHER }, OTHER, OTHER],
+  ] as const)(
+    "%s: browser login and embedded switchboard use the same Renown",
+    async (_, config, env, switchboardUrl, browserUrl) => {
+      const { runtime, env: out } = await runtimeConfigAfterReady(
+        { ...config },
+        { ...env },
+      );
+      expect(out.RENOWN_URL).toBe(switchboardUrl);
+      expect(runtime.connect.renown.url).toBe(browserUrl);
+      expect(runtime.connect.drives.defaultDrives[0]?.url).toBe(
+        READY.proxy.driveUrl,
+      );
+    },
+  );
 
-  it("never overrides an explicit RENOWN_URL", async () => {
-    const { env } = await runtimeConfigAfterReady(
-      { cloudRenownUrl: "https://renown-staging.vetra.io" },
-      { RENOWN_URL: "https://renown.example" },
+  it("warns naming both URLs when they differ", async () => {
+    const { log } = await runtimeConfigAfterReady(
+      { cloudRenownUrl: STAGING },
+      { RENOWN_URL: OTHER },
     );
-    expect(env.RENOWN_URL).toBe("https://renown.example");
+    const warning = String(log.warn.mock.calls[0]?.[0]);
+    expect(warning).toContain(OTHER);
+    expect(warning).toContain(STAGING);
   });
 
-  it("keeps the bundled Renown when no cloud Renown is configured", async () => {
-    const { runtime, env } = await runtimeConfigAfterReady({});
-    expect(runtime.connect.renown.url).toBe("https://www.renown.id/");
-    expect(env).not.toHaveProperty("RENOWN_URL");
+  it("restores the default login when a previous run stamped another Renown", async () => {
+    const { runtime } = await runtimeConfigAfterReady(
+      {},
+      {},
+      "https://renown-staging.vetra.io",
+    );
+    expect(runtime.connect.renown.url).toBe(DEFAULT);
   });
 });
