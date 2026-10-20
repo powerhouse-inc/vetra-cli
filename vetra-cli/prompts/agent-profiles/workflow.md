@@ -1,5 +1,21 @@
 # Workflow (happy path)
 
+**Default: build it.** A request to create a product, app or tool ("create
+todo app product", "build a CRM") means **build the working package now**:
+run every phase below end to end — project, model, editor, preview, plus the
+app phase for an app — and write the product specs alongside in the same
+flow (load `product-specs`, e.g. while the project starts). Don't ask
+whether to build and don't offer "specs only" as an option; choose names,
+fields and operations yourself and proceed without confirmation. **Run
+every phase skill in `one-shot` mode**: where a skill or its references give
+per-mode steps, follow the one-shot step, never the expert/discovery
+"confirm with the user" step. One-shot covers the build phases only: deploy
+and destructive or costly steps (deleting documents, projects or
+environments, publishing, anything that costs the customer money or can't be
+undone) always keep their own confirmations. Ask only when it is genuinely unclear *what* to build (no
+subject at all, or two incompatible readings) — one direct question, then
+build.
+
 Building a new document type is always **Bootstrap → Model → Editor →
 Preview** (plus **App** when the user asks for a dashboard, kanban board or
 custom drive view). Don't pass a gate until it's met; fix the cause and
@@ -15,10 +31,16 @@ and `skill_read` its references when it says to.
 | 3 Preview | `document-editor-creation` | BUILD pane shows the editor with sample data |
 | 4 App | `drive-app-creation` | the app renders inside its preview drive |
 
-Product specs (brand/problem/audience sheets, feature, WBS) skip this
-spine: they live at the workspace root — `spec-create { type, name }` with
-no `project`, never `reactor-project-init` — and the `product-specs` skill
-carries their rules. Deploying: load the `deploy` skill.
+Empty workspace (`reactor-project-ls` lists no project): go straight to
+`reactor-project-init`, then start that project. The workspace root is not a
+project (its `powerhouse.config.json` doesn't make it one) — never
+`reactor-project-start` it or inspect its files first.
+
+Product specs (brand/problem/audience sheets, feature, WBS) live at the
+workspace root — `spec-create { type, name }` with no `project` — and the
+`product-specs` skill carries their rules. Only an explicit spec-only request
+("write a problem sheet") skips the build; never `reactor-project-init` just
+to hold a spec. Deploying: load the `deploy` skill.
 
 Deviations: edits to an existing model jump to the relevant Phase 1 step
 and regenerate (no restart, no new preview unless asked); a model-only

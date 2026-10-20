@@ -144,6 +144,19 @@ async function main(): Promise<void> {
   const toolErrors = chunks
     .filter((c) => c.type === 'tool-result' && c.isError)
     .map((c) => str(c.toolName));
+  // Ordered opening of the turn: assistant text (merged deltas) and tool calls
+  // with truncated args — enough to see whether the agent built or asked.
+  const opening: string[] = [];
+  for (const c of chunks) {
+    if (opening.length >= 12) break;
+    if (c.type === 'text-delta') {
+      const last = opening.length - 1;
+      if (last >= 0 && opening[last].startsWith('text: ')) opening[last] += str(c.text);
+      else opening.push(`text: ${str(c.text)}`);
+    } else if (c.type === 'tool-call') {
+      opening.push(`tool: ${str(c.toolName)} ${str(c.args ?? c.input).slice(0, 160)}`);
+    }
+  }
   const errors = chunks.filter((c) => c.type === 'error').map((c) => redact(str(c.error)).slice(0, 300));
 
   const result = {
@@ -164,6 +177,7 @@ async function main(): Promise<void> {
     toolCalls,
     toolErrors,
     previewShown: toolCalls.includes('spec-preview-show'),
+    opening: opening.map((o) => redact(o).slice(0, 1200)),
     errors,
     ...(code !== 0 ? { stderrTail: redact(stderrTail.slice(-1500)) } : {}),
   };

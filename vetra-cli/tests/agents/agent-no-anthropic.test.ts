@@ -42,6 +42,7 @@ jest.unstable_mockModule("@powerhousedao/ph-clint-claude-subscription", () => ({
     throw new Error("claude session must not be read");
   },
 }));
+let wrapOpts: { maxSteps?: number } | undefined;
 jest.unstable_mockModule("@powerhousedao/ph-clint/mastra", () => ({
   createMastraHelpers: () => ({
     createMemory: async (o: { observationalMemory: { model: unknown } }) => {
@@ -51,7 +52,10 @@ jest.unstable_mockModule("@powerhousedao/ph-clint/mastra", () => ({
     getAgentInstructions: () => "",
     getTools: async () => ({}),
     createWorkspace: async () => ({}),
-    wrapAgent: (a: unknown) => a,
+    wrapAgent: (a: unknown, o: { maxSteps?: number }) => {
+      wrapOpts = o;
+      return a;
+    },
   }),
 }));
 
@@ -108,5 +112,8 @@ describe("agent models with an OpenRouter key", () => {
     // the hardcoded claude-sonnet-4-5 sub-agent id is gone: sub-agents follow the configured model
     for (const a of agentModels) expect((a.model as { modelId: string }).modelId).toBe("anthropic/claude-sonnet-4.6");
     expect((memoryModel as { modelId: string }).modelId).toBe("anthropic/claude-haiku-4.5");
+    // R20: a first build (project → model → editor → app → preview) must fit in
+    // one turn; 40 steps ran out before preview on staging.
+    expect(wrapOpts?.maxSteps).toBe(80);
   });
 });

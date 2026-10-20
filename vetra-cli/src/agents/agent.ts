@@ -113,7 +113,10 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
 
   const store = createWorkdirStore(ctx.workdir, CLI_NAME);
   const wrapOpts: WrapAgentOptions = {
-    maxSteps: 40,
+    // A first build (project → model → editor → app → preview) needs ~60–80
+    // steps; at 40 the staging "create todo app product" run stopped before
+    // preview (R20).
+    maxSteps: 80,
     enableLogging: ctx.config.agentLogging,
     logDirectory: store.getStoreFolder('logs'),
     // No cacheControl here: ph-clint sends it as providerOptions.anthropic,
