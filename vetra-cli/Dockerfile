@@ -78,6 +78,12 @@ RUN set -eu; \
     rm -f "$DIST/powerhouse.config.json.br" "$DIST/powerhouse.config.json.gz" \
           "$DIST/studio.config.json.br" "$DIST/studio.config.json.gz"
 
+# `ph init` (ph-cli >= 6.2.3-dev.66) formats the new project with
+# `npm exec oxfmt@…`, which asks "Ok to proceed?" unless CI is set — without a
+# TTY that waits forever, both in this build and when the agent runs
+# reactor-project-init in a Studio. Answer yes for every npm exec.
+ENV npm_config_yes=true
+
 # Install ph-cmd separately so the `ph init` template prewarm below has the
 # --template-capable binary on PATH, and bake a scaffolded reactor-project
 # that runtime inits clone via `ph init --clone`. The cost of the install
