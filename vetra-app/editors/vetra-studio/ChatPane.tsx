@@ -7,12 +7,12 @@ import {
   type IAttachmentService,
 } from "@powerhousedao/reactor-attachments";
 import {
-  addDocument,
   DEFAULT_SWITCHBOARD_URL,
   useDefaultDrivesUrl,
   usePHToast,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
+import { addAgentWritableDocument } from "./addAgentWritableDocument.js";
 import { useSafeDocument } from "./SafeDocument.js";
 import type {
   DocumentDriveAction,
@@ -171,7 +171,11 @@ function useCreateSession(
     setCreating(true);
     try {
       const name = `Session ${sessionCount + 1}`;
-      const node = await addDocument(driveId, name, CHAT_SESSION_DOCUMENT_TYPE);
+      const node = await addAgentWritableDocument(
+        driveId,
+        name,
+        CHAT_SESSION_DOCUMENT_TYPE,
+      );
       onCreated(node.id);
     } catch (err) {
       const message =

@@ -1,6 +1,5 @@
 import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
-  addDocument,
   useDocumentSafe,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
@@ -10,6 +9,7 @@ import type {
   FileNode,
 } from "@powerhousedao/shared/document-drive";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { addAgentWritableDocument } from "./addAgentWritableDocument.js";
 import { AgentAuthButton } from "./AgentAuthButton.js";
 import { StudioBudgetMeter } from "./budget/BudgetMeter.js";
 import { BuildSection } from "./BuildSection.js";
@@ -210,7 +210,7 @@ export function VetraStudio({
           n.kind === "file" &&
           (n as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
       ).length;
-      const node = await addDocument(
+      const node = await addAgentWritableDocument(
         document.header.id,
         `Session ${count + 1}`,
         CHAT_SESSION_DOCUMENT_TYPE,

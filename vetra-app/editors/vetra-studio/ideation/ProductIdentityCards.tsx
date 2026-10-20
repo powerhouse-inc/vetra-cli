@@ -1,9 +1,10 @@
-import { addDocument, usePHToast } from "@powerhousedao/reactor-browser";
+import { usePHToast } from "@powerhousedao/reactor-browser";
 import type {
   DocumentDriveDocument,
   FileNode,
 } from "@powerhousedao/shared/document-drive";
 import { useState } from "react";
+import { addAgentWritableDocument } from "../addAgentWritableDocument.js";
 import type { OpenTarget } from "./types.js";
 
 const IDENTITY = [
@@ -63,7 +64,7 @@ function IdentityCard({
     if (creating) return;
     setCreating(true);
     try {
-      const created = await addDocument(driveId, label, type);
+      const created = await addAgentWritableDocument(driveId, label, type);
       onOpen({ id: created.id, documentType: type, name: label });
     } catch (err) {
       toast?.(
