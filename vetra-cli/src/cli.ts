@@ -120,7 +120,7 @@ export const cli = defineCli({
     },
     skills: {
       'deploy': {
-        description: 'Build, publish, and deploy a Reactor package to a Vetra Cloud environment — reuse or create an environment, install the package, return the live links, and answer deployment status questions (is the package published, installed, or the environment ready).',
+        description: 'Only for an explicit request to deploy to a named environment (Studio products go live by themselves). Build, publish, and deploy a Reactor package to a Vetra Cloud environment — reuse or create an environment, install the package, return the live links, and answer deployment status questions (is the package published, installed, or the environment ready).',
         inputSchema: z.object({
           mode: z
             .enum(['expert', 'discovery', 'one-shot'])

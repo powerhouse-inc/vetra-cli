@@ -14,7 +14,12 @@ import { AgentAuthButton } from "./AgentAuthButton.js";
 import { StudioBudgetMeter } from "./budget/BudgetMeter.js";
 import { BuildSection } from "./BuildSection.js";
 import { ChatPane, CHAT_SESSION_DOCUMENT_TYPE } from "./ChatPane.js";
+import {
+  ProductDebugPanel,
+  isProductDebugEnabled,
+} from "./debug/ProductDebugPanel.js";
 import { DeploySection } from "./DeploySection.js";
+import { canStartFromIdea, startProduct } from "./idea/startProduct.js";
 import { IdeationSection } from "./IdeationSection.js";
 import { PhaseCycle } from "./PhaseCycle.js";
 import { SpecifySection } from "./specify/SpecifySection.js";
@@ -237,6 +242,15 @@ export function VetraStudio({
   // gates the session-scoped edit-follow on local sync (see below).
   // `undefined` until the drive loads (ChatPane reads it as `driveLoaded`).
   const documents = useDriveDocuments();
+
+  // Temporary (M0): a new Studio (no product, conversation or project) starts
+  // its first conversation from the idea typed into the chat pane.
+  const startFromIdea =
+    documents !== undefined && canStartFromIdea(document)
+      ? async (idea: string) =>
+          (await startProduct({ drive: documentRef.current, idea })).sessionId
+      : undefined;
+  const [showProductDebug] = useState(isProductDebugEnabled);
 
   // Restore `?doc=` once the drive hydrates: the initializer resolves against
   // the node list, which may be empty on first render (nodes arrive after
@@ -496,6 +510,7 @@ export function VetraStudio({
           selectedSessionId={selectedSessionId}
           onSelectSession={setSelectedSessionId}
           driveLoaded={documents !== undefined}
+          onStartFromIdea={startFromIdea}
         />
       </aside>
       <div
@@ -564,6 +579,7 @@ export function VetraStudio({
           </div>
         )}
         <LearnWhileYouWait activeDocumentType={activeEditType} />
+        {showProductDebug ? <ProductDebugPanel drive={document} /> : null}
       </main>
       {isDragging ? (
         /* Catches mouse events that would otherwise route into the BUILD

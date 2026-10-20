@@ -60,6 +60,9 @@ export type ChatPaneProps = {
    *  Until then a session absent from `nodes` is sync lag, not a missing
    *  record, so "not found" must wait. */
   driveLoaded: boolean;
+  /** Temporary (M0): on a new Studio the empty state takes the idea and this
+   *  starts the product from it; resolves to the first conversation's id. */
+  onStartFromIdea?: (idea: string) => Promise<string>;
 };
 
 export function ChatPane({
@@ -67,6 +70,7 @@ export function ChatPane({
   selectedSessionId,
   onSelectSession,
   driveLoaded,
+  onStartFromIdea,
 }: ChatPaneProps) {
   const sessions = document.state.global.nodes.filter(
     (node): node is FileNode =>
@@ -152,6 +156,7 @@ export function ChatPane({
       driveId={document.header.id}
       sessions={sessions}
       onSelectSession={onSelectSession}
+      onStartFromIdea={onStartFromIdea}
     />
   );
 }
@@ -194,9 +199,15 @@ type SessionListProps = {
   driveId: string;
   sessions: FileNode[];
   onSelectSession: (sessionId: string) => void;
+  onStartFromIdea?: (idea: string) => Promise<string>;
 };
 
-function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
+function SessionList({
+  driveId,
+  sessions,
+  onSelectSession,
+  onStartFromIdea,
+}: SessionListProps) {
   const [, startTransition] = useTransition();
   const [pendingSessionId, setPendingSessionId] = useState<string | undefined>(
     undefined,
@@ -245,7 +256,9 @@ function SessionList({ driveId, sessions, onSelectSession }: SessionListProps) {
           )}
         </button>
       </header>
-      {sessions.length === 0 ? (
+      {sessions.length === 0 && onStartFromIdea ? (
+        <IdeaStart onStart={onStartFromIdea} onStarted={selectSession} />
+      ) : sessions.length === 0 ? (
         <EmptyState
           onNewSession={() => void createSession()}
           creating={creating}
@@ -324,6 +337,73 @@ function EmptyState({
         <span>{creating ? "Creating…" : "New session"}</span>
       </button>
     </div>
+  );
+}
+
+/** Temporary (M0) first conversation from the idea; M1 replaces it with the
+ *  idea screen. */
+function IdeaStart({
+  onStart,
+  onStarted,
+}: {
+  onStart: (idea: string) => Promise<string>;
+  onStarted: (sessionId: string) => void;
+}) {
+  const [idea, setIdea] = useState("");
+  const [starting, setStarting] = useState(false);
+  const toast = usePHToast();
+
+  async function submit() {
+    const text = idea.trim();
+    if (!text || starting) return;
+    setStarting(true);
+    try {
+      const sessionId = await onStart(text);
+      if (sessionId) onStarted(sessionId);
+    } catch (err) {
+      toast?.(err instanceof Error ? err.message : "Could not start", {
+        type: "error",
+      });
+      console.error("Failed to start the product", err);
+      setStarting(false);
+    }
+  }
+
+  return (
+    <form
+      className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <VetraMitosis size={48} active={starting} />
+      <div className="text-sm font-medium text-foreground">
+        What will you build today?
+      </div>
+      <textarea
+        value={idea}
+        onChange={(e) => setIdea(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            void submit();
+          }
+        }}
+        rows={3}
+        disabled={starting}
+        placeholder="Describe your idea"
+        aria-label="Your idea"
+        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-vetra-primary"
+      />
+      <button
+        type="submit"
+        disabled={starting || !idea.trim()}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-vetra-primary px-3 py-1.5 text-xs font-medium text-vetra-primary-fg shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {starting ? "Starting…" : "Build it"}
+      </button>
+    </form>
   );
 }
 
