@@ -50,9 +50,9 @@ Each goal has a check the builder can run on staging. "Standard prompt" = `creat
 - **G4 No dead ends.** Every failure state in §5.9 shows a plain reason and at least one action that moves forward (Retry, Continue, Request budget, Reconnect, Undo). *Check:* each failure state has an E2E or component test that asserts the reason text and a working action.
 - **G5 Ships by itself.** The first version goes live automatically when its checks pass. The customer never has to understand GitHub, registries, images or environments to get a live URL. *Check:* E2E reaches Live with GitHub **not** connected.
 - **G6 Safe change.** After launch, every change is built in a preview next to the live app; the live app is untouched until the customer presses **Make it live**; that takes ≤ 3 min to be live (median). *Check:* E2E: change request → preview shows the change, live URL still shows the old version → Make it live → live URL shows the change.
-- **G7 Every launch is a version you can go back to.** The Versions list shows every launch with a title, time and who/what made it; **Go back** to any compatible version takes ≤ 3 min and loses no customer data. *Check:* E2E: launch v2, create documents in the live app, roll back to v1, roll forward to v2: all documents present and readable in v2.
+- **G7 Every launch is a version you can go back to.** The Versions list shows every launch with a title, time and who/what made it; **Go back** to any compatible version takes ≤ 3 min and loses no customer data. *Check:* E2E: launch v1; create documents in the live product drive (§6.7); launch v2 (adds a field, no new operation); create more documents; Go back to v1 succeeds and every document is present and readable; roll forward to v2, all still readable. Then launch v3 adding a new operation, use it in the product drive, and confirm Go back to v2 is refused with "Undo with the agent" (scoped to that drive's documents) and nothing changed.
 - **G8 The agent proposes the next improvement.** After each launch the product view offers 2–3 concrete improvement suggestions; one click starts that change. *Check:* suggestions appear after launch in the E2E; clicking one starts a change.
-- **G9 GitHub works without thinking about it.** When connected, every launch is a commit + tag in the customer's repo, in a personal account **or an organisation**. When not connected, nothing is blocked and the code is still safe. *Check:* staging E2E with `froid1911` (personal) and `web3-berlin` (org).
+- **G9 GitHub works without thinking about it.** When connected, every launch is a commit + tag in the customer's repo, in a personal account **or an organisation** (the Deploy app's `createStudioApp` path already creates org repos; the work is making the Studio use that path and retiring the Studio's own personal-only GitHub app). When not connected, nothing is blocked and the code is still safe. *Check:* staging E2E with `froid1911` (personal) and `web3-berlin` (org).
 - **G10 Cheaper, shorter builds.** A full first build of the standard prompt finishes in ≤ 60 agent steps (today 80+, hitting the cap) and ≤ $0.20 at the configured model. *Check:* step count and cost recorded by the E2E harness.
 - **G11 Existing Studios keep working.** Every existing staging and prod Studio opens in the new experience with its work intact (specs, models, editors, chats, environments, GitHub connection). *Check:* upgrade test on a copy of `rapid-fox` (staging) and `vivid-slug` (prod) before prod rollout.
 
@@ -183,7 +183,7 @@ When Tests turn ✓ on the first build, Live starts by itself (designer's call D
   3. "Starting your live app at **hotel-breakfast.vetra.io**" (environment rolled out)
   4. "Checking it's up" (health check of the live URL)
 - Because the live environment is prepared in the background during the build (designer's call D8), steps 3–4 usually take 1–3 min, not 5–10.
-- Done: confetti-free but unmistakable — the page transitions to state 2 with the live app filling the screen and a one-time banner: **"Your product is live."** `hotel-breakfast.vetra.io ↗` · **Copy link** · "Anyone with the link can sign in and use it."
+- Done: confetti-free but unmistakable — the page transitions to state 2 with the live app filling the screen and a one-time banner: **"Your product is live."** `hotel-breakfast.vetra.io ↗` · **Copy link** · "Anyone with the link can sign in and use it." · **Change who can use it** (opens the access setting, §6.7)
 
 If the customer has left the page, the launch still happens (it runs server-side, §7). On return they land in state 2 with "Went live 12 min ago" in the banner.
 
@@ -203,7 +203,7 @@ If the customer has left the page, the launch still happens (it runs server-side
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **What fills the screen:** the live product as its users see it (the live Connect with the product's app/drive open), embedded. Designer's call D12: embedded live app, with "Open in new tab ↗" — if embedding is blocked (auth, frame policy) the Studio shows the preview of the current version instead, labelled "Preview of Version 3 — open the live app ↗".
+- **What fills the screen:** the live product as its users see it: the live Connect opened on the **product drive** (§6.7), with the product's app view if it has one, otherwise the drive's document list, embedded. Designer's call D12: embedded live app, with "Open in new tab ↗" — if embedding is blocked (auth, frame policy) the Studio shows the preview of the current version instead, labelled "Preview of Version 3 — open the live app ↗".
 - **"Change something"** bubble bottom-right. Opens a drawer (right side, ~40%) with the story of past changes grouped by version ("Version 3 — Added a Ready column") and an input: **"What should change?"**. Below the input: the agent's suggestions as chips (§5.8).
 - **Version 3 ▾** opens the Versions panel (§5.7).
 - **Settings** (gear in the account menu): name, live address (read-only in P2/P3), GitHub, budget, Advanced (the old environments/deploy views for power users and existing deployments; §6.6).
@@ -237,7 +237,7 @@ Versions
 ```
 
 - Each version: number, title (the agent writes a short title from the change), time, who launched it, and "What changed" expandable (the agent's summary + the list of changed files; link to the GitHub commit when connected).
-- **Go back** → confirm: "Make Version 2 live again? Your users' documents stay as they are. Changes made after Version 2 aren't deleted — you can come back to Version 4 any time." → launch of the older version (§7.4). The panel then shows Version 2 as live and Versions 3–4 still listed (a rollback never deletes versions).
+- **Go back** → confirm: "Make Version 2 live again? Your users' documents stay as they are. Changes made after Version 2 aren't deleted — you can come back to Version 4 any time." → launch of the older version (§6.5). The panel then shows Version 2 as live and Versions 3–4 still listed (a rollback never deletes versions).
 - A rollback the data can't survive is not offered as a plain button (designer's call D6): the row says "Can't go back automatically: Version 3 added data your users have already used. Ask the agent to undo the change instead." with a button **Undo with the agent** that starts a change "Undo 'Ready column' but keep existing data".
 - After a rollback, the next change starts from the live version's code (the customer's mental model: "I continue from what's live"); the newer versions remain available to go back to.
 
@@ -293,6 +293,7 @@ Every failure: strip step shows `!` or `✕`, the story has a line with a plain 
 | Copy of the code off the Studio | the customer's **GitHub repo**, mirrored on every launch (when connected) | backup + the customer owns their code |
 | What's live, launch records, rollback | **cloud: `vetra-apps` App + AppDeployments** (already has production env, deployment history, statuses, `rollbackApp`) | source of truth for "what runs"; works when the browser is closed |
 | The live environment | a `vetra-cloud-environment` document (the App's production environment), Connect + Switchboard, Connect at the apex (`apexService = CONNECT`) so `<slug>.vetra.io` opens the product | existing env pipeline (Argo etc.) unchanged |
+| Live data (what the product's users create) | **one product drive** on the production environment, owned by the Studio owner (§6.7) | one obvious place for the live app to open; scopes the data-compatibility check |
 | Published code | the packages in the registry the stack installs from (`registry.vetra.io`), one package version per launch | registry versions are immutable → rollback is exact |
 
 The product document is the UI's single read model for the strip, story chapters and Versions list. Where it and the cloud disagree about what's live (e.g. a launch finished while the Studio was down), the cloud wins and the Studio reconciles the document on load.
@@ -317,21 +318,23 @@ Launch of version N (server-side, can run with the browser closed):
 
 1. **Snapshot** — the Studio commits the working tree on `main`, tags `v<N>`; records sha.
 2. **Publish** — the Studio publishes each package in the workspace at a new version (one per launch; e.g. `0.N.0` **(guess at scheme)**) to the stack registry. Registry versions are immutable.
-3. **Deploy** — the Studio calls a new `vetra-apps` operation (working name `launchStudioVersion(appId, sha, gitTag, packages)`) authorised by the Studio's agent identity that the owner allowed (§5.3), which records an `AppDeployment` (kind PRODUCTION) and runs the existing `performDeploy` (set package versions on the production env, approve). The cloud's watcher moves the deployment PENDING → DEPLOYING → READY/FAILED as today.
+3. **Deploy** — the Studio calls a new `vetra-apps` operation (working name `launchStudioVersion(appId, sha, gitTag, packages)`) authorised through the Studio agent path below, which records an `AppDeployment` (kind PRODUCTION) and runs the existing `performDeploy` (set package versions on the production env, approve). The cloud's watcher moves the deployment PENDING → DEPLOYING → READY/FAILED as today.
 4. **Verify** — READY plus an HTTP check of the live URL. FAILED → §5.9 "Couldn't go live"; the env keeps the previous package versions (the builder verifies the env pipeline does not leave a half-applied state; if it can, the launch automatically re-applies the previous version).
 5. **Mirror** — push `main` + tag to GitHub if connected (failure doesn't fail the launch).
 6. **Record** — the product document gets Version N with the deployment id; suggestions are written.
 
-First launch also creates the App (repo optional, §8) and the production environment. Designer's call D8: create the App + production environment when the plan is done (minute ~1), not at the end, so the environment is up by the time Tests pass; an App never launched is cleaned up after 14 days **(guess)**.
+First launch also creates the App (repo optional, §8) and the production environment. Designer's call D8: create the App + production environment when the plan is done (minute ~1), not at the end, so the environment is up by the time Tests pass; an App never launched is cleaned up after 14 days **(guess)**. The first launch also creates and seeds the product drive (§6.7).
+
+**Who may launch and roll back (designer's call D20).** Today owner operations (`rollbackApp`, deploys by a person) go through `loadAppForOwner`, which refuses App identities (`assertNotWorkload`, `vetra-apps/service.ts:222-229`), and CI deploys are bound to a GitHub run's claims. Neither fits the Studio agent. New explicit path: **the Studio agent may launch and roll back only the App bound to its own Studio** (`apps.studio_environment_id` = the agent's Studio), acting on the owner's behalf under the permission the owner gave once (§5.3, renewable). The cloud checks the binding and that the permission is current on every call, and records on each `AppDeployment` both the owner (on whose behalf) and the trigger (`actorDid` = agent identity; a new `trigger` field: `studio-launch`, `studio-rollback`, `owner`, `ci`). The owner can also launch/roll back in person from the browser (existing owner path). Nothing else is opened to App or agent identities.
 
 **Preview.** The Studio's own preview server (already there) is the preview copy. No cloud preview environment per change in P2/P3 (the `PREVIEW` kind and PR previews remain for developer Apps). Consequence: previews show sample data, not live data, and can only be seen inside the Studio. This is enough for "preview next to live" for one person; shareable previews are P6.
 
-**Rollback** = `rollbackApp(deploymentId)` (exists: re-deploys a READY deployment's packages to production), extended to Studio launches; plus the product document marks which version is live; plus the Studio resets its working tree to the target tag on a branch so the next change starts from what's live (the newer commits stay reachable by their tags).
+**Rollback** = `rollbackApp(deploymentId)` (exists: re-deploys a READY deployment's packages to production), extended to Studio launches and callable through the Studio agent path above; plus the product document marks which version is live; plus the Studio resets its working tree to the target tag on a branch so the next change starts from what's live (the newer commits stay reachable by their tags).
 
 **Data compatibility gate** (designer's call D6, MVP-blocker for G7):
 
 - At launch: compare each document model's state schema and operations in version N with the live version. Additive changes (new optional fields, new operations, new models) launch normally. Anything else (removed/renamed fields or operations, changed types, new required fields without default) blocks Make it live with a plain explanation, and the agent is told to make the change additive (or use the Powerhouse model-versioning upgrade path where it is supported; the builder checks what the 6.2.3 train supports).
-- At rollback: going back from N to M is offered only if no live document uses something M doesn't know (operations or model versions introduced after M). The check needs a cheap query against the live switchboard ("which operation types exist for model X since timestamp T") — the builder finds the cheapest honest source. Otherwise "Undo with the agent" (§5.7).
+- At rollback: going back from N to M is offered only if no document in the **product drive** uses something M doesn't know (operation types or model versions introduced after M). Scope is that drive's documents only (the drive is the product's data, §6.7), which keeps the check a bounded query against the live switchboard — the builder finds the cheapest honest source (e.g. the distinct operation types per document type in that drive). Otherwise "Undo with the agent" (§5.7).
 - Rollback never rewrites or deletes documents. Ever.
 
 ### 6.6 Existing Studios (G11)
@@ -345,7 +348,15 @@ On first open with the new experience:
 - Existing `vetra-github-auth` connections (one repo per Studio) are carried over (§8).
 - Nothing is migrated silently that could break: the upgrade only *adds* the product document and git tags.
 
-### 6.7 What is automatic
+### 6.7 The live product's data (designer's call D21)
+
+- **One product drive.** At the first launch the cloud creates one drive on the production environment, named after the product, owned by the Studio owner (signed as the owner's operation via the D20 path, or by the owner's browser if the permission doesn't cover it — builder checks the drive's ownership rules). Its id is stored on the App and in the product document. Later launches and rollbacks never recreate or touch it.
+- **Seeding.** The drive is created with the product's app view as its editor (if the product has one) and with a small starter set of documents from the agent's preview sample data, marked as examples ("Example — delete me") so the first visitor never sees an empty product. Seeding happens once, at first launch; the agent writes the starter set as part of the Tests step so it is checked like everything else.
+- **What the embed opens.** The live URL `<slug>.vetra.io` and the Studio's embedded product view both open this drive directly (app view if present, otherwise the document list) — never the Connect home with an empty drive list.
+- **Access.** Default: anyone with the link can open the product and use it after signing in with Renown; writing always needs sign-in; anonymous visitors get read-only access if the drive/switchboard policy supports it, otherwise a sign-in prompt. The owner can switch it to **owner-only** in Settings (and back). The CEO may change the default (Q3).
+- **Compatibility scope.** The data-compatibility checks (§6.5) look only at the documents in this drive: launch checks the model diff; rollback checks the operation types and model versions used by this drive's documents.
+
+### 6.8 What is automatic
 
 | Automatic | Needs one click | Never automatic |
 |---|---|---|
@@ -376,7 +387,7 @@ vetra-apps (cloud) ── App, AppDeployments, watcher ── production env doc
         └────────────────── status (READY/FAILED) ◄────────── live app at <slug>.vetra.io
 ```
 
-Launch and rollback run in the Studio agent process and the cloud, never in the browser, so a closed tab doesn't stop them (§5.5). The browser only signs what must be signed by the owner in person (the one-time "Allow publishing").
+Launch and rollback run in the Studio agent process and the cloud, never in the browser, so a closed tab doesn't stop them (§5.5). The browser only signs what must be signed by the owner in person (the one-time "Allow publishing", and owner-only changes to the product drive's access).
 
 ---
 
@@ -385,11 +396,11 @@ Launch and rollback run in the Studio agent process and the cloud, never in the 
 Designer's call D14: **one GitHub connection per customer, made at most once, never on the critical path.**
 
 - **When asked:** never before the first launch. After the first launch, the product view's status line says "Code saved in your Studio · **Connect GitHub**", and the Live step detail explains in one sentence: "Keep a copy of your code in your own GitHub account. Every launch becomes a commit you can see." Connecting is optional; nothing else changes.
-- **One app, not two.** Today there are two GitHub Apps: the Studio's (`vetra-github-auth`, device flow, push tokens, personal repo per Studio) and *Vetra Deploy* (`vetra-apps`, installations, `createStudioApp`, behind a vetra.io feature flag). The customer must see one. The builder consolidates on one of them (recommendation: the installation-based Deploy app, because installations can live on organisations and it already backs Apps; the Studio mints push tokens from the same installation). Existing Studio connections are migrated or keep working until migrated — no customer action needed.
+- **One app, not two.** Today there are two GitHub Apps: the Studio's (`vetra-github-auth`, device flow, push tokens, personal repo per Studio) and *Vetra Deploy* (`vetra-apps`, installations, `createStudioApp`, behind a vetra.io feature flag). The customer must see one. The builder consolidates on one of them (decided: keep the installation-based Deploy app — it already creates personal and org repos and backs Apps; the Studio mints its push tokens from the same installation; `vetra-github-auth`'s repo creation is retired). Existing Studio connections are migrated or keep working until migrated — no customer action needed.
 - **Server-side.** The connection flow can be a GitHub install/authorise redirect or the device flow — whichever needs fewer steps from inside the Studio; the token handling stays server-side (no tokens in the browser or in the workspace beyond short-lived push tokens, as today).
-- **Personal and organisation accounts (G9).** When connecting, the customer picks where the code goes: their account or any organisation where the app is installed (the list comes from installations). Org repos are created with the org repo API, not `/user/repos` (today's limitation in both `vetra-github-auth` and `createStudioApp`). Org policy refusals (app not allowed, repo creation restricted to owners) show the Foundation G5 error codes in plain words with the next step ("Ask an owner of web3-berlin to allow Vetra, or choose your personal account").
+- **Personal and organisation accounts (G9).** When connecting, the customer picks where the code goes: their account or any organisation where the app is installed (the list comes from installations). The Deploy app's `createStudioApp` already creates org repos (`vetra-apps/github.ts:513-517` posts to `/orgs/{login}/repos` for organisation accounts); only the Studio's own app (`vetra-github-auth/github-app.ts:263`) is limited to `/user/repos`. So org support comes from keeping the Deploy app's path and retiring/merging the other, not from new repo code. Org policy refusals (app not allowed, repo creation restricted to owners) show the Foundation G5 error codes in plain words with the next step ("Ask an owner of web3-berlin to allow Vetra, or choose your personal account").
 - **Repo:** private, named after the product slug (taken → suffix), description "<name> — built with Vetra Studio". Existing history is pushed in full on connect (all version tags).
-- **Edits made on GitHub** (someone pushes to `main`): designer's call D15 — the Studio detects it (webhook already exists) and shows "There are changes on GitHub that aren't in your Studio" with **Bring them in** (the agent merges them into the next change). They are never launched automatically. No CI deploy workflow is committed for Studio products (the existing workflow template remains for developer Apps).
+- **Edits made on GitHub** (someone pushes to `main`): designer's call D15 — the Studio detects it and shows "There are changes on GitHub that aren't in your Studio" with **Bring them in** (the agent merges them into the next change). They are never launched automatically. No CI deploy workflow is committed for Studio products (the existing workflow template remains for developer Apps). This needs **new** `push` handling: the `vetra-apps` webhook today only handles closed pull requests, deleted installations and removed repositories (`webhook.ts`), so the builder adds a `push`-to-production-branch handler that ignores the Studio's own mirror pushes (by sha) and flags the rest on the product.
 - **Disconnect/revoke/delete repo:** status line shows it, nothing is blocked, history stays in the Studio's git.
 
 ---
@@ -434,12 +445,16 @@ Each can be overridden; each line says why.
 - **D17 Each change is its own conversation; the story shows them as chapters.** Smaller context per change (cheaper, faster), and history reads as product history.
 - **D18 Previews show sample data only.** Copying live data into a preview raises privacy and size questions that belong to a later project.
 - **D19 The live address is fixed at first launch (slug of the name); renaming the product doesn't change it.** Links people already shared must keep working.
+- **D20 The Studio agent may launch and roll back only its own Studio's App, on the owner's behalf, with the trigger recorded.** Automatic launch needs a non-browser actor; binding it to one App keeps the blast radius to the product it built.
+- **D21 One product drive per live product, owned by the Studio owner; open to anyone with the link after Renown sign-in by default, switchable to owner-only.** The live app needs one obvious home for its data, the demo needs investors to try it, and scoping data checks to one drive keeps them cheap and exact.
 
 ## 11. Open questions for the CEO (only these change what gets built)
 
 1. **Where does the code live before the customer connects GitHub?** Default (D14): in the Studio only (git on the Studio's disk, plus the published packages), GitHub when they connect. Alternative: every product gets a private repo in a Vetra-owned GitHub organisation from the first build, transferable to the customer later — "GitHub ✓" from minute one, but we hold customer code.
 2. **Is a live product included in the Studio, or does going live need a paid plan?** Default: included (one live environment per Studio), within the existing budget limits. If it needs a plan, a payment step sits in front of the first launch and the "ships by itself" demo needs a pre-paid demo account.
-3. **Who can use the live product?** Default: anyone with the link can open it and sign in with Renown. Alternative: only the owner (and later invited people, P6) — then the demo shows the product, but investors can't try it on their phones.
+3. **Who can use the live product?** Default: anyone with the link can open it and sign in with Renown. Alternative: only the owner (and later invited people, P6) — then the demo shows the product, but investors can't try it on their phones. (D21 sets the default and gives the owner the switch; the CEO can change the default.)
+4. **Demo date, and does it need prod by then?** Default: prod after M3 (idea → live → change → go back works on prod); M4 (org GitHub) follows. A date earlier than M3 on staging changes the order.
+5. **May the staging switchboard move forward to the Studio's Powerhouse dev line?** Its migrations are forward-only and it affects every staging tenant. Default: yes — M0 assumes it.
 
 ## 12. Inventory: what exists vs what the vision needs
 
@@ -467,8 +482,10 @@ Legend: ✅ exists and reusable · 🟡 exists, needs change · ❌ missing. **B
 | Change → preview → Make it live split view | ❌ | UI + git working tree vs tags | **B** |
 | Agent suggestions | ❌ | `suggest` progress op + chips | P (strong demo value) |
 | Publishing permission | 🟡 "Authorize agent" button in the top bar | one prompt at sign-in, renew banner | **B** |
-| GitHub connection | 🟡 two apps; personal only; one repo per Studio; device flow works on staging (repo in 33 s) | one connection; org repos; mirror on launch; migration of existing | **B** for one-app + no-block, P for org (G9 still in scope) |
-| Edits on GitHub brought in | 🟡 webhook exists (`vetra-apps/webhook.ts`) | detect + agent merge | P |
+| GitHub connection | 🟡 two apps: Studio app (`vetra-github-auth`, device flow, personal only, one repo per Studio; repo in 33 s on staging) and Deploy app (`createStudioApp`, personal **and** org repos already) | keep the Deploy app path, retire the Studio app's repo creation; mirror on launch; migrate existing connections | **B** for one-app + no-block; org mostly exists |
+| Edits on GitHub brought in | ❌ webhook exists but handles no `push` events (only closed PRs, deleted installations, removed repos) | new `push` handler + agent merge | P |
+| Agent may launch/roll back | ❌ owner path refuses App identities (`assertNotWorkload`); CI path bound to GitHub run claims | Studio-agent path bound to its own Studio's App, trigger recorded (D20) | **B** |
+| Live product data | ❌ no drive created on the production env; nothing decides access | product drive created + seeded at first launch, access setting (D21) | **B** |
 | Version alignment (client vs staging switchboard `meta` 400) | ❌ broken on staging | aligned train | **B** (prerequisite) |
 | vetra.io Studio card (name, live link, status) | 🟡 shows Studio + budget | product status | P |
 | "1 document type couldn't load" banner in Studio | ❌ seen on staging | fix or hide | **B** (demo) |
@@ -481,7 +498,7 @@ Legend: ✅ exists and reusable · 🟡 exists, needs change · ❌ missing. **B
 - The exact `vetra/studio-product` schema and operations (shape in §6.2; follow the repo's document-model rules: MCP-first, errors, ≥95% reducer coverage).
 - Progress-tool API names and how gates are enforced.
 - How steering reaches the running agent (between-step hook vs abort-and-continue with Foundation's checkpointing).
-- The launch mutation's name, auth model (agent identity allowed by the owner vs. a Studio-scoped token) and how it reuses `performDeploy`/watcher; whether Studio launches reuse the Apps table or a sibling.
+- The launch mutation's name, how the D20 binding and the owner's permission are verified (agent identity allowed by the owner vs. a Studio-scoped token), and how it reuses `performDeploy`/watcher; whether Studio launches reuse the Apps table or a sibling.
 - Package version scheme per launch; git tag naming; what the Studio does with an existing env when adopting (§6.6).
 - The data-compatibility checks' implementation and the cheapest source for "which operations are used on live".
 - Which GitHub app survives the consolidation, and the migration of existing connections.
@@ -492,9 +509,9 @@ Legend: ✅ exists and reusable · 🟡 exists, needs change · ❌ missing. **B
 
 Each milestone ships to staging, is demoable on its own, and leaves existing Studios working. Prod only after M5's full staging pass.
 
-- **M0 — Ground.** Align the Studio client and staging switchboard train (fix the `meta` 400); per-phase tool sets; progress tool + `vetra/studio-product` document written by the agent (shown in a temporary debug panel); first conversation created automatically. *Demo:* same standard build in noticeably fewer steps, with clean milestones in the product document; step count and cost recorded.
+- **M0 — Ground.** Move the staging switchboard forward to the Studio's Powerhouse dev line (assumes Q5 = yes) so client and server match (fixes the `meta` 400); per-phase tool sets; progress tool + `vetra/studio-product` document written by the agent (shown in a temporary debug panel); first conversation created automatically. *Demo:* same standard build in noticeably fewer steps, with clean milestones in the product document; step count and cost recorded.
 - **M1 — Story while it builds.** New page: blank idea screen, strip with real step states, story with folded detail, steer box that applies mid-build, preview with tabs and skeletons, Tests step with smoke render, failure states for build-time problems, budget + time left on the strip. Old sections reachable as step details. *Demo:* idea → working preview on one screen, steering once mid-build.
-- **M2 — Ships by itself.** Publishing permission at sign-in; App + production env created when the plan exists; server-side launch through `vetra-apps`; Connect at the apex; automatic first launch; product view (state 2) with embedded live app; launch failure states. GitHub not required. *Demo:* idea → live URL on a phone, in one sitting, without touching GitHub.
+- **M2 — Ships by itself.** Publishing permission at sign-in; Studio-agent launch path (D20); product drive created and seeded at first launch with the access setting (D21); App + production env created when the plan exists; server-side launch through `vetra-apps`; Connect at the apex; automatic first launch; product view (state 2) with embedded live app; launch failure states. GitHub not required. *Demo:* idea → live URL on a phone, in one sitting, without touching GitHub.
 - **M3 — Change safely.** Change something drawer, Live | Preview split, Make it live / Keep changing / Discard, Versions panel, Go back, data-compatibility gate at launch and rollback, "Undo with the agent", agent suggestions. *Demo:* add a feature, launch it, use the live app, go back a version, data intact.
-- **M4 — GitHub without thinking.** One GitHub connection (consolidated app), optional after first launch, personal and org repos, mirror + tags on every launch, full history on connect, existing connections migrated, "bring in changes from GitHub". vetra.io Studio card shows product status (main + staging). *Demo:* connect `web3-berlin`, see the version tags in the org repo.
+- **M4 — GitHub without thinking.** One GitHub connection (keep the Deploy app's existing personal/org repo path, retire the Studio app's), optional after first launch, personal and org repos, mirror + tags on every launch, full history on connect, existing connections migrated, "bring in changes from GitHub" (new `push` webhook handling). vetra.io Studio card shows product status (main + staging). *Demo:* connect `web3-berlin`, see the version tags in the org repo.
 - **M5 — Existing Studios and demo hardening.** Upgrade path for existing Studios (§6.6) tested on copies of `rapid-fox` and `vivid-slug`; staging E2E for G2–G11 run 5× green; landing copy restored where now true (vetra.io main + staging); then prod rollout (switchboard forward, prod pool pinned, demo Studio upgraded and given its $50 budget). *Demo:* the investor script on prod: idea → live → change → launch → go back.
