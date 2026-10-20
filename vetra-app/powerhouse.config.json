@@ -16,6 +16,11 @@
       "provider": "local"
     },
     {
+      "packageName": "@powerhousedao/vetra",
+      "version": "6.2.3-dev.66",
+      "provider": "local"
+    },
+    {
       "packageName": "@powerhousedao/vetra-cloud-package",
       "version": "0.0.3-dev.93",
       "provider": "local"

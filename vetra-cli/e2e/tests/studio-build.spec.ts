@@ -160,6 +160,16 @@ async function assertEditor(
   }
 }
 
+/** The outer Studio Connect syncs the Studio drive, which holds the agent's
+ * project specs (document-model, document-editor, …). A spec type the outer
+ * Connect can't load shows Connect's missing-model banner to the customer. */
+async function assertNoMissingModelBanner(page: Page): Promise<void> {
+  const banner = page.getByText(/document types? couldn't load \(missing models?\)/i);
+  // The sync that would trip it has landed by now; allow a short settle.
+  await page.waitForTimeout(3_000);
+  await expect(banner).toBeHidden();
+}
+
 test.describe("Vetra studio — seeded build", () => {
   test("agent builds the todo-list from empty and the editor renders in the BUILD iframe", async ({
     page,
@@ -173,5 +183,6 @@ test.describe("Vetra studio — seeded build", () => {
 
     const preview = await waitForReadyPreview(page, run.baseUrl);
     await assertEditor(preview, fixture);
+    await assertNoMissingModelBanner(page);
   });
 });
