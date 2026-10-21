@@ -34,3 +34,19 @@ export function resolveCloudGraphqlEndpoint(
   }
   return cloudGraphqlEndpoint(url.replace(/\/$/, ""));
 }
+
+/**
+ * The cloud's `vetra-apps` subgraph, addressed directly (`<base>/graphql/vetra-apps`).
+ * The Studio agent's calls must go here rather than through the gateway at
+ * `/graphql`: the gateway forwards only `authorization` to subgraphs, so the
+ * Studio's `x-vetra-studio-secret` header would never arrive. Accepts a
+ * configured URL with or without a trailing `/graphql`.
+ */
+export function resolveVetraAppsEndpoint(
+  config: Pick<Config, "cloudSwitchboardUrl">,
+): string {
+  // `<base>/graphql` from the shared resolver (also throws when unset).
+  const gateway = resolveCloudGraphqlEndpoint(config);
+  const base = gateway.slice(0, -"/graphql".length).replace(/\/+$/, "").replace(/\/graphql$/, "");
+  return `${base}/graphql/vetra-apps`;
+}

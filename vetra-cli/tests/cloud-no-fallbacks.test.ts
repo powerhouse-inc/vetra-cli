@@ -6,7 +6,7 @@ import { describe, it, expect } from "@jest/globals";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { resolveCloudGraphqlEndpoint } from "../src/cloud/config.js";
+import { resolveCloudGraphqlEndpoint, resolveVetraAppsEndpoint } from "../src/cloud/config.js";
 import { resolveRegistryUrl } from "../src/cloud/registry-url.js";
 
 describe("cloud switchboard", () => {
@@ -21,6 +21,23 @@ describe("cloud switchboard", () => {
         cloudSwitchboardUrl: "https://switchboard.vetra.io/",
       }),
     ).toBe("https://switchboard.vetra.io/graphql");
+  });
+});
+
+describe("vetra-apps endpoint", () => {
+  it("has no default", () => {
+    expect(() => resolveVetraAppsEndpoint({})).toThrow(/VETRA_CLOUD_SWITCHBOARD_URL/);
+  });
+  it.each([
+    "https://switchboard.vetra.io",
+    "https://switchboard.vetra.io/",
+    "https://switchboard.vetra.io/graphql",
+    "https://switchboard.vetra.io/graphql/",
+    " https://switchboard.vetra.io/graphql ",
+  ])("targets the subgraph directly from %p", (url) => {
+    expect(resolveVetraAppsEndpoint({ cloudSwitchboardUrl: url })).toBe(
+      "https://switchboard.vetra.io/graphql/vetra-apps",
+    );
   });
 });
 
