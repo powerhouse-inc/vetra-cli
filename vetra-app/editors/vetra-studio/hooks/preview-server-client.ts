@@ -191,10 +191,13 @@ export async function fetchResolve(args: {
   project: string;
   doc: string;
   drive?: string;
+  /** The project's preview drive root (no doc, no drive). */
+  home?: boolean;
   signal?: AbortSignal;
 }): Promise<ResolveResult> {
   const params = new URLSearchParams({ project: args.project, doc: args.doc });
   if (args.drive) params.set("drive", args.drive);
+  if (args.home) params.set("home", "1");
   const { base, proxyBase } = await resolvePreviewConfig();
   const res = await fetch(`${base}/resolve?${params}`, { signal: args.signal });
   if (!res.ok) {

@@ -2,7 +2,8 @@
  * The preview pane of the build (spec §5.1, §5.4): the screen the agent is
  * working on, with a tab per editor and app under it. It follows the agent
  * until the customer picks a tab; then the chip "Following you · Back to the
- * build" returns to following. The picked tab survives reloads of the
+ * build" returns to following. Before the agent shares a screen, it shows the
+ * started project's Connect drive view as soon as the project is up. The picked tab survives reloads of the
  * preview, and `restartPreview()` restarts it (ruling F51: the button lives
  * with the failure line, Task 1.8).
  */
@@ -12,8 +13,14 @@ import type { Change } from "document-models/studio-product";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { PreviewBody, STARTING } from "../BuildSection.js";
 import { fetchRestart, fetchStart } from "../hooks/preview-server-client.js";
-import { useResolvedPreview } from "../hooks/useResolvedPreview.js";
-import { useSessionPreviewTarget } from "../hooks/useSessionPreviewTarget.js";
+import {
+  useResolvedPreview,
+  type ResolvedPreview,
+} from "../hooks/useResolvedPreview.js";
+import {
+  useProjectHomeTarget,
+  useSessionPreviewTarget,
+} from "../hooks/useSessionPreviewTarget.js";
 import {
   previewScreens,
   previewTabs,
@@ -121,6 +128,7 @@ export function PreviewPane({
     [messages, screens],
   );
   const agentTarget = useSessionPreviewTarget(session);
+  const projectHome = useProjectHomeTarget(session);
   const tabs = previewTabs({
     screens,
     editorsStep: change?.steps.find((s) => s.kind === "EDITORS") ?? null,
@@ -142,10 +150,20 @@ export function PreviewPane({
     : pickedTab.id;
   const shownTab = tabs.find((t) => t.id === selected) ?? null;
 
-  const preview = useResolvedPreview(target);
+  // Until the agent shares a screen, the started project's Connect drive
+  // view — but only once it is up: otherwise the pane keeps its skeleton.
+  const home = following && !agentTarget ? projectHome : undefined;
+  const resolved = useResolvedPreview(target ?? home, {
+    autoStart: target !== undefined,
+  });
+  const preview: ResolvedPreview =
+    !target && home && resolved.kind !== "ready"
+      ? { kind: "no-target" }
+      : resolved;
   const reloadKey = useSyncExternalStore(subscribeReloads, reloadCount);
 
-  const project = target?.project ?? null;
+  const project =
+    (target ?? (preview.kind === "ready" ? home : undefined))?.project ?? null;
   useEffect(() => {
     shownProject = project;
     return () => {

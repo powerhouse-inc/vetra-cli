@@ -93,6 +93,7 @@ vi.mock("../budget/BudgetMeter.js", () => ({
 }));
 vi.mock("../hooks/useSessionPreviewTarget.js", () => ({
   useSessionPreviewTarget: () => undefined,
+  useProjectHomeTarget: () => undefined,
 }));
 vi.mock("../hooks/useResolvedPreview.js", () => ({
   useResolvedPreview: () => ({ kind: "no-target" }),
