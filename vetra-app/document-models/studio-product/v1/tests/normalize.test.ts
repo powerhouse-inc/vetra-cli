@@ -160,6 +160,8 @@ describe("normalizeProduct", () => {
     expect(out).toMatchObject({
       createdAt: null,
       liveVersion: null,
+      liveSince: null,
+      liveDeploymentId: null,
       versions: [],
       health: "UNKNOWN",
       pendingRequest: null,

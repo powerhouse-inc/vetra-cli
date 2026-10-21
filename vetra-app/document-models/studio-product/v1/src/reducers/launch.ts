@@ -101,13 +101,23 @@ function markLiveStep(
   step.updatedAt = at;
 }
 
-/** Makes `version` the only LIVE version; the previous one becomes PREVIOUS. */
-function makeLive(state: StudioProductState, version: Version): void {
+/**
+ * Makes `version` the only LIVE version (the previous one becomes PREVIOUS)
+ * and records since when and from which deployment it serves.
+ */
+function makeLive(
+  state: StudioProductState,
+  version: Version,
+  at: string,
+  deploymentId: string | null,
+): void {
   for (const v of state.versions) {
     if (v.status === "LIVE" && v !== version) v.status = "PREVIOUS";
   }
   version.status = "LIVE";
   state.liveVersion = version.number;
+  state.liveSince = at;
+  state.liveDeploymentId = deploymentId;
 }
 
 export const studioProductLaunchOperations: StudioProductLaunchOperations = {
@@ -189,6 +199,12 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
   requestRestartOperation(state, action) {
     normalizeProduct(state);
     requireLive(state);
+    const launching = state.versions.find((v) => v.status === "LAUNCHING");
+    if (launching) {
+      throw new ChangeInProgressError(
+        `Version ${launching.number} is being launched; restart once it is done.`,
+      );
+    }
     request(state, { kind: "RESTART", ...action.input });
   },
 
@@ -212,14 +228,26 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
         `Change "${changeId}" is ${change.status}; only a READY change can be launched.`,
       );
     }
-    // F23: the next number, or a retry of a FAILED version under its number.
-    const next = state.versions.reduce((m, v) => Math.max(m, v.number), 0) + 1;
-    const existing = state.versions.find((v) => v.number === number);
-    if (number !== next && existing?.status !== "FAILED") {
+    // F23: a FAILED version newer than every launched one must be retried
+    // under its number (no gaps); otherwise the next number.
+    const launchedMax = state.versions
+      .filter((v) => v.status !== "FAILED")
+      .reduce((m, v) => Math.max(m, v.number), 0);
+    const retry = state.versions
+      .filter((v) => v.status === "FAILED" && v.number > launchedMax)
+      .reduce<Version | null>(
+        (low, v) => (low && low.number < v.number ? low : v),
+        null,
+      );
+    const next =
+      retry?.number ??
+      state.versions.reduce((m, v) => Math.max(m, v.number), 0) + 1;
+    if (number !== next) {
       throw new VersionNumberError(
         `Version ${number} can't be launched; the next version is ${next}.`,
       );
     }
+    const existing = retry;
     const title = change.title ?? change.request;
     if (existing) {
       existing.status = "LAUNCHING";
@@ -278,6 +306,14 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
         `Version ${input.number} is ${version.status}; only a launching version can complete.`,
       );
     }
+    if (
+      version.status === "FAILED" &&
+      version.number < (state.liveVersion ?? 0)
+    ) {
+      throw new InvalidVersionStatusError(
+        `Version ${input.number} failed and is older than the live Version ${String(state.liveVersion)}.`,
+      );
+    }
     const names = new Set<string>();
     for (const p of input.packages) {
       if (names.has(p.name)) {
@@ -308,7 +344,7 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
     version.trigger = input.trigger;
     version.launchedAt = input.at;
     version.failure = null;
-    makeLive(state, version);
+    makeLive(state, version, input.at, input.deploymentId);
     if (change) {
       change.status = "LAUNCHED";
       change.metrics.liveAt = input.at;
@@ -336,14 +372,14 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
 
   setLiveVersionOperation(state, action) {
     normalizeProduct(state);
-    const { number } = action.input;
+    const { number, at, deploymentId } = action.input;
     const version = findVersion(state, number);
     if (version.status !== "LIVE" && version.status !== "PREVIOUS") {
       throw new InvalidVersionStatusError(
         `Version ${number} is ${version.status}; only a version that was live can be made live again.`,
       );
     }
-    makeLive(state, version);
+    makeLive(state, version, at, deploymentId ?? version.deploymentId ?? null);
   },
 
   setHealthOperation(state, action) {

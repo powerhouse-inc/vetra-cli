@@ -361,6 +361,7 @@ export type SetLiveTargetInput = {
 
 export type SetLiveVersionInput = {
   at: Scalars["DateTime"]["input"];
+  deploymentId?: InputMaybe<Scalars["String"]["input"]>;
   number: Scalars["Int"]["input"];
 };
 
@@ -419,6 +420,8 @@ export type StudioProductState = {
   health: LiveHealth;
   idea: Maybe<Scalars["String"]["output"]>;
   launchPermission: PermissionState;
+  liveDeploymentId: Maybe<Scalars["String"]["output"]>;
+  liveSince: Maybe<Scalars["DateTime"]["output"]>;
   liveUrl: Maybe<Scalars["URL"]["output"]>;
   liveVersion: Maybe<Scalars["Int"]["output"]>;
   name: Maybe<Scalars["String"]["output"]>;

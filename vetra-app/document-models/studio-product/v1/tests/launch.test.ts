@@ -305,6 +305,18 @@ describe("LaunchOperations", () => {
       });
     });
 
+    it("REQUEST_RESTART is refused while a version is being launched", () => {
+      const doc = apply(
+        readyChange(live(), "c2", 20),
+        startLaunch({ number: 2, changeId: "c2", at: at(25) }),
+        requestRestart({ requestedAt: at(26), requestedBy: by }),
+      );
+      expect(lastError(doc)).toBe(
+        "Version 2 is being launched; restart once it is done.",
+      );
+      expect(doc.state.global.pendingRequest).toBeNull();
+    });
+
     it("REQUEST_RESTART and REQUEST_MIRROR need a live version", () => {
       const doc = apply(
         ready(),
@@ -519,6 +531,8 @@ describe("LaunchOperations", () => {
       expect(lastError(doc)).toBeNull();
       const s = doc.state.global;
       expect(s.liveVersion).toBe(1);
+      expect(s.liveSince).toBe(at(10));
+      expect(s.liveDeploymentId).toBe("dep-1");
       expect(version(doc, 1)).toMatchObject({
         status: "LIVE",
         gitTag: "v1",
@@ -683,16 +697,69 @@ describe("LaunchOperations", () => {
         reason: null,
       });
 
-      // The next number is also accepted after a failure.
+      // While the failed version waits, no other number is accepted (no gaps).
       const next = apply(
         ready(),
         startLaunch({ number: 1, changeId: "c1", at: at(9) }),
         failLaunch({ number: 1, reason: "r", at: at(10) }),
         startLaunch({ number: 2, changeId: "c1", at: at(11) }),
       );
-      expect(lastError(next)).toBeNull();
-      expect(version(next, 1).status).toBe("FAILED");
-      expect(version(next, 2).status).toBe("LAUNCHING");
+      expect(lastError(next)).toBe(
+        "Version 2 can't be launched; the next version is 1.",
+      );
+      expect(next.state.global.versions.map((v) => v.number)).toEqual([1]);
+    });
+
+    it("a failed version older than a launched one doesn't block the next number", () => {
+      // Written by an earlier build: Version 1 failed, Version 2 went live.
+      const doc = apply(
+        withState({
+          changes: [craftedChange("c4", "READY")],
+          liveVersion: 2,
+          versions: [
+            craftedVersion(1, { status: "FAILED" }),
+            craftedVersion(2, { status: "LIVE" }),
+          ],
+        }),
+        startLaunch({ number: 1, changeId: "c4", at: at(1) }),
+        complete(1, 2),
+        startLaunch({ number: 3, changeId: "c4", at: at(3) }),
+      );
+      expect(errorAt(doc, 0)).toBe(
+        "Version 1 can't be launched; the next version is 3.",
+      );
+      expect(errorAt(doc, 1)).toBe(
+        "Version 1 failed and is older than the live Version 2.",
+      );
+      expect(errorAt(doc, 2)).toBeNull();
+      expect(doc.state.global.liveVersion).toBe(2);
+      expect(version(doc, 3).status).toBe("LAUNCHING");
+    });
+
+    it("with several waiting failed versions, the lowest is retried first", () => {
+      const doc = apply(
+        withState({
+          changes: [craftedChange("c4", "READY")],
+          liveVersion: 1,
+          versions: [
+            craftedVersion(1, { status: "LIVE" }),
+            craftedVersion(3, { status: "FAILED" }),
+            craftedVersion(2, { status: "FAILED" }),
+            craftedVersion(4, { status: "FAILED" }),
+          ],
+        }),
+        startLaunch({ number: 3, changeId: "c4", at: at(1) }),
+        setLiveVersion({ number: 1, at: at(2) }),
+        startLaunch({ number: 2, changeId: "c4", at: at(3) }),
+      );
+      expect(errorAt(doc, 0)).toBe(
+        "Version 3 can't be launched; the next version is 2.",
+      );
+      // A version recorded without a deployment leaves the deployment unknown.
+      expect(errorAt(doc, 1)).toBeNull();
+      expect(doc.state.global.liveDeploymentId).toBeNull();
+      expect(errorAt(doc, 2)).toBeNull();
+      expect(version(doc, 2).status).toBe("LAUNCHING");
     });
 
     it("is refused for a version that isn't launching or doesn't exist", () => {
@@ -732,6 +799,9 @@ describe("LaunchOperations", () => {
       expect(lastError(doc)).toBeNull();
       const s = doc.state.global;
       expect(s.liveVersion).toBe(1);
+      // "Deployed N min ago" counts from the rollback, on Version 1's deployment.
+      expect(s.liveSince).toBe(at(40));
+      expect(s.liveDeploymentId).toBe("dep-1");
       expect(s.versions.map((v) => [v.number, v.status])).toEqual([
         [1, "LIVE"],
         [2, "PREVIOUS"],
@@ -743,8 +813,13 @@ describe("LaunchOperations", () => {
         launchedAt: at(31),
       });
       // Going forward again works the same way.
-      const back = apply(doc, setLiveVersion({ number: 2, at: at(41) }));
+      const back = apply(
+        doc,
+        setLiveVersion({ number: 2, at: at(41), deploymentId: "dep-9" }),
+      );
       expect(back.state.global.liveVersion).toBe(2);
+      expect(back.state.global.liveSince).toBe(at(41));
+      expect(back.state.global.liveDeploymentId).toBe("dep-9");
       expect(version(back, 1).status).toBe("PREVIOUS");
     });
 
@@ -906,6 +981,8 @@ describe("LaunchOperations", () => {
         expect(Array.isArray(s.versions)).toBe(true);
         expect(s.changes[0].chatSessionIds).toEqual([]);
         expect(s.github.status).toBe("NOT_CONNECTED");
+        expect(s.liveSince).toBeNull();
+        expect(s.liveDeploymentId).toBeNull();
       },
     );
   });

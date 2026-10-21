@@ -253,6 +253,8 @@ type StudioProductState {
   changes: [Change!]!
   activeChangeId: OID
   liveVersion: Int
+  liveSince: DateTime
+  liveDeploymentId: String
   versions: [Version!]!
   health: LiveHealth!
   pendingRequest: PendingRequest
@@ -487,6 +489,7 @@ input FailLaunchInput {
 input SetLiveVersionInput {
   number: Int!
   at: DateTime!
+  deploymentId: String
 }
 
 input SetHealthInput {

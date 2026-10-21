@@ -27,6 +27,8 @@ export function defaultGlobalState(): StudioProductGlobalState {
     changes: [],
     activeChangeId: null,
     liveVersion: null,
+    liveSince: null,
+    liveDeploymentId: null,
     versions: [],
     health: "UNKNOWN",
     pendingRequest: null,

@@ -603,6 +603,7 @@ export function SetLiveVersionInputSchema(): z.ZodObject<
 > {
   return z.object({
     at: z.iso.datetime(),
+    deploymentId: z.string().nullish(),
     number: z.number(),
   });
 }
@@ -684,6 +685,8 @@ export function StudioProductStateSchema(): z.ZodObject<
     health: LiveHealthSchema,
     idea: z.string().nullish(),
     launchPermission: PermissionStateSchema,
+    liveDeploymentId: z.string().nullish(),
+    liveSince: z.iso.datetime().nullish(),
     liveUrl: z.url().nullish(),
     liveVersion: z.number().nullish(),
     name: z.string().nullish(),
