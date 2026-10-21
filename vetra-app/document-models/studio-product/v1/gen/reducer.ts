@@ -44,6 +44,7 @@ import {
   SetLiveTargetInputSchema,
   SetLiveVersionInputSchema,
   SetProductDriveInputSchema,
+  SetRollbackBlockInputSchema,
   SetStepAttentionInputSchema,
   SetSuggestionsInputSchema,
   StartChangeInputSchema,
@@ -521,6 +522,18 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       memoizedSchema(SetLaunchPermissionInputSchema).parse(action.input);
 
       studioProductLaunchOperations.setLaunchPermissionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_ROLLBACK_BLOCK": {
+      memoizedSchema(SetRollbackBlockInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.setRollbackBlockOperation(
         (state as any)[action.scope],
         action as any,
         dispatch,

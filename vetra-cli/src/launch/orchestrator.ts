@@ -67,6 +67,7 @@ import {
   messageAgent,
   type CompatResult,
 } from "./compat-launch.js";
+import { refreshRollbackBlocks } from "./compat-rollback.js";
 import { LaunchError, launchPermissionState } from "./errors.js";
 import { changedFiles, discardDraft, restoreVersion, snapshot } from "./git-versions.js";
 import {
@@ -78,6 +79,7 @@ import {
   type ProductDriveContext,
 } from "./product-drive.js";
 import { publishAll, type LiveRelease, type PublishedPackage } from "./publish-all.js";
+import { awaitRollbackSettle } from "../triggers/live-health.js";
 import { askForSuggestions, chatBudgetUsedUp, hasSuggestionsFor } from "./suggestions.js";
 import { checkLive, waitForDeployment } from "./verify.js";
 import { ensureProductTarget } from "../product/upgrade-existing.js";
@@ -241,6 +243,8 @@ export interface LaunchDeps {
   messageAgent?: typeof messageAgent;
   /** How many documents the live product drive holds (D6: is there live data?). */
   countDriveDocuments?: typeof countDriveDocuments;
+  /** F26: which earlier versions the data can't go back to, after each launch. */
+  refreshRollbackBlocks?: typeof refreshRollbackBlocks;
 }
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -264,6 +268,7 @@ const defaultDeps: LaunchDeps = {
   checkCompat: checkLaunchCompat,
   messageAgent,
   countDriveDocuments,
+  refreshRollbackBlocks,
   afterLaunch: askForSuggestions,
   budgetUsedUp: chatBudgetUsedUp,
 };
@@ -594,7 +599,12 @@ async function runLaunch(
       }),
     ]);
     clearLaunchRecord(ctx.workdir);
+    // A later launch settles any Go back still waiting on the cloud.
+    awaitRollbackSettle(null);
     ctx.log?.info?.(`[launch] Version ${number} is live at ${liveUrl}`);
+    // F26: the earlier versions' Go back is worked out again, in the
+    // background (it reads the live drive; never throws).
+    void (d.refreshRollbackBlocks ?? refreshRollbackBlocks)(ctx);
   } catch (err) {
     const permission = launchPermissionState(err);
     if (permission) {
@@ -826,12 +836,23 @@ async function redeploy(ctx: OrchestratorContext, deploymentId: string): Promise
   return ref.deploymentId;
 }
 
+/** How often SET_LIVE_VERSION is tried after the cloud made Version m live. */
+export const LIVE_VERSION_TRIES = 3;
+/** Plain reason when Go back's deployment hadn't settled when the agent stopped waiting. */
+export const ROLLBACK_SLOW_REASON = "the earlier version is still starting — it goes live as soon as it's up";
+
 /**
  * Go back to Version m (spec §5.7, Ruling E5): the code goes back to `v<m>`
  * (refused while the Studio has unsaved changes — E6), the cloud re-deploys
- * Version m's deployment, and Version m becomes live. On a cloud failure the
- * code is put back on the version that is still live. The request is cleared
+ * Version m's deployment, and Version m becomes live. The request is cleared
  * either way.
+ *
+ * The code is put back on the live version only when the cloud definitely
+ * failed (the re-deploy was refused, or its deployment FAILED). When the
+ * wait gives up before the deployment settles, the code stays on m and the
+ * live-health reconcile settles it from the cloud's record
+ * (`awaitRollbackSettle`). A failed SET_LIVE_VERSION after READY is tried
+ * again on its own; if it still fails, the reconcile records it.
  */
 export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<RequestOutcome> {
   const d = depsOf(ctx);
@@ -856,16 +877,10 @@ export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<R
     await recordRequestFailure(ctx, "ROLLBACK", reason);
     return { status: "REFUSED", reason };
   }
-  try {
-    const deploymentId = await redeploy(ctx, target.deploymentId);
-    await dispatchProduct(ctx, [
-      a.setLiveVersion({ number: m, at: nowIso(ctx), deploymentId }),
-      a.clearRequest({}),
-    ]);
-    ctx.log?.info?.(`[launch] Version ${m} is live again`);
-    return { status: "DONE" };
-  } catch (err) {
-    ctx.log?.error?.(`[launch] Go back to Version ${m} failed: ${message(err)}`);
+
+  /** The cloud definitely didn't make Version m live: the code goes back too. */
+  const definitelyFailed = async (reason: string, why: string): Promise<RequestOutcome> => {
+    ctx.log?.error?.(`[launch] Go back to Version ${m} failed: ${why}`);
     if (liveNumber !== null) {
       try {
         await d.restoreVersion(ctx.workdir, liveNumber);
@@ -873,9 +888,65 @@ export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<R
         ctx.log?.error?.(`[launch] code not put back on Version ${liveNumber}: ${message(restoreErr)}`);
       }
     }
-    const reason = err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected;
     await recordRequestFailure(ctx, "ROLLBACK", reason);
     return { status: "FAILED", reason };
+  };
+  /** Not known yet: the code stays on m; the reconcile settles it. */
+  const unsettled = async (why: string): Promise<RequestOutcome> => {
+    ctx.log?.error?.(`[launch] Go back to Version ${m} not settled yet, the reconcile will settle it: ${why}`);
+    awaitRollbackSettle({ number: m, previous: liveNumber });
+    await recordRequestFailure(ctx, "ROLLBACK", ROLLBACK_SLOW_REASON);
+    return { status: "FAILED", reason: ROLLBACK_SLOW_REASON };
+  };
+
+  let ref: { deploymentId: string };
+  try {
+    ref = await cloudCall(ctx, () => d.cloudRollback(ctx, target.deploymentId!));
+  } catch (err) {
+    // Only the cloud's refusal is definite; a lost answer may have started it.
+    if (err instanceof LaunchError && err.code !== "CLOUD_UNAVAILABLE") {
+      return definitelyFailed(err.reason, message(err));
+    }
+    return unsettled(message(err));
+  }
+  let outcome: Awaited<ReturnType<typeof d.waitForDeployment>>;
+  try {
+    outcome = await cloudCall(ctx, () => d.waitForDeployment(ctx, ref.deploymentId));
+  } catch (err) {
+    return unsettled(message(err));
+  }
+  if (outcome !== "READY") {
+    if (outcome.timedOut) return unsettled(outcome.detail ?? outcome.failed);
+    return definitelyFailed(REASONS.rollbackStudioVersion, outcome.detail ?? outcome.failed);
+  }
+
+  // READY: the cloud runs Version m. Record it, trying the write again on its own.
+  for (let i = 1; ; i++) {
+    try {
+      await dispatchProduct(ctx, [
+        a.setLiveVersion({ number: m, at: nowIso(ctx), deploymentId: ref.deploymentId }),
+        a.clearRequest({}),
+      ]);
+      ctx.log?.info?.(`[launch] Version ${m} is live again`);
+      return { status: "DONE" };
+    } catch (err) {
+      if (i < LIVE_VERSION_TRIES) {
+        ctx.log?.warn?.(`[launch] Version ${m} is live; recording it failed (try ${i}): ${message(err)}`);
+        await d.sleep(2_000 * i);
+        continue;
+      }
+      ctx.log?.error?.(
+        `[launch] Version ${m} is live but couldn't be recorded; the reconcile will record it: ${message(err)}`,
+      );
+      awaitRollbackSettle({ number: m, previous: liveNumber });
+      // Never leave the request waiting (it would run again every pass).
+      try {
+        await dispatchProduct(ctx, [a.clearRequest({})]);
+      } catch (clearErr) {
+        ctx.log?.error?.(`[launch] Go back request not cleared: ${message(clearErr)}`);
+      }
+      return { status: "DONE" };
+    }
   }
 }
 

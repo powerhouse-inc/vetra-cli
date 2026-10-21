@@ -236,7 +236,7 @@ describe("VersionsPanel", () => {
       const versions = useVersionsPanel({
         product: p,
         productId: "product-1",
-        driveId: "drive-1",
+        drive: { header: { id: "drive-1" }, state: { global: { nodes: [] } } },
         now: NOW,
         requestRollback,
       });

@@ -236,8 +236,10 @@ describe("ChangeDrawer (spec §5.6)", () => {
     typeInto(input(container), "Add a Ready column for breakfast orders");
     click(button(container, "Send"));
     await flush();
+    // Edited, it still comes from the suggestion.
     expect(onStart).toHaveBeenCalledWith(
       "Add a Ready column for breakfast orders",
+      "s1",
     );
     expect(input(container).value).toBe("");
     expectNoForbiddenWords(container);

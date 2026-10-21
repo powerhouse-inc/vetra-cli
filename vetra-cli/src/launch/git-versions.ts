@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { listReactorProjects } from "../helpers/project.js";
-import { ensureWorkspaceGitignore } from "../helpers/workspace-git.js";
+import { ensureWorkspaceGitignore, workspaceSafeDirectory } from "../helpers/workspace-git.js";
 import { LaunchError } from "./errors.js";
 
 const execFileAsync = promisify(execFile);
@@ -65,7 +65,7 @@ async function git(
   try {
     const { stdout } = await execFileAsync(
       "git",
-      [...BASE_CONFIG, ...(opts.author ? authorConfig(opts.author) : []), ...args],
+      [...BASE_CONFIG, ...workspaceSafeDirectory(workdir), ...(opts.author ? authorConfig(opts.author) : []), ...args],
       { cwd: workdir, env: gitEnv(opts.env), maxBuffer: 64 * 1024 * 1024 },
     );
     return stdout.trim();
@@ -101,17 +101,45 @@ async function treeOf(workdir: string, rev: string): Promise<string> {
 }
 
 /**
+ * A reactor project's own `.git` (left by `ph init` when it fails before
+ * reactor-project-init removes it) would be staged as an embedded repository
+ * instead of its files. One with no refs at all (no branch, tag or stash,
+ * whatever HEAD points at) holds no commits and is removed; any other, or one
+ * git can't read, is refused and kept.
+ */
+async function absorbProjectRepos(workdir: string): Promise<void> {
+  for (const dir of await listReactorProjects(workdir)) {
+    const projectGit = path.join(workdir, dir, ".git");
+    if (!fs.existsSync(projectGit)) continue;
+    const projectPath = path.join(workdir, dir);
+    const head = await gitMaybe(projectPath, ["rev-parse", "-q", "--verify", "HEAD^{commit}"]);
+    const refs = await gitMaybe(projectPath, ["for-each-ref", "--format=%(refname)"]);
+    if (head !== null || refs === null || refs !== "") {
+      throw new LaunchError(
+        "NESTED_REPO",
+        `the project "${dir}" has its own git history`,
+        `Project "${dir}" has its own git repository${refs === null ? " that git can't read" : " with commits"}; refusing to drop it.`,
+      );
+    }
+    fs.rmSync(projectGit, { recursive: true, force: true });
+  }
+}
+
+/**
  * Make the workspace a git repository on `main` with the workspace
  * `.gitignore` (F24). Idempotent. A repository made earlier by `git init`
  * (default branch `master`) is moved onto `main` when `main` doesn't exist yet;
  * a repository on some other branch while `main` exists is refused rather than
- * guessed at.
+ * guessed at. A git that can't read the repository at all fails with its own
+ * error, not as a wrong branch.
  */
 export async function ensureWorkspaceRepo(workdir: string): Promise<void> {
   if (!fs.existsSync(path.join(workdir, ".git"))) {
     await git(workdir, ["init", "-q", "-b", MAIN_BRANCH]);
   }
   ensureWorkspaceGitignore(workdir);
+  await git(workdir, ["rev-parse", "--git-dir"]);
+  await absorbProjectRepos(workdir);
 
   const current = await gitMaybe(workdir, ["symbolic-ref", "--short", "-q", "HEAD"]);
   if (current === MAIN_BRANCH) return;
@@ -498,7 +526,7 @@ export function changedFiles(
   const args = fromTag
     ? ["diff", "--name-only", fromTag, toSha, "--"]
     : ["ls-tree", "-r", "--name-only", toSha];
-  const out = execFileSync("git", [...BASE_CONFIG, ...args], {
+  const out = execFileSync("git", [...BASE_CONFIG, ...workspaceSafeDirectory(workdir), ...args], {
     cwd: workdir,
     env: gitEnv(),
     encoding: "utf8",

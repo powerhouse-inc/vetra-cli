@@ -20,6 +20,7 @@ import type {
   SetLiveTargetAction,
   SetLiveVersionAction,
   SetProductDriveAction,
+  SetRollbackBlockAction,
   StartLaunchAction,
 } from "./actions.js";
 
@@ -102,6 +103,11 @@ export interface StudioProductLaunchOperations {
   setLaunchPermissionOperation: (
     state: StudioProductGlobalState,
     action: SetLaunchPermissionAction,
+    dispatch?: SignalDispatch,
+  ) => void;
+  setRollbackBlockOperation: (
+    state: StudioProductGlobalState,
+    action: SetRollbackBlockAction,
     dispatch?: SignalDispatch,
   ) => void;
 }

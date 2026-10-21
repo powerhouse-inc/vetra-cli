@@ -14,7 +14,11 @@ import { studioGql, type CloudContext } from "./cloud-launch.js";
 /** The plain reason for `FAIL_LAUNCH` when the deployment failed (F39). */
 export const DEPLOY_FAILED_REASON = "the new version didn't start";
 
-export type DeploymentOutcome = "READY" | { failed: string; detail?: string };
+/**
+ * `timedOut`: the deployment hadn't settled when the wait gave up — it may
+ * still become READY (not a definite failure).
+ */
+export type DeploymentOutcome = "READY" | { failed: string; detail?: string; timedOut?: true };
 
 export interface WaitOptions {
   timeoutMs?: number;
@@ -71,6 +75,7 @@ export async function waitForDeployment(
       return {
         failed: DEPLOY_FAILED_REASON,
         detail: `Deployment ${id} did not settle within ${Math.round(timeoutMs / 1000)} s.`,
+        timedOut: true,
       };
     }
     await sleep(intervalMs);

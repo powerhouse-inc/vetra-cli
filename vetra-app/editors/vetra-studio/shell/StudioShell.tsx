@@ -281,7 +281,7 @@ function StudioPage({
   const versions = useVersionsPanel({
     product,
     productId,
-    driveId: drive.header.id,
+    drive,
     now,
     requestRollback: handlers.requestRollback,
   });

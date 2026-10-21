@@ -595,6 +595,14 @@ export const documentModel: DocumentModelGlobalState = {
                     "The version's status does not allow this operation.",
                   template: "",
                 },
+                {
+                  id: "err-rollback-blocked",
+                  name: "RollbackBlockedError",
+                  code: "ROLLBACK_BLOCKED",
+                  description:
+                    "The product's data can't go back to this version (its rollbackBlockedReason is set).",
+                  template: "",
+                },
               ],
               examples: [],
               scope: "global",
@@ -786,6 +794,28 @@ export const documentModel: DocumentModelGlobalState = {
                 "Record whether the Studio may publish and launch on the owner's behalf.",
               reducer: "",
               errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-rollback-block",
+              name: "SET_ROLLBACK_BLOCK",
+              description:
+                "Record whether the product's data can go back to a version (D6): `reason` is the plain sentence shown instead of Go back, null when going back is allowed. Never touches the version otherwise.",
+              schema:
+                "input SetRollbackBlockInput {\n  number: Int!\n  reason: String\n}",
+              template:
+                "Record whether the product's data can go back to a version (D6): `reason` is the plain sentence shown instead of Go back, null when going back is allowed. Never touches the version otherwise.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-version-not-found",
+                  name: "VersionNotFoundError",
+                  code: "VERSION_NOT_FOUND",
+                  description: "No version with this number exists.",
+                  template: "",
+                },
+              ],
               examples: [],
               scope: "global",
             },

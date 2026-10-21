@@ -13,7 +13,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { startUndo } from "./startUndo.js";
+import { startChange } from "../change/startChange.js";
+import type { StartProductDrive } from "../idea/startProduct.js";
 import {
   GO_BACK,
   UNDO_WITH_THE_AGENT,
@@ -22,6 +23,7 @@ import {
   failedGoBack,
   goBackConfirmText,
   goBackDisabledReason,
+  undoRequest,
   versionRows,
   type VersionRow,
 } from "./versionRows.js";
@@ -349,13 +351,14 @@ export function VersionsPanel({
 export function useVersionsPanel({
   product,
   productId,
-  driveId,
+  drive,
   now,
   requestRollback,
 }: {
   product: StudioProductState | null;
   productId: string | null;
-  driveId: string;
+  /** The Studio drive (Undo with the agent starts its conversation there). */
+  drive: StartProductDrive;
   now: Date;
   /** REQUEST_ROLLBACK (`useFailureHandlers().requestRollback`). */
   requestRollback: (versionNumber: number) => void | Promise<void>;
@@ -377,10 +380,15 @@ export function useVersionsPanel({
   const undo = useCallback(
     async (title: string) => {
       if (!productId) throw new Error(ACTION_FAILED);
-      await startUndo({ driveId, productId, title });
+      await startChange({
+        drive,
+        productId,
+        request: undoRequest(title),
+        kind: "UNDO",
+      });
       setPanelOpen(false);
     },
-    [driveId, productId],
+    [drive, productId],
   );
 
   const element = product ? (

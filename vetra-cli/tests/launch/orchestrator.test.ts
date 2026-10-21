@@ -247,6 +247,24 @@ describe("launch orchestrator", () => {
     expect(h.sleeps).toEqual(SECRET_PENDING_WAITS_MS);
   });
 
+  it("a git failure records only its plain reason on the product, never git's output", async () => {
+    h = await launchHarness({
+      snapshot: async () => {
+        throw new LaunchError(
+          "GIT_FAILED",
+          "the code couldn't be saved",
+          "git rev-parse failed: fatal: detected dubious ownership in repository at '/home/clint/workspace'",
+        );
+      },
+    });
+    await makeReady(h);
+    const out = await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
+    expect(out).toEqual({ status: "FAILED", number: 1, reason: "the code couldn't be saved" });
+    const doc = JSON.stringify(await h.state());
+    expect(doc).toContain("the code couldn't be saved");
+    expect(doc).not.toMatch(/dubious|fatal|\/home\/clint|rev-parse/);
+  });
+
   it("examples the server refused are told in the story; the launch goes on", async () => {
     h = await launchHarness({
       ensureProductDrive: async () => ({

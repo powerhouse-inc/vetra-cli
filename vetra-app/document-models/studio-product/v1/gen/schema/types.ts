@@ -403,6 +403,11 @@ export type SetProductDriveInput = {
   liveUrl?: InputMaybe<Scalars["URL"]["input"]>;
 };
 
+export type SetRollbackBlockInput = {
+  number: Scalars["Int"]["input"];
+  reason?: InputMaybe<Scalars["String"]["input"]>;
+};
+
 export type SetStepAttentionInput = {
   at: Scalars["DateTime"]["input"];
   changeId: Scalars["OID"]["input"];
