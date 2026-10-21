@@ -8,6 +8,7 @@ import { brandSheetUpgradeManifest } from "document-models/brand-sheet/upgrades"
 import { featureUpgradeManifest } from "document-models/feature/upgrades";
 import { problemSheetUpgradeManifest } from "document-models/problem-sheet/upgrades";
 import { studioProductUpgradeManifest } from "document-models/studio-product/upgrades";
+import { studioTeamUpgradeManifest } from "document-models/studio-team/upgrades";
 import { workBreakdownStructureUpgradeManifest } from "document-models/work-breakdown-structure/upgrades";
 
 export const upgradeManifests: UpgradeManifest<readonly number[]>[] = [
@@ -16,5 +17,6 @@ export const upgradeManifests: UpgradeManifest<readonly number[]>[] = [
   featureUpgradeManifest,
   problemSheetUpgradeManifest,
   studioProductUpgradeManifest,
+  studioTeamUpgradeManifest,
   workBreakdownStructureUpgradeManifest,
 ];
