@@ -39,6 +39,14 @@ export const configSchema = z.object({
     .describe(
       'The studio environment document id used to scope the GitHub repo (env VETRA_ENVIRONMENT_ID)',
     ),
+  studioOrgId: z
+    .string()
+    .optional()
+    .describe('The organisation that owns this Studio (env VETRA_STUDIO_ORG_ID); unset for a personal Studio'),
+  renownOrgsUrl: z
+    .string()
+    .optional()
+    .describe('Renown organisations service URL used to look up org members and roles (env VETRA_RENOWN_ORGS_URL)'),
   packageManager: z
     .preprocess(
       (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
