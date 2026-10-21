@@ -200,6 +200,9 @@ describe("StudioShell", () => {
       "Rename",
       "Settings",
       "Versions",
+      // The steer box's actions (Task 1.6), not routes.
+      "Send",
+      "Pause",
     ]);
     expect(names.filter((n) => !allowed.has(n))).toEqual([]);
     expect(names).toContain("Settings");
@@ -211,9 +214,10 @@ describe("StudioShell", () => {
     expect(
       container.querySelector('[data-step="DATA"]')?.textContent,
     ).toContain("2/3");
-    expect(container.querySelector("aside")?.textContent).toContain(
-      `Conversation ${SESSION_ID}`,
-    );
+    // The story: the idea in quotes, the steer box under it.
+    const story = container.querySelector("aside");
+    expect(story?.textContent).toContain("“a task board for my team”");
+    expect(story?.querySelector('input[aria-label="Steer it"]')).not.toBeNull();
     expect(container.textContent).toContain("Preview pane");
     expect(container.textContent).toContain("$0.31 of $10");
   });

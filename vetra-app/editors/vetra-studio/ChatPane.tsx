@@ -1,5 +1,7 @@
 import {
   isChatSessionDocument,
+  type ContentPart,
+  type Message,
   type TurnFailure,
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
@@ -31,6 +33,9 @@ import VetraMitosis from "./VetraMitosis.js";
 import { budgetFailureAction } from "./budget/BudgetFailureAction.js";
 import { useStudioBudget } from "./budget/useStudioBudget.js";
 import { vetraToolRenderers } from "./tool-renderers/index.js";
+import { CommandTool } from "./tool-renderers/shared/CommandTool.js";
+import type { ToolRenderProps } from "./tool-renderers/types.js";
+import { Wrench } from "lucide-react";
 
 const ChatSession = lazy(() =>
   import("@powerhousedao/clint-common/editors").then((m) => ({
@@ -571,6 +576,111 @@ function SessionLoading() {
   return (
     <div className="flex h-full items-center justify-center">
       <VetraMitosis size={48} active={true} />
+    </div>
+  );
+}
+
+function parseToolValue(raw: string | null | undefined): unknown {
+  if (raw === null || raw === undefined) return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
+  }
+}
+
+/** Tools without a Vetra renderer: name, arguments and result. */
+function FallbackTool(props: ToolRenderProps) {
+  return <CommandTool {...props} icon={Wrench} />;
+}
+
+function RawToolCall({
+  call,
+  result,
+}: {
+  call: ContentPart;
+  result: ContentPart | undefined;
+}) {
+  const toolName = call.toolName || "unknown";
+  const Renderer = vetraToolRenderers(toolName) ?? FallbackTool;
+  const isError = Boolean(result?.isError);
+  return (
+    <Renderer
+      toolName={toolName}
+      args={parseToolValue(call.args)}
+      result={parseToolValue(result?.result ?? result?.error)}
+      isError={isError}
+      hasResult={Boolean(result)}
+      state={
+        !result
+          ? "input-available"
+          : isError
+            ? "output-error"
+            : "output-available"
+      }
+      callPart={call}
+      resultPart={result}
+      Default={FallbackTool}
+    />
+  );
+}
+
+/**
+ * Raw detail of a story line (spec §5.4): the conversation's messages as
+ * today's transcript — the agent's words, its tool calls with the Vetra tool
+ * renderers, errors — folded under the line until expanded.
+ */
+export function RawDetail({
+  messages,
+  results,
+}: {
+  messages: readonly Message[];
+  /** Tool results of the whole conversation (a result can land after the
+   *  next milestone). */
+  results: ReadonlyMap<string, ContentPart>;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 text-sm">
+      {messages.map((message) => (
+        <div key={message.id} className="flex flex-col gap-1">
+          {message.content.map((part) => {
+            if (part.type === "TOOL_CALL") {
+              return (
+                <RawToolCall
+                  key={part.id}
+                  call={part}
+                  result={
+                    part.toolCallId ? results.get(part.toolCallId) : undefined
+                  }
+                />
+              );
+            }
+            if (part.type === "TEXT" && part.text) {
+              return (
+                <p
+                  key={part.id}
+                  className={
+                    "whitespace-pre-wrap " +
+                    (message.role === "USER"
+                      ? "text-foreground"
+                      : "text-muted-foreground")
+                  }
+                >
+                  {part.text}
+                </p>
+              );
+            }
+            if (part.type === "ERROR" && (part.error || part.text)) {
+              return (
+                <p key={part.id} className="text-destructive">
+                  {part.error ?? part.text}
+                </p>
+              );
+            }
+            return null;
+          })}
+        </div>
+      ))}
     </div>
   );
 }

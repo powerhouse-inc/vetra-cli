@@ -40,6 +40,7 @@ import { LiveDetail } from "../steps/LiveDetail.js";
 import { PlanDetail } from "../steps/PlanDetail.js";
 import { planBrief } from "../steps/planBrief.js";
 import { TestsDetail } from "../steps/TestsDetail.js";
+import { StoryPane } from "../story/StoryPane.js";
 import { StepStrip, SettingsButton } from "../strip/StepStrip.js";
 import { stripChange, stripModel } from "../strip/stripModel.js";
 import { VetraStudio } from "../VetraStudio.js";
@@ -284,7 +285,16 @@ function ProductView({
       ) : (
         <BuildSplit
           story={
-            sessionId ? (
+            product && change ? (
+              <StoryPane
+                product={product}
+                change={change}
+                chat={sessionDocument?.state.global ?? null}
+                sessionId={sessionId ?? null}
+                productId={productId}
+              />
+            ) : sessionId ? (
+              /* No readable product yet: the conversation as it is. */
               <ConversationPane
                 document={drive}
                 sessionId={sessionId}
