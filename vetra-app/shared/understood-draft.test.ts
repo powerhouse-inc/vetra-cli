@@ -151,6 +151,9 @@ describe("normalizeName", () => {
     expect(normalizeName("Заказ")).not.toBe(normalizeName("Клиент"));
     expect(normalizeName("顧客")).not.toBe(normalizeName("注文"));
     expect(normalizeName("顧客")).not.toBe("");
+    expect(normalizeName("कि")).not.toBe(normalizeName("की"));
+    expect(normalizeName("ガス")).not.toBe(normalizeName("カス"));
+    expect(normalizeName("Café")).toBe(normalizeName("Cafe"));
     expect(normalizeName("Kartons")).toBe(normalizeName("Karton"));
     expect(normalizeName("Wagen")).toBe(normalizeName("Wag"));
     expect(normalizeName("Zahn")).not.toBe(normalizeName("Zah"));

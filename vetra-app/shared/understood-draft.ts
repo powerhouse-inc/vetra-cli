@@ -103,8 +103,9 @@ export function normalizeName(name: string): string {
     .replace(/ü/g, "u")
     .replace(/ß/g, "ss")
     .normalize("NFD")
-    .replace(/\p{M}+/gu, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
     .trim();
   if (!folded) return name.trim().toLowerCase();
   return folded
