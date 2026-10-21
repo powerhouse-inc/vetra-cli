@@ -9,6 +9,7 @@ import {
 } from "./PublishPermissionModal.js";
 
 const hoisted = vi.hoisted(() => ({
+  hasUser: true,
   permission: {
     state: "UNKNOWN",
     delegated: false,
@@ -21,7 +22,7 @@ vi.mock("../idea/useStudioSignIn.js", () => ({
   useStudioSignIn: () => ({
     status: "signed-in",
     name: undefined,
-    hasUser: true,
+    hasUser: hoisted.hasUser,
     signIn: () => {},
     signOut: () => {},
   }),
@@ -35,6 +36,7 @@ const STUDIO = "studio-1";
 
 beforeEach(() => {
   window.localStorage.clear();
+  hoisted.hasUser = true;
   hoisted.permission = {
     state: "UNKNOWN",
     delegated: false,
@@ -54,6 +56,12 @@ function dialog(container: HTMLElement): Element | null {
 }
 
 describe("PublishPermissionModal", () => {
+  it("does not ask in a Studio that needs no sign-in (no Renown user)", () => {
+    hoisted.hasUser = false;
+    const container = ask();
+    expect(dialog(container)).toBeNull();
+  });
+
   it("asks once after sign-in and not again after accepting", async () => {
     const container = ask();
     expect(container.textContent).toContain(PUBLISH_PERMISSION_TITLE);
