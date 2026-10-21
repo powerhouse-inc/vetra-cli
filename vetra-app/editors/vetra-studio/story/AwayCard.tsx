@@ -30,7 +30,9 @@ export function AwayCard({
 }) {
   // Read once on open: the visit time is written on leaving, not on arrival.
   const [since] = useState(() => sinceFor(studioId));
-  const [dismissed, setDismissed] = useState(() => dismissedStudios.has(studioId));
+  const [dismissed, setDismissed] = useState(() =>
+    dismissedStudios.has(studioId),
+  );
   const summary =
     since === null || dismissed ? null : awaySummary(product, since, question);
 
