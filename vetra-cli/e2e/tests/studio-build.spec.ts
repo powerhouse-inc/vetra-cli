@@ -9,10 +9,10 @@ import {
 
 /**
  * Seeded end-to-end. Against a freshly-booted, EMPTY studio (global-setup), we
- * type the prompt into the idea box (which starts the first session), and let
- * the replay agent drive the REAL build (project init → model → editor →
- * preview). We then assert the generated editor renders in the BUILD-pane
- * iframe with the preview data —
+ * type the prompt into the idea screen (which starts the product and its first
+ * conversation), and let the replay agent drive the REAL build (project init →
+ * model → editor → preview). We then assert the generated editor renders in
+ * the preview pane's iframe with the preview data —
  * proving the whole loop: chat → agent → tools → reactor → studio.
  */
 const fixture = loadFixture();
@@ -75,76 +75,76 @@ async function reactorProjectUp(baseUrl: string): Promise<boolean> {
 }
 
 /** Start the build the way a customer does. An empty Studio shows the idea
- * screen ("What do you want to build?"): typing the idea there creates the
- * product, the first conversation and its first message, and opens that
- * conversation. A drive that still shows
- * the session list falls back to "New session" + the chat input. */
+ * screen ("What do you want to build?"): typing the idea there and pressing
+ * Build it creates the product, the first conversation and its first message,
+ * and the page turns into the build — the step strip over the story (the idea
+ * quoted first) and the live preview. */
 async function startBuild(page: Page, prompt: string): Promise<void> {
-  const idea = page.getByRole("textbox", { name: /your idea/i });
-  const newSession = page
-    .getByRole("button", { name: /new session/i })
-    .or(page.getByRole("button", { name: /^new$/i }))
-    .first();
-  await expect(idea.or(newSession).first()).toBeVisible({ timeout: 30_000 });
+  const idea = page.getByRole("textbox", { name: "Your idea" });
+  await expect(idea).toBeVisible({ timeout: 30_000 });
   await dismissCookieBanner(page); // in case it painted late, before the next click
+  await expect(
+    page.getByRole("heading", { name: "What do you want to build?" }),
+  ).toBeVisible();
 
-  if (await idea.isVisible().catch(() => false)) {
-    console.log("[e2e] starting from the idea screen");
-    await expect(
-      page.getByRole("heading", { name: "What do you want to build?" }),
-    ).toBeVisible();
-    await idea.fill(prompt);
-    await page.getByRole("button", { name: /^build it$/i }).click();
-    // The start opens the first conversation: the idea box gives way to the
-    // session view, whose first message is the idea.
-    await expect(idea).toBeHidden({ timeout: 60_000 });
-    await expect(
-      page.locator("aside").getByText(prompt, { exact: true }).first(),
-    ).toBeVisible({ timeout: 30_000 });
-    return;
-  }
+  await idea.fill(prompt);
+  await page.getByRole("button", { name: "Build it", exact: true }).click();
 
-  console.log("[e2e] no idea box — starting from New session");
-  await newSession.click();
-  await dismissCookieBanner(page);
-  // PromptInput submits on Enter.
-  const input = page.locator("aside").getByRole("textbox").first();
-  await expect(input).toBeVisible({ timeout: 30_000 });
-  await input.fill(prompt);
-  await input.press("Enter");
+  // The idea screen gives way to the build: the step strip on top and the
+  // story on the left, which opens with the idea in quotes.
+  await expect(idea).toBeHidden({ timeout: 60_000 });
+  await expect(page.locator('header[aria-label="Steps"]')).toBeVisible({
+    timeout: 30_000,
+  });
+  const story = page.locator('aside[aria-label="Story"]');
+  await expect(
+    story.getByText(`\u201c${prompt}\u201d`, { exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  console.log("[e2e] build started from the idea screen");
 }
 
-/** Wait until the BUILD-pane iframe is mounted (preview = ready). Auto-follow
- * switches to BUILD when the agent's spec-preview-show lands; if it hasn't,
- * nudge via the BUILD tile. The whole cold build can take minutes. */
+/** Wait until the preview iframe is mounted (preview = ready). The preview
+ * pane follows the agent: it shows the preview once the agent's
+ * spec-preview-show lands. If it hasn't after the build has landed, pick the
+ * editor's tab under the preview, as a customer would. The whole cold build
+ * can take minutes. */
 async function waitForReadyPreview(
   page: Page,
   baseUrl: string,
 ): Promise<FrameLocator> {
-  const iframe = page.locator('iframe[title="Preview"]');
-  const buildTile = page.getByRole("button", {
-    name: /Implementation & Testing/i,
-  });
+  const iframe = page.locator('main iframe[title="Preview"]');
+  const firstTab = page
+    .getByRole("tablist", { name: "Screens" })
+    .getByRole("tab")
+    .first();
   const deadline =
     Date.now() + Number(process.env.VETRA_E2E_PREVIEW_TIMEOUT_MS ?? 480_000);
-  let reactorSeen = false;
+  let reactorSeenAt: number | null = null;
+  let nudged = false;
   while (Date.now() < deadline) {
     assertNoReplayError();
     if (await iframe.isVisible().catch(() => false)) break;
-    // Once our reactor-project is on the proxy the build has landed; nudge the
-    // BUILD pane in case auto-follow hasn't switched to it.
-    if (!reactorSeen) {
-      reactorSeen = await reactorProjectUp(baseUrl);
-      if (reactorSeen) console.log("[e2e] reactor-project up on this run's proxy");
+    // Once our reactor-project is on the proxy the build has landed.
+    if (reactorSeenAt === null && (await reactorProjectUp(baseUrl))) {
+      reactorSeenAt = Date.now();
+      console.log("[e2e] reactor-project up on this run's proxy");
     }
-    if (await buildTile.isVisible().catch(() => false)) {
-      await buildTile.click().catch(() => {});
+    // Give following a fair chance before picking the tab by hand.
+    if (
+      !nudged &&
+      reactorSeenAt !== null &&
+      Date.now() - reactorSeenAt > 60_000 &&
+      (await firstTab.isVisible().catch(() => false))
+    ) {
+      console.log("[e2e] preview not shown yet — picking the editor's tab");
+      await firstTab.click().catch(() => {});
+      nudged = true;
     }
     await page.waitForTimeout(2000);
   }
   assertNoReplayError();
   await expect(iframe).toBeAttached({ timeout: 5000 });
-  return page.frameLocator('iframe[title="Preview"]');
+  return page.frameLocator('main iframe[title="Preview"]');
 }
 
 /** Assert the generated editor renders with the preview document's data. */
@@ -193,7 +193,7 @@ async function assertNoMissingModelBanner(page: Page): Promise<void> {
 }
 
 test.describe("Vetra studio — seeded build", () => {
-  test("agent builds the todo-list from empty and the editor renders in the BUILD iframe", async ({
+  test("agent builds the todo-list from empty and the editor renders in the preview", async ({
     page,
   }) => {
     await page.goto(studioHome, { waitUntil: "domcontentloaded" });
