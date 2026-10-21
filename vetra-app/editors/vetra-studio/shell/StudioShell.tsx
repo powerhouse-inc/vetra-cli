@@ -56,14 +56,12 @@ import { PHASE_AVERAGES } from "../strip/timeLeft.js";
 import { useVersionsPanel } from "../versions/VersionsPanel.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { showsFirstVersionBar } from "./firstVersion.js";
+import { DockSplit } from "./DockSplit.js";
+import { effectiveDock, readLayout, writeLayout } from "./layoutPrefs.js";
 import { useStudioState } from "./useStudioState.js";
 
-const STORY_WIDTH_STORAGE_KEY = "vetra-studio:story-width";
 /** The live page's failure rows never focus the build's steer box. */
 const NO_FOCUS = () => {};
-const STORY_WIDTH_DEFAULT = 38;
-const STORY_WIDTH_MIN = 24;
-const STORY_WIDTH_MAX = 62;
 
 export type StudioShellProps = {
   document: DocumentDriveDocument;
@@ -185,26 +183,6 @@ function useNow(ms: number): Date {
   return now;
 }
 
-function readStoryWidth(): number {
-  try {
-    const raw = window.localStorage.getItem(STORY_WIDTH_STORAGE_KEY);
-    const parsed = raw === null ? NaN : Number(raw);
-    return Number.isFinite(parsed)
-      ? clamp(parsed, STORY_WIDTH_MIN, STORY_WIDTH_MAX)
-      : STORY_WIDTH_DEFAULT;
-  } catch {
-    return STORY_WIDTH_DEFAULT;
-  }
-}
-
-function writeStoryWidth(width: number): void {
-  try {
-    window.localStorage.setItem(STORY_WIDTH_STORAGE_KEY, String(width));
-  } catch {
-    // Blocked storage: the width lasts for this visit only.
-  }
-}
-
 /** States 1 and 2: the strip over the build (story | preview) or the live product. */
 function StudioPage({
   drive,
@@ -255,6 +233,18 @@ function StudioPage({
     };
   }, [change, right]);
   const [openStep, setOpenStep] = useState<StepKind | null>(null);
+  const studioId = drive.header.id;
+  const [layout, setLayout] = useState(() => readLayout(studioId));
+  const onResizeSplit = useCallback(
+    (size: number) => {
+      setLayout((prev) => {
+        const next = { ...prev, size: Math.min(70, Math.max(20, size)) };
+        writeLayout(studioId, next);
+        return next;
+      });
+    },
+    [studioId],
+  );
 
   const sessionId = change?.chatSessionId ?? fallbackSessionId;
   const sessionState = useDocumentSafe(sessionId ?? null);
@@ -452,8 +442,12 @@ function StudioPage({
           </main>
         )
       ) : (
-        <BuildSplit
-          story={story}
+        <DockSplit
+          dock={effectiveDock(layout, "build")}
+          size={layout.size}
+          onResize={onResizeSplit}
+          sideLabel="Story"
+          side={story}
           main={
             detail ? (
               <div className="flex min-h-0 flex-1 flex-col">
@@ -522,86 +516,4 @@ function StepDetail({
     case "LIVE":
       return <LiveDetail product={product} now={now} />;
   }
-}
-
-/** Story on the left (resizable, ~38 %), the preview or a step on the right. */
-function BuildSplit({
-  story,
-  main,
-}: {
-  story: React.ReactNode;
-  main: React.ReactNode;
-}) {
-  const [width, setWidth] = useState(readStoryWidth);
-  const [dragging, setDragging] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  /** Removes a drag's window listeners (on mouse up or unmount). */
-  const endDrag = useRef<(() => void) | null>(null);
-
-  useEffect(() => () => endDrag.current?.(), []);
-
-  function onMouseDown(event: React.MouseEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect || rect.width === 0) return;
-    endDrag.current?.();
-    setDragging(true);
-    let latest: number | null = null;
-    function onMove(e: MouseEvent) {
-      if (!rect) return;
-      const percent = ((e.clientX - rect.left) / rect.width) * 100;
-      latest = clamp(percent, STORY_WIDTH_MIN, STORY_WIDTH_MAX);
-      setWidth(latest);
-    }
-    function detach() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      endDrag.current = null;
-    }
-    function onUp() {
-      detach();
-      setDragging(false);
-      // Stored once per drag, when it ends.
-      if (latest !== null) writeStoryWidth(latest);
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    endDrag.current = detach;
-  }
-
-  function resetWidth() {
-    setWidth(STORY_WIDTH_DEFAULT);
-    writeStoryWidth(STORY_WIDTH_DEFAULT);
-  }
-
-  return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
-      <aside
-        aria-label="Story"
-        className="flex shrink-0 flex-col bg-card"
-        style={{ width: `${width}%` }}
-      >
-        {story}
-      </aside>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize"
-        onMouseDown={onMouseDown}
-        onDoubleClick={resetWidth}
-        className="w-1.5 shrink-0 cursor-col-resize border-x border-border bg-card hover:bg-accent"
-      />
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-        {main}
-      </main>
-      {dragging ? (
-        /* Keeps the preview iframe from swallowing the drag. */
-        <div aria-hidden className="fixed inset-0 z-50 cursor-col-resize" />
-      ) : null}
-    </div>
-  );
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
