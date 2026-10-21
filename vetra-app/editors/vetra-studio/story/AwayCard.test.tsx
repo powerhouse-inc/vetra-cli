@@ -1,16 +1,19 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { button, click, render } from "../test-utils/render.js";
+import { button, click, render, rerender } from "../test-utils/render.js";
 import { at } from "../test-utils/studioFixtures.js";
-import { AwayCard } from "./AwayCard.js";
+import { AwayCard, resetAwayCardVisits } from "./AwayCard.js";
 import { LAST_VISIT_KEY } from "./awayCard.js";
 import { buildingProduct } from "./storyFixtures.js";
 
 const ms = (m: number) => Date.parse(at(m));
 const key = LAST_VISIT_KEY("s1");
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  resetAwayCardVisits();
+});
 
 describe("AwayCard", () => {
   it("no card on the first ever visit", () => {
@@ -45,6 +48,15 @@ describe("AwayCard", () => {
     };
     const el = render(<AwayCard studioId="s1" product={ready} />);
     expect(el.textContent).toContain("Your change is ready to go live.");
+  });
+
+  it("remounting the pane keeps the card until Got it", () => {
+    window.localStorage.setItem(key, String(ms(4)));
+    const a = render(<AwayCard studioId="s1" product={buildingProduct()} />);
+    expect(a.textContent).toContain("While you were away");
+    rerender(a, <span />);
+    const b = render(<AwayCard studioId="s1" product={buildingProduct()} />);
+    expect(b.textContent).toContain("While you were away");
   });
 
   it("Got it hides it and stores the time", () => {

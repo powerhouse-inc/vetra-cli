@@ -31,7 +31,31 @@ describe("awaySummary", () => {
   });
 });
 
+describe("waiting scope", () => {
+  it("a stopped step in a closed change is not waiting", () => {
+    const product = buildingProduct();
+    const closed = {
+      ...product,
+      changes: product.changes.map((c) => ({
+        ...c,
+        status: "CLOSED" as const,
+        steps: c.steps.map((s) => ({
+          ...s,
+          status: "STOPPED" as const,
+          reason: "Old trouble",
+        })),
+      })),
+    };
+    expect(awaySummary(closed, ms(30))).toBeNull();
+  });
+});
+
 describe("last visit storage", () => {
+  it("treats an empty stored value as no visit", () => {
+    window.localStorage.setItem("vetra-studio:last-visit:e", "");
+    expect(readLastVisit("e")).toBeNull();
+  });
+
   it("round-trips and tolerates blocked storage", () => {
     expect(readLastVisit("s1")).toBeNull();
     writeLastVisit("s1", 42);

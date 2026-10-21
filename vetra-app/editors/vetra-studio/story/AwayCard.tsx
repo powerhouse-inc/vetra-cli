@@ -2,6 +2,20 @@ import type { StudioProductState } from "document-models/studio-product";
 import { useEffect, useState } from "react";
 import { awaySummary, readLastVisit, writeLastVisit } from "./awayCard.js";
 
+/** The visit time read when this page visit first opened a Studio, so a
+ *  remount (view or dock switch) keeps showing the same card. */
+const sinceByStudio = new Map<string, number | null>();
+function sinceFor(studioId: string): number | null {
+  if (!sinceByStudio.has(studioId)) {
+    sinceByStudio.set(studioId, readLastVisit(studioId));
+  }
+  return sinceByStudio.get(studioId) ?? null;
+}
+/** Test hook: forget the cached visit times (a new page visit). */
+export function resetAwayCardVisits(): void {
+  sinceByStudio.clear();
+}
+
 /** A dismissible card for a returning customer; nothing on a first visit. */
 export function AwayCard({
   studioId,
@@ -13,7 +27,7 @@ export function AwayCard({
   question?: string | null;
 }) {
   // Read once on open: the visit time is written on leaving, not on arrival.
-  const [since] = useState(() => readLastVisit(studioId));
+  const [since] = useState(() => sinceFor(studioId));
   const [dismissed, setDismissed] = useState(false);
   const summary =
     since === null || dismissed ? null : awaySummary(product, since, question);
@@ -21,10 +35,7 @@ export function AwayCard({
   useEffect(() => {
     const save = () => writeLastVisit(studioId, Date.now());
     window.addEventListener("pagehide", save);
-    return () => {
-      window.removeEventListener("pagehide", save);
-      save();
-    };
+    return () => window.removeEventListener("pagehide", save);
   }, [studioId]);
 
   if (!summary) return null;

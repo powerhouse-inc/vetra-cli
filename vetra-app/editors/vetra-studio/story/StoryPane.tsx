@@ -139,10 +139,12 @@ export function StoryPane({
   const ticking = useNow(5_000);
   const now = fixedNow ?? ticking;
   const lines = storyLines(product, change, chat, now);
-  const openQuestion = lines.find(
-    (l): l is Extract<StoryLine, { kind: "reply" }> =>
-      l.kind === "reply" && l.question,
-  )?.text;
+  const openQuestion = lines
+    .filter(
+      (l): l is Extract<StoryLine, { kind: "reply" }> =>
+        l.kind === "reply" && l.question,
+    )
+    .at(-1)?.text;
   const working = agentWorking(chat) && change.status === "BUILDING";
   // When the shown story last changed (G3 counts quiet time from that).
   const changeRef = useRef<StoryChange | null>(null);

@@ -4,6 +4,7 @@
  * localStorage; blocked storage just means no card.
  */
 import type { StudioProductState } from "document-models/studio-product";
+import { openChange } from "../strip/stripModel.js";
 import { outcomeLines, type OutcomeLine } from "./storyLayers.js";
 
 export const LAST_VISIT_KEY = (studioId: string): string =>
@@ -14,7 +15,7 @@ export const READY_WAITING_TEXT = "Your change is ready to go live.";
 export function readLastVisit(studioId: string): number | null {
   try {
     const raw = window.localStorage.getItem(LAST_VISIT_KEY(studioId));
-    if (raw === null) return null;
+    if (raw === null || raw.trim() === "") return null;
     const value = Number(raw);
     return Number.isFinite(value) ? value : null;
   } catch {
@@ -49,13 +50,14 @@ export function awaySummary(
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const waiting: string[] = [];
   if (question) waiting.push(question);
-  for (const change of product.changes) {
-    for (const step of change.steps) {
+  const open = openChange(product);
+  if (open) {
+    for (const step of open.steps) {
       if (step.status === "NEEDS_YOU" || step.status === "STOPPED") {
         waiting.push(step.reason ?? "This step needs you.");
       }
     }
-    if (change.status === "READY") waiting.push(READY_WAITING_TEXT);
+    if (open.status === "READY") waiting.push(READY_WAITING_TEXT);
   }
   const unique = [...new Set(waiting)];
   return outcomes.length === 0 && unique.length === 0
