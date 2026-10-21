@@ -140,7 +140,7 @@ export function StripBudget({
         {level === "warning" ? (
           <span className="sr-only">
             {" "}
-            — 80% or more of this month&apos;s budget used
+            — You&apos;ve used 80% of this month&apos;s budget.
           </span>
         ) : null}
       </span>

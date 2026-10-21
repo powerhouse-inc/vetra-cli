@@ -186,7 +186,8 @@ export function StepStrip({
   onOpenSettings: () => void;
   /** Renames the product; the name is read-only without it. */
   onRename?: (name: string) => void;
-  /** The budget meter shown in place of the plain budget text. */
+  /** The budget meter shown in place of the plain budget text; omitted
+   *  when it would show nothing (so no separator is drawn before it). */
   budget?: ReactNode;
 }) {
   const right = view.right;

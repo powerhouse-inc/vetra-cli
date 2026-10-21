@@ -127,7 +127,9 @@ describe("StripBudget", () => {
     const amber = strip("$8.00 of $10", snapshot(usage(8, 10)));
     expect(amber).toContain('data-level="warning"');
     expect(amber).toContain("text-warning");
-    expect(amber).toContain("80% or more of this month");
+    expect(amber).toContain(
+      "You&#x27;ve used 80% of this month&#x27;s budget.",
+    );
     expect(amber).not.toContain("Request more budget");
   });
 

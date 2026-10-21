@@ -122,9 +122,9 @@ function folderOf(name: string): string {
 }
 
 /**
- * The tabs under the preview. While the Editors step works, the screen the
- * agent is on — else the first one whose code isn't generated yet — is
- * `building`.
+ * The tabs under the preview: the screens whose code is generated, plus the
+ * one being built. While the Editors step works, the screen the agent is on
+ * — else the first one whose code isn't generated yet — is `building`.
  */
 export function previewTabs(project: PreviewProject): PreviewTab[] {
   const { screens } = project;
@@ -134,11 +134,14 @@ export function previewTabs(project: PreviewProject): PreviewTab[] {
     : (screens.find((s) => s.id === project.activeScreenId) ??
       screens.find((s) => !s.confirmed) ??
       null);
-  return screens.map((screen) => ({
-    id: screen.id,
-    label: screenLabel(screen),
-    building: building?.id === screen.id,
-  }));
+  // Tabs appear as screens become available: generated, or being built.
+  return screens
+    .filter((screen) => screen.confirmed || screen.id === building?.id)
+    .map((screen) => ({
+      id: screen.id,
+      label: screenLabel(screen),
+      building: building?.id === screen.id,
+    }));
 }
 
 interface ToolCall {

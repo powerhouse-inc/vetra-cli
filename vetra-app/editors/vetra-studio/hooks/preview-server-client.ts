@@ -273,6 +273,31 @@ export async function fetchStart(args: {
   return (await res.json()) as StartResult;
 }
 
+/**
+ * Stops the project's preview and starts it again (works when it is stuck
+ * starting). Returns null when the Studio's preview server has no
+ * `/restart` (older Studios), so the caller can fall back to `/start`.
+ */
+export async function fetchRestart(args: {
+  project: string;
+  signal?: AbortSignal;
+}): Promise<StartResult | null> {
+  const params = new URLSearchParams({ project: args.project });
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/restart?${params}`, {
+    method: "POST",
+    signal: args.signal,
+  });
+  const body = (await res.json().catch(() => null)) as
+    (StartResult & { kind?: string }) | null;
+  // An unknown route answers 404 without a result `kind`.
+  if (res.status === 404 && !body?.kind) return null;
+  if (!body?.kind) {
+    throw new Error(`preview-server /restart: ${res.status} ${res.statusText}`);
+  }
+  return body;
+}
+
 /** Running versions of the vetra daemon serving this studio. */
 export type VersionInfo = { vetraCli: string; ph: string };
 

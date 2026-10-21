@@ -4,6 +4,7 @@
  * Routes:
  *   GET  /resolve?project=&doc=   read-only; returns JSON `ResolveResult`.
  *   POST /start?project=          idempotent start; returns JSON `StartResult`.
+ *   POST /restart?project=        stop the project's preview, start it again.
  *   GET  /events                  SSE stream of reactor-project events.
  *   GET  /version                 running vetra + ph versions.
  *   GET  /sessions                list chat sessions (gated).
@@ -23,7 +24,7 @@ import { readProjectPackage } from "./package-info.js";
 import { publishProjectForDeploy } from "./publish-project.js";
 import { checkReleaseStatus } from "./release-status.js";
 import { resolvePreview } from "./resolver.js";
-import { startPreview } from "./starter.js";
+import { restartPreview, startPreview } from "./starter.js";
 import { authorizeSessions } from "./session-auth.js";
 import { buildSessionExport, listSessions } from "./session-export.js";
 import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-export.js";
@@ -221,6 +222,24 @@ export async function startPreviewServer(
         return;
       }
 
+      if (path === "/restart" && method === "POST") {
+        const q = parseQuery(url);
+        const result = await restartPreview({
+          services,
+          workdir,
+          project: q.get("project") ?? "",
+          proxyPublicUrl,
+        });
+        const status =
+          result.kind === "unknown-project"
+            ? 404
+            : result.kind === "failed"
+              ? 500
+              : 202;
+        writeJson(res, status, result);
+        return;
+      }
+
       if (path === "/events" && method === "GET") {
         broadcaster.attach(res);
         return;
@@ -369,8 +388,9 @@ export async function startPreviewServer(
 
   log?.debug?.(`[preview-server] listening on http://${PREVIEW_SERVER_HOST}:${port}`);
 
+  const address = server.address();
   return {
-    port,
+    port: address && typeof address === "object" ? address.port : port,
     stop: async () => {
       broadcaster.stop();
       await new Promise<void>((resolve) => server.close(() => resolve()));

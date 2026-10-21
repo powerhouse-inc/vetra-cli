@@ -22,6 +22,9 @@ const hoisted = vi.hoisted(() => ({
     kind: "no-target",
   }),
   started: [] as string[],
+  restarted: [] as string[],
+  /** false: an older Studio without /restart. */
+  hasRestart: true,
 }));
 
 vi.mock("../hooks/useResolvedPreview.js", () => ({
@@ -29,6 +32,11 @@ vi.mock("../hooks/useResolvedPreview.js", () => ({
     hoisted.resolve(target),
 }));
 vi.mock("../hooks/preview-server-client.js", () => ({
+  fetchRestart: ({ project }: { project: string }) => {
+    if (!hoisted.hasRestart) return Promise.resolve(null);
+    hoisted.restarted.push(project);
+    return Promise.resolve({ kind: "started" });
+  },
   fetchStart: ({ project }: { project: string }) => {
     hoisted.started.push(project);
     return Promise.resolve({ kind: "already-running" });
@@ -107,6 +115,8 @@ function selectedTab(container: HTMLElement): string | null | undefined {
 beforeEach(() => {
   hoisted.resolve = () => ({ kind: "no-target" });
   hoisted.started = [];
+  hoisted.restarted = [];
+  hoisted.hasRestart = true;
 });
 
 describe("PreviewPane", () => {
@@ -153,11 +163,8 @@ describe("PreviewPane", () => {
     const tabs = Array.from(container.querySelectorAll('[role="tab"]')).map(
       (t) => t.textContent,
     );
-    expect(tabs).toEqual([
-      "Order editor· building…",
-      "Menu editor",
-      "Kitchen queue",
-    ]);
+    // The draft app has no tab until it is built.
+    expect(tabs).toEqual(["Order editor· building…", "Menu editor"]);
     expect(selectedTab(container)).toContain("Order editor");
     expect(button(container, FOLLOWING_CHIP)).toBeUndefined();
 
@@ -177,7 +184,32 @@ describe("PreviewPane", () => {
     expectNoForbiddenWords(container);
   });
 
-  it("restartPreview starts the shown project again and reloads the frame", async () => {
+  it("a picked screen without a sample yet says the preview is starting", () => {
+    hoisted.resolve = ready;
+    const { container } = mount({
+      change: null,
+      documents: SCREEN_DOCS,
+      session: session([AGENT_SHOWS_ORDER[0], AGENT_SHOWS_ORDER[2]]),
+    });
+    click(container.querySelector('[data-tab="ed-menu"]'));
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.textContent).toContain("Starting the preview…");
+    expect(container.textContent).not.toContain("Setting up your project");
+  });
+
+  it("restartPreview falls back to a start on a Studio without /restart", async () => {
+    hoisted.resolve = ready;
+    hoisted.hasRestart = false;
+    mount({
+      change: null,
+      documents: SCREEN_DOCS,
+      session: session(AGENT_SHOWS_ORDER),
+    });
+    await act(() => restartPreview());
+    expect(hoisted.started).toEqual(["hotel"]);
+  });
+
+  it("restartPreview restarts the shown project and reloads the frame", async () => {
     hoisted.resolve = ready;
     const { container } = mount({
       change: editorsWorking(),
@@ -186,7 +218,8 @@ describe("PreviewPane", () => {
     });
     const before = container.querySelector("iframe");
     await act(() => restartPreview());
-    expect(hoisted.started).toEqual(["hotel"]);
+    expect(hoisted.restarted).toEqual(["hotel"]);
+    expect(hoisted.started).toEqual([]);
     const after = container.querySelector("iframe");
     expect(after).not.toBeNull();
     expect(after).not.toBe(before);

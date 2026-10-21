@@ -2,7 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
-import { startPreview } from "../../src/preview-server/starter.js";
+import { restartPreview, startPreview } from "../../src/preview-server/starter.js";
+import { startPreviewServer } from "../../src/preview-server/server.js";
 import { getPreviewDriveId } from "../../src/helpers/reactor-project-preview.js";
 import { makeWorkdir } from "../spec/_fixtures.js";
 
@@ -17,13 +18,16 @@ function makeServices(args: {
   startImpl?: (id: string, opts: { workdir: string }) => Promise<string>;
 }) {
   const list = jest.fn(() => args.initial ?? []);
+  const stop = jest.fn<(id: string, instanceId?: string) => Promise<void>>(
+    async () => {},
+  );
   const start = jest.fn(
     args.startImpl ??
       (async () => {
         return "instance-1";
       }),
   );
-  return { services: { list, start } as never, list, start };
+  return { services: { list, start, stop } as never, list, start, stop };
 }
 
 describe("preview-server starter", () => {
@@ -140,5 +144,76 @@ describe("preview-server starter", () => {
     });
     expect(start).toHaveBeenCalledTimes(1);
     expect(result.kind).toBe("started");
+  });
+
+  it("restart stops an instance stuck starting and starts a fresh one", async () => {
+    const { services, start, stop } = makeServices({
+      initial: [
+        { workdir: projectPath, status: "starting", instanceId: "stuck" },
+        { workdir: projectPath, status: "failed", instanceId: "old" },
+        { workdir: join(workdir, "other"), status: "ready", instanceId: "x" },
+      ],
+      startImpl: async () => "fresh",
+    });
+    const result = await restartPreview({ services, workdir, project: PROJECT });
+    expect(stop.mock.calls).toEqual([["reactor-project", "stuck"]]);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(
+      start.mock.invocationCallOrder[0],
+    );
+    expect(result).toEqual({
+      kind: "started",
+      project: PROJECT,
+      projectPath,
+      instanceId: "fresh",
+      driveId: getPreviewDriveId(projectPath),
+    });
+  });
+
+  it("restart reports unknown projects and stop failures without starting", async () => {
+    const unknown = makeServices({});
+    expect(
+      (await restartPreview({ services: unknown.services, workdir, project: "nope" })).kind,
+    ).toBe("unknown-project");
+    expect(unknown.stop).not.toHaveBeenCalled();
+
+    const broken = makeServices({
+      initial: [{ workdir: projectPath, status: "ready", instanceId: "i-1" }],
+    });
+    broken.stop.mockImplementation(async () => {
+      throw new Error("cannot stop");
+    });
+    const result = await restartPreview({ services: broken.services, workdir, project: PROJECT });
+    expect(result).toEqual({ kind: "failed", project: PROJECT, error: "cannot stop" });
+    expect(broken.start).not.toHaveBeenCalled();
+  });
+
+  it("POST /restart restarts the project over HTTP", async () => {
+    const { services, start, stop } = makeServices({
+      initial: [{ workdir: projectPath, status: "starting", instanceId: "stuck" }],
+      startImpl: async () => "fresh",
+    });
+    const server = await startPreviewServer({
+      services,
+      subscribe: () => {},
+      workdir,
+      renownUrl: "http://renown.invalid",
+      port: 0,
+      versions: { vetraCli: "test", ph: "test" },
+    });
+    try {
+      const base = `http://127.0.0.1:${server.port}`;
+      const ok = await fetch(`${base}/restart?project=${PROJECT}`, { method: "POST" });
+      expect(ok.status).toBe(202);
+      expect(await ok.json()).toMatchObject({ kind: "started", instanceId: "fresh" });
+      expect(stop).toHaveBeenCalledWith("reactor-project", "stuck");
+      expect(start).toHaveBeenCalledTimes(1);
+
+      const missing = await fetch(`${base}/restart?project=nope`, { method: "POST" });
+      expect(missing.status).toBe(404);
+      expect(await missing.json()).toMatchObject({ kind: "unknown-project" });
+    } finally {
+      await server.stop();
+    }
   });
 });

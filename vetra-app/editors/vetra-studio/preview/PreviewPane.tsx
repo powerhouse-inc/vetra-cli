@@ -10,8 +10,8 @@ import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-m
 import type { PHDocument } from "document-model";
 import type { Change } from "document-models/studio-product";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { PreviewBody } from "../BuildSection.js";
-import { fetchStart } from "../hooks/preview-server-client.js";
+import { PreviewBody, STARTING } from "../BuildSection.js";
+import { fetchRestart, fetchStart } from "../hooks/preview-server-client.js";
 import { useResolvedPreview } from "../hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "../hooks/useSessionPreviewTarget.js";
 import {
@@ -41,14 +41,19 @@ function reloadCount(): number {
 }
 
 /**
- * Restarts the preview: asks for the project to be started again (a stopped
- * one comes back up) and reloads the frame. Rejects when the preview can't
- * be reached; the frame reloads either way.
+ * Restarts the preview: stops the shown project and starts it again (also
+ * when it is stuck starting), then reloads the frame. On an older Studio
+ * without `/restart` it asks for a start instead. Rejects when the preview
+ * can't be reached; the frame reloads either way.
  */
 export async function restartPreview(): Promise<void> {
   const project = shownProject;
   try {
-    if (project) await fetchStart({ project });
+    if (project) {
+      const restarted = await fetchRestart({ project });
+      // Older Studios have no /restart: start (a stopped project comes back).
+      if (restarted === null) await fetchStart({ project });
+    }
   } finally {
     reloads += 1;
     for (const listener of reloadListeners) listener();
@@ -170,7 +175,13 @@ export function PreviewPane({
       <PreviewBody
         preview={preview}
         reloadKey={reloadKey}
-        activity={building}
+        activity={
+          building ??
+          // A picked screen with nothing to show yet in a project that exists.
+          (!following && !target && (agentTarget || targets.size > 0)
+            ? STARTING
+            : undefined)
+        }
         note={building}
       />
       {tabs.length > 0 ? (

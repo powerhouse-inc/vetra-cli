@@ -1,5 +1,6 @@
 /**
- * `POST /start` — idempotently bring a reactor-project online.
+ * `POST /start` — idempotently bring a reactor-project online
+ * (`POST /restart` stops it first, see `restartPreview`).
  *
  * Side-effecty. Triggered by the browser on `project-stopped`; can also be
  * called by the agent (the auto-injected `reactor-project-start` command is
@@ -48,6 +49,14 @@ export async function startPreview(args: {
     };
   }
 
+  return spawn(args, projectPath, driveId);
+}
+
+async function spawn(
+  args: { services: ServiceManager; project: string; proxyPublicUrl?: string },
+  projectPath: string,
+  driveId: string,
+): Promise<StartResult> {
   try {
     const instanceId = await args.services.start("reactor-project", {
       workdir: projectPath,
@@ -70,4 +79,45 @@ export async function startPreview(args: {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/** Instance states that still hold the project's service. */
+const LIVE_STATES = new Set(["starting", "ready", "stopping", "idle"]);
+
+/**
+ * `POST /restart` — stop every live instance of the project's preview
+ * service (including one stuck `starting`) and start a fresh one.
+ */
+export async function restartPreview(args: {
+  services: ServiceManager;
+  workdir: string;
+  project: string;
+  proxyPublicUrl?: string;
+}): Promise<StartResult> {
+  let projectPath: string;
+  try {
+    projectPath = await resolveReactorProjectPath(args.workdir, args.project);
+  } catch (err) {
+    return {
+      kind: "unknown-project",
+      project: args.project,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const live = args.services
+    .list("reactor-project")
+    .filter((i) => i.workdir === projectPath && LIVE_STATES.has(i.status));
+  try {
+    for (const instance of live) {
+      await args.services.stop("reactor-project", instance.instanceId);
+    }
+  } catch (err) {
+    return {
+      kind: "failed",
+      project: args.project,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  return spawn(args, projectPath, getPreviewDriveId(projectPath));
 }

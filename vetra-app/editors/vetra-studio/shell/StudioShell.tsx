@@ -232,6 +232,7 @@ function ProductView({
         : null,
   });
   const right = view.right;
+  const budgetLevel = budgetView(budget.snapshot)?.level;
   useEffect(() => {
     if (!change || "liveUrl" in right) return;
     shownTimeLeft.current = {
@@ -297,7 +298,7 @@ function ProductView({
         onOpenSettings={onOpenSettings}
         onRename={productId ? rename : undefined}
         budget={
-          "budget" in right ? (
+          "budget" in right && (right.budget || budgetLevel === "exhausted") ? (
             <StripBudget
               text={right.budget}
               view={budgetView(budget.snapshot)}

@@ -25,12 +25,12 @@ function editorsStep(status: ProductStep["status"]): ProductStep {
 describe("previewTabs", () => {
   const screens = previewScreens(SCREEN_DOCS);
 
-  it("one tab per editor and app, editors first, in plain words", () => {
+  it("one tab per available editor and app, editors first, in plain words", () => {
     expect(screens.map((s) => s.id)).toEqual(["ed-order", "ed-menu", "app-1"]);
+    // The draft app isn't available yet (no code, not being built).
     expect(previewTabs({ screens }).map((t) => t.label)).toEqual([
       "Order editor",
       "Menu editor",
-      "Kitchen queue",
     ]);
     expect(screenLabel({ kind: "editor", name: "" })).toBe("Editor");
   });
@@ -50,6 +50,12 @@ describe("previewTabs", () => {
       editorsStep: editorsStep("WORKING"),
     });
     expect(guess.filter((t) => t.building).map((t) => t.id)).toEqual(["app-1"]);
+    // The screen being built gets its tab before its code exists.
+    expect(guess.map((t) => t.label)).toEqual([
+      "Order editor",
+      "Menu editor",
+      "Kitchen queue",
+    ]);
   });
 
   it("nothing is building while the Editors step isn't working", () => {
