@@ -6,7 +6,11 @@
  * live it can say "Version <n> is live." as the split closes.
  */
 import type { PHDocument } from "document-model";
-import type { StudioProductState } from "document-models/studio-product";
+import {
+  actions as productActions,
+  type StudioProductState,
+} from "document-models/studio-product";
+import { dispatchOrFail } from "../failures/FailureLine.js";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { FailureLine } from "../failures/FailureLine.js";
 import type { Failure, FailureSituation } from "../failures/failureStates.js";
@@ -14,11 +18,20 @@ import type { StartProductDrive } from "../idea/startProduct.js";
 import { LiveEmbed } from "../live/LiveEmbed.js";
 import { ProductView } from "../live/ProductView.js";
 import { openChange } from "../strip/stripModel.js";
-import { ChangeBubble, ChangeDrawer } from "./ChangeDrawer.js";
-import { OPEN_LIVE_APP, liveUnchanged } from "./changeCopy.js";
+import {
+  ChangeBubble,
+  ChangeDrawer,
+  type PickedSuggestion,
+} from "./ChangeDrawer.js";
+import {
+  OPEN_LIVE_APP,
+  SUGGESTION_NOT_DISMISSED,
+  liveUnchanged,
+} from "./changeCopy.js";
 import { ReadyBar } from "./ReadyBar.js";
 import { SplitView } from "./SplitView.js";
 import { startChange } from "./startChange.js";
+import { SuggestionsCard } from "./SuggestionsCard.js";
 
 /** Notices that inform without needing the customer: no drawer for them. */
 const CALM: ReadonlySet<FailureSituation> = new Set<FailureSituation>([
@@ -65,6 +78,8 @@ export function LiveSurface({
   // "Keep changing" puts the Ready bar away for this READY state.
   const [keptChanging, setKeptChanging] = useState<string | null>(null);
   const drawerRef = useRef<HTMLElement | null>(null);
+  // A suggestion picked on the "Make it better" card, for the drawer's box.
+  const [prefill, setPrefill] = useState<PickedSuggestion | null>(null);
 
   // The open change moved on (adjusted while rendering, not in an effect).
   const [seenOpenId, setSeenOpenId] = useState(openId);
@@ -97,20 +112,41 @@ export function LiveSurface({
   }
 
   const onStart = useCallback(
-    (request: string) =>
+    (request: string, suggestionId?: string) =>
       productId
-        ? startChange({ drive, productId, request, kind: "CHANGE" })
+        ? startChange({
+            drive,
+            productId,
+            request,
+            kind: "CHANGE",
+            ...(suggestionId ? { suggestionId } : {}),
+          })
         : Promise.reject(
             new Error("Your product is still loading. Try again in a moment."),
           ),
     [drive, productId],
   );
 
+  const onDismiss = useCallback(
+    (id: string) =>
+      dispatchOrFail(
+        productActions.dismissSuggestion({ id }),
+        productId,
+        SUGGESTION_NOT_DISMISSED,
+      ),
+    [productId],
+  );
+
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
     setLaunched(null);
+    setPrefill(null);
   }, []);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
+  const pickSuggestion = useCallback((picked: PickedSuggestion) => {
+    setPrefill(picked);
+    setDrawerOpen(true);
+  }, []);
 
   const readyKey = change
     ? `${change.id}:${change.metrics.readyAt ?? ""}`
@@ -137,6 +173,8 @@ export function LiveSurface({
       story={change ? story : null}
       launchedVersion={change ? null : launched}
       onStart={onStart}
+      onDismiss={onDismiss}
+      prefill={prefill}
       onClose={closeDrawer}
       containerRef={drawerRef}
     />
@@ -190,6 +228,16 @@ export function LiveSurface({
             now={now}
             onOpenAccess={onOpenAccess}
             onChangeSomething={drawerOpen ? undefined : openDrawer}
+            suggestions={
+              drawerOpen ? null : (
+                <SuggestionsCard
+                  product={product}
+                  studioId={drive.header.id}
+                  onPick={pickSuggestion}
+                  onDismiss={onDismiss}
+                />
+              )
+            }
           />
         )}
         {change && !drawerOpen ? <ChangeBubble onOpen={openDrawer} /> : null}

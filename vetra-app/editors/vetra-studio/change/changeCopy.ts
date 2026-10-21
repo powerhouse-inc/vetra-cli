@@ -13,6 +13,14 @@ export const CLOSE = "Close";
 export const DISCARDED = "discarded";
 export const CHANGE_NOT_SENT = "Couldn't send it. Try again.";
 
+/* ---------- the agent's suggestions (§5.8) ---------- */
+
+export const MAKE_IT_BETTER = "Make it better";
+export const SUGGESTIONS_LABEL = "Suggestions";
+export const DISMISS_SUGGESTION = "Not this one";
+export const NOT_NOW = "Not now";
+export const SUGGESTION_NOT_DISMISSED = "Couldn't remove it. Try again.";
+
 /**
  * startChange's own plain refusals, shown as they are; anything else (a
  * refused dispatch, a reducer error) shows CHANGE_NOT_SENT. Covers both the

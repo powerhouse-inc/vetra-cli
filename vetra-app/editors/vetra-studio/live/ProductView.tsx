@@ -8,6 +8,7 @@
 import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import { useDocumentSafe } from "@powerhousedao/reactor-browser";
 import type { PHDocument } from "document-model";
+import type { ReactNode } from "react";
 import type {
   Change,
   StudioProductState,
@@ -27,6 +28,7 @@ export function ProductView({
   now,
   onOpenAccess,
   onChangeSomething,
+  suggestions,
 }: {
   /** Normalised product state with a live version (`readProduct`). */
   product: StudioProductState;
@@ -40,6 +42,8 @@ export function ProductView({
   onOpenAccess: () => void;
   /** Opens the change drawer; no bubble while it is open. */
   onChangeSomething?: () => void;
+  /** The "Make it better" card (spec §5.8), under the banner. */
+  suggestions?: ReactNode;
 }) {
   const version = product.liveVersion;
   const live =
@@ -78,6 +82,7 @@ export function ProductView({
           <FailureLine failure={failure} />
         </div>
       ) : null}
+      {suggestions}
       <LiveEmbed
         liveUrl={product.liveUrl}
         version={version}
