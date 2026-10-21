@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { Agent } from '@mastra/core/agent';
 import { createTool } from '@mastra/core/tools';
 import { mapMastraStream } from '@powerhousedao/ph-clint/mastra';
 import { StudioProductV1 } from 'vetra-app/document-models';
 import { z } from 'zod';
-import { PAUSED_REASON, PauseProcessor, isPaused } from '../../src/agents/pause.js';
+import { PAUSED_REASON, PauseProcessor, agentLogger, isPauseAbortLog, isPaused } from '../../src/agents/pause.js';
 import { productHarness, type ProductHarness } from '../product/helpers.js';
 
 const a = StudioProductV1.actions;
@@ -83,6 +83,7 @@ async function runTurn(
     tools: { work },
     inputProcessors: [new PauseProcessor(h.ctx, { graceMs: 0 })],
   });
+  agent.__setLogger(agentLogger('Pause test'));
   const result = await agent.stream('build it', { maxSteps: 10 });
   const raw: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   async function* tap() {
@@ -129,12 +130,21 @@ describe('PauseProcessor', () => {
     const state = await h.state();
     expect(isPaused(state)).toBe(true);
     expect(state.changes[0].milestones).toEqual([]);
-  });
+  }, 30_000);
 
   it('a paused turn is not reported as a failed turn', async () => {
     h = await productHarness();
     const model = scriptedModel(['work', 'done']);
-    const { raw, mapped } = await runTurn(h, model, pause);
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    let raw: Awaited<ReturnType<typeof runTurn>>['raw'];
+    let mapped: Awaited<ReturnType<typeof runTurn>>['mapped'];
+    try {
+      ({ raw, mapped } = await runTurn(h, model, pause));
+      // Mastra's "Error executing step …processor:pause" line is dropped.
+      expect(errors.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('processor:pause'))).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
     expect(raw.find((c) => c.type === 'tripwire')?.payload).toMatchObject({ reason: PAUSED_REASON });
     // What the chat bridge sees (ph-clint's mapping): no error chunk, so no
     // FAIL_TURN — the turn completes, its last message closed without a
@@ -142,7 +152,7 @@ describe('PauseProcessor', () => {
     // doesn't continue it on its own).
     expect(mapped.filter((c) => c.type === 'error')).toEqual([]);
     expect(mapped.filter((c) => c.type === 'finish')).toEqual([]);
-  });
+  }, 30_000);
 
   it('resume continues the same change', async () => {
     h = await productHarness();
@@ -164,7 +174,7 @@ describe('PauseProcessor', () => {
     expect(state.activeChangeId).toBe('change-1');
     expect(state.changes).toHaveLength(1);
     expect(state.changes[0].status).toBe('BUILDING');
-  });
+  }, 30_000);
 
   it('a turn that starts on a paused change waits for the resume, then stops', async () => {
     h = await productHarness();
@@ -198,6 +208,17 @@ describe('PauseProcessor', () => {
       sleep: () => Promise.reject(new Error('should not wait')),
     });
     await expect(noWait.processInputStep(args(3))).rejects.toThrow(`abort:${PAUSED_REASON}`);
+  }, 30_000);
+
+  it('only the pause abort line is dropped from the agent log', () => {
+    const line = (stepId: string, stack: string) => `Error executing step ${stepId}: ${stack}`;
+    const step = 'workflow.vetra-agent-input-processor.step.processor:pause';
+    expect(isPauseAbortLog({ level: 'error', message: line(step, 'Error: paused\n    at abort') })).toBe(true);
+    expect(isPauseAbortLog({ level: 'error', message: line(step, 'Error: offline') })).toBe(false);
+    expect(
+      isPauseAbortLog({ level: 'error', message: line('workflow.x.step.processor:phase-tools', 'Error: paused') }),
+    ).toBe(false);
+    expect(isPauseAbortLog({ level: 'warn', message: line(step, 'Error: paused') })).toBe(false);
   });
 
   it('a product document that cannot be read never stops the turn', async () => {

@@ -16,6 +16,7 @@ import { actions as productActions } from "document-models/studio-product";
 import { useEffect, useState, type RefObject } from "react";
 import {
   AUTO_CONTINUE_TEXT,
+  CONTINUE_ID_PREFIX,
   NOT_DELIVERED_AFTER_MS,
   type Delivery,
 } from "./storyModel.js";
@@ -29,8 +30,12 @@ export const DELIVERY_TEXT: Record<Delivery, string> = {
 };
 
 /** Sends `text` as the customer's message in the conversation. */
-export async function sendSteer(sessionId: string, text: string) {
-  const id = generateId();
+export async function sendSteer(
+  sessionId: string,
+  text: string,
+  id: string = generateId(),
+) {
+  const refused: Error[] = [];
   await dispatchActions(
     chatActions.addUserMessage({
       id,
@@ -38,15 +43,40 @@ export async function sendSteer(sessionId: string, text: string) {
       createdAt: new Date().toISOString(),
     }),
     sessionId,
+    (errors) => refused.push(...errors),
   );
+  if (refused.length > 0) throw refused[0];
   return id;
+}
+
+/** Shown when the change resumed but its `continue` could not be sent. */
+export const CONTINUE_NOT_SENT_TEXT = "Couldn't continue — try again";
+
+/** The change resumed, but `continue` could not be sent (tried twice). */
+export class ContinueNotSentError extends Error {
+  constructor() {
+    super(CONTINUE_NOT_SENT_TEXT);
+    this.name = "ContinueNotSentError";
+  }
+}
+
+/** The toast for a failed Continue. */
+export function continueFailureText(err: unknown): string {
+  return err instanceof ContinueNotSentError
+    ? CONTINUE_NOT_SENT_TEXT
+    : "Couldn't continue. Try again.";
 }
 
 /**
  * Continue a paused change: RESUME_CHANGE, then `continue` in the
- * conversation. The agent stopped the paused turn, so the message starts the
- * next one on the same change (the story doesn't show it as the customer's
- * words). Rejects when the change could not be resumed.
+ * conversation, sent with a Continue message id (`CONTINUE_ID_PREFIX`) so the
+ * story doesn't show it as the customer's words. The agent stopped the paused
+ * turn, so the message starts the next one on the same change; whatever the
+ * customer sent while paused leads it.
+ *
+ * Rejects when the change could not be resumed, and with
+ * `ContinueNotSentError` when `continue` failed twice — the change then stays
+ * BUILDING, so the steer box still reaches the agent.
  */
 export async function continueChange(
   productId: string,
@@ -60,7 +90,16 @@ export async function continueChange(
     (errors) => refused.push(...errors),
   );
   if (refused.length > 0) throw new Error("The change could not be resumed.");
-  if (sessionId) await sendSteer(sessionId, AUTO_CONTINUE_TEXT);
+  if (!sessionId) return;
+  const id = `${CONTINUE_ID_PREFIX}${generateId()}`;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await sendSteer(sessionId, AUTO_CONTINUE_TEXT, id);
+      return;
+    } catch {
+      if (attempt >= 1) throw new ContinueNotSentError();
+    }
+  }
 }
 
 export type SteerBoxProps = {
@@ -123,19 +162,17 @@ export function SteerBox({
     if (!productId) return;
     const next = showPaused ? "resume" : "pause";
     setRequested(next);
-    const failed = () => {
-      setRequested(null);
-      toast?.(
-        next === "pause"
-          ? "Couldn't pause. Try again."
-          : "Couldn't continue. Try again.",
-        { type: "error" },
-      );
-    };
     if (next === "resume") {
-      continueChange(productId, changeId, sessionId).catch(failed);
+      continueChange(productId, changeId, sessionId).catch((err) => {
+        setRequested(null);
+        toast?.(continueFailureText(err), { type: "error" });
+      });
       return;
     }
+    const failed = () => {
+      setRequested(null);
+      toast?.("Couldn't pause. Try again.", { type: "error" });
+    };
     dispatchActions(
       productActions.pauseChange({ changeId, at: new Date().toISOString() }),
       productId,

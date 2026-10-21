@@ -15,7 +15,10 @@
  * - Runs first among the main agent's input processors (F17b), so steers
  *   queued for a turn that is about to stop stay queued for the next turn.
  * - A product document that can't be read never stops the turn (logged).
+ * - Mastra logs every processor abort as "Error executing step …"; the main
+ *   agent's logger (`agentLogger`) drops that line for a pause.
  */
+import { ConsoleLogger, type LogLevel } from '@mastra/core/logger';
 import type { ProcessInputStepArgs, Processor } from '@mastra/core/processors';
 import type { StudioProductState } from 'vetra-app/document-models/studio-product';
 import { getProductDoc, type ProductContext } from '../product/product-doc.js';
@@ -30,6 +33,29 @@ export const PAUSED_REASON = 'paused';
  */
 export const RESUME_GRACE_MS = 3_000;
 const RESUME_POLL_MS = 250;
+
+const PROCESSOR_ID = 'pause';
+
+/**
+ * Whether a Mastra log line is the workflow engine reporting this
+ * processor's pause abort as a failed step (it is not an error).
+ */
+export function isPauseAbortLog(entry: { level: LogLevel; message: string }): boolean {
+  return (
+    entry.level === 'error' &&
+    entry.message.startsWith('Error executing step ') &&
+    new RegExp(`processor:${PROCESSOR_ID}: \\w*Error: ${PAUSED_REASON}\\b`).test(entry.message)
+  );
+}
+
+/**
+ * The main agent's logger: Mastra's default console logger (error level),
+ * without the pause abort's "Error executing step" line. Kept through
+ * `child()`, so the processor workflow's logger filters too.
+ */
+export function agentLogger(name: string): ConsoleLogger {
+  return new ConsoleLogger({ name, filter: (entry) => !isPauseAbortLog(entry) });
+}
 
 /** Whether the active change of `state` is PAUSED. */
 export function isPaused(state: StudioProductState | null | undefined): boolean {
@@ -51,7 +77,7 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
  * the turn when the active change is PAUSED.
  */
 export class PauseProcessor implements Processor<'pause'> {
-  readonly id = 'pause';
+  readonly id = PROCESSOR_ID;
   readonly name = 'Pause';
   private readonly readProduct: typeof getProductDoc;
   private readonly graceMs: number;

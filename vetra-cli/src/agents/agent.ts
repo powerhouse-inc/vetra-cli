@@ -13,7 +13,7 @@ import { INPUT_TOKEN_CAP, createLlmModels, resolveContextTokenLimit, resolveLlmS
 import { createNoModelAgent } from './no-model-agent.js';
 import { createReplayAgent } from './replay-agent.js';
 import { bindRecorderContext } from '../lifecycle/check-recorder.js';
-import { PauseProcessor } from './pause.js';
+import { PauseProcessor, agentLogger } from './pause.js';
 import { PhaseToolsProcessor } from './phase-tools.js';
 
 /**
@@ -134,6 +134,10 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
       new TokenLimiterProcessor({ limit: mainLimit }),
     ],
   });
+
+  // A pause aborts the turn through the processor workflow, which Mastra logs
+  // as a failed step; this logger drops that line (a pause is not an error).
+  main.__setLogger(agentLogger('Vetra Agent'));
 
   const store = createWorkdirStore(ctx.workdir, CLI_NAME);
   const wrapOpts: WrapAgentOptions = {

@@ -13,6 +13,7 @@ class FakeAgent {
     this.id = opts.id;
     agentModels.push({ id: opts.id, model: opts.model });
   }
+  __setLogger() {}
 }
 
 jest.unstable_mockModule("@mastra/core/agent", () => ({ Agent: FakeAgent }));

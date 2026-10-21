@@ -41,6 +41,7 @@ import {
   DELIVERY_TEXT,
   SteerBox,
   continueChange,
+  continueFailureText,
   sendSteer,
 } from "./SteerBox.js";
 import {
@@ -147,9 +148,9 @@ export function StoryPane({
 
   function resume() {
     if (!productId) return;
-    const failed = () =>
-      toast?.("Couldn't continue. Try again.", { type: "error" });
-    continueChange(productId, change.id, sessionId).catch(failed);
+    continueChange(productId, change.id, sessionId).catch((err) =>
+      toast?.(continueFailureText(err), { type: "error" }),
+    );
   }
 
   return (
