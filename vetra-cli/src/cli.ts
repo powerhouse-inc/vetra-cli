@@ -23,6 +23,7 @@ import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { deployCommands } from './commands/deploy/index.js';
 import { authCommands } from './commands/auth/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
+import { productCommands } from './commands/product/index.js';
 import { reactorProject, proxyBasePathHook } from './services/reactor-project.js';
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
@@ -31,8 +32,10 @@ import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url
 import { connectExternalPackagesLayerOrder } from './lifecycle/connect-layer-order.js';
 import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
+import { shellGuard } from './lifecycle/shell-guard.js';
 import { tsCheck } from './lifecycle/ts-check.js';
 import { serializableToolErrors } from './lifecycle/tool-errors.js';
+import { checkRecorder } from './lifecycle/check-recorder.js';
 import { ensurePh } from './lifecycle/ensure-ph.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
 import { studioRedirectTrigger } from './triggers/studio-redirect.js';
@@ -66,6 +69,7 @@ export const cli = defineCli({
     ...deployCommands,
     ...authCommands,
     ...reactorProjectCommands,
+    ...productCommands,
     ...createAttachmentCommands(),
     agentRun,
     // claude-login / claude-logout / claude-status — Claude.ai subscription
@@ -117,7 +121,7 @@ export const cli = defineCli({
     },
     skills: {
       'deploy': {
-        description: 'Build, publish, and deploy a Reactor package to a Vetra Cloud environment — reuse or create an environment, install the package, return the live links, and answer deployment status questions (is the package published, installed, or the environment ready).',
+        description: 'Only for an explicit request to deploy to a named environment (Studio products go live by themselves). Build, publish, and deploy a Reactor package to a Vetra Cloud environment — reuse or create an environment, install the package, return the live links, and answer deployment status questions (is the package published, installed, or the environment ready).',
         inputSchema: z.object({
           mode: z
             .enum(['expert', 'discovery', 'one-shot'])
@@ -241,6 +245,8 @@ export const cli = defineCli({
     proxyBasePathHook(),
     observability(),
     genGuard(),
+    // The shell is for installs: checks, builds and git go through recorded tools.
+    shellGuard(),
     tsCheck(),
     connectDriveUrlOnSwitchboardReady({
       vetraAppDir: CONNECT_ASSETS_ROOT,
@@ -248,6 +254,10 @@ export const cli = defineCli({
     connectExternalPackagesLayerOrder({
       vetraAppDir: CONNECT_ASSETS_ROOT,
     }),
+    // Records spec-generate / reactor-project-check outcomes as check runs on
+    // the product's active change. Inside tool-errors so its rethrows keep
+    // their serializable message.
+    checkRecorder(),
     // Outermost wrap: thrown tool errors keep their message through JSON
     // serialization to the model. Must stay last to catch inner hooks' throws.
     serializableToolErrors(),

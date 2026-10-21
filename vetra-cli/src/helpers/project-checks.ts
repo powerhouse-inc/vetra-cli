@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { checkNodeOptions } from "./node-memory.js";
+import { capReason, type ObservedCheck } from "../product/check-results.js";
 
 export interface GenDiagnostic {
   source: "tsc" | "eslint";
@@ -16,6 +17,12 @@ export interface CheckOutcome {
   diagnostics: GenDiagnostic[];
   /** Why a check didn't run (binary missing, timeout, spawn error). */
   notes: string[];
+  /**
+   * The passes that actually ran, by diagnostic source. `failedToRun` holds
+   * the reason when the pass was attempted but its run itself failed. A pass
+   * that was skipped (flag, missing binary, nothing to check) is absent.
+   */
+  ran?: Partial<Record<GenDiagnostic["source"], { failedToRun?: string }>>;
 }
 
 export type CheckScope = "module" | "all";
@@ -230,6 +237,7 @@ async function runOxlint(
 ): Promise<CheckOutcome> {
   const diagnostics: GenDiagnostic[] = [];
   const notes: string[] = [];
+  const ran: NonNullable<CheckOutcome["ran"]> = {};
   const targets = oxlintTargets(base, opts.scope);
   if (targets === null) {
     notes.push("checks skipped: no module directories present to check");
@@ -247,10 +255,12 @@ async function runOxlint(
   diagnostics.push(...found);
   // oxlint exits non-zero when it reports findings (expected); a non-zero exit
   // with nothing parsed means the run itself failed.
-  if (!success && found.length === 0) {
-    notes.push(`checks failed to run: ${tailOutput(output)}`);
-  }
-  return { diagnostics, notes };
+  const failedToRun =
+    !success && found.length === 0 ? `checks failed to run: ${tailOutput(output)}` : undefined;
+  if (failedToRun) notes.push(failedToRun);
+  if (!opts.skipTypecheck) ran.tsc = { failedToRun };
+  if (!opts.skipLint) ran.eslint = { failedToRun };
+  return { diagnostics, notes, ran };
 }
 
 export async function runChecks(
@@ -265,8 +275,9 @@ export async function runChecks(
   const scope: CheckScope = opts.scope ?? "all";
   const diagnostics: GenDiagnostic[] = [];
   const notes: string[] = [];
+  const ran: NonNullable<CheckOutcome["ran"]> = {};
 
-  if (opts.skipTypecheck && opts.skipLint) return { diagnostics, notes };
+  if (opts.skipTypecheck && opts.skipLint) return { diagnostics, notes, ran };
 
   // oxlint (when installed) runs both lint + TS diagnostics in one pass; use it
   // instead of the separate tsc+eslint passes. Falls back when absent.
@@ -292,9 +303,12 @@ export async function runChecks(
       diagnostics.push(...found);
       // tsc exits non-zero when it reports diagnostics (expected); only a
       // non-zero exit with nothing parsed means the run itself failed.
-      if (!success && found.length === 0) {
-        notes.push(`typecheck failed to run: ${tailOutput(output)}`);
-      }
+      const failedToRun =
+        !success && found.length === 0
+          ? `typecheck failed to run: ${tailOutput(output)}`
+          : undefined;
+      if (failedToRun) notes.push(failedToRun);
+      ran.tsc = { failedToRun };
     }
   }
 
@@ -315,14 +329,121 @@ export async function runChecks(
         diagnostics.push(...found);
         // eslint exits non-zero when it reports errors (expected); a non-zero
         // exit with no parseable JSON means the run itself failed.
-        if (!success && found.length === 0) {
-          notes.push(`lint failed to run: ${tailOutput(output)}`);
-        }
+        const failedToRun =
+          !success && found.length === 0
+            ? `lint failed to run: ${tailOutput(output)}`
+            : undefined;
+        if (failedToRun) notes.push(failedToRun);
+        ran.eslint = { failedToRun };
       }
     }
   }
 
-  return { diagnostics, notes };
+  return { diagnostics, notes, ran };
+}
+
+function formatDiagnostic(d: GenDiagnostic): string {
+  return `${d.file}:${d.line}:${d.column} ${d.code} ${d.message}`;
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * The TYPECHECK and LINT results a check outcome supports, for the product
+ * document's check runs. A pass that did not run is omitted. TYPECHECK passes
+ * with no tsc errors; LINT passes with no lint errors, warnings go in the
+ * reason (Ruling F14). A pass whose run failed counts as not passed. Reasons
+ * are plain one-liners for the customer; the raw diagnostics go in `detail`.
+ */
+export function checkResultsFromOutcome(
+  outcome: CheckOutcome,
+  base?: string,
+): ObservedCheck[] {
+  const out: ObservedCheck[] = [];
+  const passes = [
+    { source: "tsc", kind: "TYPECHECK", noun: "type", check: "type check" },
+    { source: "eslint", kind: "LINT", noun: "lint", check: "lint check" },
+  ] as const;
+  for (const { source, kind, noun, check } of passes) {
+    const run = outcome.ran?.[source];
+    if (!run) continue;
+    if (run.failedToRun) {
+      out.push({ kind, passed: false, reason: `The ${check} couldn't run.`, detail: run.failedToRun });
+      continue;
+    }
+    const mine = outcome.diagnostics.filter((d) => d.source === source);
+    const errors = mine.filter((d) => d.severity === "error");
+    const warnings = mine.length - errors.length;
+    const parts: string[] = [];
+    if (errors.length > 0) {
+      const first = errors[0];
+      parts.push(`${plural(errors.length, `${noun} error`)}, first in ${first.file} line ${first.line}.`);
+    }
+    if (warnings > 0) parts.push(`${plural(warnings, `${noun} warning`)}.`);
+    const reason = parts.join(" ");
+    out.push({
+      kind,
+      passed: errors.length === 0,
+      reason: reason ? capReason(reason, { base }) : null,
+      detail: mine.length > 0 ? mine.slice(0, 5).map(formatDiagnostic).join("\n") : undefined,
+    });
+  }
+  return out;
+}
+
+/** Last lines of the reducer test output that say what failed (for the agent). */
+function testFailureSummary(output: string): string {
+  const lines = output
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const failing = lines.filter((l) => /FAIL|✗|×|AssertionError|Error:/.test(l)).slice(0, 3);
+  const summary = lines.filter((l) => /^Tests?\s/.test(l)).slice(-1);
+  const picked = [...failing, ...summary].join("\n") || lines.slice(-3).join("\n");
+  return picked.length > 1000 ? `${picked.slice(0, 999)}…` : picked;
+}
+
+/** "1 of 3 tests failed." from vitest's summary line, when it has one. */
+function testFailureReason(output: string): string {
+  const m = /Tests\s+(\d+)\s+failed.*?\((\d+)\)/.exec(output);
+  if (m) return `${m[1]} of ${plural(Number(m[2]), "test")} failed.`;
+  return "The tests failed.";
+}
+
+/**
+ * Run the project's reducer tests through its `test` script (`vitest run` in
+ * the boilerplate). Null when the project has no `test` script.
+ */
+export async function runReducerTests(
+  base: string,
+  runProcess: RunProcess,
+): Promise<ObservedCheck | null> {
+  let scripts: Record<string, string> | undefined;
+  try {
+    scripts = (
+      JSON.parse(fs.readFileSync(path.join(base, "package.json"), "utf8")) as {
+        scripts?: Record<string, string>;
+      }
+    ).scripts;
+  } catch {
+    return null;
+  }
+  if (!scripts?.test) return null;
+  const { success, output } = await runProcess("npm run test --silent", {
+    cwd: base,
+    timeout: 300_000,
+    env: { CI: "1", NODE_OPTIONS: checkNodeOptions() },
+  });
+  return success
+    ? { kind: "REDUCER_TESTS", passed: true, reason: null }
+    : {
+        kind: "REDUCER_TESTS",
+        passed: false,
+        reason: testFailureReason(output),
+        detail: testFailureSummary(output),
+      };
 }
 
 export function summarizeDiagnostics(diagnostics: GenDiagnostic[]): {

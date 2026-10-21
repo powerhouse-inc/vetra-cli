@@ -11,6 +11,15 @@ import { VETRA_AGENT_IMAGE } from './agent-image.js';
 import { INPUT_TOKEN_CAP, createLlmModels, resolveContextTokenLimit, resolveLlmSettings } from './llm.js';
 import { createNoModelAgent } from './no-model-agent.js';
 import { createReplayAgent } from './replay-agent.js';
+import { bindRecorderContext } from '../lifecycle/check-recorder.js';
+import { PhaseToolsProcessor } from './phase-tools.js';
+
+/**
+ * The main agent's sub-agents; Mastra exposes each as the tool `agent-<key>`
+ * (the phase tool sets name them).
+ */
+export const SUB_AGENT_KEYS = ['agentDocumentModel', 'agentEditor', 'agentApp'] as const;
+type SubAgentKey = (typeof SUB_AGENT_KEYS)[number];
 
 /**
  * Agent factory for the CLI.
@@ -22,6 +31,10 @@ import { createReplayAgent } from './replay-agent.js';
  * connect-a-model mode.
  */
 export async function createAgent(ctx: AgentSetupContext<Config>): Promise<AgentProvider> {
+  // The check recorder (a lifecycle tool wrap) reaches the product document
+  // through the agent's command context.
+  bindRecorderContext(ctx.context);
+
   // Deterministic e2e: replay a recorded tool sequence against the real
   // reactor instead of calling an LLM. Gated so it never affects production.
   const replayFixture = process.env.VETRA_REPLAY_FIXTURE;
@@ -94,7 +107,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     inputProcessors: [new TokenLimiterProcessor({ limit: subLimit })],
   });
 
-  const subAgents: Record<string, Agent> = { agentDocumentModel, agentEditor, agentApp };
+  const subAgents: Record<SubAgentKey, Agent> = { agentDocumentModel, agentEditor, agentApp };
 
   const main = new Agent({
     id: 'vetra-agent',
@@ -108,7 +121,9 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     workspace: await m.createWorkspace(),
     memory,
     agents: subAgents,
-    inputProcessors: [new TokenLimiterProcessor({ limit: mainLimit })],
+    // Tool filter before the token count (F17b): the agent sees only the
+    // tools of the active change's current step.
+    inputProcessors: [new PhaseToolsProcessor(ctx.context), new TokenLimiterProcessor({ limit: mainLimit })],
   });
 
   const store = createWorkdirStore(ctx.workdir, CLI_NAME);

@@ -60,6 +60,10 @@ export type ChatPaneProps = {
    *  Until then a session absent from `nodes` is sync lag, not a missing
    *  record, so "not found" must wait. */
   driveLoaded: boolean;
+  /** Temporary (M0): while set, the pane shows the idea box, and this starts
+   *  (or resumes) the product from the idea; resolves to the first
+   *  conversation's id. Unset once the first message is in. */
+  onStartFromIdea?: (idea: string) => Promise<string | undefined>;
 };
 
 export function ChatPane({
@@ -67,6 +71,7 @@ export function ChatPane({
   selectedSessionId,
   onSelectSession,
   driveLoaded,
+  onStartFromIdea,
 }: ChatPaneProps) {
   const sessions = document.state.global.nodes.filter(
     (node): node is FileNode =>
@@ -101,6 +106,14 @@ export function ChatPane({
     sessions.length,
     onSelectSession,
   );
+
+  if (onStartFromIdea) {
+    return (
+      <div className="flex h-full flex-col bg-card">
+        <IdeaStart onStart={onStartFromIdea} onStarted={onSelectSession} />
+      </div>
+    );
+  }
 
   if (selectedSessionId) {
     const knownSession = sessions.find((s) => s.id === selectedSessionId);
@@ -324,6 +337,88 @@ function EmptyState({
         <span>{creating ? "Creating…" : "New session"}</span>
       </button>
     </div>
+  );
+}
+
+/** Temporary (M0) first conversation from the idea; M1 replaces it with the
+ *  idea screen. */
+function IdeaStart({
+  onStart,
+  onStarted,
+}: {
+  onStart: (idea: string) => Promise<string | undefined>;
+  onStarted: (sessionId: string) => void;
+}) {
+  const [idea, setIdea] = useState("");
+  const [starting, setStarting] = useState(false);
+  const toast = usePHToast();
+
+  async function start(text: string) {
+    setStarting(true);
+    try {
+      const sessionId = await onStart(text);
+      if (sessionId) onStarted(sessionId);
+    } catch (err) {
+      console.error("Failed to start the product", err);
+      setStarting(false);
+      // A retry resumes where the start stopped (startProduct is resumable).
+      toast?.(
+        <span className="flex items-center gap-2">
+          <span>Your build couldn&apos;t start.</span>
+          <button
+            type="button"
+            onClick={() => void start(text)}
+            className="rounded px-1.5 py-0.5 font-medium underline"
+          >
+            Try again
+          </button>
+        </span>,
+        { type: "error" },
+      );
+    }
+  }
+
+  function submit() {
+    const text = idea.trim();
+    if (!text || starting) return;
+    void start(text);
+  }
+
+  return (
+    <form
+      className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <VetraMitosis size={48} active={starting} />
+      <div className="text-sm font-medium text-foreground">
+        What will you build today?
+      </div>
+      <textarea
+        value={idea}
+        onChange={(e) => setIdea(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        rows={3}
+        disabled={starting}
+        placeholder="Describe your idea"
+        aria-label="Your idea"
+        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-vetra-primary"
+      />
+      <button
+        type="submit"
+        disabled={starting || !idea.trim()}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-vetra-primary px-3 py-1.5 text-xs font-medium text-vetra-primary-fg shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {starting ? "Starting…" : "Build it"}
+      </button>
+    </form>
   );
 }
 

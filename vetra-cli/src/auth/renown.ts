@@ -130,6 +130,11 @@ export async function isAuthorizedAdmin(
   return state.authenticated && isAdminAddress(state.address, process.env.ADMINS);
 }
 
+// Re-read after an await: TS keeps the earlier `!renown.user` narrowing.
+function currentUser(renown: IRenown): IRenown["user"] {
+  return renown.user;
+}
+
 /** Poll the pending login for up to `timeoutMs` and, once the user has approved
  * in the browser, store the credential. Returns the resulting state; `pending`
  * stays true if approval hasn't landed yet (caller retries). */
@@ -143,15 +148,23 @@ export async function confirmAuth(
   if (renown.user) {
     return { authenticated: true, address: renown.user.address };
   }
-  if (!entry.pending) {
+  const pending = entry.pending;
+  if (!pending) {
     return { authenticated: false };
   }
-  const result = await pollLogin(renown, entry.pending.sessionId, timeoutMs);
+  const result = await pollLogin(renown, pending.sessionId, timeoutMs);
   if (result.status === "ready") {
-    entry.pending = undefined;
+    if (entry.pending === pending) entry.pending = undefined;
     return { authenticated: true, address: result.user.address };
   }
-  return { authenticated: false, pending: { loginUrl: entry.pending.loginUrl } };
+  // Concurrent confirms (several studio hooks poll at once): another call may
+  // have completed this login, and cleared `entry.pending`, while we polled.
+  const user = currentUser(renown);
+  if (user) {
+    return { authenticated: true, address: user.address };
+  }
+  const current = entry.pending ?? pending;
+  return { authenticated: false, pending: { loginUrl: current.loginUrl } };
 }
 
 /** Clear the stored credential and any pending login. The keypair (the agent's

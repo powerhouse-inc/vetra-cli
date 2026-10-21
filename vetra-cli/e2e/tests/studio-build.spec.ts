@@ -9,9 +9,10 @@ import {
 
 /**
  * Seeded end-to-end. Against a freshly-booted, EMPTY studio (global-setup), we
- * start a chat session, type the prompt, and let the replay agent drive the
- * REAL build (project init → model → editor → preview). We then assert the
- * generated editor renders in the BUILD-pane iframe with the preview data —
+ * type the prompt into the idea box (which starts the first session), and let
+ * the replay agent drive the REAL build (project init → model → editor →
+ * preview). We then assert the generated editor renders in the BUILD-pane
+ * iframe with the preview data —
  * proving the whole loop: chat → agent → tools → reactor → studio.
  */
 const fixture = loadFixture();
@@ -73,19 +74,36 @@ async function reactorProjectUp(baseUrl: string): Promise<boolean> {
   }
 }
 
-/** Start a fresh chat session from the empty session list. */
-async function startSession(page: Page): Promise<void> {
+/** Start the build the way a customer does. An empty Studio shows the idea
+ * box: typing the idea there creates the product, the first conversation and
+ * its first message, and opens that conversation. A drive that still shows
+ * the session list falls back to "New session" + the chat input. */
+async function startBuild(page: Page, prompt: string): Promise<void> {
+  const idea = page.getByRole("textbox", { name: /your idea/i });
   const newSession = page
     .getByRole("button", { name: /new session/i })
     .or(page.getByRole("button", { name: /^new$/i }))
     .first();
-  await expect(newSession).toBeVisible({ timeout: 30_000 });
-  await newSession.click();
-}
+  await expect(idea.or(newSession).first()).toBeVisible({ timeout: 30_000 });
+  await dismissCookieBanner(page); // in case it painted late, before the next click
 
-/** Type the kickoff prompt into the chat input and submit (PromptInput
- * submits on Enter). */
-async function sendPrompt(page: Page, prompt: string): Promise<void> {
+  if (await idea.isVisible().catch(() => false)) {
+    console.log("[e2e] starting from the idea box");
+    await idea.fill(prompt);
+    await page.getByRole("button", { name: /^build it$/i }).click();
+    // The start opens the first conversation: the idea box gives way to the
+    // session view, whose first message is the idea.
+    await expect(idea).toBeHidden({ timeout: 60_000 });
+    await expect(
+      page.locator("aside").getByText(prompt, { exact: true }).first(),
+    ).toBeVisible({ timeout: 30_000 });
+    return;
+  }
+
+  console.log("[e2e] no idea box — starting from New session");
+  await newSession.click();
+  await dismissCookieBanner(page);
+  // PromptInput submits on Enter.
   const input = page.locator("aside").getByRole("textbox").first();
   await expect(input).toBeVisible({ timeout: 30_000 });
   await input.fill(prompt);
@@ -177,9 +195,7 @@ test.describe("Vetra studio — seeded build", () => {
     await page.goto(studioHome, { waitUntil: "domcontentloaded" });
     await dismissCookieBanner(page);
 
-    await startSession(page);
-    await dismissCookieBanner(page); // in case it painted late, before the next click
-    await sendPrompt(page, fixture.prompt);
+    await startBuild(page, fixture.prompt);
 
     const preview = await waitForReadyPreview(page, run.baseUrl);
     await assertEditor(preview, fixture);
