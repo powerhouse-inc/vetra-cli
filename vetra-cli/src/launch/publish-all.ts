@@ -5,9 +5,10 @@
  * (controller ruling X13; the registry serves `@vetra-apps/*` from local
  * storage only, never from npmjs).
  *
- * The publish rewrites `package.json` (name, version, content hash) for the
- * build and the tarball; the original file is put back afterwards, so the
- * working tree still equals the version's snapshot.
+ * The publish rewrites `package.json` (name, version, content hash) and the
+ * name in `powerhouse.manifest.json` for the build and the tarball; the
+ * original files are put back afterwards, so the working tree still equals the
+ * version's snapshot.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -17,6 +18,7 @@ import { resolveCloudConfig } from "../cloud/config.js";
 import { fetchPackument } from "../cloud/registry-packument.js";
 import { resolveLaunchRegistryUrl } from "../cloud/registry-url.js";
 import {
+  MANIFEST_FILE,
   nextPublishVersion,
   publishReactorProject,
 } from "../commands/reactor-project/publish-core.js";
@@ -166,6 +168,8 @@ export async function publishAll(
         `No package.json in ${project}.`,
       );
     }
+    const manifestPath = path.join(projectPath, MANIFEST_FILE);
+    const originalManifest = await readFile(manifestPath).catch(() => null);
     const localVersion = (JSON.parse(original) as { version?: string }).version ?? null;
     // R25: a Studio without a named registry publishes to its stack's one.
     const registryUrl = resolveLaunchRegistryUrl({
@@ -209,6 +213,7 @@ export async function publishAll(
       });
     } finally {
       await writeFile(packageJsonPath, original);
+      if (originalManifest !== null) await writeFile(manifestPath, originalManifest);
     }
 
     if (result.kind === "auth-required") {
