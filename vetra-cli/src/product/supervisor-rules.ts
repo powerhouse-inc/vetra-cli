@@ -10,9 +10,10 @@
  *   and never within 5 min of the last milestone (F38: recovery clears
  *   `stuck` in the reducer, the supervisor never dispatches CLEAR_STUCK).
  * - `autoContinue` — the turn ended at the step cap with the change still
- *   BUILDING: add the milestone "Taking a breather — continuing." and send
- *   `continue` once. When the capped turn was itself that
- *   `continue`, ask instead (`stepAttention` NEEDS_YOU "Taking a breather").
+ *   BUILDING: send `continue` once, then add the milestone "Taking a
+ *   breather — continuing.". When the capped turn was itself that `continue`,
+ *   ask instead (`stepAttention` NEEDS_YOU "Taking a breather"). A continue
+ *   already given up on (`isDone`) no longer holds off `markStuck`.
  * - `previewSlow` — 60 s after the latest preview start the preview is not up
  *   and no SMOKE ran since: Editors NEEDS_YOU. `previewRecovered` puts Editors
  *   back to WORKING once the preview is up.
@@ -90,6 +91,8 @@ export interface SupervisorObservations {
   chatSessionId?: string;
   /** The preview (reactor project) is up; undefined when unknown. */
   previewReady?: boolean;
+  /** Action keys already carried out or given up on. */
+  isDone?: (key: string) => boolean;
 }
 
 const OPEN = new Set(["BUILDING", "PAUSED", "READY", "LAUNCHING"]);
@@ -445,8 +448,11 @@ export function evaluate(
   const t = now.getTime();
   const turn = chat ? latestTurn(chat) : null;
   const cap = chat ? capRules(change, chat, turn, observed.chatSessionId) : [];
-  // An automatic continue moves the build again: not stuck.
-  const continuing = cap.some((x) => x.type === "autoContinue");
+  // An automatic continue still to go out moves the build again: not stuck.
+  // One already given up on does not, so stuck can still fire.
+  const continuing = cap.some(
+    (x) => x.type === "autoContinue" && !observed.isDone?.(x.key),
+  );
   return [
     ...(continuing ? [] : stuckRules(change, turn, t)),
     ...cap,

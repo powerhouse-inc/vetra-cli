@@ -140,8 +140,16 @@ async function carryOut(
     case "autoContinue": {
       const client = await chatClient(ctx);
       if (!client) throw new Error("no reactor to reach the chat");
-      // The story line first. Its id is fixed per capped turn: a repeat after a
-      // restart is refused as a duplicate, and the continue still goes out.
+      await client.execute(action.chatSessionId, "main", [
+        chatActions.addUserMessage({
+          id: randomUUID(),
+          createdAt: at,
+          content: [{ id: randomUUID(), type: "TEXT", text: CONTINUE_TEXT }],
+        }),
+      ]);
+      // The story line only once the continue went out: a continue that can't
+      // be delivered must not read as progress (it would hold off "stuck").
+      // Its id is fixed per capped turn, so a repeat is refused as a duplicate.
       try {
         await dispatchProduct(ctx, [
           a.addMilestone({
@@ -152,16 +160,8 @@ async function carryOut(
           }),
         ]);
       } catch (err) {
-        if (!(err instanceof ProductRefusedError)) throw err;
-        deps.log?.debug?.(`${TAG} breather milestone not added: ${err.message}`);
+        deps.log?.warn?.(`${TAG} breather milestone not added: ${message(err)}`);
       }
-      await client.execute(action.chatSessionId, "main", [
-        chatActions.addUserMessage({
-          id: randomUUID(),
-          createdAt: at,
-          content: [{ id: randomUUID(), type: "TEXT", text: CONTINUE_TEXT }],
-        }),
-      ]);
       return;
     }
   }
@@ -192,6 +192,7 @@ export async function supervise(deps: SupervisorDeps): Promise<SupervisorAction[
     const observed: SupervisorObservations = {
       chatSessionId,
       previewReady: previewReady(deps.services),
+      isDone: (key) => done.has(key),
     };
     const at = now.toISOString();
     const attempts = deps.attempts ?? new Map<string, number>();
@@ -238,7 +239,6 @@ export const productSupervisorTrigger = defineTrigger<SupervisorState>({
 
   // Returns at once: the routine loop polls every trigger in turn, so the
   // pass runs detached. `running` keeps passes from overlapping.
-   
   async poll(tctx) {
     const state = tctx.state;
     const nowMs = Date.now();
@@ -261,10 +261,12 @@ export const productSupervisorTrigger = defineTrigger<SupervisorState>({
       log,
       done: state.done,
       attempts: state.attempts,
-    }).finally(() => {
-      clearTimeout(timer);
-      state.running = false;
-    });
+    })
+      .catch((err: unknown) => log?.warn?.(`${TAG} pass failed: ${message(err)}`))
+      .finally(() => {
+        clearTimeout(timer);
+        state.running = false;
+      });
     return null;
   },
 });

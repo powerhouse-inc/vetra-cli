@@ -194,6 +194,17 @@ describe("supervisor rules: step cap", () => {
     expect(of(actions, "markStuck")).toEqual([]);
   });
 
+  it("still marks stuck when the continue was given up on", () => {
+    const capped = chat(user("build it", 0), toolCall("spec-get", "x1", 1), toolResult("spec-get", "x1", 2), reply(3, "tool-calls"));
+    const s = product(checkRun("r1", 10, "GENERATE", false), checkRun("r2", 20, "GENERATE", false), checkRun("r3", 30, "GENERATE", false));
+    const [cont] = of(run(s, capped, 10 * MIN), "autoContinue");
+    const actions = evaluate(s, capped, new Date(T0 + 10 * MIN * 1000), {
+      chatSessionId: "chat-1",
+      isDone: (key) => key === cont.key,
+    });
+    expect(of(actions, "markStuck")).toHaveLength(1);
+  });
+
   it("leaves a turn that finished normally, or a change that isn't BUILDING, alone", () => {
     expect(of(run(product(), chat(user("build it", 0), reply(3, "stop")), 10), "autoContinue")).toEqual([]);
     const capped = chat(user("build it", 0), reply(3, "tool-calls"));
@@ -393,6 +404,47 @@ describe("supervise", () => {
     for (let i = 0; i < 3; i++) await supervise({ ctx: broken, done, attempts, now });
     expect(done.size).toBe(2);
     expect(attempts.size).toBe(0);
+  });
+
+  it("gives up on a continue that can't be delivered, then marks the change stuck", async () => {
+    const { ctx, productId, chatId } = await setup();
+    await turn(chatId, "tool-calls");
+    const real = (await ctx.reactor!())!.client as {
+      get: (id: string) => Promise<unknown>;
+      execute: (id: string, branch: string, actions: Action[]) => Promise<unknown>;
+    };
+    // The chat refuses every write; the product document takes them.
+    const noChat: ProductContext = {
+      ...ctx,
+      reactor: async () => ({
+        ...(await ctx.reactor!())!,
+        client: {
+          get: (i: string) => real.get(i),
+          execute: (i: string, b: string, x: Action[]) =>
+            i === chatId ? Promise.reject(new Error("chat unavailable")) : real.execute(i, b, x),
+        },
+      }),
+    };
+    const done = new Set<string>();
+    const attempts = new Map<string, number>();
+    for (let i = 0; i < 3; i++) await supervise({ ctx: noChat, done, attempts, now });
+    expect((await getProduct(productId)).stuck).toBeNull();
+    await supervise({ ctx: noChat, done, attempts, now });
+    expect((await getProduct(productId)).stuck?.reason).toBe("I'm stuck: the code generation failed 3 times in a row.");
+  });
+
+  it("puts a slowly starting Editors step back to WORKING once the preview is up", async () => {
+    const { ctx, productId, chatId } = await setup();
+    await module!.client.execute(productId, "main", [
+      a.planSteps({ changeId: "c1", steps: [{ kind: "PLAN" }, { kind: "EDITORS" }] }),
+      a.setStepAttention({ changeId: "c1", kind: "EDITORS", status: "NEEDS_YOU", reason: PREVIEW_SLOW_REASON, at: at(40) }),
+    ]);
+    await turn(chatId, "stop");
+    const services = { list: () => [{ name: "reactor-project", status: "ready" }] };
+    const carried = await supervise({ ctx, services, done: new Set(), now });
+    expect(carried.map((x) => x.type)).toContain("previewRecovered");
+    const editors = (await getProduct(productId)).steps.find((x) => x.kind === "EDITORS");
+    expect(editors).toMatchObject({ status: "WORKING", reason: null });
   });
 
   it("poll returns at once while a pass hangs, and never overlaps passes", async () => {
