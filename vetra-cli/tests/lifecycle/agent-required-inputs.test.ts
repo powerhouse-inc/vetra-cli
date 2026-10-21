@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, jest } from "@jest/globals";
 import type { LifecycleHook } from "@powerhousedao/ph-clint";
+import { commandsToMastraTools } from "@powerhousedao/ph-clint/mastra";
 import { z } from "zod";
 import { specCreate } from "../../src/commands/spec/create.js";
 import { specUpdate } from "../../src/commands/spec/update.js";
@@ -26,6 +27,17 @@ async function wrapOf(): Promise<ToolWrap> {
   return wrap;
 }
 
+/** The agent's tool for `command`, as ph-clint builds it for Mastra. */
+async function agentTool(command: typeof specCreate | typeof specUpdate) {
+  const tools = await commandsToMastraTools([command] as never, {
+    workdir: "/tmp",
+    stdout: () => {},
+  } as never);
+  const tool = tools[command.id];
+  if (!tool) throw new Error(`no tool ${command.id}`);
+  return tool;
+}
+
 function required(schema: unknown): string[] {
   const json = z.toJSONSchema(schema as z.ZodType, { io: "input" }) as {
     required?: string[];
@@ -37,28 +49,33 @@ describe("agentRequiredInputs", () => {
   it("marks spec-create's type required for the agent, not for the CLI", async () => {
     expect(required(specCreate.inputSchema)).not.toContain("type");
     const wrap = await wrapOf();
-    const execute = jest.fn();
-    const tool = { execute, inputSchema: specCreate.inputSchema, id: "spec-create" };
+    const tool = await agentTool(specCreate);
+    expect(required(tool.inputSchema)).not.toContain("type");
     const wrapped = wrap("spec-create", tool);
     expect(required(wrapped.inputSchema)).toEqual(expect.arrayContaining(["type", "name"]));
-    expect(wrapped.execute).toBe(execute);
+    // The Mastra tool keeps its id, description and execute.
+    expect(wrapped.id).toBe("spec-create");
+    expect(wrapped.description).toBe(tool.description);
+    expect(wrapped.execute).toBe(tool.execute);
     // The description the agent reads is kept.
     const shape = (wrapped.inputSchema as z.ZodObject).shape as Record<string, z.ZodType>;
     expect(shape.type.description).toMatch(/Document model type/);
-    // An empty value is refused like a missing one.
+    // An empty value is refused like a missing one; the CLI schema still allows it.
     expect((wrapped.inputSchema as z.ZodType).safeParse({ type: "", name: "x" }).success).toBe(false);
     expect(specCreate.inputSchema.safeParse({ name: "x" }).success).toBe(true);
+    // The original tool is not mutated.
+    expect(required(tool.inputSchema)).not.toContain("type");
   });
 
   it("marks spec-update's name required", async () => {
     const wrap = await wrapOf();
-    const tool = { execute: jest.fn(), inputSchema: specUpdate.inputSchema };
-    expect(required(wrap("spec-update", tool).inputSchema)).toContain("name");
+    const wrapped = wrap("spec-update", await agentTool(specUpdate));
+    expect(required(wrapped.inputSchema)).toContain("name");
   });
 
   it("leaves other tools, and tools without an object schema, as they are", async () => {
     const wrap = await wrapOf();
-    const tool = { execute: jest.fn(), inputSchema: specCreate.inputSchema };
+    const tool = await agentTool(specCreate);
     expect(wrap("spec-list", tool)).toBe(tool);
     const bare = { execute: jest.fn() };
     expect(wrap("spec-create", bare)).toBe(bare);

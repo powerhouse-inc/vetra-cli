@@ -139,6 +139,10 @@ export function resolveActionType(
   return { variants: lines.join("\n") };
 }
 
+/** Cap on the spec-create action reference (~1k tokens): the full
+ * document-model listing (~3.8k chars) fits. */
+export const ACTION_REFERENCE_MAX_CHARS = 4_000;
+
 /** An action's input SDL on one line, descriptions and comments dropped. */
 function compactSdl(sdl: string): string {
   return sdl
@@ -154,24 +158,42 @@ function compactSdl(sdl: string): string {
  * enums they use — appended to `spec-create` so the agent has the shapes for
  * its `spec-update` calls without a `spec-schema` call per action.
  */
-export function actionReference(type: string): string {
+export function actionReference(
+  type: string,
+  { maxChars = ACTION_REFERENCE_MAX_CHARS }: { maxChars?: number } = {},
+): string {
   const latest = latestOf(type);
-  const lines: string[] = [];
-  const all: string[] = [];
+  const entries: { name: string; sdl: string }[] = [];
   for (const mod of latest?.modules ?? []) {
     for (const op of mod.operations ?? []) {
-      if (!op.name) continue;
-      const sdl = compactSdl(op.schema ?? "");
-      all.push(sdl);
-      lines.push(`  ${op.name}: ${sdl || "(no input)"}`);
+      if (op.name) entries.push({ name: op.name, sdl: compactSdl(op.schema ?? "") });
     }
   }
-  if (lines.length === 0) return "";
-  return (
-    `Actions of ${type} (spec-update input shapes — no spec-schema call needed):\n` +
-    lines.join("\n") +
-    referencedEnums(all.join("\n"), latest)
-  );
+  if (entries.length === 0) return "";
+  const head = `Actions of ${type} (spec-update input shapes — no spec-schema call needed):`;
+  // Keep whole lines within the cap; name the rest so they can be looked up
+  // in one batched spec-schema call.
+  const lines: string[] = [];
+  const shown: string[] = [];
+  let size = head.length;
+  let cut = entries.length;
+  for (const [i, { name, sdl }] of entries.entries()) {
+    const line = `  ${name}: ${sdl || "(no input)"}`;
+    if (size + line.length + 1 > maxChars) {
+      cut = i;
+      break;
+    }
+    lines.push(line);
+    shown.push(sdl);
+    size += line.length + 1;
+  }
+  const rest = entries.slice(cut).map((e) => e.name);
+  if (rest.length > 0) {
+    lines.push(
+      `  … ${rest.length} more: ${rest.join(", ")} — spec-schema --type ${type} --action ${rest.slice(0, 3).join(",")}`,
+    );
+  }
+  return [head, ...lines].join("\n") + referencedEnums(shown.join("\n"), latest);
 }
 
 function buildSummary(type: string, schema: { specifications: LatestSpec[] }) {

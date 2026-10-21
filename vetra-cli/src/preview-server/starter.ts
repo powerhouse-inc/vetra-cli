@@ -19,9 +19,16 @@ export async function startPreview(args: {
   /** Live public proxy origin; advertised as the base of the project's drive URLs. */
   proxyPublicUrl?: string;
 }): Promise<StartResult> {
+  // The browser always names the project; an empty one never picks the
+  // workspace's only project.
+  if (!args.project) {
+    return { kind: "unknown-project", project: args.project, error: "No project specified." };
+  }
   let projectPath: string;
   try {
-    projectPath = await resolveReactorProjectPath(args.workdir, args.project);
+    projectPath = await resolveReactorProjectPath(args.workdir, args.project, {
+      soleProjectDefault: false,
+    });
   } catch (err) {
     return {
       kind: "unknown-project",
@@ -115,9 +122,16 @@ async function restartProject(args: {
   project: string;
   proxyPublicUrl?: string;
 }): Promise<StartResult> {
+  // The browser always names the project; an empty one never picks the
+  // workspace's only project.
+  if (!args.project) {
+    return { kind: "unknown-project", project: args.project, error: "No project specified." };
+  }
   let projectPath: string;
   try {
-    projectPath = await resolveReactorProjectPath(args.workdir, args.project);
+    projectPath = await resolveReactorProjectPath(args.workdir, args.project, {
+      soleProjectDefault: false,
+    });
   } catch (err) {
     return {
       kind: "unknown-project",

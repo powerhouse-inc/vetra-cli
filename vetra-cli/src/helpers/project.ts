@@ -21,6 +21,11 @@ export const projectInputSchema = z
  *     project, and the agent dropping `project` cost a failed call (and a
  *     retry step) per spec/preview command on staging.
  *
+ * `soleProjectDefault: false` turns the one-project default off: publishing
+ * and starting are explicit, so an empty project there never picks one (it
+ * means the workdir itself, which fails in a Studio — its root isn't a
+ * package).
+ *
  * The successful path is one stat (the config file). The expensive
  * `listReactorProjects` walk happens only when we're about to throw — so the
  * async syscalls are tolerable here.
@@ -28,8 +33,13 @@ export const projectInputSchema = z
 export async function resolveReactorProjectPath(
   workdir: string,
   subdir: string | undefined,
+  { soleProjectDefault = true }: { soleProjectDefault?: boolean } = {},
 ): Promise<string> {
-  if (!subdir && !(await pathExists(path.join(workdir, "powerhouse.config.json")))) {
+  if (
+    soleProjectDefault &&
+    !subdir &&
+    !(await pathExists(path.join(workdir, "powerhouse.config.json")))
+  ) {
     const sole = await soleReactorProject(workdir);
     if (sole) return sole;
   }

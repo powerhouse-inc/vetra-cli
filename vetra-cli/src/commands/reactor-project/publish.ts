@@ -44,7 +44,10 @@ login is required.`,
     { name, version, registry, tag, skipBuild, dryRun, log },
     { workdir, config, stdout },
   ) => {
-    const projectPath = await resolveReactorProjectPath(workdir, name);
+    // Publishing names its project: no one-project default.
+    const projectPath = await resolveReactorProjectPath(workdir, name, {
+      soleProjectDefault: false,
+    });
     const { renownUrl } = resolveCloudConfig(config);
 
     const result = await publishReactorProject({

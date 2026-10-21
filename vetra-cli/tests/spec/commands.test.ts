@@ -9,7 +9,12 @@ import { specDelete } from "../../src/commands/spec/delete.js";
 import { specGenerate } from "../../src/commands/spec/generate.js";
 import { specGet } from "../../src/commands/spec/get.js";
 import { specList } from "../../src/commands/spec/list.js";
-import { enumValues, specSchema } from "../../src/commands/spec/schema.js";
+import {
+  ACTION_REFERENCE_MAX_CHARS,
+  actionReference,
+  enumValues,
+  specSchema,
+} from "../../src/commands/spec/schema.js";
 import { specSchemaList } from "../../src/commands/spec/schema-list.js";
 import { specUpdate } from "../../src/commands/spec/update.js";
 import { makeCtx, makeWorkdir } from "./_fixtures.js";
@@ -157,6 +162,37 @@ describe("spec-create", () => {
     expect(result.text).toMatch(/Enum values:\n {2}StatusType: /);
     // The created path stays on the second line.
     expect(result.text.split("\n")[1]).toMatch(/board-editor\.editor\.phd$/);
+  });
+
+  it("product specs come without the action listing (Plan's token budget)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vetra-noreactor-"));
+    try {
+      const result = await specCreate.execute(
+        { type: PRODUCT_TYPE, name: "Lean Feature", dryRun: true },
+        makeCtx(dir),
+      );
+      expect(result.text).toMatch(/^Created powerhouse\/feature "Lean Feature"/);
+      expect(result.text).not.toContain("Actions of");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    const model = await specCreate.execute(
+      { type: DOC_TYPE, name: "Model", dryRun: true },
+      makeCtx(workdir),
+    );
+    expect(model.text).toContain("Actions of powerhouse/document-model");
+    expect(model.text.length).toBeLessThan(ACTION_REFERENCE_MAX_CHARS + 600);
+  });
+
+  it("caps the action listing, naming the actions left out", () => {
+    const full = actionReference(DOC_TYPE);
+    expect(full).not.toContain(" more: ");
+    const capped = actionReference(DOC_TYPE, { maxChars: 400 });
+    const [, ...lines] = capped.split("\n");
+    const listed = lines.filter((l) => /^ {2}[A-Z_]+: /.test(l));
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.join("\n").length).toBeLessThanOrEqual(400);
+    expect(capped).toMatch(/ {2}… \d+ more: [A-Z_, ]+ — spec-schema --type powerhouse\/document-model --action [A-Z_,]+/);
   });
 
   it("does not persist when --dryRun is set", async () => {

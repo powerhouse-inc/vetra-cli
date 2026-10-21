@@ -62,9 +62,13 @@ export const specCreate = defineCommand({
     /* `createDocument` only seeds `name`; populate slug from it so the doc
      * has a stable short handle alongside its display name and id. */
     doc.header.slug = slugify(input.name);
-    // The type's action shapes ride along, so the agent's spec-update calls
-    // need no spec-schema lookup per action (staging: 5–10 per spec).
-    const reference = actionReference(input.type);
+    // A project spec's action shapes ride along, so the agent's spec-update
+    // calls need no spec-schema lookup per action (staging: 5–10 per spec).
+    // Not for product specs: Plan creates several, and their listings (2–3.5k
+    // chars each) would add ~5–6k tokens against the input-token cap.
+    const reference = isProductSpecType(input.type)
+      ? ""
+      : actionReference(input.type);
     const withReference = (text: string) =>
       reference ? `${text}\n\n${reference}` : text;
     if (input.dryRun) {
