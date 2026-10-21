@@ -125,141 +125,153 @@ export const specGenerate = defineCommand({
     await assertProjectInstalled(base, input.project);
     // codegen rewrites shared barrels/manifest from the project's view, so
     // concurrent runs clobber each other; serialize per reactor project.
-    return withProjectCodegenLock(base, async () => {
-      // Each target carries the doc plus its on-disk spec file, passed to
-      // `ph generate --document`.
-      // Real on-disk path only (never a recomputed specPath): the saved filename
-      // uses a different kebab than specPath derives, so a recompute can miss.
-      const targets: { doc: PHDocument; path: string }[] = input.name
-        ? [await findByName(base, input.name)]
-        : await getDocumentsWithPaths(base);
+    return withProjectCodegenLock(base, () => generateInProject(input, base, runProcess));
+  },
+});
 
-      if (targets.length === 0) {
-        return { text: "(no specs to generate)" };
+/**
+ * The body of `spec-generate` for one reactor project, without taking the
+ * codegen lock: the caller holds it (`spec-generate` itself, or a Studio edit
+ * that already serialises on it). The result carries the GENERATE check
+ * (`attachCheckResults`) when any codegen ran.
+ */
+export async function generateInProject(
+  input: { name?: string; skipChecks?: boolean },
+  base: string,
+  runProcess: RunProcess,
+): Promise<{ text: string }> {
+  // Each target carries the doc plus its on-disk spec file, passed to
+  // `ph generate --document`.
+  // Real on-disk path only (never a recomputed specPath): the saved filename
+  // uses a different kebab than specPath derives, so a recompute can miss.
+  const targets: { doc: PHDocument; path: string }[] = input.name
+    ? [await findByName(base, input.name)]
+    : await getDocumentsWithPaths(base);
+
+  if (targets.length === 0) {
+    return { text: "(no specs to generate)" };
+  }
+
+  const generated: { name: string; type: string }[] = [];
+  const skipped: { name: string; type: string; reason: string }[] = [];
+  /* Specs whose codegen ran and failed (not those without codegen). */
+  const failed: string[] = [];
+
+  for (const { doc, path } of targets) {
+    const type = doc.header.documentType;
+    if (!GENERATE_SUBCOMMAND[type]) {
+      if (input.name) {
+        throw new Error(
+          `${type} — ${doc.header.name}: (no codegen for ${type})`,
+        );
       }
-
-      const generated: { name: string; type: string }[] = [];
-      const skipped: { name: string; type: string; reason: string }[] = [];
-      /* Specs whose codegen ran and failed (not those without codegen). */
-      const failed: string[] = [];
-
-      for (const { doc, path } of targets) {
-        const type = doc.header.documentType;
-        if (!GENERATE_SUBCOMMAND[type]) {
-          if (input.name) {
-            throw new Error(
-              `${type} — ${doc.header.name}: (no codegen for ${type})`,
-            );
-          }
-          skipped.push({
-            name: doc.header.name,
-            type,
-            reason: `(no codegen for ${type})`,
-          });
-          continue;
-        }
-        try {
-          await generateOne(doc, path, base, runProcess);
-          generated.push({ name: doc.header.name, type });
-        } catch (err) {
-          const reason = trimGenerateError(
-            err instanceof Error ? err.message : String(err),
-          );
-          if (input.name) {
-            throw attachCheckResults(
-              new Error(`${type} — ${doc.header.name}: ${reason}`),
-              [
-                generateResult(
-                  base,
-                  false,
-                  `Code couldn't be generated for ${doc.header.name}.`,
-                  reason,
-                ),
-              ],
-            );
-          }
-          skipped.push({ name: doc.header.name, type, reason });
-          failed.push(doc.header.name);
-        }
-      }
-
-      let diagnostics: GenDiagnostic[] = [];
-      const checkNotes: string[] = [];
-      if (!input.skipChecks && generated.length > 0) {
-        const outcome = await runChecks(base, runProcess, { scope: "module" });
-        diagnostics = outcome.diagnostics;
-        checkNotes.push(...outcome.notes);
-      }
-      const summary = summarizeDiagnostics(diagnostics);
-
-      if (input.name && summary.errors > 0) {
-        const head = diagnostics
-          .filter((d) => d.severity === "error")
-          .slice(0, 5)
-          .map(
-            (d) =>
-              `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
-          )
-          .join("\n  ");
+      skipped.push({
+        name: doc.header.name,
+        type,
+        reason: `(no codegen for ${type})`,
+      });
+      continue;
+    }
+    try {
+      await generateOne(doc, path, base, runProcess);
+      generated.push({ name: doc.header.name, type });
+    } catch (err) {
+      const reason = trimGenerateError(
+        err instanceof Error ? err.message : String(err),
+      );
+      if (input.name) {
         throw attachCheckResults(
-          new Error(
-            `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
-          ),
+          new Error(`${type} — ${doc.header.name}: ${reason}`),
           [
             generateResult(
               base,
               false,
-              `The generated code has ${summary.errors} error(s).`,
-              head,
+              `Code couldn't be generated for ${doc.header.name}.`,
+              reason,
             ),
           ],
         );
       }
+      skipped.push({ name: doc.header.name, type, reason });
+      failed.push(doc.header.name);
+    }
+  }
 
-      const lines = [
-        `Generated ${generated.length} module(s)` +
-          (skipped.length > 0 ? `, skipped ${skipped.length}` : "") +
-          ".",
-      ];
-      for (const g of generated) {
-        lines.push(`  ✓ ${g.type} — ${g.name}`);
-      }
-      for (const s of skipped) {
-        lines.push(`  ✗ ${s.type} — ${s.name}: ${s.reason}`);
-      }
-      if (diagnostics.length > 0) {
-        lines.push(
-          `Generated-file checks: ${summary.errors} error(s), ${summary.warnings} warning(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}).`,
-        );
-        for (const d of diagnostics.slice(0, 20)) {
-          lines.push(
-            `  ${d.severity === "error" ? "✗" : "!"} [${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
-          );
-        }
-        if (diagnostics.length > 20) {
-          lines.push(`  … ${diagnostics.length - 20} more`);
-        }
-      }
-      for (const note of checkNotes) {
-        lines.push(`  · ${note}`);
-      }
+  let diagnostics: GenDiagnostic[] = [];
+  const checkNotes: string[] = [];
+  if (!input.skipChecks && generated.length > 0) {
+    const outcome = await runChecks(base, runProcess, { scope: "module" });
+    diagnostics = outcome.diagnostics;
+    checkNotes.push(...outcome.notes);
+  }
+  const summary = summarizeDiagnostics(diagnostics);
 
-      // GENERATE only when some codegen actually ran (Ruling F1).
-      const ranAny = generated.length > 0 || failed.length > 0;
-      const problems = [
-        ...(failed.length > 0
-          ? [`Code couldn't be generated for ${failed.join(", ")}.`]
-          : []),
-        ...(summary.errors > 0
-          ? [`The generated code has ${summary.errors} error(s).`]
-          : []),
-      ];
-      return attachCheckResults(
-        { text: lines.join("\n") },
-        ranAny
-          ? [generateResult(base, problems.length === 0, problems.join(" ") || null)]
-          : [],
+  if (input.name && summary.errors > 0) {
+    const head = diagnostics
+      .filter((d) => d.severity === "error")
+      .slice(0, 5)
+      .map(
+        (d) =>
+          `[${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
+      )
+      .join("\n  ");
+    throw attachCheckResults(
+      new Error(
+        `Generated code has ${summary.errors} error(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}):\n  ${head}`,
+      ),
+      [
+        generateResult(
+          base,
+          false,
+          `The generated code has ${summary.errors} error(s).`,
+          head,
+        ),
+      ],
+    );
+  }
+
+  const lines = [
+    `Generated ${generated.length} module(s)` +
+      (skipped.length > 0 ? `, skipped ${skipped.length}` : "") +
+      ".",
+  ];
+  for (const g of generated) {
+    lines.push(`  ✓ ${g.type} — ${g.name}`);
+  }
+  for (const s of skipped) {
+    lines.push(`  ✗ ${s.type} — ${s.name}: ${s.reason}`);
+  }
+  if (diagnostics.length > 0) {
+    lines.push(
+      `Generated-file checks: ${summary.errors} error(s), ${summary.warnings} warning(s) (tsc: ${summary.tsc}, eslint: ${summary.eslint}).`,
+    );
+    for (const d of diagnostics.slice(0, 20)) {
+      lines.push(
+        `  ${d.severity === "error" ? "✗" : "!"} [${d.source}] ${d.file}:${d.line}:${d.column} ${d.code} — ${d.message}`,
       );
-    });
-  },
-});
+    }
+    if (diagnostics.length > 20) {
+      lines.push(`  … ${diagnostics.length - 20} more`);
+    }
+  }
+  for (const note of checkNotes) {
+    lines.push(`  · ${note}`);
+  }
+
+  // GENERATE only when some codegen actually ran (Ruling F1).
+  const ranAny = generated.length > 0 || failed.length > 0;
+  const problems = [
+    ...(failed.length > 0
+      ? [`Code couldn't be generated for ${failed.join(", ")}.`]
+      : []),
+    ...(summary.errors > 0
+      ? [`The generated code has ${summary.errors} error(s).`]
+      : []),
+  ];
+  return attachCheckResults(
+    { text: lines.join("\n") },
+    ranAny
+      ? [generateResult(base, problems.length === 0, problems.join(" ") || null)]
+      : [],
+  );
+}

@@ -18,6 +18,7 @@
  *   GET  /export?workspace=1      owner: zip of selected workspace parts.
  *   GET  /auth/status             owner: the agent's Renown identity.
  *   POST /auth/start|confirm|logout  owner: change the agent's Renown identity.
+ *   *    /iterate/*                owner: iterate-routes.ts.
  *
  * Listens on 127.0.0.1, but the embedded proxy exposes it publicly at
  * `/preview` — so every owner route checks the *request's* credential.
@@ -36,6 +37,9 @@ import { createRequestAuthorizer, type RequestAuthorizer } from "./request-auth.
 import { buildSessionExport, listSessions } from "./session-export.js";
 import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-export.js";
 import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
+import type { ProductContext } from "../product/product-doc.js";
+import type { RunProcess } from "../product/studio-edit.js";
+import { createIterateRoutes } from "./iterate-routes.js";
 import {
   confirmAuth,
   getAuthState,
@@ -70,6 +74,8 @@ interface PreviewServerDeps {
   /** Live public proxy URL; its origin is the `aud` owner bearers must carry.
    *  Falls back to `proxyPublicUrl`. */
   getProxyPublicUrl?: () => string | undefined;
+  /** The command context the iterate routes reach the product and run checks through. */
+  product?: ProductContext & { runProcess?: RunProcess };
   /** Owner gate override (tests); default `createRequestAuthorizer`. */
   authorizeRequest?: RequestAuthorizer;
   log?: {
@@ -167,6 +173,18 @@ export async function startPreviewServer(
     writeJson(res, check.status, { error: check.error });
     return false;
   }
+
+  const iterateRoutes = createIterateRoutes({
+    requireOwner,
+    writeJson,
+    workdir,
+    product: deps.product,
+    previewUrl: (base) =>
+      services
+        .list("reactor-project")
+        .find((i) => i.workdir === base && i.status === "ready")?.endpoints?.["vetra-studio"],
+    log,
+  });
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void handleRequest(req, res);
@@ -417,6 +435,7 @@ export async function startPreviewServer(
         return;
       }
 
+      if (await iterateRoutes.handle(req, res, url, method)) return;
       writeJson(res, 404, { error: "not found", path });
     } catch (err) {
       log?.error(
