@@ -45,6 +45,16 @@ describe('resolveReleaseChannel', () => {
     ).toEqual({ distTag: 'p5', registries: ['https://registry.vetra.io'] });
   });
 
+  it('p6 prerelease → p6 on registry.vetra.io only', () => {
+    expect(
+      resolveReleaseChannel({
+        branch: 'feat/teams',
+        prereleaseTag: 'p6',
+        version: '0.0.9-p6.1',
+      }),
+    ).toEqual({ distTag: 'p6', registries: ['https://registry.vetra.io'] });
+  });
+
   it('p5 tag refuses a version without -p5.', () => {
     expect(() =>
       resolveReleaseChannel({
