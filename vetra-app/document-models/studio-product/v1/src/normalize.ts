@@ -5,8 +5,13 @@ import type {
   CheckRun,
   GithubLink,
   LaunchLine,
+  Milestone,
+  NotesSettings,
+  ProductOrigin,
   ProductStep,
   StudioProductState,
+  Suggestion,
+  Variant,
   Version,
 } from "../gen/schema/types.js";
 
@@ -38,13 +43,42 @@ export function normalizeProduct(
   s.lastRequestFailure ??= null;
   s.launchPermission ??= "UNKNOWN";
   s.suggestions ??= [];
+  s.suggestions.forEach(normalizeSuggestion);
   s.github = normalizeGithub(s.github);
   s.liveBeforeVersions ??= null;
   s.changes ??= [];
   s.changes.forEach(normalizeChange);
   s.versions ??= [];
   s.versions.forEach(normalizeVersion);
+  s.origins ??= [];
+  s.origins.forEach(normalizeOrigin);
+  s.notes = normalizeNotes(s.notes);
+  s.publicSource ??= null;
+  s.sourceNoticeAcceptedAt ??= null;
   return state;
+}
+
+function normalizeSuggestion(suggestion: Suggestion): void {
+  const x: Partial<Suggestion> = suggestion;
+  x.kind ??= "IDEA";
+  x.screenshot ??= null;
+}
+
+function normalizeOrigin(origin: ProductOrigin): void {
+  const o: Partial<ProductOrigin> = origin;
+  o.sourceUrl ??= null;
+  o.sourceRef ??= null;
+  o.missing ??= [];
+  o.latestVersion ??= null;
+  o.checkedAt ??= null;
+}
+
+function normalizeNotes(notes: NotesSettings | undefined): NotesSettings {
+  if (!notes) return { enabled: false, since: null };
+  const n: Partial<NotesSettings> = notes;
+  n.enabled ??= false;
+  n.since ??= null;
+  return notes;
 }
 
 function normalizeGithub(github: GithubLink | undefined): GithubLink {
@@ -84,11 +118,21 @@ function normalizeChange(change: Change): void {
   c.steps ??= [];
   c.steps.forEach(normalizeStep);
   c.milestones ??= [];
+  c.milestones.forEach((milestone: Milestone) => {
+    const m: Partial<Milestone> = milestone;
+    m.outcome ??= null;
+  });
   c.checkRuns ??= [];
   c.checkRuns.forEach(normalizeRun);
   c.stuck ??= null;
   c.lintWaivedAt ??= null;
   c.metrics = normalizeMetrics(c.metrics);
+  c.variants ??= [];
+  c.variants.forEach((variant: Variant) => {
+    const v: Partial<Variant> = variant;
+    v.chatSessionId ??= null;
+    v.summary ??= null;
+  });
 }
 
 function normalizeStep(step: ProductStep): void {

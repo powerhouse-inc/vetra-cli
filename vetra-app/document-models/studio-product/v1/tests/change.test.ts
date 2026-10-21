@@ -784,10 +784,66 @@ describe("story and attention", () => {
     );
     expect(change(doc).stuck).toBeNull();
     expect(change(doc).milestones).toEqual([
-      { id: "m1", text: "Planned 3 things", at: at(3), recovered: false },
-      { id: "m2", text: "Fixed it", at: at(4), recovered: true },
+      {
+        id: "m1",
+        text: "Planned 3 things",
+        at: at(3),
+        recovered: false,
+        outcome: null,
+      },
+      {
+        id: "m2",
+        text: "Fixed it",
+        at: at(4),
+        recovered: true,
+        outcome: null,
+      },
     ]);
     expect(lastError(doc)).toMatch(/already exists/);
+  });
+
+  it("milestone keeps a 120-char outcome", () => {
+    const outcome = "N".repeat(120);
+    const doc = apply(
+      building(),
+      addMilestone({
+        changeId: "c1",
+        id: "m1",
+        text: "Added tags",
+        outcome: `  ${outcome}  `,
+        at: at(3),
+      }),
+      addMilestone({
+        changeId: "c1",
+        id: "m2",
+        text: "Checked it",
+        outcome: "   ",
+        at: at(4),
+      }),
+    );
+    expect(errorAt(doc, 3)).toBeNull();
+    expect(change(doc).milestones.map((m) => m.outcome)).toEqual([
+      outcome,
+      null,
+    ]);
+  });
+
+  it("outcome over 120 chars is refused (state unchanged)", () => {
+    const before = building();
+    const doc = apply(
+      before,
+      addMilestone({
+        changeId: "c1",
+        id: "m1",
+        text: "Added tags",
+        outcome: "N".repeat(121),
+        at: at(3),
+      }),
+    );
+    expect(errorAt(doc, 3)).toBe(
+      "An outcome is at most 120 characters, not 121.",
+    );
+    expect(change(doc).milestones).toEqual([]);
   });
 
   it("MARK_STUCK and CLEAR_STUCK", () => {

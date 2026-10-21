@@ -62,10 +62,15 @@ export type Scalars = {
   Upload: { input: File; output: File };
 };
 
+export type AcceptSourceNoticeInput = {
+  at: Scalars["DateTime"]["input"];
+};
+
 export type AddMilestoneInput = {
   at: Scalars["DateTime"]["input"];
   changeId: Scalars["OID"]["input"];
   id: Scalars["OID"]["input"];
+  outcome?: InputMaybe<Scalars["String"]["input"]>;
   recovered?: InputMaybe<Scalars["Boolean"]["input"]>;
   text: Scalars["String"]["input"];
 };
@@ -93,6 +98,7 @@ export type Change = {
   steps: Array<ProductStep>;
   stuck: Maybe<Stuck>;
   title: Maybe<Scalars["String"]["output"]>;
+  variants: Array<Variant>;
 };
 
 export type ChangeKind = "BEFORE_VERSIONS" | "CHANGE" | "FIRST_BUILD" | "UNDO";
@@ -212,6 +218,11 @@ export type InitProductInput = {
   name: Scalars["String"]["input"];
 };
 
+export type KeepVariantInput = {
+  changeId: Scalars["OID"]["input"];
+  label: VariantLabel;
+};
+
 export type LaunchLine = {
   detail: Maybe<Scalars["String"]["output"]>;
   kind: LaunchLineKind;
@@ -241,9 +252,17 @@ export type MarkStuckInput = {
 export type Milestone = {
   at: Scalars["DateTime"]["output"];
   id: Scalars["OID"]["output"];
+  outcome: Maybe<Scalars["String"]["output"]>;
   recovered: Scalars["Boolean"]["output"];
   text: Scalars["String"]["output"];
 };
+
+export type NotesSettings = {
+  enabled: Scalars["Boolean"]["output"];
+  since: Maybe<Scalars["DateTime"]["output"]>;
+};
+
+export type OriginMode = "COMPOSE" | "REMIX";
 
 export type PackageVersion = {
   name: Scalars["String"]["output"];
@@ -277,6 +296,19 @@ export type PlanStepsInput = {
 
 export type ProductAccess = "OWNER_ONLY" | "SIGNED_IN";
 
+export type ProductOrigin = {
+  at: Scalars["DateTime"]["output"];
+  checkedAt: Maybe<Scalars["DateTime"]["output"]>;
+  latestVersion: Maybe<Scalars["String"]["output"]>;
+  license: Scalars["String"]["output"];
+  missing: Array<Scalars["String"]["output"]>;
+  mode: OriginMode;
+  packageName: Scalars["String"]["output"];
+  sourceRef: Maybe<Scalars["String"]["output"]>;
+  sourceUrl: Maybe<Scalars["URL"]["output"]>;
+  version: Scalars["String"]["output"];
+};
+
 export type ProductStep = {
   done: Maybe<Scalars["Int"]["output"]>;
   kind: StepKind;
@@ -286,6 +318,14 @@ export type ProductStep = {
   total: Maybe<Scalars["Int"]["output"]>;
   updatedAt: Maybe<Scalars["DateTime"]["output"]>;
 };
+
+export type PublicSource = {
+  kind: PublicSourceKind;
+  url: Scalars["URL"]["output"];
+  version: Scalars["Int"]["output"];
+};
+
+export type PublicSourceKind = "GITHUB" | "PACKAGE";
 
 export type RecordChangeMetricsInput = {
   changeId: Scalars["OID"]["input"];
@@ -398,9 +438,42 @@ export type SetLiveVersionInput = {
   number: Scalars["Int"]["input"];
 };
 
+export type SetNotesEnabledInput = {
+  at: Scalars["DateTime"]["input"];
+  enabled: Scalars["Boolean"]["input"];
+};
+
+export type SetOriginInput = {
+  at: Scalars["DateTime"]["input"];
+  license: Scalars["String"]["input"];
+  missing: Array<Scalars["String"]["input"]>;
+  mode: OriginMode;
+  packageName: Scalars["String"]["input"];
+  sourceRef?: InputMaybe<Scalars["String"]["input"]>;
+  sourceUrl?: InputMaybe<Scalars["URL"]["input"]>;
+  version: Scalars["String"]["input"];
+};
+
 export type SetProductDriveInput = {
   driveId: Scalars["PHID"]["input"];
   liveUrl?: InputMaybe<Scalars["URL"]["input"]>;
+};
+
+export type SetPublicSourceInput = {
+  kind: PublicSourceKind;
+  url: Scalars["URL"]["input"];
+  version: Scalars["Int"]["input"];
+};
+
+export type SetReviewSuggestionsInput = {
+  afterVersion: Scalars["Int"]["input"];
+  items: Array<SetReviewSuggestionsItemInput>;
+};
+
+export type SetReviewSuggestionsItemInput = {
+  id: Scalars["OID"]["input"];
+  screenshot?: InputMaybe<Scalars["String"]["input"]>;
+  text: Scalars["String"]["input"];
 };
 
 export type SetRollbackBlockInput = {
@@ -426,6 +499,20 @@ export type SetSuggestionsItemInput = {
   text: Scalars["String"]["input"];
 };
 
+export type SetUpstreamVersionInput = {
+  checkedAt: Scalars["DateTime"]["input"];
+  latestVersion: Scalars["String"]["input"];
+  packageName: Scalars["String"]["input"];
+};
+
+export type SetVariantStatusInput = {
+  changeId: Scalars["OID"]["input"];
+  chatSessionId?: InputMaybe<Scalars["PHID"]["input"]>;
+  label: VariantLabel;
+  status: VariantStatus;
+  summary?: InputMaybe<Scalars["String"]["input"]>;
+};
+
 export type StartChangeInput = {
   chatSessionId?: InputMaybe<Scalars["PHID"]["input"]>;
   id: Scalars["OID"]["input"];
@@ -445,6 +532,12 @@ export type StartStepInput = {
   changeId: Scalars["OID"]["input"];
   kind: StepKind;
   label?: InputMaybe<Scalars["String"]["input"]>;
+};
+
+export type StartVariantsInput = {
+  branchA: Scalars["String"]["input"];
+  branchB: Scalars["String"]["input"];
+  changeId: Scalars["OID"]["input"];
 };
 
 export type StepKind = "DATA" | "EDITORS" | "LIVE" | "PLAN" | "TESTS";
@@ -475,10 +568,14 @@ export type StudioProductState = {
   liveUrl: Maybe<Scalars["URL"]["output"]>;
   liveVersion: Maybe<Scalars["Int"]["output"]>;
   name: Maybe<Scalars["String"]["output"]>;
+  notes: NotesSettings;
+  origins: Array<ProductOrigin>;
   pendingRequest: Maybe<PendingRequest>;
   productDriveId: Maybe<Scalars["PHID"]["output"]>;
   productionEnvironmentId: Maybe<Scalars["String"]["output"]>;
+  publicSource: Maybe<PublicSource>;
   slug: Maybe<Scalars["String"]["output"]>;
+  sourceNoticeAcceptedAt: Maybe<Scalars["DateTime"]["output"]>;
   suggestions: Array<Suggestion>;
   versions: Array<Version>;
 };
@@ -486,15 +583,32 @@ export type StudioProductState = {
 export type Suggestion = {
   afterVersion: Scalars["Int"]["output"];
   id: Scalars["OID"]["output"];
+  kind: SuggestionKind;
+  screenshot: Maybe<Scalars["String"]["output"]>;
   status: SuggestionStatus;
   text: Scalars["String"]["output"];
 };
+
+export type SuggestionKind = "IDEA" | "REVIEW";
 
 export type SuggestionStatus = "DISMISSED" | "OPEN" | "USED";
 
 export type UseSuggestionInput = {
   id: Scalars["OID"]["input"];
 };
+
+export type Variant = {
+  branch: Scalars["String"]["output"];
+  chatSessionId: Maybe<Scalars["PHID"]["output"]>;
+  label: VariantLabel;
+  status: VariantStatus;
+  summary: Maybe<Scalars["String"]["output"]>;
+};
+
+export type VariantLabel = "A" | "B";
+
+export type VariantStatus =
+  "BUILDING" | "DISCARDED" | "FAILED" | "KEPT" | "READY";
 
 export type Version = {
   changeId: Maybe<Scalars["OID"]["output"]>;

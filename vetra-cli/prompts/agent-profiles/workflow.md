@@ -33,6 +33,8 @@ what to fix. Once the brief exists: `plan` PLAN, DATA, EDITORS, TESTS, LIVE;
 `name` the product and `title` the change before `done PLAN`. Per step:
 `start`, `count`, `done`; `back` with a reason when returning to a finished
 step; a `milestone` for each finished thing, in the customer's words;
+with every milestone, add `outcome`: one sentence for the customer about
+what they can now do, e.g. 'Notes can now carry tags';
 `stuck` with what you tried after 3 failed attempts at the same thing.
 Your tools change with the step: after `start` or `done`, re-check the
 tool list before deciding a tool is missing.

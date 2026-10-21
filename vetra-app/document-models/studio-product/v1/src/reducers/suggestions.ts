@@ -44,9 +44,15 @@ export const studioProductSuggestionsOperations: StudioProductSuggestionsOperati
         );
       }
       // Open ideas for the same version are replaced; every other one stays
-      // (used and dismissed ones are the history that keeps ideas unique).
+      // (used and dismissed ones are the history that keeps ideas unique, and
+      // review findings are owned by SET_REVIEW_SUGGESTIONS).
       const kept = state.suggestions.filter(
-        (s) => !(s.status === "OPEN" && s.afterVersion === afterVersion),
+        (s) =>
+          !(
+            s.kind === "IDEA" &&
+            s.status === "OPEN" &&
+            s.afterVersion === afterVersion
+          ),
       );
       const ids = new Set(kept.map((s) => s.id));
       const added: Suggestion[] = [];
@@ -63,7 +69,14 @@ export const studioProductSuggestionsOperations: StudioProductSuggestionsOperati
           );
         }
         ids.add(item.id);
-        added.push({ id: item.id, text, afterVersion, status: "OPEN" });
+        added.push({
+          id: item.id,
+          text,
+          afterVersion,
+          status: "OPEN",
+          kind: "IDEA",
+          screenshot: null,
+        });
       }
       state.suggestions = [...kept, ...added];
     },

@@ -3,13 +3,21 @@ import {
   dismissSuggestion,
   initProduct,
   isStudioProductDocument,
+  setReviewSuggestions,
   setSuggestions,
   useSuggestion,
   utils,
 } from "document-models/studio-product/v1";
 import { describe, expect, it } from "vitest";
 import { currentSuggestions } from "../src/utils.js";
-import { apply, at, errorAt, lastError } from "./helpers.js";
+import {
+  apply,
+  at,
+  errorAt,
+  lastError,
+  liveVersion,
+  withState,
+} from "./helpers.js";
 
 function product(): StudioProductDocument {
   return apply(
@@ -37,12 +45,16 @@ describe("SuggestionsOperations", () => {
         text: "Let walkers see the route",
         afterVersion: 1,
         status: "OPEN",
+        kind: "IDEA",
+        screenshot: null,
       },
       {
         id: "s2",
         text: "Add a daily summary",
         afterVersion: 1,
         status: "OPEN",
+        kind: "IDEA",
+        screenshot: null,
       },
     ]);
 
@@ -76,6 +88,29 @@ describe("SuggestionsOperations", () => {
       }),
     );
     expect(doc.state.global.suggestions).toHaveLength(6);
+  });
+
+  it("SET_SUGGESTIONS keeps REVIEW items of the same version", () => {
+    const doc = apply(
+      withState({ versions: [liveVersion(1)], liveVersion: 1 }),
+      setReviewSuggestions({
+        afterVersion: 1,
+        items: [{ id: "r1", text: "Contrast is low", screenshot: "att:1" }],
+      }),
+      setSuggestions({ afterVersion: 1, items: TWO }),
+      setSuggestions({
+        afterVersion: 1,
+        items: TWO.map((t) => ({ ...t, id: `${t.id}-b` })),
+      }),
+    );
+    expect(doc.operations.global.every((o) => !o.error)).toBe(true);
+    expect(
+      doc.state.global.suggestions.map((s) => [s.id, s.kind, s.screenshot]),
+    ).toEqual([
+      ["r1", "REVIEW", "att:1"],
+      ["s1-b", "IDEA", null],
+      ["s2-b", "IDEA", null],
+    ]);
   });
 
   it("refuses a set that is too small, too large, too long, empty or reuses an id", () => {

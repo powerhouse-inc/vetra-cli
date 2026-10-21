@@ -214,8 +214,17 @@ describe("ChangeDrawer (spec §5.6)", () => {
         text: "Add a Ready column",
         afterVersion: 1,
         status: "OPEN",
+        kind: "IDEA",
+        screenshot: null,
       },
-      { id: "s2", text: "Old idea", afterVersion: 1, status: "USED" },
+      {
+        id: "s2",
+        text: "Old idea",
+        afterVersion: 1,
+        status: "USED",
+        kind: "IDEA",
+        screenshot: null,
+      },
     ];
     const onStart = vi.fn(() => Promise.resolve());
     const container = render(

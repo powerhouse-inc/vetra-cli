@@ -5,6 +5,7 @@ import type {
   StudioProductAction,
   StudioProductDocument,
   StudioProductState,
+  Version,
 } from "document-models/studio-product/v1";
 import {
   initProduct,
@@ -170,6 +171,7 @@ export function craftedChange(
       liveAt: null,
     },
     lintWaivedAt: null,
+    variants: [],
     ...extra,
   };
 }
@@ -179,4 +181,26 @@ export function withState(
 ): StudioProductDocument {
   const initial = utils.createDocument().state.global;
   return utils.createDocument({ global: { ...initial, ...global } });
+}
+
+/** A LIVE version record with the given number. */
+export function liveVersion(number: number): Version {
+  return {
+    number,
+    title: `Version ${number}`,
+    summary: null,
+    changeId: null,
+    gitTag: `v${number}`,
+    sha: "abc",
+    packages: [],
+    deploymentId: null,
+    launchedAt: at(0),
+    launchedBy: "owner",
+    trigger: "launch",
+    status: "LIVE",
+    lines: [],
+    changedFiles: [],
+    failure: null,
+    rollbackBlockedReason: null,
+  };
 }

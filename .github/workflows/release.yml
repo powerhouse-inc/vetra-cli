@@ -8,12 +8,18 @@ name: release
 #   branch      dist-tag   registries
 #   main        dev        registry.dev.vetra.io + registry.vetra.io
 #   production  latest     registry.dev.vetra.io + registry.vetra.io
+#   any branch + prerelease-tag=<t>   <t>   registry.vetra.io only
+#                          (version must be x.y.z-<t>.N; dev/latest refused)
 
 on:
   workflow_dispatch:
     inputs:
       also-tag:
         description: "Also point this dist-tag at the version (e.g. latest); empty = only the branch tag"
+        required: false
+        default: ""
+      prerelease-tag:
+        description: "Branch test build: publish x.y.z-<tag>.N under this dist-tag on registry.vetra.io only (e.g. p4); empty = normal main/production release"
         required: false
         default: ""
 
@@ -24,9 +30,6 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  REGISTRIES: https://registry.dev.vetra.io https://registry.vetra.io
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -34,14 +37,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve dist-tag from branch
+      - name: Resolve dist-tag and registries
         id: meta
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          INPUT_PRERELEASE_TAG: ${{ inputs.prerelease-tag }}
+          INPUT_ALSO_TAG: ${{ inputs.also-tag }}
         run: |
-          case "${{ github.ref_name }}" in
-            main)       echo "tag=dev"    >> "$GITHUB_OUTPUT" ;;
-            production) echo "tag=latest" >> "$GITHUB_OUTPUT" ;;
-            *) echo "::error::release runs from main or production only (got ${{ github.ref_name }})"; exit 1 ;;
-          esac
+          set -euo pipefail
+          VERSION=$(node -p "require('./vetra-cli/package.json').version")
+          out=$(VERSION="$VERSION" node vetra-cli/scripts/publish/release-channel.mjs)
+          echo "$out" | sed -e 's/^dist_tag=/tag=/' >> "$GITHUB_OUTPUT"
 
       - uses: pnpm/action-setup@v4
 
@@ -92,6 +98,7 @@ jobs:
       - name: Publish
         env:
           TAG: ${{ steps.meta.outputs.tag }}
+          REGISTRIES: ${{ steps.meta.outputs.registries }}
           ALSO_TAG: ${{ inputs.also-tag }}
           RENOWN_ADDRESS: ${{ secrets.VETRA_REGISTRY_RENOWN_ADDRESS }}
           PH_RENOWN_PRIVATE_KEY: ${{ secrets.VETRA_REGISTRY_RENOWN_KEY }}
@@ -154,6 +161,8 @@ jobs:
       # npm view serves stale data for minutes after a publish — use the
       # cache-busted dist-tags endpoint.
       - name: Verify dist-tags
+        env:
+          REGISTRIES: ${{ steps.meta.outputs.registries }}
         run: |
           APP_NAME=$(node -p "require('./vetra-app/package.json').name")
           CLI_NAME=$(node -p "require('./vetra-cli/package.json').name")
