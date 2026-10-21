@@ -251,6 +251,79 @@ describe("normalizeProduct", () => {
     });
   });
 
+  it("legacy document gains origins, notes, variants and suggestion kind defaults", () => {
+    const legacy = legacyState(true);
+    // A suggestion written before suggestions had a kind or a screenshot.
+    legacy.suggestions = JSON.parse(
+      JSON.stringify([
+        { id: "s1", text: "Add tags", afterVersion: 1, status: "OPEN" },
+      ]),
+    ) as StudioProductState["suggestions"];
+    const doc = utils.createDocument();
+    doc.state.global = legacy;
+    const out = apply(doc, renameProduct({ name: "Walks" })).state.global;
+    expect(out).toMatchObject({
+      origins: [],
+      notes: { enabled: false, since: null },
+      publicSource: null,
+      sourceNoticeAcceptedAt: null,
+    });
+    expect(out.suggestions).toEqual([
+      {
+        id: "s1",
+        text: "Add tags",
+        afterVersion: 1,
+        status: "OPEN",
+        kind: "IDEA",
+        screenshot: null,
+      },
+    ]);
+    expect(out.changes[0].variants).toEqual([]);
+    expect(out.changes[0].milestones[0].outcome).toBeNull();
+
+    // Partial nested records get their nullable fields.
+    const partial = JSON.parse(
+      JSON.stringify({
+        notes: { enabled: true },
+        origins: [
+          {
+            packageName: "@acme/x",
+            version: "1.0.0",
+            mode: "REMIX",
+            license: "MIT",
+            at: at(0),
+          },
+        ],
+        changes: [
+          {
+            id: "c1",
+            kind: "CHANGE",
+            request: "r",
+            status: "BUILDING",
+            startedAt: at(0),
+            variants: [{ label: "A", branch: "a", status: "BUILDING" }],
+          },
+        ],
+      }),
+    ) as StudioProductState;
+    const filled = normalizeProduct(partial);
+    expect(filled.notes).toEqual({ enabled: true, since: null });
+    expect(filled.origins[0]).toMatchObject({
+      sourceUrl: null,
+      sourceRef: null,
+      missing: [],
+      latestVersion: null,
+      checkedAt: null,
+    });
+    expect(filled.changes[0].variants[0]).toEqual({
+      label: "A",
+      branch: "a",
+      status: "BUILDING",
+      chatSessionId: null,
+      summary: null,
+    });
+  });
+
   it("leaves a complete state unchanged", () => {
     const fresh = utils.createDocument().state.global;
     const copy = JSON.parse(JSON.stringify(fresh)) as StudioProductState;

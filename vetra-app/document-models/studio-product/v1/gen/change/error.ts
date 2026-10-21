@@ -12,6 +12,7 @@ export type ErrorCode =
   | "GateNotMetError"
   | "StepNotDoneError"
   | "DuplicateMilestoneIdError"
+  | "OutcomeTooLongError"
   | "DuplicateCheckRunIdError"
   | "DuplicateCheckKindError"
   | "InvalidAttentionStatusError"
@@ -115,6 +116,13 @@ export class DuplicateMilestoneIdError extends Error implements ReducerError {
   }
 }
 
+export class OutcomeTooLongError extends Error implements ReducerError {
+  errorCode = "OutcomeTooLongError" as ErrorCode;
+  constructor(message = "OutcomeTooLongError") {
+    super(message);
+  }
+}
+
 export class DuplicateCheckRunIdError extends Error implements ReducerError {
   errorCode = "DuplicateCheckRunIdError" as ErrorCode;
   constructor(message = "DuplicateCheckRunIdError") {
@@ -167,7 +175,7 @@ export const errors = {
 
   ReopenStep: { StepNotDoneError },
 
-  AddMilestone: { DuplicateMilestoneIdError },
+  AddMilestone: { DuplicateMilestoneIdError, OutcomeTooLongError },
 
   RecordCheckRun: { DuplicateCheckRunIdError, DuplicateCheckKindError },
 

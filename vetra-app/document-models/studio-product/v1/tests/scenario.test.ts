@@ -3,17 +3,30 @@ import {
   completeStep,
   countStep,
   initProduct,
+  keepVariant,
   markStuck,
   planSteps,
   recordChangeMetrics,
   reopenStep,
   setChangeTitle,
+  setOrigin,
+  setUpstreamVersion,
+  setVariantStatus,
   startChange,
   startStep,
+  startVariants,
   utils,
 } from "document-models/studio-product/v1";
 import { describe, expect, it } from "vitest";
-import { apply, at, change, lastError, run, step } from "./helpers.js";
+import {
+  apply,
+  at,
+  building,
+  change,
+  lastError,
+  run,
+  step,
+} from "./helpers.js";
 
 describe("first build scenario", () => {
   it("INIT → START_CHANGE → PLAN_STEPS → steps, counts, milestones, check runs → READY", () => {
@@ -146,5 +159,103 @@ describe("first build scenario", () => {
       }),
     );
     expect(lastError(doc)).toMatch(/still in progress/);
+  });
+});
+
+describe("iterate scenarios", () => {
+  it("variants: start → A ready → B ready → keep B", () => {
+    let doc = apply(
+      building("CHANGE"),
+      startVariants({
+        changeId: "c1",
+        branchA: "vetra/variants/c1-a",
+        branchB: "vetra/variants/c1-b",
+      }),
+      setVariantStatus({
+        changeId: "c1",
+        label: "A",
+        status: "READY",
+        chatSessionId: "phd:session-a",
+        summary: "Tags as chips under the title",
+      }),
+    );
+    expect(change(doc).variants.map((v) => v.status)).toEqual([
+      "READY",
+      "BUILDING",
+    ]);
+    doc = apply(
+      doc,
+      setVariantStatus({
+        changeId: "c1",
+        label: "B",
+        status: "READY",
+        chatSessionId: "phd:session-b",
+        summary: "Tags in a side panel",
+      }),
+      keepVariant({ changeId: "c1", label: "B" }),
+    );
+    expect(doc.operations.global.every((o) => !o.error)).toBe(true);
+    expect(change(doc).variants).toEqual([
+      {
+        label: "A",
+        branch: "vetra/variants/c1-a",
+        status: "DISCARDED",
+        chatSessionId: "phd:session-a",
+        summary: "Tags as chips under the title",
+      },
+      {
+        label: "B",
+        branch: "vetra/variants/c1-b",
+        status: "KEPT",
+        chatSessionId: "phd:session-b",
+        summary: "Tags in a side panel",
+      },
+    ]);
+    // Once one is kept, a new pair can't start until both are discarded.
+    doc = apply(
+      doc,
+      startVariants({ changeId: "c1", branchA: "x", branchB: "y" }),
+    );
+    expect(lastError(doc)).toBe('Change "c1" already has variants.');
+  });
+
+  it("remix origin then upstream version", () => {
+    const doc = apply(
+      utils.createDocument(),
+      initProduct({
+        name: "Notes",
+        idea: "start from knowledge-note",
+        createdAt: at(0),
+      }),
+      setOrigin({
+        packageName: "@powerhousedao/knowledge-note",
+        version: "1.0.0",
+        mode: "REMIX",
+        license: "AGPL-3.0",
+        sourceUrl: "https://github.com/apeiron-M/bai-knowledge-note",
+        missing: [],
+        at: at(1),
+      }),
+      setUpstreamVersion({
+        packageName: "@powerhousedao/knowledge-note",
+        latestVersion: "1.1.0",
+        checkedAt: at(2),
+      }),
+    );
+    expect(doc.operations.global.every((o) => !o.error)).toBe(true);
+    expect(doc.state.global.origins).toEqual([
+      {
+        packageName: "@powerhousedao/knowledge-note",
+        version: "1.0.0",
+        mode: "REMIX",
+        license: "AGPL-3.0",
+        sourceUrl: "https://github.com/apeiron-M/bai-knowledge-note",
+        sourceRef: null,
+        at: at(1),
+        missing: [],
+        latestVersion: "1.1.0",
+        checkedAt: at(2),
+      },
+    ]);
   });
 });
