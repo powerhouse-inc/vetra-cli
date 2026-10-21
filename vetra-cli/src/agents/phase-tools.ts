@@ -52,8 +52,18 @@ export const PROJECT_MCP = 'reactor-project-mcp__*';
 const ATTACHMENTS = ['attachment-preprocess', 'attachment-upload'];
 
 export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
-  // Product specs at the workspace root (and naming the product).
-  PLAN: [...SPEC_BUILD, 'spec-delete', 'spec-extract'],
+  // Bootstrap first, then product specs at the workspace root (and naming
+  // the product). The project installs while the specs are written; without
+  // init/start here the agent read "go straight to init" as "no init tool".
+  PLAN: [
+    ...SPEC_BUILD,
+    'spec-delete',
+    'spec-extract',
+    'reactor-project-init',
+    'reactor-project-start',
+    'reactor-project-stop',
+    'reactor-project-restart',
+  ],
   // Bootstrap + Model: project, spec-driven model, hand-written reducers.
   DATA: [
     ...SPEC_BUILD,
