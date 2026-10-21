@@ -6,6 +6,7 @@ import { rollbackBlockedReason, rollbackUncheckedReason } from "../../src/launch
 import { restoreVersion, snapshot } from "../../src/launch/git-versions.js";
 import { LAUNCH_TRIGGER, ROLLBACK_SLOW_REASON, launch, rollbackTo } from "../../src/launch/orchestrator.js";
 import type { ProductDriveClient } from "../../src/launch/product-drive.js";
+import { LaunchError } from "../../src/launch/errors.js";
 import { goBack } from "../../src/launch/rollback.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
 import {
@@ -14,6 +15,7 @@ import {
   newHealthMemory,
   onSlowTick,
   rollbackSettlePending,
+  SETTLE_EXPIRY_MS,
   slowTickPass,
   type CloudStudioProduct,
 } from "../../src/triggers/live-health.js";
@@ -418,6 +420,127 @@ describe("go back when the cloud is slow or the record fails (I1)", () => {
     spy.mockRestore();
     await healthPass(h.octx, newHealthMemory(), cloudSays("READY"));
     expect((await h.state()).liveVersion).toBe(1);
+    expect(rollbackSettlePending()).toBeNull();
+  });
+  /** Fails the product writes holding SET_LIVE_VERSION `times` times. */
+  function refuseLiveVersion(harness: LaunchHarness, times: number): void {
+    const client = harness.module.client as unknown as { execute: (...args: unknown[]) => Promise<unknown> };
+    const real = client.execute.bind(client);
+    let refused = 0;
+    jest.spyOn(client, "execute").mockImplementation(async (...args: unknown[]) => {
+      const actions = (args[2] as { type: string }[] | undefined) ?? [];
+      if (refused < times && actions.some((x) => x.type === "SET_LIVE_VERSION")) {
+        refused += 1;
+        throw new Error("reactor busy");
+      }
+      return real(...args);
+    });
+  }
+
+  it("a record that fails after READY is tried again on the next pass", async () => {
+    h = await launchHarness({ waitForDeployment: slowWait });
+    await twoVersions(h);
+    await rollbackTo(h.octx, 1);
+    refuseLiveVersion(h, 1);
+    const memory = newHealthMemory();
+
+    await healthPass(h.octx, memory, cloudSays("READY"));
+    expect((await h.state()).liveVersion).toBe(2);
+    expect(rollbackSettlePending()).toMatchObject({ number: 1, previous: 2 });
+
+    await healthPass(h.octx, memory, cloudSays("READY"));
+    expect((await h.state()).liveVersion).toBe(1);
+    expect(rollbackSettlePending()).toBeNull();
+  });
+
+  it("after a restart, a Go back whose deployment failed: the code follows what is live", async () => {
+    h = await launchHarness({ waitForDeployment: slowWait });
+    await twoVersions(h);
+    await rollbackTo(h.octx, 1);
+    awaitRollbackSettle(null); // the restart forgets it
+
+    expect(await healthPass(h.octx, newHealthMemory(), cloudSays("FAILED"))).toBe("healthy");
+
+    expect(h.calls).toEqual(["restore 1", "rollback dep-1", "restore 2"]);
+    expect((await h.state()).liveVersion).toBe(2);
+  });
+
+  it("after a restart while it is still starting, the Go back is waited on and a later failure handled", async () => {
+    h = await launchHarness({ waitForDeployment: slowWait });
+    await twoVersions(h);
+    await rollbackTo(h.octx, 1);
+    awaitRollbackSettle(null);
+    const memory = newHealthMemory();
+
+    await healthPass(h.octx, memory, cloudSays("DEPLOYING"));
+    expect(memory.reconciled).toBe(false);
+    expect(rollbackSettlePending()).toMatchObject({ number: 1, previous: 2 });
+
+    await healthPass(h.octx, memory, cloudSays("FAILED"));
+    expect(h.calls.at(-1)).toBe("restore 2");
+    expect(rollbackSettlePending()).toBeNull();
+    expect(memory.reconciled).toBe(true);
+  });
+
+  it("a lost answer from the re-deploy is not a failure: the code stays and the reconcile settles it", async () => {
+    h = await launchHarness({
+      cloudRollback: async () => {
+        throw new Error("socket hang up");
+      },
+    });
+    await twoVersions(h);
+
+    expect(await rollbackTo(h.octx, 1)).toEqual({ status: "FAILED", reason: ROLLBACK_SLOW_REASON });
+
+    expect(h.calls).toEqual(["restore 1"]);
+    expect(rollbackSettlePending()).toEqual({ number: 1, previous: 2 });
+  });
+
+  it("a refused re-deploy is a definite failure: the code goes back", async () => {
+    h = await launchHarness({
+      cloudRollback: async () => {
+        throw new LaunchError("CLOUD_REFUSED", "the earlier version couldn't be started again");
+      },
+    });
+    await twoVersions(h);
+
+    expect((await rollbackTo(h.octx, 1)).status).toBe("FAILED");
+    expect(h.calls).toEqual(["restore 1", "restore 2"]);
+    expect(rollbackSettlePending()).toBeNull();
+  });
+
+  it("a pending Go back ends when the cloud moves on, when it expires, or when a later launch completes", async () => {
+    h = await launchHarness({ waitForDeployment: slowWait });
+    await twoVersions(h);
+    await rollbackTo(h.octx, 1);
+    const memory = newHealthMemory();
+    const start = new Date(AT).getTime();
+    const at = (ms: number) => ({ now: () => new Date(start + ms) });
+
+    // Expiry: still starting after 30 min → dropped, the code follows what is live.
+    await healthPass(h.octx, memory, { ...cloudSays("DEPLOYING"), ...at(0) });
+    expect(rollbackSettlePending()).not.toBeNull();
+    await healthPass(h.octx, memory, { ...cloudSays("DEPLOYING"), ...at(SETTLE_EXPIRY_MS + 1) });
+    expect(rollbackSettlePending()).toBeNull();
+    expect(h.calls.at(-1)).toBe("restore 2");
+
+    // The cloud moved on (its latest deployment is another version).
+    awaitRollbackSettle({ number: 1, previous: 2 });
+    const other = cloudSays("READY");
+    await healthPass(h.octx, newHealthMemory(), {
+      checkLive: other.checkLive,
+      readProduct: async () => {
+        const p = await other.readProduct();
+        return { ...p, latestDeployment: { ...p.latestDeployment!, id: "dep-2", versionNumber: 2 } };
+      },
+    });
+    expect(rollbackSettlePending()).toBeNull();
+    expect((await h.state()).liveVersion).toBe(2);
+
+    // A later launch completes.
+    awaitRollbackSettle({ number: 1, previous: 2 });
+    await readyChange(h, "change-3");
+    await launch(h.octx, { changeId: "change-3", trigger: LAUNCH_TRIGGER });
     expect(rollbackSettlePending()).toBeNull();
   });
 });

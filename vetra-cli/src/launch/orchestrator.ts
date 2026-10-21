@@ -592,6 +592,8 @@ async function runLaunch(
       }),
     ]);
     clearLaunchRecord(ctx.workdir);
+    // A later launch settles any Go back still waiting on the cloud.
+    awaitRollbackSettle(null);
     ctx.log?.info?.(`[launch] Version ${number} is live at ${liveUrl}`);
     // F26: the earlier versions' Go back is worked out again, in the
     // background (it reads the live drive; never throws).
@@ -890,8 +892,11 @@ export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<R
   try {
     ref = await cloudCall(ctx, () => d.cloudRollback(ctx, target.deploymentId!));
   } catch (err) {
-    const reason = err instanceof LaunchError ? err.reason : REASONS.rollbackStudioVersion;
-    return definitelyFailed(reason, message(err));
+    // Only the cloud's refusal is definite; a lost answer may have started it.
+    if (err instanceof LaunchError && err.code !== "CLOUD_UNAVAILABLE") {
+      return definitelyFailed(err.reason, message(err));
+    }
+    return unsettled(message(err));
   }
   let outcome: Awaited<ReturnType<typeof d.waitForDeployment>>;
   try {

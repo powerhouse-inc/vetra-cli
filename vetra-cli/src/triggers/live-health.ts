@@ -170,6 +170,20 @@ export interface RollbackSettle {
   number: number;
   /** The version the document still has live (the code goes back to it on a failure). */
   previous: number | null;
+  /** When the reconcile first saw it (ms); it gives up `SETTLE_EXPIRY_MS` later. */
+  since?: number;
+}
+
+/** A Go back still unsettled after this long is dropped; the cloud's current state is followed. */
+export const SETTLE_EXPIRY_MS = 30 * 60_000;
+
+/** The deployment hasn't finished (neither READY nor ended). */
+function inFlight(status: string): boolean {
+  return status !== "READY" && status !== "FAILED" && status !== "SUPERSEDED";
+}
+
+function ended(status: string): boolean {
+  return status === "FAILED" || status === "SUPERSEDED";
 }
 
 let pendingSettle: RollbackSettle | null = null;
@@ -260,7 +274,11 @@ async function applyDeployment(
   return "reconciled-live-version";
 }
 
-/** The reconcile lane: once per process, never while a launch is under way. */
+/**
+ * The reconcile lane: once per process, never while a launch is under way;
+ * every pass while a Go back is unsettled (`pendingSettle`). After a restart
+ * the unsettled Go back is found again from the cloud's latest deployment.
+ */
 async function reconcileOnce(
   ctx: OrchestratorContext,
   state: StudioProductState,
@@ -268,34 +286,76 @@ async function reconcileOnce(
   deps: LiveHealthDeps,
 ): Promise<string | null> {
   const live = state.liveVersion;
-  const settle = pendingSettle;
-  if ((memory.reconciled && !settle) || live == null) return null;
+  if ((memory.reconciled && !pendingSettle) || live == null) return null;
   if (state.versions.some((v) => v.status === "LAUNCHING")) return null;
   const studioEnvironmentId = ctx.config?.environmentId;
   if (!studioEnvironmentId) return null;
   try {
     const product = await deps.readProduct(ctx, studioEnvironmentId);
-    memory.reconciled = true;
-    const d = product?.latestDeployment;
-    if (settle && d?.kind === "PRODUCTION" && d.versionNumber === settle.number) {
-      if (d.status === "FAILED" || d.status === "SUPERSEDED") {
+    const d = product?.latestDeployment?.kind === "PRODUCTION" ? product.latestDeployment : null;
+    const nowMs = deps.now().getTime();
+    let settle = pendingSettle;
+
+    if (settle) {
+      settle.since ??= nowMs;
+      if (!d || d.versionNumber !== settle.number) {
+        // The cloud moved on (a later launch or Go back): follow it instead.
+        ctx.log?.info?.(`${TAG} going back to Version ${String(settle.number)} was overtaken; following the cloud`);
+        pendingSettle = settle = null;
+      } else if (nowMs - settle.since > SETTLE_EXPIRY_MS) {
+        ctx.log?.error?.(
+          `${TAG} going back to Version ${String(settle.number)} didn't settle in ${String(SETTLE_EXPIRY_MS / 60_000)} min; following the cloud`,
+        );
+        pendingSettle = settle = null;
+        if (ended(d.status) || inFlight(d.status)) await followCode(ctx, live, deps);
+      }
+    } else if (!memory.reconciled && d?.versionNumber != null && d.versionNumber < live) {
+      // After a restart: a Go back the Studio was waiting on when it stopped.
+      const number = d.versionNumber;
+      if (state.versions.some((v) => v.number === number && v.status === "PREVIOUS")) {
+        if (inFlight(d.status)) {
+          pendingSettle = settle = { number, previous: live, since: nowMs };
+          ctx.log?.info?.(`${TAG} going back to Version ${String(number)} is still starting; waiting for it`);
+        } else if (ended(d.status)) {
+          memory.reconciled = true;
+          await followCode(ctx, live, deps);
+          ctx.log?.warn?.(`${TAG} going back to Version ${String(number)} didn't start; the code follows what is live`);
+          return "rollback-failed";
+        }
+      }
+    }
+
+    if (settle && d) {
+      if (ended(d.status)) {
         // The Go back definitely failed: the code goes back to what is live.
         pendingSettle = null;
+        memory.reconciled = true;
         if (settle.previous !== null) await followCode(ctx, settle.previous, deps);
         ctx.log?.error?.(`${TAG} going back to Version ${String(settle.number)} didn't start; the code is back on what is live`);
         return "rollback-failed";
       }
-      if (d.status === "READY") pendingSettle = null;
+      // Still starting: read again next pass (not reconciled yet).
+      if (inFlight(d.status)) return null;
     }
-    if (!d || d.status !== "READY" || d.kind !== "PRODUCTION") return null;
-    if (d.versionNumber == null || d.versionNumber === live) return null;
-    if (d.versionNumber < live && !state.versions.some((v) => v.number === d.versionNumber && v.status === "PREVIOUS")) {
+    memory.reconciled = true;
+
+    if (!d || d.status !== "READY") return null;
+    const number = d.versionNumber;
+    if (number == null) return null;
+    if (number === live) {
+      if (settle?.number === number) pendingSettle = null; // already recorded
       return null;
     }
-    return await applyDeployment(ctx, state, d, deps);
+    if (number < live && !state.versions.some((v) => v.number === number && v.status === "PREVIOUS")) {
+      return null;
+    }
+    const did = await applyDeployment(ctx, state, d, deps);
+    // Cleared only once recorded: a failed record is tried again next pass.
+    if (settle?.number === number) pendingSettle = null;
+    return did;
   } catch (err) {
-    // Unreadable cloud (offline, refused, secret pending): try again next pass.
-    ctx.log?.warn?.(`${TAG} couldn't read what the cloud has live: ${message(err)}`);
+    // Unreadable cloud (offline, refused, secret pending) or a failed record: try again next pass.
+    ctx.log?.warn?.(`${TAG} couldn't reconcile with what the cloud has live: ${message(err)}`);
     return null;
   }
 }
