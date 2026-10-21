@@ -586,6 +586,26 @@ describe("spec-schema", () => {
     expect(result.text).toMatch(/name: String!/);
   });
 
+  it("--action lists the values of the state enums its input uses", async () => {
+    const result = await specSchema.execute(
+      { type: "powerhouse/problem-sheet", action: "SET_CORE_JOB", state: false, full: false },
+      makeCtx(workdir),
+    );
+    expect(result.text).toMatch(/^input SetCoreJobInput/);
+    expect(result.text).toMatch(/\n\nEnum values:\n {2}Motivation: LOVE_TO \| WANT_TO \| NEED_TO \| HAVE_TO \| HATE_TO \| CANNOT$/);
+    // An input without enums, or a --format payload, gets no extra lines.
+    const plain = await specSchema.execute(
+      { type: DOC_TYPE, action: "SET_MODEL_NAME", state: false, full: false },
+      makeCtx(workdir),
+    );
+    expect(plain.text).not.toContain("Enum values");
+    const json = await specSchema.execute(
+      { type: "powerhouse/problem-sheet", action: "SET_CORE_JOB", state: false, full: false, format: "json" },
+      makeCtx(workdir),
+    );
+    expect(json.text).not.toContain("Enum values");
+  });
+
   it("--state returns the GraphQL state schema", async () => {
     const result = await specSchema.execute(
       { type: DOC_TYPE, state: true },

@@ -33,8 +33,31 @@ function buildNextSteps(
   ].join("\n");
 }
 
+/* Enums are declared in the state schemas; action inputs reference them by
+ * name. Without their values the agent probed with placeholders ("X") and
+ * read the list off the validation error (M0 staging run: 18–33 calls). */
+const ENUM_DECL = /\benum\s+(\w+)\s*\{([^}]*)\}/g;
+
+function enumValues(latest: LatestSpec | undefined): Map<string, string[]> {
+  const sdl = [latest?.state?.global?.schema, latest?.state?.local?.schema].join("\n");
+  const enums = new Map<string, string[]>();
+  for (const [, name, body] of sdl.matchAll(ENUM_DECL)) {
+    enums.set(name, body.split(/[\s,]+/).filter((v) => /^\w+$/.test(v)));
+  }
+  return enums;
+}
+
+/** "Enum values" lines for every state enum `schema` (an action's input SDL) references. */
+function referencedEnums(schema: string, latest: LatestSpec | undefined): string {
+  const lines = [...enumValues(latest)]
+    .filter(([name]) => new RegExp(`\\b${name}\\b`).test(schema))
+    .map(([name, values]) => `  ${name}: ${values.join(" | ")}`);
+  return lines.length ? `\n\nEnum values:\n${lines.join("\n")}` : "";
+}
+
 type LatestSpec = {
   version?: number;
+  state?: { global?: { schema?: string | null }; local?: { schema?: string | null } };
   modules?: ReadonlyArray<{
     name?: string | null;
     operations?: ReadonlyArray<{ name?: string | null }>;
@@ -98,7 +121,7 @@ export const specSchema = defineCommand({
       .string()
       .optional()
       .describe(
-        'Shortcut: return only the GraphQL input type for the named operation (e.g. "SET_MODEL_NAME"). Mutually exclusive with --filter / --state.',
+        'Shortcut: return only the GraphQL input type for the named operation (e.g. "SET_MODEL_NAME"), followed by the values of every enum it uses. Mutually exclusive with --filter / --state.',
       ),
     state: z
       .boolean()
@@ -160,6 +183,11 @@ export const specSchema = defineCommand({
       filter = "$.specifications[(@.length-1)].state.global.schema";
     }
 
-    return { text: renderProjected(schema, filter, input.format) };
+    const text = renderProjected(schema, filter, input.format);
+    // Plain output only: appended lines would break a `--format` payload.
+    if (input.action && !input.format) {
+      return { text: text.trimEnd() + referencedEnums(text, latest) };
+    }
+    return { text };
   },
 });
