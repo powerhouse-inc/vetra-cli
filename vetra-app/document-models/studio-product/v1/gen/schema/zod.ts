@@ -12,9 +12,13 @@ import type {
   CheckResult,
   CheckResultInput,
   CheckRun,
+  ClearRequestInput,
   ClearStuckInput,
+  CompleteLaunchInput,
+  CompleteLaunchPackageInput,
   CompleteStepInput,
   CountStepInput,
+  FailLaunchInput,
   GithubLink,
   GithubStatus,
   InitProductInput,
@@ -36,12 +40,24 @@ import type {
   RecordCheckRunInput,
   RenameProductInput,
   ReopenStepInput,
+  RequestDiscardInput,
   RequestKind,
+  RequestLaunchInput,
+  RequestMirrorInput,
+  RequestRestartInput,
+  RequestRollbackInput,
   ResumeChangeInput,
   SetAccessInput,
   SetChangeTitleInput,
+  SetHealthInput,
+  SetLaunchLineInput,
+  SetLaunchPermissionInput,
+  SetLiveTargetInput,
+  SetLiveVersionInput,
+  SetProductDriveInput,
   SetStepAttentionInput,
   StartChangeInput,
+  StartLaunchInput,
   StartStepInput,
   StepKind,
   StepStatus,
@@ -243,11 +259,46 @@ export function CheckRunSchema(): z.ZodObject<Properties<CheckRun>> {
   });
 }
 
+export function ClearRequestInputSchema(): z.ZodObject<
+  Properties<ClearRequestInput>
+> {
+  return z.object({
+    _: z.boolean().nullish(),
+  });
+}
+
 export function ClearStuckInputSchema(): z.ZodObject<
   Properties<ClearStuckInput>
 > {
   return z.object({
     changeId: z.string(),
+  });
+}
+
+export function CompleteLaunchInputSchema(): z.ZodObject<
+  Properties<CompleteLaunchInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    changedFiles: z.array(z.string()),
+    deploymentId: z.string(),
+    gitTag: z.string(),
+    launchedBy: z.string(),
+    number: z.number(),
+    packages: z.array(z.lazy(() => CompleteLaunchPackageInputSchema())),
+    sha: z.string(),
+    summary: z.string().nullish(),
+    title: z.string(),
+    trigger: z.string(),
+  });
+}
+
+export function CompleteLaunchPackageInputSchema(): z.ZodObject<
+  Properties<CompleteLaunchPackageInput>
+> {
+  return z.object({
+    name: z.string(),
+    version: z.string(),
   });
 }
 
@@ -269,6 +320,16 @@ export function CountStepInputSchema(): z.ZodObject<
     done: z.number(),
     kind: StepKindSchema,
     total: z.number(),
+  });
+}
+
+export function FailLaunchInputSchema(): z.ZodObject<
+  Properties<FailLaunchInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    number: z.number(),
+    reason: z.string(),
   });
 }
 
@@ -424,6 +485,54 @@ export function ReopenStepInputSchema(): z.ZodObject<
   });
 }
 
+export function RequestDiscardInputSchema(): z.ZodObject<
+  Properties<RequestDiscardInput>
+> {
+  return z.object({
+    changeId: z.string(),
+    requestedAt: z.iso.datetime(),
+    requestedBy: z.string(),
+  });
+}
+
+export function RequestLaunchInputSchema(): z.ZodObject<
+  Properties<RequestLaunchInput>
+> {
+  return z.object({
+    changeId: z.string(),
+    requestedAt: z.iso.datetime(),
+    requestedBy: z.string(),
+  });
+}
+
+export function RequestMirrorInputSchema(): z.ZodObject<
+  Properties<RequestMirrorInput>
+> {
+  return z.object({
+    requestedAt: z.iso.datetime(),
+    requestedBy: z.string(),
+  });
+}
+
+export function RequestRestartInputSchema(): z.ZodObject<
+  Properties<RequestRestartInput>
+> {
+  return z.object({
+    requestedAt: z.iso.datetime(),
+    requestedBy: z.string(),
+  });
+}
+
+export function RequestRollbackInputSchema(): z.ZodObject<
+  Properties<RequestRollbackInput>
+> {
+  return z.object({
+    requestedAt: z.iso.datetime(),
+    requestedBy: z.string(),
+    versionNumber: z.number(),
+  });
+}
+
 export function ResumeChangeInputSchema(): z.ZodObject<
   Properties<ResumeChangeInput>
 > {
@@ -450,6 +559,63 @@ export function SetChangeTitleInputSchema(): z.ZodObject<
   });
 }
 
+export function SetHealthInputSchema(): z.ZodObject<
+  Properties<SetHealthInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    health: LiveHealthSchema,
+  });
+}
+
+export function SetLaunchLineInputSchema(): z.ZodObject<
+  Properties<SetLaunchLineInput>
+> {
+  return z.object({
+    detail: z.string().nullish(),
+    kind: LaunchLineKindSchema,
+    number: z.number(),
+    status: LineStatusSchema,
+  });
+}
+
+export function SetLaunchPermissionInputSchema(): z.ZodObject<
+  Properties<SetLaunchPermissionInput>
+> {
+  return z.object({
+    state: PermissionStateSchema,
+  });
+}
+
+export function SetLiveTargetInputSchema(): z.ZodObject<
+  Properties<SetLiveTargetInput>
+> {
+  return z.object({
+    appId: z.string(),
+    liveUrl: z.url(),
+    productionEnvironmentId: z.string(),
+    slug: z.string(),
+  });
+}
+
+export function SetLiveVersionInputSchema(): z.ZodObject<
+  Properties<SetLiveVersionInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    number: z.number(),
+  });
+}
+
+export function SetProductDriveInputSchema(): z.ZodObject<
+  Properties<SetProductDriveInput>
+> {
+  return z.object({
+    driveId: z.string(),
+    liveUrl: z.url().nullish(),
+  });
+}
+
 export function SetStepAttentionInputSchema(): z.ZodObject<
   Properties<SetStepAttentionInput>
 > {
@@ -471,6 +637,16 @@ export function StartChangeInputSchema(): z.ZodObject<
     kind: ChangeKindSchema,
     request: z.string(),
     startedAt: z.iso.datetime(),
+  });
+}
+
+export function StartLaunchInputSchema(): z.ZodObject<
+  Properties<StartLaunchInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    changeId: z.string(),
+    number: z.number(),
   });
 }
 

@@ -135,8 +135,31 @@ export type CheckRun = {
   results: Array<CheckResult>;
 };
 
+export type ClearRequestInput = {
+  _?: InputMaybe<Scalars["Boolean"]["input"]>;
+};
+
 export type ClearStuckInput = {
   changeId: Scalars["OID"]["input"];
+};
+
+export type CompleteLaunchInput = {
+  at: Scalars["DateTime"]["input"];
+  changedFiles: Array<Scalars["String"]["input"]>;
+  deploymentId: Scalars["String"]["input"];
+  gitTag: Scalars["String"]["input"];
+  launchedBy: Scalars["String"]["input"];
+  number: Scalars["Int"]["input"];
+  packages: Array<CompleteLaunchPackageInput>;
+  sha: Scalars["String"]["input"];
+  summary?: InputMaybe<Scalars["String"]["input"]>;
+  title: Scalars["String"]["input"];
+  trigger: Scalars["String"]["input"];
+};
+
+export type CompleteLaunchPackageInput = {
+  name: Scalars["String"]["input"];
+  version: Scalars["String"]["input"];
 };
 
 export type CompleteStepInput = {
@@ -150,6 +173,12 @@ export type CountStepInput = {
   done: Scalars["Int"]["input"];
   kind: StepKind;
   total: Scalars["Int"]["input"];
+};
+
+export type FailLaunchInput = {
+  at: Scalars["DateTime"]["input"];
+  number: Scalars["Int"]["input"];
+  reason: Scalars["String"]["input"];
 };
 
 export type GithubLink = {
@@ -262,8 +291,36 @@ export type ReopenStepInput = {
   reason: Scalars["String"]["input"];
 };
 
+export type RequestDiscardInput = {
+  changeId: Scalars["OID"]["input"];
+  requestedAt: Scalars["DateTime"]["input"];
+  requestedBy: Scalars["String"]["input"];
+};
+
 export type RequestKind =
   "DISCARD" | "LAUNCH" | "MIRROR" | "RESTART" | "ROLLBACK";
+
+export type RequestLaunchInput = {
+  changeId: Scalars["OID"]["input"];
+  requestedAt: Scalars["DateTime"]["input"];
+  requestedBy: Scalars["String"]["input"];
+};
+
+export type RequestMirrorInput = {
+  requestedAt: Scalars["DateTime"]["input"];
+  requestedBy: Scalars["String"]["input"];
+};
+
+export type RequestRestartInput = {
+  requestedAt: Scalars["DateTime"]["input"];
+  requestedBy: Scalars["String"]["input"];
+};
+
+export type RequestRollbackInput = {
+  requestedAt: Scalars["DateTime"]["input"];
+  requestedBy: Scalars["String"]["input"];
+  versionNumber: Scalars["Int"]["input"];
+};
 
 export type ResumeChangeInput = {
   at: Scalars["DateTime"]["input"];
@@ -277,6 +334,39 @@ export type SetAccessInput = {
 export type SetChangeTitleInput = {
   changeId: Scalars["OID"]["input"];
   title: Scalars["String"]["input"];
+};
+
+export type SetHealthInput = {
+  at: Scalars["DateTime"]["input"];
+  health: LiveHealth;
+};
+
+export type SetLaunchLineInput = {
+  detail?: InputMaybe<Scalars["String"]["input"]>;
+  kind: LaunchLineKind;
+  number: Scalars["Int"]["input"];
+  status: LineStatus;
+};
+
+export type SetLaunchPermissionInput = {
+  state: PermissionState;
+};
+
+export type SetLiveTargetInput = {
+  appId: Scalars["String"]["input"];
+  liveUrl: Scalars["URL"]["input"];
+  productionEnvironmentId: Scalars["String"]["input"];
+  slug: Scalars["String"]["input"];
+};
+
+export type SetLiveVersionInput = {
+  at: Scalars["DateTime"]["input"];
+  number: Scalars["Int"]["input"];
+};
+
+export type SetProductDriveInput = {
+  driveId: Scalars["PHID"]["input"];
+  liveUrl?: InputMaybe<Scalars["URL"]["input"]>;
 };
 
 export type SetStepAttentionInput = {
@@ -293,6 +383,12 @@ export type StartChangeInput = {
   kind: ChangeKind;
   request: Scalars["String"]["input"];
   startedAt: Scalars["DateTime"]["input"];
+};
+
+export type StartLaunchInput = {
+  at: Scalars["DateTime"]["input"];
+  changeId: Scalars["OID"]["input"];
+  number: Scalars["Int"]["input"];
 };
 
 export type StartStepInput = {

@@ -441,6 +441,296 @@ export const documentModel: DocumentModelGlobalState = {
             },
           ],
         },
+        {
+          id: "mod-launch",
+          name: "launch",
+          description:
+            "Launches, versions, the live target and requests from the browser to the agent.",
+          operations: [
+            {
+              id: "op-set-live-target",
+              name: "SET_LIVE_TARGET",
+              description:
+                "Record the App, its production environment, the slug and the live address. Free to overwrite until the first launch; afterwards the slug is fixed.",
+              schema:
+                "input SetLiveTargetInput {\n  appId: String!\n  productionEnvironmentId: String!\n  slug: String!\n  liveUrl: URL!\n}",
+              template:
+                "Record the App, its production environment, the slug and the live address. Free to overwrite until the first launch; afterwards the slug is fixed.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-slug-locked",
+                  name: "SlugLockedError",
+                  code: "SLUG_LOCKED",
+                  description:
+                    "The live address is fixed after the first launch; the slug can no longer change.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-product-drive",
+              name: "SET_PRODUCT_DRIVE",
+              description:
+                "Record the product drive on the production environment (set once) and, when given, the live address that opens it.",
+              schema:
+                "input SetProductDriveInput {\n  driveId: PHID!\n  liveUrl: URL\n}",
+              template:
+                "Record the product drive on the production environment (set once) and, when given, the live address that opens it.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-drive-already-set",
+                  name: "DriveAlreadySetError",
+                  code: "DRIVE_ALREADY_SET",
+                  description:
+                    "The product drive is already set to a different drive.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-request-launch",
+              name: "REQUEST_LAUNCH",
+              description:
+                "Ask the agent to launch a READY change (Make it live / Try again).",
+              schema:
+                "input RequestLaunchInput {\n  changeId: OID!\n  requestedAt: DateTime!\n  requestedBy: String!\n}",
+              template:
+                "Ask the agent to launch a READY change (Make it live / Try again).",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-request-pending",
+                  name: "RequestPendingError",
+                  code: "REQUEST_PENDING",
+                  description:
+                    "Another request is still waiting for the agent.",
+                  template: "",
+                },
+                {
+                  id: "err-change-not-ready",
+                  name: "ChangeNotReadyError",
+                  code: "CHANGE_NOT_READY",
+                  description: "The change is not READY.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-request-rollback",
+              name: "REQUEST_ROLLBACK",
+              description:
+                "Ask the agent to make an earlier version live again (Go back). Refused while a change is open.",
+              schema:
+                "input RequestRollbackInput {\n  versionNumber: Int!\n  requestedAt: DateTime!\n  requestedBy: String!\n}",
+              template:
+                "Ask the agent to make an earlier version live again (Go back). Refused while a change is open.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-version-not-found",
+                  name: "VersionNotFoundError",
+                  code: "VERSION_NOT_FOUND",
+                  description: "No version with this number exists.",
+                  template: "",
+                },
+                {
+                  id: "err-invalid-version-status",
+                  name: "InvalidVersionStatusError",
+                  code: "INVALID_VERSION_STATUS",
+                  description:
+                    "The version's status does not allow this operation.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-request-discard",
+              name: "REQUEST_DISCARD",
+              description:
+                "Ask the agent to throw away an open change and reset the preview to the live code.",
+              schema:
+                "input RequestDiscardInput {\n  changeId: OID!\n  requestedAt: DateTime!\n  requestedBy: String!\n}",
+              template:
+                "Ask the agent to throw away an open change and reset the preview to the live code.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-request-restart",
+              name: "REQUEST_RESTART",
+              description:
+                "Ask the agent to redeploy the live version as it is (Restart).",
+              schema:
+                "input RequestRestartInput {\n  requestedAt: DateTime!\n  requestedBy: String!\n}",
+              template:
+                "Ask the agent to redeploy the live version as it is (Restart).",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-not-live",
+                  name: "NotLiveError",
+                  code: "NOT_LIVE",
+                  description: "The product has no live version yet.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-request-mirror",
+              name: "REQUEST_MIRROR",
+              description:
+                "Ask the agent to copy the code and version tags to GitHub again (Retry now).",
+              schema:
+                "input RequestMirrorInput {\n  requestedAt: DateTime!\n  requestedBy: String!\n}",
+              template:
+                "Ask the agent to copy the code and version tags to GitHub again (Retry now).",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-clear-request",
+              name: "CLEAR_REQUEST",
+              description:
+                "Remove the pending request once the agent has handled it.",
+              schema: "input ClearRequestInput {\n  _: Boolean\n}",
+              template:
+                "Remove the pending request once the agent has handled it.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-start-launch",
+              name: "START_LAUNCH",
+              description:
+                "Start launching a READY change as version `number`: the next number, or the number of a FAILED version (retry).",
+              schema:
+                "input StartLaunchInput {\n  number: Int!\n  changeId: OID!\n  at: DateTime!\n}",
+              template:
+                "Start launching a READY change as version `number`: the next number, or the number of a FAILED version (retry).",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-version-number",
+                  name: "VersionNumberError",
+                  code: "VERSION_NUMBER",
+                  description:
+                    "A launch must use the next version number or the number of a failed version.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-launch-line",
+              name: "SET_LAUNCH_LINE",
+              description:
+                "Update one line of a version's launch story (snapshot, publish, deploy, verify, mirror). An omitted detail keeps the current one.",
+              schema:
+                "input SetLaunchLineInput {\n  number: Int!\n  kind: LaunchLineKind!\n  status: LineStatus!\n  detail: String\n}",
+              template:
+                "Update one line of a version's launch story (snapshot, publish, deploy, verify, mirror). An omitted detail keeps the current one.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-complete-launch",
+              name: "COMPLETE_LAUNCH",
+              description:
+                "Record a launched version: it becomes LIVE, the previous LIVE version becomes PREVIOUS and its change LAUNCHED.",
+              schema:
+                "input CompleteLaunchPackageInput {\n  name: String!\n  version: String!\n}\n\ninput CompleteLaunchInput {\n  number: Int!\n  gitTag: String!\n  sha: String!\n  packages: [CompleteLaunchPackageInput!]!\n  deploymentId: String!\n  title: String!\n  summary: String\n  changedFiles: [String!]!\n  launchedBy: String!\n  trigger: String!\n  at: DateTime!\n}",
+              template:
+                "Record a launched version: it becomes LIVE, the previous LIVE version becomes PREVIOUS and its change LAUNCHED.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-duplicate-package-name",
+                  name: "DuplicatePackageNameError",
+                  code: "DUPLICATE_PACKAGE_NAME",
+                  description: "A package is listed more than once.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-fail-launch",
+              name: "FAIL_LAUNCH",
+              description:
+                "Record a failed launch with its plain reason. The change goes back to READY; the live version is untouched.",
+              schema:
+                "input FailLaunchInput {\n  number: Int!\n  reason: String!\n  at: DateTime!\n}",
+              template:
+                "Record a failed launch with its plain reason. The change goes back to READY; the live version is untouched.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-live-version",
+              name: "SET_LIVE_VERSION",
+              description:
+                "Mark an earlier launched version as live (rollback or reconcile). Versions are never removed.",
+              schema:
+                "input SetLiveVersionInput {\n  number: Int!\n  at: DateTime!\n}",
+              template:
+                "Mark an earlier launched version as live (rollback or reconcile). Versions are never removed.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-health",
+              name: "SET_HEALTH",
+              description: "Record the health of the live app.",
+              schema:
+                "input SetHealthInput {\n  health: LiveHealth!\n  at: DateTime!\n}",
+              template: "Record the health of the live app.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-launch-permission",
+              name: "SET_LAUNCH_PERMISSION",
+              description:
+                "Record whether the Studio may publish and launch on the owner's behalf.",
+              schema:
+                "input SetLaunchPermissionInput {\n  state: PermissionState!\n}",
+              template:
+                "Record whether the Studio may publish and launch on the owner's behalf.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+          ],
+        },
       ],
     },
   ],
