@@ -103,7 +103,7 @@ export const cli = defineCli({
       'vetra-agent': {
         name: 'vetra-agent',
         sections: ['base.md', 'tools.md', 'workflow.md'],
-        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation', 'deploy', 'product-specs'],
+        skills: ['reactor-project-management', 'document-modeling', 'document-editor-creation', 'drive-app-creation', 'deploy', 'product-specs', 'example-data'],
       },
       'agent-document-model': {
         name: 'agent-document-model',
@@ -134,6 +134,9 @@ export const cli = defineCli({
         }),
         instructionTemplate:
           'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
+      },
+      'example-data': {
+        description: 'Tests step: write the product\'s example documents (seed/<document-type>.json, names starting "Example — delete me") from the preview sample data. They fill the live product the first time it launches and are checked with the preview smoke check.',
       },
       'product-specs': {
         description: 'Create and refine product specs at the workspace root — brand, problem and audience sheets, features and their work breakdown structure (ordering, outcome links, feature bets, WBS tasks). For a product/app request, write them alongside the build, never instead of it.',

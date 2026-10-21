@@ -37,7 +37,7 @@ const inputSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Also run the project's reducer tests and the preview smoke check (package builds; every editor/app module loads in the running preview). Needed before finishing the Tests step. Defaults to false.",
+      "Also run the project's reducer tests and the preview smoke check (package builds; every editor/app module loads in the running preview; the example documents in seed/*.json fit the document models). Needed before finishing the Tests step. Defaults to false.",
     ),
 });
 

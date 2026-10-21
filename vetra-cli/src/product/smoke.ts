@@ -6,11 +6,16 @@
  * (the reactor project's Vite dev server) answers 200 without an error-overlay
  * payload for every source module of each editor and app. Vite transforms a
  * module only when it is requested, so each module file is requested.
+ *
+ * The example documents (`seed/*.json`, D21) are part of SMOKE too: every one
+ * must fit the project's document models, and a project with document types
+ * needs at least one (`seedCheck`, launch/seed.ts).
  */
 import fs from "node:fs";
 import path from "node:path";
 import { runBuild } from "../commands/reactor-project/build.js";
 import { capReason, type ObservedCheck } from "./check-results.js";
+import { seedCheck } from "../launch/seed.js";
 
 export type CheckResult = ObservedCheck;
 
@@ -71,6 +76,9 @@ export async function runSmoke(projectPath: string, deps: SmokeDeps = {}): Promi
     const tail = built.output.trim().split("\n").slice(-5).join("\n");
     return fail("The app didn't build.", `ph build failed: ${tail || "(no output)"}`, projectPath);
   }
+
+  const seeds = seedCheck(projectPath);
+  if (seeds) return seeds;
 
   const modules = listModules(projectPath);
   if (modules.length === 0) {

@@ -46,6 +46,7 @@ export const REASONS = {
   launchStudioVersion: "the new version didn't start",
   rollbackStudioVersion: "the earlier version couldn't be started again",
   studioDeployment: "the new version didn't start",
+  setStudioProductDrive: "your live address couldn't open your product",
 } as const;
 
 export type StudioOperation = keyof typeof REASONS;
@@ -265,4 +266,28 @@ export async function ensureProduct(ctx: CloudContext, name: string): Promise<Pr
     slug,
     liveUrl: connect ?? `https://${app.slug}.${CLOUD_BASE_DOMAIN}`,
   };
+}
+
+/**
+ * Record the product drive on the App once and point the live address's
+ * Connect at it (`setStudioProductDrive`, Ruling F7b; the same id again is a
+ * no-op, a different one fails with `PRODUCT_DRIVE_SET`). Runs after
+ * `ensureProductDrive` and before VERIFY; a try the cloud didn't answer is
+ * repeated.
+ */
+export async function cloudSetProductDrive(
+  ctx: CloudContext,
+  appId: string,
+  driveId: string,
+): Promise<void> {
+  await retryUnavailable(ctx, () =>
+    studioGql<{ setStudioProductDrive: { id: string } }>(
+      ctx,
+      "setStudioProductDrive",
+      `mutation SetStudioProductDrive($appId: ID!, $driveId: String!) {
+        setStudioProductDrive(appId: $appId, driveId: $driveId) { id }
+      }`,
+      { appId, driveId },
+    ),
+  );
 }

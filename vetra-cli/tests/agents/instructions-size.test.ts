@@ -28,6 +28,7 @@ describe('main agent instructions', () => {
       'document-editor-creation',
       'drive-app-creation',
       'product-specs',
+      'example-data',
     ]) {
       expect(text).toContain(skill);
     }

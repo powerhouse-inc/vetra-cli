@@ -5,7 +5,9 @@
  *
  *   - `spec-generate`          → GENERATE
  *   - `reactor-project-check`  → TYPECHECK + LINT, plus REDUCER_TESTS + SMOKE
- *                                with `tests: true` (a skipped kind is omitted)
+ *                                with `tests: true` (a skipped kind is omitted;
+ *                                SMOKE includes the example documents,
+ *                                `seed/*.json`, checked against the models)
  *
  * One tool call = one RECORD_CHECK_RUN. The commands attach what they observed
  * (`attachCheckResults`) to their result or thrown error; a call that never ran
