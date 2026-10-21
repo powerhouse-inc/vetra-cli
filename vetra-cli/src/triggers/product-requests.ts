@@ -19,16 +19,19 @@ import type { ProductAccess } from "vetra-app/document-models/studio-product";
 import { defineTrigger } from "../framework.js";
 import {
   AUTO_LAUNCHED_BY,
+  LAUNCH_REASONS,
   LAUNCH_TRIGGER,
   autoLaunchCandidate,
   discardChange,
   launch,
+  recordRequestFailure,
   restartLive,
   resumeLaunch,
   rollbackTo,
   syncAccess,
   type OrchestratorContext,
 } from "../launch/orchestrator.js";
+import { REASONS } from "../launch/cloud-launch.js";
 import { dispatchProduct, getProductDoc, productActions as a } from "../product/product-doc.js";
 
 const TAG = "[product-requests]";
@@ -40,14 +43,12 @@ export const ACCESS_INTERVAL_MS = 10_000;
 export const ACCESS_RETRY_MS = 60_000;
 
 export interface RequestsMemory {
-  /** The LAUNCHING versions of the previous run were resumed. */
-  resumed: boolean;
   /** Changes the automatic launch already tried in this process (F10 belt and braces). */
   autoTried: Set<string>;
 }
 
 export function newRequestsMemory(): RequestsMemory {
-  return { resumed: false, autoTried: new Set<string>() };
+  return { autoTried: new Set<string>() };
 }
 
 function message(err: unknown): string {
@@ -64,11 +65,12 @@ export async function requestsPass(
     if (!product) return null;
     const state = product.state;
 
-    if (!memory.resumed) {
-      memory.resumed = true;
-      const launching = state.versions.filter((v) => v.status === "LAUNCHING");
+    // Any pass, not only the first after a start: a START_LAUNCH that applied
+    // but whose dispatch then threw would otherwise wait for the next restart.
+    const launching = state.versions.filter((v) => v.status === "LAUNCHING");
+    if (launching.length > 0) {
       for (const v of launching) await resumeLaunch(ctx, v.number);
-      if (launching.length > 0) return "resume";
+      return "resume";
     }
 
     const request = state.pendingRequest;
@@ -85,18 +87,16 @@ export async function requestsPass(
               })
             : null;
           if (!outcome || outcome.status === "SKIPPED") {
-            ctx.log?.warn?.(`${TAG} launch request not started: ${outcome?.reason ?? "no change named"}`);
-          }
-          // Never leave it waiting: a stale request would launch again.
-          const after = (await getProductDoc(ctx))?.state.pendingRequest;
-          if (after?.kind === "LAUNCH" && after.requestedAt === request.requestedAt) {
-            await dispatchProduct(ctx, [a.clearRequest({})]);
+            const why = outcome?.reason ?? "no change named";
+            ctx.log?.warn?.(`${TAG} launch request not started: ${why}`);
+            // Never leave it waiting: a stale request would launch again.
+            await recordRequestFailure(ctx, "LAUNCH", LAUNCH_REASONS.notReady);
           }
           return "launch";
         }
         case "ROLLBACK":
           if (request.targetVersion === null || request.targetVersion === undefined) {
-            await dispatchProduct(ctx, [a.clearRequest({})]);
+            await recordRequestFailure(ctx, "ROLLBACK", REASONS.rollbackStudioVersion);
             return "rollback-without-version";
           }
           await rollbackTo(ctx, request.targetVersion);

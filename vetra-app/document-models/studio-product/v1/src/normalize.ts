@@ -35,6 +35,7 @@ export function normalizeProduct(
   s.liveDeploymentId ??= null;
   s.health ??= "UNKNOWN";
   s.pendingRequest ??= null;
+  s.lastRequestFailure ??= null;
   s.launchPermission ??= "UNKNOWN";
   s.suggestions ??= [];
   s.github = normalizeGithub(s.github);

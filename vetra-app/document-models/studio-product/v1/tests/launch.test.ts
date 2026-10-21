@@ -9,12 +9,14 @@ import {
   completeLaunch,
   completeStep,
   failLaunch,
+  failRequest,
   planSteps,
   requestDiscard,
   requestLaunch,
   requestMirror,
   requestRestart,
   requestRollback,
+  reopenStep,
   setChangeTitle,
   setHealth,
   setLaunchLine,
@@ -24,6 +26,7 @@ import {
   setProductDrive,
   startChange,
   startLaunch,
+  startStep,
   utils,
 } from "document-models/studio-product/v1";
 import { describe, expect, it } from "vitest";
@@ -288,6 +291,32 @@ describe("LaunchOperations", () => {
       );
     });
 
+    it("FAIL_REQUEST clears the waiting request and records the plain reason; a new request clears it", () => {
+      const doc = apply(
+        live(),
+        requestMirror({ requestedAt: at(11), requestedBy: by }),
+        failRequest({
+          kind: "MIRROR",
+          reason: "GitHub isn't connected yet",
+          at: at(12),
+        }),
+      );
+      expect(lastError(doc)).toBeNull();
+      expect(doc.state.global.pendingRequest).toBeNull();
+      expect(doc.state.global.lastRequestFailure).toEqual({
+        kind: "MIRROR",
+        reason: "GitHub isn't connected yet",
+        at: at(12),
+      });
+
+      const next = apply(
+        doc,
+        requestRestart({ requestedAt: at(13), requestedBy: by }),
+      );
+      expect(next.state.global.pendingRequest?.kind).toBe("RESTART");
+      expect(next.state.global.lastRequestFailure).toBeNull();
+    });
+
     it("CLEAR_REQUEST removes the pending request", () => {
       const doc = apply(
         live(),
@@ -443,6 +472,51 @@ describe("LaunchOperations", () => {
         rollbackBlockedReason: null,
       });
       expect(doc.state.global.liveVersion).toBeNull();
+    });
+
+    it("cuts the fallback title at 60 characters (F13)", () => {
+      const long =
+        "plan a long family holiday across three countries with notes for every stop";
+      const doc = apply(
+        withState({
+          changes: [craftedChange("c1", "READY", { request: long })],
+        }),
+        startLaunch({ number: 1, changeId: "c1", at: at(9) }),
+      );
+      expect(lastError(doc)).toBeNull();
+      expect(version(doc, 1).title).toBe(long.slice(0, 60));
+      expect(version(doc, 1).title.length).toBe(60);
+    });
+
+    it("keeps step edits and the title off a change that is going live", () => {
+      const base = apply(
+        ready(),
+        setChangeTitle({ changeId: "c1", title: "Dog walk planner" }),
+        startLaunch({ number: 1, changeId: "c1", at: at(9) }),
+      );
+      const start = apply(
+        base,
+        startStep({ changeId: "c1", kind: "TESTS", at: at(10) }),
+      );
+      const reopen = apply(
+        base,
+        reopenStep({
+          changeId: "c1",
+          kind: "TESTS",
+          reason: "one more fix",
+          at: at(10),
+        }),
+      );
+      const title = apply(
+        base,
+        setChangeTitle({ changeId: "c1", title: "Another name" }),
+      );
+      const expected =
+        'Change "c1" is going live and can\'t be edited until the launch ends.';
+      expect(lastError(start)).toBe(expected);
+      expect(lastError(reopen)).toBe(expected);
+      expect(lastError(title)).toBe(expected);
+      expect(change(title).title).toBe("Dog walk planner");
     });
 
     it("refuses a change that isn't READY, an unknown change and a wrong number", () => {

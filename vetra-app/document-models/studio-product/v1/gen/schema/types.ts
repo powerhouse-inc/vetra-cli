@@ -115,7 +115,11 @@ export type ChangeStatus =
   | "READY";
 
 export type CheckKind =
-  "GENERATE" | "LINT" | "REDUCER_TESTS" | "SMOKE" | "TYPECHECK";
+  | "GENERATE"
+  | "LINT"
+  | "REDUCER_TESTS"
+  | "SMOKE"
+  | "TYPECHECK";
 
 export type CheckResult = {
   kind: CheckKind;
@@ -175,9 +179,20 @@ export type CountStepInput = {
   total: Scalars["Int"]["input"];
 };
 
+export type DiscardChangeInput = {
+  at: Scalars["DateTime"]["input"];
+  changeId: Scalars["OID"]["input"];
+};
+
 export type FailLaunchInput = {
   at: Scalars["DateTime"]["input"];
   number: Scalars["Int"]["input"];
+  reason: Scalars["String"]["input"];
+};
+
+export type FailRequestInput = {
+  at: Scalars["DateTime"]["input"];
+  kind: RequestKind;
   reason: Scalars["String"]["input"];
 };
 
@@ -189,7 +204,10 @@ export type GithubLink = {
 };
 
 export type GithubStatus =
-  "CONNECTED" | "DISCONNECTED" | "NOT_CONNECTED" | "PUSH_FAILED";
+  | "CONNECTED"
+  | "DISCONNECTED"
+  | "NOT_CONNECTED"
+  | "PUSH_FAILED";
 
 export type InitProductInput = {
   createdAt: Scalars["DateTime"]["input"];
@@ -204,7 +222,11 @@ export type LaunchLine = {
 };
 
 export type LaunchLineKind =
-  "DEPLOY" | "MIRROR" | "PUBLISH" | "SNAPSHOT" | "VERIFY";
+  | "DEPLOY"
+  | "MIRROR"
+  | "PUBLISH"
+  | "SNAPSHOT"
+  | "VERIFY";
 
 export type LineStatus = "DONE" | "FAILED" | "RUNNING" | "SKIPPED" | "WAITING";
 
@@ -297,8 +319,18 @@ export type RequestDiscardInput = {
   requestedBy: Scalars["String"]["input"];
 };
 
+export type RequestFailure = {
+  at: Scalars["DateTime"]["output"];
+  kind: RequestKind;
+  reason: Scalars["String"]["output"];
+};
+
 export type RequestKind =
-  "DISCARD" | "LAUNCH" | "MIRROR" | "RESTART" | "ROLLBACK";
+  | "DISCARD"
+  | "LAUNCH"
+  | "MIRROR"
+  | "RESTART"
+  | "ROLLBACK";
 
 export type RequestLaunchInput = {
   changeId: Scalars["OID"]["input"];
@@ -402,7 +434,12 @@ export type StartStepInput = {
 export type StepKind = "DATA" | "EDITORS" | "LIVE" | "PLAN" | "TESTS";
 
 export type StepStatus =
-  "DONE" | "LIVE" | "NEEDS_YOU" | "NOT_STARTED" | "STOPPED" | "WORKING";
+  | "DONE"
+  | "LIVE"
+  | "NEEDS_YOU"
+  | "NOT_STARTED"
+  | "STOPPED"
+  | "WORKING";
 
 export type Stuck = {
   at: Scalars["DateTime"]["output"];
@@ -419,6 +456,7 @@ export type StudioProductState = {
   github: GithubLink;
   health: LiveHealth;
   idea: Maybe<Scalars["String"]["output"]>;
+  lastRequestFailure: Maybe<RequestFailure>;
   launchPermission: PermissionState;
   liveDeploymentId: Maybe<Scalars["String"]["output"]>;
   liveSince: Maybe<Scalars["DateTime"]["output"]>;

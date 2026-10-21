@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { runProgress } from "../../src/commands/product/progress.js";
 import { STUDIO_SECRET_ENV } from "../../src/launch/cloud-launch.js";
 import { LaunchError } from "../../src/launch/errors.js";
 import {
   AUTO_LAUNCHED_BY,
-  DRAFT_OPEN_TEXT,
+  DRAFT_OPEN_REASON,
   LAUNCH_TRIGGER,
   SECRET_PENDING_WAITS_MS,
+  discardChange,
   launch,
   requestLiveTarget,
   restartLive,
@@ -275,7 +278,7 @@ describe("requests", () => {
     ]);
   });
 
-  it("Go back with unsaved changes in the Studio is refused with the E6 copy and changes nothing", async () => {
+  it("Go back with unsaved changes is refused with a plain reason the page can show", async () => {
     h = await launchHarness({
       restoreVersion: async () => {
         throw new LaunchError("DRAFT_OPEN", "there are unsaved changes in your Studio");
@@ -284,13 +287,14 @@ describe("requests", () => {
     await twoVersions(h);
     await dispatchProduct(h.ctx, [a.requestRollback({ versionNumber: 1, requestedAt: AT, requestedBy: BY })]);
 
-    expect(await rollbackTo(h.octx, 1)).toEqual({ status: "REFUSED", reason: DRAFT_OPEN_TEXT });
+    expect(await rollbackTo(h.octx, 1)).toEqual({ status: "REFUSED", reason: DRAFT_OPEN_REASON });
 
     expect(h.calls).toEqual([]);
     const s = await h.state();
     expect(s.liveVersion).toBe(2);
     expect(s.pendingRequest).toBeNull();
-    expect(h.lines.some((l) => l.includes("Finish or discard your change first."))).toBe(true);
+    expect(s.lastRequestFailure).toEqual({ kind: "ROLLBACK", reason: DRAFT_OPEN_REASON, at: AT });
+    expect(h.lines.some((l) => l.includes(DRAFT_OPEN_REASON))).toBe(true);
   });
 
   it("a failed Go back puts the code back on the version that is still live", async () => {
@@ -310,6 +314,7 @@ describe("requests", () => {
     const s = await h.state();
     expect(s.liveVersion).toBe(2);
     expect(s.pendingRequest).toBeNull();
+    expect(s.lastRequestFailure).toMatchObject({ kind: "ROLLBACK", at: AT });
   });
 
   it("Restart re-deploys the live deployment without touching the code (F15)", async () => {
@@ -328,6 +333,40 @@ describe("requests", () => {
     expect(s.pendingRequest).toBeNull();
   });
 
+  it("a failed Restart is visible instead of only logged", async () => {
+    h = await launchHarness({
+      cloudRollback: async () => {
+        throw new LaunchError("CLOUD_UNAVAILABLE", "your live app couldn't be restarted", "503");
+      },
+    });
+    await makeReady(h);
+    await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
+    await dispatchProduct(h.ctx, [a.requestRestart({ requestedAt: AT, requestedBy: BY })]);
+
+    expect((await restartLive(h.octx)).status).toBe("FAILED");
+
+    const s = await h.state();
+    expect(s.pendingRequest).toBeNull();
+    expect(s.lastRequestFailure).toEqual({
+      kind: "RESTART",
+      reason: "your live app couldn't be restarted",
+      at: AT,
+    });
+  });
+
+  it("Discard marks the change DISCARDED so it can never launch itself", async () => {
+    h = await launchHarness();
+    await makeReady(h);
+    await dispatchProduct(h.ctx, [a.requestDiscard({ changeId: "change-1", requestedAt: AT, requestedBy: BY })]);
+
+    expect(await discardChange(h.octx, "change-1")).toEqual({ status: "DONE" });
+
+    const s = await h.state();
+    expect(s.changes[0].status).toBe("DISCARDED");
+    expect(s.pendingRequest).toBeNull();
+    expect(s.lastRequestFailure).toBeNull();
+  });
+
   it("the access switch is applied to the product drive and then left alone (F35)", async () => {
     h = await launchHarness();
     await makeReady(h);
@@ -341,6 +380,68 @@ describe("requests", () => {
     await dispatchProduct(h.ctx, [a.setAccess({ access: "OWNER_ONLY" })]);
     expect(await syncAccess(h.octx, applied)).toBe("applied");
     expect(h.calls).toEqual(["access SIGNED_IN drive-1", "access OWNER_ONLY drive-1"]);
+  });
+
+  it("an adopted drive keeps its protection: the product follows it first", async () => {
+    h = await launchHarness();
+    await makeReady(h);
+    await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
+    h.calls.length = 0;
+    const markerPath = path.join(h.workdir, ".ph", "product-drive.json");
+    await fs.writeFile(
+      markerPath,
+      JSON.stringify({
+        switchboardUrl: "https://team-todo-switchboard.vetra.io/graphql",
+        driveId: "drive-1",
+        adopted: true,
+        seed: false,
+        accessApplied: true,
+        accessSet: false,
+        access: "OWNER_ONLY",
+        examples: [],
+        done: true,
+      }),
+    );
+    const applied = new Map<string, "OWNER_ONLY" | "SIGNED_IN">();
+
+    expect(await syncAccess(h.octx, applied)).toBe("applied");
+
+    // The product document takes the drive's protection; the drive is untouched.
+    expect(h.calls).toEqual([]);
+    expect((await h.state()).access).toBe("OWNER_ONLY");
+    const marker = JSON.parse(await fs.readFile(markerPath, "utf-8")) as { accessSet: boolean };
+    expect(marker.accessSet).toBe(true);
+    expect(await syncAccess(h.octx, applied)).toBe("in-sync");
+
+    // Only a later customer change is pushed to the drive.
+    await dispatchProduct(h.ctx, [a.setAccess({ access: "SIGNED_IN" })]);
+    expect(await syncAccess(h.octx, applied)).toBe("applied");
+    expect(h.calls).toEqual(["access SIGNED_IN drive-1"]);
+  });
+
+  it("an adopted drive whose protection couldn't be read is left alone", async () => {
+    h = await launchHarness();
+    await makeReady(h);
+    await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
+    h.calls.length = 0;
+    await fs.writeFile(
+      path.join(h.workdir, ".ph", "product-drive.json"),
+      JSON.stringify({
+        switchboardUrl: "https://team-todo-switchboard.vetra.io/graphql",
+        driveId: "drive-1",
+        adopted: true,
+        seed: false,
+        accessApplied: false,
+        accessSet: false,
+        access: null,
+        examples: [],
+        done: true,
+      }),
+    );
+
+    expect(await syncAccess(h.octx, new Map())).toBe("skipped");
+    expect(h.calls).toEqual([]);
+    expect((await h.state()).access).toBe("SIGNED_IN");
   });
 });
 

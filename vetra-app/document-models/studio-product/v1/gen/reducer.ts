@@ -16,7 +16,9 @@ import {
   CompleteLaunchInputSchema,
   CompleteStepInputSchema,
   CountStepInputSchema,
+  DiscardChangeInputSchema,
   FailLaunchInputSchema,
+  FailRequestInputSchema,
   InitProductInputSchema,
   MarkStuckInputSchema,
   PauseChangeInputSchema,
@@ -306,6 +308,18 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       break;
     }
 
+    case "DISCARD_CHANGE": {
+      memoizedSchema(DiscardChangeInputSchema).parse(action.input);
+
+      studioProductChangeOperations.discardChangeOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
     case "SET_LIVE_TARGET": {
       memoizedSchema(SetLiveTargetInputSchema).parse(action.input);
 
@@ -394,6 +408,18 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       memoizedSchema(ClearRequestInputSchema).parse(action.input);
 
       studioProductLaunchOperations.clearRequestOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "FAIL_REQUEST": {
+      memoizedSchema(FailRequestInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.failRequestOperation(
         (state as any)[action.scope],
         action as any,
         dispatch,

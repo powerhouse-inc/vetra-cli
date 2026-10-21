@@ -222,6 +222,40 @@ describe("product-requests trigger", () => {
     });
   });
 
+  it("resumes a LAUNCHING version on any pass, not only the first after a start", async () => {
+    h = await launchHarness();
+    await makeReady(h);
+    await requestsPass(h.octx, newRequestsMemory()); // Version 1 live
+    await readyChange(h, "change-2");
+    const memory = newRequestsMemory();
+    expect(await requestsPass(h.octx, memory)).toBeNull();
+
+    await dispatchProduct(h.ctx, [a.startLaunch({ number: 2, changeId: "change-2", at: AT })]);
+    expect((await h.state()).versions[1].status).toBe("LAUNCHING");
+
+    expect(await requestsPass(h.octx, memory)).toBe("resume");
+    expect((await h.state()).liveVersion).toBe(2);
+  });
+
+  it("a LAUNCH request that can no longer start is cleared with a plain reason (X28)", async () => {
+    h = await launchHarness();
+    await makeReady(h);
+    await dispatchProduct(h.ctx, [a.requestLaunch({ changeId: "change-1", requestedAt: AT, requestedBy: BY })]);
+    // The agent reopens a step before the pass runs: the change isn't READY.
+    await dispatchProduct(h.ctx, [a.reopenStep({ changeId: "change-1", kind: "PLAN", reason: "one more fix", at: AT })]);
+
+    expect(await requestsPass(h.octx, newRequestsMemory())).toBe("launch");
+
+    const s = await h.state();
+    expect(s.pendingRequest).toBeNull();
+    expect(s.lastRequestFailure).toEqual({
+      kind: "LAUNCH",
+      reason: "your product isn't ready to go live yet",
+      at: AT,
+    });
+    expect(s.versions).toHaveLength(0);
+  });
+
   it("a LAUNCH request written while no client is subscribed completes", async () => {
     h = await launchHarness({ checkLive: async () => false });
     await makeReady(h);

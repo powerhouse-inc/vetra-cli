@@ -143,6 +143,8 @@ interface Marker {
   /** Examples may be added (a drive created here, or adopted untouched). */
   seed: boolean;
   accessApplied: boolean;
+  /** This Studio has set the protection; false while an adopted drive's value is only read. */
+  accessSet: boolean;
   access: ProductAccess | null;
   examples: ExampleRecord[];
   done: boolean;
@@ -164,6 +166,7 @@ function readMarker(workdir: string): Marker | null {
       adopted: m.adopted === true,
       seed: m.seed !== false,
       accessApplied: m.accessApplied === true,
+      accessSet: m.accessSet === true,
       access: m.access === "OWNER_ONLY" || m.access === "SIGNED_IN" ? m.access : null,
       examples: Array.isArray(m.examples) ? m.examples : [],
       done: m.done === true,
@@ -197,12 +200,23 @@ export interface ProductDriveRecord {
   driveId: string;
   access: ProductAccess | null;
   accessApplied: boolean;
+  /** Found by its slug: its protection is read, not set, unless a later switch changes it. */
+  adopted: boolean;
+  /** This Studio has set the protection; false while an adopted value is only read. */
+  accessSet: boolean;
 }
 
 export function readProductDriveRecord(workdir: string): ProductDriveRecord | null {
   const m = readMarker(workdir);
   return m
-    ? { switchboardUrl: m.switchboardUrl, driveId: m.driveId, access: m.access, accessApplied: m.accessApplied }
+    ? {
+        switchboardUrl: m.switchboardUrl,
+        driveId: m.driveId,
+        access: m.access,
+        accessApplied: m.accessApplied,
+        adopted: m.adopted,
+        accessSet: m.accessSet,
+      }
     : null;
 }
 
@@ -299,6 +313,7 @@ export async function ensureProductDrive(
       adopted: found !== null,
       seed: found === null || found.untouched,
       accessApplied: false,
+      accessSet: false,
       access: null,
       examples: [],
       done: false,
@@ -323,6 +338,7 @@ export async function ensureProductDrive(
     try {
       await client.setProtection(m.driveId, DEFAULT_ACCESS === "OWNER_ONLY");
       m.accessApplied = true;
+      m.accessSet = true;
       m.access = DEFAULT_ACCESS;
     } catch (err) {
       ctx.log?.warn?.(`[launch] product drive: default access not applied: ${message(err)}`);
@@ -416,7 +432,25 @@ export async function setAccess(
   const marker = readMarker(ctx.workdir);
   if (marker && marker.driveId === target.driveId && marker.switchboardUrl === endpoint) {
     marker.accessApplied = true;
+    marker.accessSet = true;
     marker.access = access;
+    writeMarker(ctx.workdir, marker);
+  }
+}
+
+/**
+ * The product document now carries the protection an adopted drive was found
+ * with (Task 2.7): from here on the switch owns the drive, so a later change
+ * is pushed. Writes nothing when the marker isn't for this drive.
+ */
+export function markAccessAdopted(
+  ctx: ProductDriveContext,
+  target: { switchboardUrl: string; driveId: string },
+): void {
+  const endpoint = switchboardGraphqlEndpoint(target.switchboardUrl);
+  const marker = readMarker(ctx.workdir);
+  if (marker && marker.driveId === target.driveId && marker.switchboardUrl === endpoint) {
+    marker.accessSet = true;
     writeMarker(ctx.workdir, marker);
   }
 }

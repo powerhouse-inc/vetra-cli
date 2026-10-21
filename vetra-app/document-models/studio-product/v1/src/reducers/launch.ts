@@ -1,14 +1,4 @@
 import type { StudioProductLaunchOperations } from "document-models/studio-product/v1";
-import type {
-  Change,
-  ChangeStatus,
-  LaunchLine,
-  LaunchLineKind,
-  PendingRequest,
-  StepStatus,
-  StudioProductState,
-  Version,
-} from "../../gen/schema/types.js";
 import {
   ChangeInProgressError,
   ChangeNotFoundError,
@@ -25,6 +15,16 @@ import {
   VersionNotFoundError,
   VersionNumberError,
 } from "../../gen/launch/error.js";
+import type {
+  Change,
+  ChangeStatus,
+  LaunchLine,
+  LaunchLineKind,
+  PendingRequest,
+  StepStatus,
+  StudioProductState,
+  Version,
+} from "../../gen/schema/types.js";
 import { normalizeProduct } from "../normalize.js";
 
 const LINE_ORDER: LaunchLineKind[] = [
@@ -75,6 +75,8 @@ function request(
     requestedAt: next.requestedAt,
     requestedBy: next.requestedBy,
   };
+  // A new request replaces the record of the last one that couldn't be served.
+  state.lastRequestFailure = null;
 }
 
 function requireLive(state: StudioProductState): void {
@@ -219,6 +221,15 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
     state.pendingRequest = null;
   },
 
+  failRequestOperation(state, action) {
+    normalizeProduct(state);
+    const { kind, reason, at } = action.input;
+    // Clear whatever is still waiting: the request is over. The plain reason
+    // stays for the page to show (F39 style).
+    state.pendingRequest = null;
+    state.lastRequestFailure = { kind, reason, at };
+  },
+
   startLaunchOperation(state, action) {
     normalizeProduct(state);
     const { number, changeId, at } = action.input;
@@ -248,7 +259,12 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
       );
     }
     const existing = retry;
-    const title = change.title ?? change.request;
+    // F13: the change's title, else its request cut to 60 characters.
+    const title =
+      change.title ??
+      (change.request.length > 60
+        ? change.request.slice(0, 60).trimEnd()
+        : change.request);
     if (existing) {
       existing.status = "LAUNCHING";
       existing.changeId = changeId;

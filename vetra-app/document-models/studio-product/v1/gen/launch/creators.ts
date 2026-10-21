@@ -7,6 +7,7 @@ import {
   ClearRequestInputSchema,
   CompleteLaunchInputSchema,
   FailLaunchInputSchema,
+  FailRequestInputSchema,
   RequestDiscardInputSchema,
   RequestLaunchInputSchema,
   RequestMirrorInputSchema,
@@ -24,6 +25,7 @@ import type {
   ClearRequestInput,
   CompleteLaunchInput,
   FailLaunchInput,
+  FailRequestInput,
   RequestDiscardInput,
   RequestLaunchInput,
   RequestMirrorInput,
@@ -41,6 +43,7 @@ import type {
   ClearRequestAction,
   CompleteLaunchAction,
   FailLaunchAction,
+  FailRequestAction,
   RequestDiscardAction,
   RequestLaunchAction,
   RequestMirrorAction,
@@ -124,6 +127,15 @@ export const clearRequest = (input: ClearRequestInput) =>
     { ...input },
     undefined,
     ClearRequestInputSchema,
+    "global",
+  );
+
+export const failRequest = (input: FailRequestInput) =>
+  createAction<FailRequestAction>(
+    "FAIL_REQUEST",
+    { ...input },
+    undefined,
+    FailRequestInputSchema,
     "global",
   );
 

@@ -31,6 +31,7 @@ import type {
   LaunchLineKind,
   LineStatus,
   ProductAccess,
+  RequestKind,
   StudioProductState,
   Version,
 } from "vetra-app/document-models/studio-product";
@@ -54,6 +55,7 @@ import { LaunchError } from "./errors.js";
 import { changedFiles, discardDraft, restoreVersion, snapshot } from "./git-versions.js";
 import {
   ensureProductDrive,
+  markAccessAdopted,
   readProductDriveRecord,
   setAccess,
   type ProductDriveContext,
@@ -69,8 +71,10 @@ import { checkLive, waitForDeployment } from "./verify.js";
 export const LAUNCH_TRIGGER = "STUDIO_LAUNCH";
 /** `launchedBy` of the automatic first launch (the Versions panel's "built by Vetra"). */
 export const AUTO_LAUNCHED_BY = "vetra";
-/** E6: Go back while the Studio has unsaved changes. */
+/** E6: Go back while the Studio has unsaved changes (the disabled-button copy). */
 export const DRAFT_OPEN_TEXT = "Finish or discard your change first.";
+/** E6 as the plain reason stored on the product (the page composes the sentence). */
+export const DRAFT_OPEN_REASON = "your change isn't finished";
 /** F13: a Version's title falls back to the request, cut to this many characters. */
 export const VERSION_TITLE_MAX = 60;
 
@@ -79,6 +83,7 @@ export const LAUNCH_REASONS = {
   notAnswering: "your live app didn't answer",
   unexpected: "something unexpected stopped it",
   noLiveAddress: "your live address couldn't be set up",
+  notReady: "your product isn't ready to go live yet",
 } as const;
 
 /** The story text of a launch line (for logs; the page composes its own copy). */
@@ -284,11 +289,8 @@ async function cloudCall<T>(ctx: OrchestratorContext, call: () => Promise<T>): P
  * (D8) and again by the launch when it is still missing. Returns the state
  * with the target; throws `LaunchError` when the cloud refuses.
  */
-export async function ensureLiveTarget(ctx: OrchestratorContext): Promise<StudioProductState> {
-  const product = await getProductDoc(ctx);
-  if (!product) throw new Error("There is no product document in this Studio.");
-  const s = product.state;
-  if (s.appId && s.slug && s.liveUrl && s.productionEnvironmentId) return s;
+async function doEnsureLiveTarget(ctx: OrchestratorContext): Promise<StudioProductState> {
+  const s = (await getProductDoc(ctx))!.state;
   const name = s.name?.trim();
   if (!name) {
     throw new LaunchError("NO_NAME", LAUNCH_REASONS.noLiveAddress, "The product has no name yet.");
@@ -299,7 +301,23 @@ export async function ensureLiveTarget(ctx: OrchestratorContext): Promise<Studio
   return (await getProductDoc(ctx))!.state;
 }
 
-let liveTargetInFlight: Promise<boolean> | null = null;
+let liveTargetInFlight: Promise<StudioProductState> | null = null;
+
+/** One setup at a time: the plan-done request and the launch share it (D8). */
+function sharedLiveTarget(ctx: OrchestratorContext): Promise<StudioProductState> {
+  liveTargetInFlight ??= doEnsureLiveTarget(ctx).finally(() => {
+    liveTargetInFlight = null;
+  });
+  return liveTargetInFlight;
+}
+
+export async function ensureLiveTarget(ctx: OrchestratorContext): Promise<StudioProductState> {
+  const product = await getProductDoc(ctx);
+  if (!product) throw new Error("There is no product document in this Studio.");
+  const s = product.state;
+  if (s.appId && s.slug && s.liveUrl && s.productionEnvironmentId) return s;
+  return sharedLiveTarget(ctx);
+}
 
 /**
  * D8 in the background: request the App + production environment once the
@@ -307,16 +325,12 @@ let liveTargetInFlight: Promise<boolean> | null = null;
  * change tries again. Concurrent calls share one request.
  */
 export function requestLiveTarget(ctx: OrchestratorContext): Promise<boolean> {
-  liveTargetInFlight ??= ensureLiveTarget(ctx)
+  return ensureLiveTarget(ctx)
     .then(() => true)
     .catch((err: unknown) => {
       ctx.log?.error?.(`[launch] live address not set up yet (tried again at the next step): ${message(err)}`);
       return false;
-    })
-    .finally(() => {
-      liveTargetInFlight = null;
     });
-  return liveTargetInFlight;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -623,11 +637,20 @@ export type RequestOutcome =
   | { status: "DONE" }
   | { status: "REFUSED" | "FAILED"; reason: string };
 
-async function clearRequest(ctx: OrchestratorContext): Promise<void> {
+/**
+ * Record why a request couldn't be carried out and clear it (X28). The plain
+ * reason is what the page shows (F39 style); a lost request would otherwise
+ * leave the customer with nothing.
+ */
+export async function recordRequestFailure(
+  ctx: OrchestratorContext,
+  kind: RequestKind,
+  reason: string,
+): Promise<void> {
   try {
-    await dispatchProduct(ctx, [a.clearRequest({})]);
+    await dispatchProduct(ctx, [a.failRequest({ kind, reason, at: nowIso(ctx) })]);
   } catch (err) {
-    ctx.log?.error?.(`[launch] request not cleared: ${message(err)}`);
+    ctx.log?.error?.(`[launch] ${kind} failure not recorded: ${message(err)}`);
   }
 }
 
@@ -655,7 +678,7 @@ export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<R
   const target = state?.versions.find((v) => v.number === m);
   if (!state || !target?.deploymentId) {
     ctx.log?.error?.(`[launch] Go back to Version ${m}: no deployment recorded for it`);
-    await clearRequest(ctx);
+    await recordRequestFailure(ctx, "ROLLBACK", REASONS.rollbackStudioVersion);
     return { status: "FAILED", reason: REASONS.rollbackStudioVersion };
   }
   const liveNumber = state.liveVersion ?? null;
@@ -663,9 +686,13 @@ export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<R
     await d.restoreVersion(ctx.workdir, m);
   } catch (err) {
     const draftOpen = err instanceof LaunchError && err.code === "DRAFT_OPEN";
-    const reason = draftOpen ? DRAFT_OPEN_TEXT : err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected;
+    const reason = draftOpen
+      ? DRAFT_OPEN_REASON
+      : err instanceof LaunchError
+        ? err.reason
+        : LAUNCH_REASONS.unexpected;
     ctx.log?.error?.(`[launch] Go back to Version ${m} refused: ${reason} (${message(err)})`);
-    await clearRequest(ctx);
+    await recordRequestFailure(ctx, "ROLLBACK", reason);
     return { status: "REFUSED", reason };
   }
   try {
@@ -685,8 +712,9 @@ export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<R
         ctx.log?.error?.(`[launch] code not put back on Version ${liveNumber}: ${message(restoreErr)}`);
       }
     }
-    await clearRequest(ctx);
-    return { status: "FAILED", reason: err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected };
+    const reason = err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected;
+    await recordRequestFailure(ctx, "ROLLBACK", reason);
+    return { status: "FAILED", reason };
   }
 }
 
@@ -700,7 +728,7 @@ export async function restartLive(ctx: OrchestratorContext): Promise<RequestOutc
   const deploymentId = state?.liveDeploymentId ?? live?.deploymentId ?? null;
   if (!state || !live || !deploymentId) {
     ctx.log?.error?.("[launch] restart: nothing is live");
-    await clearRequest(ctx);
+    await recordRequestFailure(ctx, "RESTART", REASONS.rollbackStudioVersion);
     return { status: "FAILED", reason: REASONS.rollbackStudioVersion };
   }
   try {
@@ -712,34 +740,45 @@ export async function restartLive(ctx: OrchestratorContext): Promise<RequestOutc
     ctx.log?.info?.(`[launch] Version ${live.number} restarted`);
     return { status: "DONE" };
   } catch (err) {
+    const reason = err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected;
     ctx.log?.error?.(`[launch] restart of Version ${live.number} failed: ${message(err)}`);
-    await clearRequest(ctx);
-    return { status: "FAILED", reason: err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected };
+    await recordRequestFailure(ctx, "RESTART", reason);
+    return { status: "FAILED", reason };
   }
 }
 
 /**
  * Throw the change away (customer-confirmed `DISCARD` request only): the
- * reactor projects go back to the live version's code. With nothing live yet
- * there is no code to go back to and the files stay as they are. Marking the
- * change DISCARDED arrives with `DISCARD_CHANGE` (M3).
+ * reactor projects go back to the live version's code and the change is
+ * marked DISCARDED, so it can never go live by itself afterwards. With
+ * nothing live yet there is no code to go back to and the files stay as they
+ * are.
  */
 export async function discardChange(ctx: OrchestratorContext, changeId: string | null): Promise<RequestOutcome> {
+  if (!changeId) {
+    ctx.log?.error?.("[launch] discard: no change named");
+    await recordRequestFailure(ctx, "DISCARD", "no change was named");
+    return { status: "FAILED", reason: "no change was named" };
+  }
   const state = (await getProductDoc(ctx))?.state;
   const live = state?.versions.find((v) => v.number === state.liveVersion);
   try {
     if (live) {
       await depsOf(ctx).discardDraft(ctx.workdir, live.gitTag);
-      ctx.log?.info?.(`[launch] change ${changeId ?? "?"} discarded; code back on Version ${live.number}`);
+      ctx.log?.info?.(`[launch] change ${changeId} discarded; code back on Version ${live.number}`);
     } else {
-      ctx.log?.info?.(`[launch] change ${changeId ?? "?"} discarded with nothing live; files kept`);
+      ctx.log?.info?.(`[launch] change ${changeId} discarded with nothing live; files kept`);
     }
-    await clearRequest(ctx);
+    await dispatchProduct(ctx, [
+      a.discardChange({ changeId, at: nowIso(ctx) }),
+      a.clearRequest({}),
+    ]);
     return { status: "DONE" };
   } catch (err) {
-    ctx.log?.error?.(`[launch] discard of change ${changeId ?? "?"} failed: ${message(err)}`);
-    await clearRequest(ctx);
-    return { status: "FAILED", reason: err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected };
+    const reason = err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected;
+    ctx.log?.error?.(`[launch] discard of change ${changeId} failed: ${message(err)}`);
+    await recordRequestFailure(ctx, "DISCARD", reason);
+    return { status: "FAILED", reason };
   }
 }
 
@@ -758,11 +797,34 @@ export async function syncAccess(
   const desired = state.access;
   const record = readProductDriveRecord(ctx.workdir);
   const known = record?.driveId === driveId ? record : null;
+  const switchboardUrl = known?.switchboardUrl ?? (state.slug ? liveSwitchboardUrl(state.slug) : null);
+  if (!switchboardUrl) return "skipped";
+  if (known?.adopted && !known.accessSet) {
+    // Task 2.6: an adopted drive is never changed. Its protection was read,
+    // not set, so the product document follows the drive first; only a later
+    // customer change is pushed.
+    if (!known.accessApplied || known.access === null) return "skipped";
+    const observed = known.access;
+    if (desired !== observed) {
+      try {
+        await dispatchProduct(ctx, [a.setAccess({ access: observed })]);
+      } catch (err) {
+        ctx.log?.warn?.(`[launch] product access not taken from the existing drive: ${message(err)}`);
+        return "failed";
+      }
+      ctx.log?.info?.(`[launch] product access taken from the existing drive: ${observed}`);
+    }
+    try {
+      markAccessAdopted(ctx, { switchboardUrl, driveId });
+    } catch (err) {
+      ctx.log?.warn?.(`[launch] adopted product access not recorded: ${message(err)}`);
+    }
+    applied.set(driveId, observed);
+    return desired === observed ? "in-sync" : "applied";
+  }
   if (known ? known.accessApplied && known.access === desired : applied.get(driveId) === desired) {
     return "in-sync";
   }
-  const switchboardUrl = known?.switchboardUrl ?? (state.slug ? liveSwitchboardUrl(state.slug) : null);
-  if (!switchboardUrl) return "skipped";
   try {
     await depsOf(ctx).setAccess(ctx, desired, { switchboardUrl, driveId });
     applied.set(driveId, desired);

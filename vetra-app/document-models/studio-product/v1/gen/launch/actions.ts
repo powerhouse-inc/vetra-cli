@@ -7,6 +7,7 @@ import type {
   ClearRequestInput,
   CompleteLaunchInput,
   FailLaunchInput,
+  FailRequestInput,
   RequestDiscardInput,
   RequestLaunchInput,
   RequestMirrorInput,
@@ -53,6 +54,10 @@ export type ClearRequestAction = Action & {
   type: "CLEAR_REQUEST";
   input: ClearRequestInput;
 };
+export type FailRequestAction = Action & {
+  type: "FAIL_REQUEST";
+  input: FailRequestInput;
+};
 export type StartLaunchAction = Action & {
   type: "START_LAUNCH";
   input: StartLaunchInput;
@@ -91,6 +96,7 @@ export type StudioProductLaunchAction =
   | RequestRestartAction
   | RequestMirrorAction
   | ClearRequestAction
+  | FailRequestAction
   | StartLaunchAction
   | SetLaunchLineAction
   | CompleteLaunchAction

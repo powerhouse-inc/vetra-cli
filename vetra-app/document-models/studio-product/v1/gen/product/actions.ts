@@ -23,4 +23,6 @@ export type SetAccessAction = Action & {
 };
 
 export type StudioProductProductAction =
-  InitProductAction | RenameProductAction | SetAccessAction;
+  | InitProductAction
+  | RenameProductAction
+  | SetAccessAction;
