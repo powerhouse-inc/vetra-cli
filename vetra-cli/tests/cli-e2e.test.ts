@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +70,7 @@ describe("vetra spec-* (e2e)", () => {
     async () => {
       const workdir = mkdtempSync(join(tmpdir(), "vetra-e2e-"));
       writeFileSync(join(workdir, "powerhouse.config.json"), "{}\n");
+      mkdirSync(join(workdir, "node_modules"));
       try {
         // list: empty
         let r = await run({ workdir }, "spec-list");

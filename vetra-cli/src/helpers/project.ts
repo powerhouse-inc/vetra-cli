@@ -31,7 +31,7 @@ export async function resolveReactorProjectPath(
     throw new Error(
       formatLines(
         `Project directory "${subdir}" not found at ${base}.`,
-        await availableProjectsHint(workdir, subdir),
+        await availableProjectsHint(workdir, subdir, initHint(subdir)),
       ),
     );
   }
@@ -41,11 +41,38 @@ export async function resolveReactorProjectPath(
         subdir
           ? `"${subdir}" is not a Reactor package (missing powerhouse.config.json at ${base}).`
           : `Workdir is not a Reactor package (missing powerhouse.config.json at ${base}).\nPass a project sub-directory name, or run from inside a Reactor package.`,
-        await availableProjectsHint(workdir, subdir),
+        await availableProjectsHint(workdir, subdir, initHint(subdir)),
       ),
     );
   }
   return base;
+}
+
+/**
+ * Where a missing project comes from. On staging the agent read the bare "not
+ * found" errors as "write the files by hand", and spec-create then accepted
+ * its stub `powerhouse.config.json`.
+ */
+function initHint(name: string | undefined): string {
+  return `Create a project with \`reactor-project-init { name: "${name ?? "<name>"}" }\` — never hand-write its files.`;
+}
+
+/**
+ * Refuse a project `reactor-project-init` never set up: no `node_modules`
+ * means no installed toolchain, so codegen would fetch `ph-cli` from the
+ * public registry (and 404). Used by the spec commands that write into or
+ * generate from a project.
+ */
+export async function assertProjectInstalled(base: string, subdir: string | undefined): Promise<void> {
+  if (await pathExists(path.join(base, "node_modules"))) return;
+  const label = subdir ? `"${subdir}"` : "The workdir";
+  throw new Error(
+    [
+      `${label} is not an initialised project (no node_modules at ${base}).`,
+      initHint(subdir),
+      "If reactor-project-init created it and its install failed, run `pnpm install` in it.",
+    ].join("\n"),
+  );
 }
 
 /**
@@ -101,12 +128,14 @@ export async function listReactorProjects(workdir: string): Promise<string[]> {
     .sort();
 }
 
+/** Existing projects (with a near-miss suggestion), then how to create one. */
 async function availableProjectsHint(
   workdir: string,
   attempted: string | undefined,
-): Promise<string | undefined> {
+  createHint: string,
+): Promise<string> {
   const projects = await listReactorProjects(workdir);
-  if (projects.length === 0) return undefined;
+  if (projects.length === 0) return createHint;
   const lines: string[] = [];
   if (attempted) {
     const suggestions = suggestNames(attempted, projects);
@@ -114,6 +143,6 @@ async function availableProjectsHint(
       lines.push(`Did you mean: ${suggestions.join(", ")}?`);
     }
   }
-  lines.push(`Available projects: ${projects.join(", ")}`);
+  lines.push(`Available projects: ${projects.join(", ")}`, createHint);
   return lines.join("\n");
 }

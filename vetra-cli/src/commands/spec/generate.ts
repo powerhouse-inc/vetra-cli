@@ -1,7 +1,11 @@
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
-import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import {
+  assertProjectInstalled,
+  projectInputSchema,
+  resolveReactorProjectPath,
+} from "../../helpers/project.js";
 import {
   runChecks,
   summarizeDiagnostics,
@@ -118,6 +122,7 @@ export const specGenerate = defineCommand({
   }),
   execute: async (input, { workdir, runProcess }) => {
     const base = await resolveReactorProjectPath(workdir, input.project);
+    await assertProjectInstalled(base, input.project);
     // codegen rewrites shared barrels/manifest from the project's view, so
     // concurrent runs clobber each other; serialize per reactor project.
     return withProjectCodegenLock(base, async () => {

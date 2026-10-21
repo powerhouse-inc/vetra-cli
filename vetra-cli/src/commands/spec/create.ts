@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
 import { requireOption } from "../../helpers/cli-errors.js";
-import { projectInputSchema, resolveReactorProjectPath } from "../../helpers/project.js";
+import {
+  assertProjectInstalled,
+  projectInputSchema,
+  resolveReactorProjectPath,
+} from "../../helpers/project.js";
 import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
 import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
 import { assertKnownDocumentType, slugify } from "./_helpers.js";
@@ -45,6 +49,8 @@ export const specCreate = defineCommand({
       base = workdir;
     } else {
       base = await resolveReactorProjectPath(workdir, input.project);
+      // A stub project (hand-written config, never installed) can't generate.
+      await assertProjectInstalled(base, input.project);
     }
     const doc = createSpecDocument(input.type, { name: input.name });
     /* `createDocument` only seeds `name`; populate slug from it so the doc

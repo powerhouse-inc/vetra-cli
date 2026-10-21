@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -481,6 +481,33 @@ describe("spec-generate", () => {
         message: expect.not.stringContaining("type TodoItem = {"),
       }),
     );
+  });
+});
+
+// M0: the agent hand-wrote powerhouse.config.json + package.json; spec-create
+// accepted the stub and spec-generate then failed fetching ph-cli (npm 404).
+describe("a hand-written (never installed) project", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vetra-stub-"));
+    mkdirSync(join(dir, "todo-app"));
+    writeFileSync(join(dir, "todo-app", "powerhouse.config.json"), "{}\n");
+    writeFileSync(join(dir, "todo-app", "package.json"), "{}\n");
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("spec-create and spec-generate refuse it and point at reactor-project-init", async () => {
+    const init = /"todo-app" is not an initialised project[\s\S]*reactor-project-init \{ name: "todo-app" \}/;
+    await expect(
+      specCreate.execute({ project: "todo-app", type: DOC_TYPE, name: "Todo", dryRun: false }, makeCtx(dir)),
+    ).rejects.toThrow(init);
+    await expect(
+      specGenerate.execute({ project: "todo-app", skipChecks: true }, makeCtx(dir)),
+    ).rejects.toThrow(init);
+    // Product specs need no project and are unaffected.
+    await expect(
+      specCreate.execute({ type: PRODUCT_TYPE, name: "Todo", dryRun: false }, makeCtx(dir)),
+    ).resolves.toMatchObject({ text: expect.stringContaining("Created") });
   });
 });
 
