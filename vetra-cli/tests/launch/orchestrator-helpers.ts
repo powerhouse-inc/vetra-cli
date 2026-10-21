@@ -94,6 +94,8 @@ export async function launchHarness(
     checkCompat: async () => ({ breaking: [], unreadable: [] }),
     countDriveDocuments: async () => 0,
     refreshRollbackBlocks: async () => 0,
+    // No GitHub unless a test says so (mirror.test.ts uses the real mirror).
+    mirror: async () => ({ skipped: "GitHub isn't connected" }),
     messageAgent: async (_ctx, chatSessionId, text) => {
       calls.push(`message ${chatSessionId} ${text.split("\n")[0]}`);
     },

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { ProcessInputStepArgs } from "@mastra/core/processors";
-import { CHANGE_BASE_RETRY_MS, ChangeBaseProcessor } from "../../src/agents/change-base.js";
+import { BRING_IN_TAG, CHANGE_BASE_RETRY_MS, ChangeBaseProcessor } from "../../src/agents/change-base.js";
 import {
   discardDraft,
   draftMatches,
@@ -181,6 +181,45 @@ describe("changes after launch", () => {
     expect(tries).toBe(2);
     expect(h.lines.filter((l) => l.includes("git broke"))).toHaveLength(1);
     expect(await hasChangeUnbased(h.workdir, "change-2")).toBe(true);
+  });
+
+  it("a Bring them in note reaches the model as a tagged system message for the turn", async () => {
+    h = await liveStudio();
+    await startChange(h, "change-2", "session-2");
+    const added: [string, string | undefined][] = [];
+    const processor = new ChangeBaseProcessor(h.octx, {
+      prepare: async (_ctx, _change, opts) => {
+        opts?.note?.("merged from GitHub");
+        return "unchanged";
+      },
+    });
+    await processor.processInputStep({
+      stepNumber: 0,
+      messageList: { addSystem: (text: string, tag?: string) => added.push([text, tag]) },
+    } as unknown as ProcessInputStepArgs);
+    expect(added).toEqual([["merged from GitHub", BRING_IN_TAG]]);
+  });
+
+  it("later turns of a change get the Bring them in reminder, when there is one", async () => {
+    h = await liveStudio();
+    await startChange(h, "change-2", "session-2");
+    await makeReady(h, "change-2");
+    const added: [string, string | undefined][] = [];
+    let reminder: string | null = "conflicts left in todo/src/model.ts";
+    const processor = new ChangeBaseProcessor(h.octx, {
+      prepare: async () => {
+        throw new Error("not called once the change has steps");
+      },
+      remind: async () => reminder,
+    });
+    const args = {
+      stepNumber: 0,
+      messageList: { addSystem: (text: string, tag?: string) => added.push([text, tag]) },
+    } as unknown as ProcessInputStepArgs;
+    await processor.processInputStep(args);
+    reminder = null;
+    await processor.processInputStep(args);
+    expect(added).toEqual([["conflicts left in todo/src/model.ts", BRING_IN_TAG]]);
   });
 
   it("a change a turn worked on without its base is never reset later", async () => {

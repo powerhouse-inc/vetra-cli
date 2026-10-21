@@ -10,6 +10,8 @@
  *   backing off, or the product couldn't be read), the change is marked
  *   `refs/vetra/change-unbased/<id>`: the agent's edits from then on stand and
  *   are never reverted; the change simply starts from the code that was there.
+ * - A Bring them in change (changes.ts) also gets GitHub's `main` merged in;
+ *   the note on what came in is added as a system message for the turn.
  * - Failures are logged once and retried no sooner than
  *   `CHANGE_BASE_RETRY_MS` (reads and git alike).
  */
@@ -17,18 +19,26 @@ import type { ProcessInputStepArgs, Processor } from '@mastra/core/processors';
 import type { Change } from 'vetra-app/document-models/studio-product';
 import { markChangeUnbased } from '../launch/git-versions.js';
 import { activeChange, getProductDoc } from '../product/product-doc.js';
-import { awaitsBase, prepareChangeBase, type ChangeBaseContext } from '../product/changes.js';
+import {
+  awaitsBase,
+  bringInReminder,
+  prepareChangeBase,
+  type ChangeBaseContext,
+} from '../product/changes.js';
 
 /** How long after a failure the next turn tries again. */
 export const CHANGE_BASE_RETRY_MS = 60_000;
 
 const PROCESSOR_ID = 'change-base';
 const TAG = '[change-base]';
+/** System-message tag of the Bring them in note (kept for the turn's steps). */
+export const BRING_IN_TAG = 'bring-in';
 
 export interface ChangeBaseProcessorOptions {
   readProduct?: typeof getProductDoc;
   prepare?: typeof prepareChangeBase;
   markUnbased?: typeof markChangeUnbased;
+  remind?: typeof bringInReminder;
   now?: () => number;
 }
 
@@ -42,6 +52,7 @@ export class ChangeBaseProcessor implements Processor<'change-base'> {
   private readonly readProduct: typeof getProductDoc;
   private readonly prepare: typeof prepareChangeBase;
   private readonly markUnbased: typeof markChangeUnbased;
+  private readonly remind: typeof bringInReminder;
   private readonly now: () => number;
   /** Changes whose preparation failed: when, to back off. */
   private readonly failedAt = new Map<string, number>();
@@ -57,6 +68,7 @@ export class ChangeBaseProcessor implements Processor<'change-base'> {
     this.readProduct = options.readProduct ?? getProductDoc;
     this.prepare = options.prepare ?? prepareChangeBase;
     this.markUnbased = options.markUnbased ?? markChangeUnbased;
+    this.remind = options.remind ?? bringInReminder;
     this.now = options.now ?? Date.now;
   }
 
@@ -88,7 +100,17 @@ export class ChangeBaseProcessor implements Processor<'change-base'> {
     }
     this.readFailedAt = null;
     const change = state ? activeChange(state) : null;
-    if (!state || !change || !awaitsBase(change)) return undefined;
+    if (state && change && !awaitsBase(change)) {
+      // A later turn of a Bring them in change: conflicts left are told again.
+      try {
+        const text = await this.remind(this.ctx, change);
+        if (text) args.messageList?.addSystem(text, BRING_IN_TAG);
+      } catch (err) {
+        this.ctx.log?.debug?.(`${TAG} bring-in reminder skipped: ${message(err)}`);
+      }
+      return undefined;
+    }
+    if (!state || !change) return undefined;
     if (this.blind) {
       // An earlier turn may have worked on this change without its base.
       this.blind = false;
@@ -100,7 +122,10 @@ export class ChangeBaseProcessor implements Processor<'change-base'> {
       return undefined;
     }
     try {
-      await this.prepare(this.ctx, change, { state });
+      // Bring them in: what came from GitHub is told to the model for this turn.
+      const notes: string[] = [];
+      await this.prepare(this.ctx, change, { state, note: (text) => notes.push(text) });
+      for (const text of notes) args.messageList?.addSystem(text, BRING_IN_TAG);
       this.failedAt.delete(change.id);
     } catch (err) {
       if (failed === undefined) {

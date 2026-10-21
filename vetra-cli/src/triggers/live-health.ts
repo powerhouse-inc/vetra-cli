@@ -21,6 +21,9 @@
  *   (`awaitRollbackSettle`) is reconciled on every pass until it settles: READY
  *   makes it live, FAILED puts the code back on the live version.
  *   Nothing is ever deleted or rewritten.
+ * - Changes made on GitHub (F37): while a repository is linked, every pass
+ *   copies the cloud's `App.externalChangesSha` (set by the push webhook)
+ *   into the product with `SET_EXTERNAL_CHANGES` (mirror.ts).
  *
  * Slow tick: every 10 minutes the handlers registered with `onSlowTick` run
  * (one at a time, never overlapping) — e.g. working out ahead of time which
@@ -36,6 +39,7 @@ import { studioGql, type CloudContext } from "../launch/cloud-launch.js";
 import type { OrchestratorContext } from "../launch/orchestrator.js";
 import { restoreVersion } from "../launch/git-versions.js";
 import { checkLive } from "../launch/verify.js";
+import { syncExternalChanges } from "../launch/mirror.js";
 import {
   dispatchProduct,
   getProductDoc,
@@ -103,6 +107,8 @@ export interface LiveHealthDeps {
     ctx: CloudContext,
     studioEnvironmentId: string,
   ) => Promise<CloudStudioProduct | null>;
+  /** F37: the cloud's changes made on GitHub into the product. */
+  syncExternal: typeof syncExternalChanges;
 }
 
 const STUDIO_PRODUCT_QUERY = `query StudioLiveProduct($studioEnvironmentId: String!) {
@@ -143,6 +149,7 @@ const defaultDeps: LiveHealthDeps = {
   restoreCode: (ctx, n) => (ctx.deps?.restoreVersion ?? restoreVersion)(ctx.workdir, n),
   checkLive,
   readProduct: readCloudProduct,
+  syncExternal: syncExternalChanges,
 };
 
 export interface HealthMemory {
@@ -415,7 +422,8 @@ export async function healthPass(
     if (!product) return null;
     const reconciled = await reconcileOnce(ctx, product.state, memory, deps);
     const health = await checkOnce(ctx, product.state, memory, deps);
-    return health ?? reconciled;
+    const external = await deps.syncExternal(ctx, product.state);
+    return health ?? reconciled ?? (external ? `external-${external}` : null);
   } catch (err) {
     ctx.log?.error?.(`${TAG} pass failed: ${message(err)}`);
     return null;

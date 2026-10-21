@@ -363,6 +363,16 @@ export type SetChangeTitleInput = {
   title: Scalars["String"]["input"];
 };
 
+export type SetExternalChangesInput = {
+  sha?: InputMaybe<Scalars["String"]["input"]>;
+};
+
+export type SetGithubInput = {
+  lastError?: InputMaybe<Scalars["String"]["input"]>;
+  repoFullName?: InputMaybe<Scalars["String"]["input"]>;
+  status: GithubStatus;
+};
+
 export type SetHealthInput = {
   at: Scalars["DateTime"]["input"];
   health: LiveHealth;

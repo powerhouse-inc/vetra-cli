@@ -22,6 +22,8 @@ export const CHECKS_REFUSAL =
   "(`tests: true`) or `reactor-project-build`; the shell is for installs only.";
 export const GIT_REFUSAL =
   "Refused: the code is saved with each launch; don't commit or push from the shell.";
+export const MERGE_REFUSAL =
+  "Refused: the launch completes the merge from GitHub (resolve and git add the files); don't continue, abort or quit it from the shell.";
 
 /** Programs that are test/typecheck/lint runners wherever they appear. */
 const RUNNERS = new Set(["vitest", "jest", "tsc", "eslint", "oxlint"]);
@@ -91,7 +93,12 @@ function refuseSimple(segment: string): string | null {
   }
   if (prog === "git") {
     const arg = firstArg(words, 1)?.word;
-    return arg === "commit" || arg === "push" ? GIT_REFUSAL : null;
+    if (arg === "commit" || arg === "push") return GIT_REFUSAL;
+    // Finishing or dropping a Bring them in merge is the launch's (and Discard's) job.
+    if (arg === "merge" && words.some((w) => w === "--continue" || w === "--abort" || w === "--quit")) {
+      return MERGE_REFUSAL;
+    }
+    return null;
   }
   return null;
 }

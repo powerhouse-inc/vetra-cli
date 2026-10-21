@@ -14,3 +14,4 @@ export function placeholderName(idea: string): string {
   const words = idea.trim().split(/\s+/).filter(Boolean).slice(0, 4).join(" ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+export { BRING_IN_REQUEST, isBringIn } from "./github.js";
