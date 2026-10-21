@@ -282,14 +282,22 @@ describe("StudioShell", () => {
     const input = container.querySelector('input[aria-label="Product name"]');
     typeInto(input, "Team tasks");
     pressKey(input!, "Escape");
-    expect(hoisted.dispatched).toEqual([]);
+    expect(
+      hoisted.dispatched.filter(
+        (d) => (d.action as { type: string }).type !== "SET_CHANGE_COST",
+      ),
+    ).toEqual([]);
     expect(container.textContent).toContain("Task board");
 
     click(button(container, "Rename"));
     const again = container.querySelector('input[aria-label="Product name"]');
     typeInto(again, "Team tasks");
     pressKey(again!, "Enter");
-    expect(hoisted.dispatched).toMatchObject([
+    expect(
+      hoisted.dispatched.filter(
+        (d) => (d.action as { type: string }).type !== "SET_CHANGE_COST",
+      ),
+    ).toMatchObject([
       {
         action: { type: "RENAME_PRODUCT", input: { name: "Team tasks" } },
         id: PRODUCT_ID,

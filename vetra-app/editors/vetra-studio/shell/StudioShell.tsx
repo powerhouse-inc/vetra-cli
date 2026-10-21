@@ -23,6 +23,7 @@ import {
   type StudioProductState,
 } from "document-models/studio-product";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { costActions, sideKey } from "../budget/changeCost.js";
 import { useStudioBudget } from "../budget/useStudioBudget.js";
 import { ConversationPane } from "../ChatPane.js";
 import { StripBudget } from "../budget/BudgetMeter.js";
@@ -205,6 +206,27 @@ function writeStoryWidth(width: number): void {
   }
 }
 
+/** Records each change's spend at its start and end, on every budget poll.
+ * A side is dispatched once per change (in flight counts); a failed dispatch
+ * is released so the next poll retries it. */
+function useChangeCostRecorder(
+  product: StudioProductState | null,
+  productId: string | null,
+  usageUsd: number | null,
+) {
+  const sent = useRef(new Set<string>());
+  useEffect(() => {
+    if (!product || !productId) return;
+    for (const action of costActions(product, usageUsd, Date.now())) {
+      const key = sideKey(action);
+      if (sent.current.has(key)) continue;
+      sent.current.add(key);
+      const release = () => sent.current.delete(key);
+      dispatchActions(action, productId, release).catch(release);
+    }
+  }, [product, productId, usageUsd]);
+}
+
 /** States 1 and 2: the strip over the build (story | preview) or the live product. */
 function StudioPage({
   drive,
@@ -228,6 +250,7 @@ function StudioPage({
   const now = useNow(30_000);
   const budget = useStudioBudget();
   const usage = budget.snapshot.usage;
+  useChangeCostRecorder(product, productId, usage ? usage.usageUsd : null);
   const change = product ? stripChange(product) : null;
   // The time left shown before for this change: it never goes back up.
   const shownTimeLeft = useRef<{ changeId: string; text: string | null }>(null);
