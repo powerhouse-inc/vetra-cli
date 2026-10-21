@@ -22,7 +22,7 @@ import {
   type StepKind,
   type StudioProductState,
 } from "document-models/studio-product";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStudioBudget } from "../budget/useStudioBudget.js";
 import { ConversationPane } from "../ChatPane.js";
 import { StripBudget } from "../budget/BudgetMeter.js";
@@ -51,6 +51,7 @@ import { StoryPane } from "../story/StoryPane.js";
 import { StepStrip } from "../strip/StepStrip.js";
 import { openChange, stripChange, stripModel } from "../strip/stripModel.js";
 import { PHASE_AVERAGES } from "../strip/timeLeft.js";
+import { useVersionsPanel } from "../versions/VersionsPanel.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { useStudioState } from "./useStudioState.js";
 
@@ -274,6 +275,19 @@ function StudioPage({
     requestBudget: budget.request,
     restartPreview,
   });
+  // Versions (§5.7): every Go back — the panel's and the unhealthy
+  // banner's — goes through the same confirmation and checks.
+  const versions = useVersionsPanel({
+    product,
+    productId,
+    driveId: drive.header.id,
+    now,
+    requestRollback: handlers.requestRollback,
+  });
+  const liveHandlers = useMemo(
+    () => ({ ...handlers, requestRollback: versions.confirmGoBack }),
+    [handlers, versions.confirmGoBack],
+  );
   // The strip marks the step a failure is on (spec §5.9); state 2's row uses
   // the same failure.
   const failure = failureFor(
@@ -284,7 +298,7 @@ function StudioPage({
       studioRestarting,
       publish: permission.state ? { state: permission.state } : null,
     },
-    { now, handlers },
+    { now, handlers: liveHandlers },
   );
   const view = withFailure(plainView, failure);
   // State 2 (spec §5.6): live, and no change in progress. While a change is
@@ -338,6 +352,11 @@ function StudioPage({
         onOpenStep={toggleStep}
         onOpenSettings={onOpenSettings}
         onRename={productId ? rename : undefined}
+        versions={
+          product?.liveVersion != null
+            ? { live: product.liveVersion, onOpen: versions.openPanel }
+            : undefined
+        }
         budget={
           "budget" in right && (right.budget || budgetLevel === "exhausted") ? (
             <StripBudget
@@ -426,6 +445,7 @@ function StudioPage({
         /* The session ended: sign in again over the page, which stays. */
         <SignInModal onSignIn={signIn.signIn} />
       ) : null}
+      {versions.element}
     </>
   );
 }

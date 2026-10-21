@@ -34,6 +34,7 @@ import {
   launchFailedText,
 } from "../live/liveCopy.js";
 import { checkList, type CheckLine } from "../steps/checkList.js";
+import { requestFailureText } from "../versions/versionRows.js";
 import {
   agentWorking,
   deliveryOf,
@@ -385,7 +386,9 @@ function unhealthyLive(
   const actions: FailureAction[] = [
     { label: RESTART, run: () => handlers.requestRestart() },
   ];
-  if (live > 1) {
+  // F26: a version the data can't go back to never gets a plain Go back.
+  const before = product.versions.find((v) => v.number === live - 1);
+  if (live > 1 && !before?.rollbackBlockedReason) {
     actions.push({
       label: goBackLabel(live - 1),
       run: () => handlers.requestRollback(live - 1),
@@ -400,7 +403,11 @@ function requestFailure(product: StudioProductState): Failure | null {
   const failed = product.lastRequestFailure;
   if (!failed) return null;
   if (time(failed.at) <= time(product.liveSince)) return null;
-  return { situation: "request-failed", text: failed.reason, actions: [] };
+  return {
+    situation: "request-failed",
+    text: requestFailureText(failed),
+    actions: [],
+  };
 }
 
 /** What is wrong with the live product now, the most pressing first. */
