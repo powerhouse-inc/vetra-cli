@@ -53,6 +53,7 @@ export const REASONS = {
   recordStudioMirror: "Vetra didn't answer",
   clearExternalChanges: "Vetra didn't answer",
   studioExternalChanges: "Vetra didn't answer",
+  studioProductRepository: "your live product couldn't be checked",
 } as const;
 
 export type StudioOperation = keyof typeof REASONS;
@@ -93,7 +94,7 @@ export function redact(text: string, secrets: (string | null | undefined)[]): st
 
 interface GqlError {
   message?: string;
-  extensions?: { code?: string };
+  extensions?: { code?: string; reason?: unknown };
 }
 
 /**
@@ -155,7 +156,7 @@ export async function studioGql<T>(
     const level = code === "GRAPHQL_VALIDATION_FAILED" || UNSUPPORTED_TEXT.test(detail) ? "debug" : "warn";
     ctx.log?.[level]?.(`[launch] ${operation} refused (${code}): ${detail}`);
     const permission = code === "DELEGATION_EXPIRED" || code === "DELEGATION_MISSING";
-    throw new LaunchError(
+    const refusal = new LaunchError(
       code,
       permission
         ? "your Studio needs your OK to publish"
@@ -164,6 +165,9 @@ export async function studioGql<T>(
           : REASONS[operation],
       `${operation}: ${detail}`,
     );
+    const cloudReason = first.extensions?.reason;
+    if (typeof cloudReason === "string") refusal.cloudReason = cloudReason;
+    throw refusal;
   }
   if (!res.ok || !body?.data) {
     ctx.log?.warn?.(`[launch] ${operation} failed: HTTP ${res.status}`);
@@ -335,6 +339,25 @@ export async function cloudSetProductDrive(
 
 /** The App has no GitHub repository, or it was disconnected (Task 4.1). */
 export const GITHUB_NOT_CONNECTED_CODE = "GITHUB_NOT_CONNECTED";
+/** `extensions.reason` of GITHUB_NOT_CONNECTED: the product never had a repository (Task 4.3). */
+export const NEVER_CONNECTED_REASON = "NEVER_CONNECTED";
+
+/**
+ * Whether the Studio's product has (or had) a GitHub repository
+ * (`studioProduct.repository`, kept when GitHub took it away); null when
+ * there is no product yet. Throws when the cloud can't tell.
+ */
+export async function cloudProductHasRepository(ctx: CloudContext, studioEnvironmentId: string): Promise<boolean> {
+  const data = await studioGql<{ studioProduct: { repository?: unknown } | null }>(
+    ctx,
+    "studioProductRepository",
+    `query StudioProductRepository($studioEnvironmentId: String!) {
+      studioProduct(studioEnvironmentId: $studioEnvironmentId) { id repository { fullName } }
+    }`,
+    { studioEnvironmentId },
+  );
+  return data.studioProduct?.repository != null;
+}
 
 /**
  * True when the cloud doesn't know the field or mutation yet (an older

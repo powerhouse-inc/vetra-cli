@@ -19,9 +19,12 @@ import { reactorProjectNodeOptions } from '../helpers/node-memory.js';
 import { connectExternalizeVendorEnv } from '../helpers/connect-vendor.js';
 
 // Readiness wait for the inner `ph vetra` dev server; env-overridable for slow
-// runners where cold Vite start exceeds the default.
+// runners where cold Vite start exceeds the default. A fresh Studio's first
+// start installs and pre-bundles the project (measured ~2–4 min on staging);
+// the old 90 s killed it mid-install, the agent retried, and the Plan step was
+// left "needs you" (M3 acceptance). 300 s lets one attempt finish.
 const READINESS_TIMEOUT_MS =
-  Number(process.env.VETRA_REACTOR_READINESS_TIMEOUT_MS) || 90_000;
+  Number(process.env.VETRA_REACTOR_READINESS_TIMEOUT_MS) || 300_000;
 
 // Switchboard mount relative to the `/reactor-project/` service prefix that
 // ph-clint prepends to every proxyRoutes spec (e.g. 'switchboard').

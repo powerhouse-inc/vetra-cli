@@ -180,6 +180,7 @@ export function StepStrip({
   onRename,
   budget,
   versions,
+  github,
 }: {
   view: StripView;
   selected: StepKind | null;
@@ -187,6 +188,8 @@ export function StepStrip({
   onOpenSettings: () => void;
   /** Renames the product; the name is read-only without it. */
   onRename?: (name: string) => void;
+  /** The interactive GitHub line (Task 4.5); the model's text when absent. */
+  github?: ReactNode;
   /** The budget meter shown in place of the plain budget text; omitted
    *  when it would show nothing (so no separator is drawn before it). */
   budget?: ReactNode;
@@ -241,7 +244,7 @@ export function StepStrip({
               </a>
             </span>
             <span>
-              {right.deployedAgo} · {right.github}
+              {right.deployedAgo} · {github ?? right.github}
               {versions ? (
                 <>
                   {" · "}

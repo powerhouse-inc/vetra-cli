@@ -18,9 +18,7 @@ const crypto = await new RenownCryptoBuilder()
 
 const token = await crypto.getBearerToken(address, {
   aud: registryUrl,
-  // Covers the slowest upload (NPM_CONFIG_FETCH_TIMEOUT, 30 min): the registry
-  // checks the token after the tarball has been received.
-  expiresIn: 1800,
+  expiresIn: 600,
 });
 
 process.stdout.write(token);
