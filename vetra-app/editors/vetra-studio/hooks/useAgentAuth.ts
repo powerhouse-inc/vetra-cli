@@ -18,16 +18,45 @@ import {
   type AuthState,
 } from "./preview-server-client.js";
 
+/**
+ * How long a Renown console login stays usable (Renown drops its console
+ * sessions after five minutes). An older pending login is treated as gone:
+ * the next click starts a fresh one.
+ */
+export const RENOWN_LOGIN_LIFETIME_MS = 5 * 60 * 1000;
+
+/** The daemon's pending login, unless it is older than the Renown lifetime.
+ * A daemon that doesn't report `startedAt` keeps its login as current. */
+function currentLogin(
+  state: AuthState | null,
+  now: number,
+): { loginUrl: string } | undefined {
+  const pending = state?.pending;
+  if (!pending || state.authenticated) return undefined;
+  if (
+    pending.startedAt !== undefined &&
+    now - pending.startedAt > RENOWN_LOGIN_LIFETIME_MS
+  ) {
+    return undefined;
+  }
+  return pending;
+}
+
 export type AgentAuth = {
   /** Null until the first status poll resolves. */
   state: AuthState | null;
   /** An authorize/disconnect call is in flight. */
   busy: boolean;
   authenticated: boolean;
-  /** A console login is awaiting browser approval. */
+  /** A console login is awaiting browser approval (and is still usable). */
   pending: boolean;
   /** Start (or reopen) the renown.id console login for the agent. */
   authorize: () => Promise<void>;
+  /**
+   * Open the pending console login again (its tab was closed or lost); starts
+   * a fresh login when there is none, or it is older than the Renown lifetime.
+   */
+  reopen: () => Promise<void>;
   /** Clear the stored credential (the agent's keypair/DID is kept). */
   disconnect: () => Promise<void>;
 };
@@ -44,7 +73,7 @@ export function useAgentAuth(): AgentAuth {
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const apply = (next: AuthState) => {
-      pendingRef.current = !next.authenticated && Boolean(next.pending);
+      pendingRef.current = Boolean(currentLogin(next, Date.now()));
       if (!signal.aborted) setState(next);
     };
 
@@ -71,7 +100,7 @@ export function useAgentAuth(): AgentAuth {
   }, []);
 
   const apply = (next: AuthState) => {
-    pendingRef.current = !next.authenticated && Boolean(next.pending);
+    pendingRef.current = Boolean(currentLogin(next, Date.now()));
     setState(next);
   };
 
@@ -100,6 +129,13 @@ export function useAgentAuth(): AgentAuth {
     }
   };
 
+  const reopen = async () => {
+    const login = currentLogin(state, Date.now());
+    if (!login) return authorize();
+    // Inside the click gesture, like `authorize`, so it isn't popup-blocked.
+    window.open(login.loginUrl, "_blank", "noopener,noreferrer");
+  };
+
   const disconnect = async () => {
     if (busy) return;
     setBusy(true);
@@ -116,8 +152,9 @@ export function useAgentAuth(): AgentAuth {
     state,
     busy,
     authenticated: state?.authenticated ?? false,
-    pending: Boolean(state?.pending) && !state?.authenticated,
+    pending: Boolean(currentLogin(state, Date.now())),
     authorize,
+    reopen,
     disconnect,
   };
 }

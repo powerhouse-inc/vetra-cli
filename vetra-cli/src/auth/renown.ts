@@ -29,6 +29,13 @@ const APP_NAME = "vetra-cli";
 interface PendingLogin {
   sessionId: string;
   loginUrl: string;
+  /** When the login was started (epoch ms). */
+  startedAt: number;
+}
+
+/** The pending login as the Studio sees it (the session id stays here). */
+function shownLogin(pending: PendingLogin): { loginUrl: string; startedAt: number } {
+  return { loginUrl: pending.loginUrl, startedAt: pending.startedAt };
 }
 
 interface CloudAuthEntry {
@@ -95,8 +102,9 @@ export function getRenown(workdir: string, renownUrl: string): Promise<IRenown> 
 export interface AuthState {
   authenticated: boolean;
   address?: string;
-  /** Set while a console login is awaiting browser approval. */
-  pending?: { loginUrl: string };
+  /** Set while a console login is awaiting browser approval; `startedAt`
+   * (epoch ms) lets the Studio start a fresh one once Renown has dropped it. */
+  pending?: { loginUrl: string; startedAt: number };
   /** Why the last login was refused (e.g. `not-owner`). */
   error?: string;
 }
@@ -115,8 +123,8 @@ export async function startAuth(
     return { authenticated: true, address: renown.user.address };
   }
   const { url, sessionId } = startLogin(renown);
-  entry.pending = { sessionId, loginUrl: url };
-  return { authenticated: false, pending: { loginUrl: url } };
+  entry.pending = { sessionId, loginUrl: url, startedAt: Date.now() };
+  return { authenticated: false, pending: shownLogin(entry.pending) };
 }
 
 /** Current auth + pending-login snapshot for the studio panel. */
@@ -131,7 +139,7 @@ export async function getAuthState(
   }
   return {
     authenticated: false,
-    ...(entry.pending ? { pending: { loginUrl: entry.pending.loginUrl } } : {}),
+    ...(entry.pending ? { pending: shownLogin(entry.pending) } : {}),
   };
 }
 
@@ -193,7 +201,7 @@ export async function confirmAuth(
   const user = currentUser(renown);
   if (user) return settle(user.address);
   const current = entry.pending ?? pending;
-  return { authenticated: false, pending: { loginUrl: current.loginUrl } };
+  return { authenticated: false, pending: shownLogin(current) };
 }
 
 /** Clear the stored credential and any pending login. The keypair (the agent's

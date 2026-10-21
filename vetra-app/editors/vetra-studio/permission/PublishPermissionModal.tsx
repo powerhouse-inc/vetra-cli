@@ -17,6 +17,10 @@ export const PUBLISH_PERMISSION_TITLE =
 export const PUBLISH_PERMISSION_TEXT =
   "Your Studio can build your product and put it live for you. Allow it once here; it will ask again only when your access runs out.";
 
+/** While the owner still has to approve in Renown (its tab may be closed). */
+export const PUBLISH_PERMISSION_WAITING =
+  "Waiting for you to approve in Renown.";
+
 const ASKED_PREFIX = "vetra-studio:publish-asked:";
 
 /** Whether this Studio has already asked this browser. */
@@ -46,7 +50,8 @@ export function PublishPermissionModal({
   studioId: string;
 }) {
   const signIn = useStudioSignIn();
-  const { state, delegated, pending, allow } = usePublishPermission(productId);
+  const { state, delegated, pending, waiting, allow, reopen } =
+    usePublishPermission(productId);
   const [asked, setAsked] = useState(() => askedBefore(studioId));
 
   const close = useCallback(() => {
@@ -100,6 +105,11 @@ export function PublishPermissionModal({
         <p className="mt-2 text-sm text-muted-foreground">
           {PUBLISH_PERMISSION_TEXT}
         </p>
+        {waiting ? (
+          <p className="mt-3 text-sm text-foreground">
+            {PUBLISH_PERMISSION_WAITING}
+          </p>
+        ) : null}
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             type="button"
@@ -108,18 +118,28 @@ export function PublishPermissionModal({
           >
             Not now
           </button>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              void allow().then((granted) => {
-                if (granted) close();
-              });
-            }}
-            className="rounded-lg bg-vetra-primary px-3 py-1.5 text-sm font-medium text-vetra-primary-fg hover:opacity-90 disabled:opacity-50"
-          >
-            {pending ? "Waiting for Renown…" : "Allow"}
-          </button>
+          {waiting ? (
+            <button
+              type="button"
+              onClick={() => void reopen()}
+              className="rounded-lg bg-vetra-primary px-3 py-1.5 text-sm font-medium text-vetra-primary-fg hover:opacity-90"
+            >
+              Open Renown again
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                void allow().then((granted) => {
+                  if (granted) close();
+                });
+              }}
+              className="rounded-lg bg-vetra-primary px-3 py-1.5 text-sm font-medium text-vetra-primary-fg hover:opacity-90 disabled:opacity-50"
+            >
+              {pending ? "Waiting for Renown…" : "Allow"}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -28,11 +28,18 @@ export interface PublishPermission {
   /** A Renown confirmation is running: waiting for the owner, or recording it. */
   pending: boolean;
   /**
+   * The owner still has to approve in Renown (nothing is in flight here):
+   * the Renown tab can be opened again with `reopen`.
+   */
+  waiting: boolean;
+  /**
    * Runs the same Renown confirmation as the agent authorization. Resolves
    * true once the OK is recorded; false while the owner still has to approve
    * in the Renown console (the poll loop records it when they do).
    */
   allow: () => Promise<boolean>;
+  /** Open the waiting Renown approval again (or start a fresh one). */
+  reopen: () => Promise<void>;
 }
 
 export function usePublishPermission(
@@ -105,10 +112,18 @@ export function usePublishPermission(
     return false;
   }, [state, auth.authenticated, auth.authorize, record]);
 
+  const reopen = useCallback(async (): Promise<void> => {
+    // Record the OK when Renown approves, also after a reload of the page.
+    asked.current = true;
+    await auth.reopen();
+  }, [auth.reopen]);
+
   return {
     state,
     delegated: auth.authenticated,
     pending: auth.busy || auth.pending || recorded,
+    waiting: auth.pending && !auth.busy && !recorded,
     allow,
+    reopen,
   };
 }
