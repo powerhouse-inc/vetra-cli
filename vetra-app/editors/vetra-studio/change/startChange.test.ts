@@ -11,6 +11,7 @@ import type { StartProductDrive } from "../idea/startProduct.js";
 import {
   CHANGE_LAUNCHING_TEXT,
   EMPTY_REQUEST_TEXT,
+  UNDO_CHANGE_OPEN_TEXT,
   startChange,
   type StartChangeDeps,
 } from "./startChange.js";
@@ -232,6 +233,38 @@ describe("startChange", () => {
     ]);
     expect(s.state().changes).toHaveLength(2);
     expect(s.deps.addDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("Undo with the agent is refused while a change is open, never joined onto it", async () => {
+    const s = studio();
+    goLive(s);
+    const first = await startChange(
+      {
+        drive: s.drive,
+        productId: s.productId,
+        request: "Add a notes field",
+        kind: "CHANGE",
+      },
+      s.deps,
+    );
+    const before = s.productDispatches.length;
+
+    await expect(
+      startChange(
+        {
+          drive: s.drive,
+          productId: s.productId,
+          request: "Undo 'Ready column' but keep existing data",
+          kind: "UNDO",
+        },
+        s.deps,
+      ),
+    ).rejects.toThrow(UNDO_CHANGE_OPEN_TEXT);
+
+    expect(s.productDispatches).toHaveLength(before);
+    expect(s.messages.get(first.sessionId)).toEqual(["Add a notes field"]);
+    expect(s.state().changes).toHaveLength(2);
+    expect(UNDO_CHANGE_OPEN_TEXT).toBe("Finish or discard your change first.");
   });
 
   it("Keep changing on a READY change continues its conversation", async () => {

@@ -58,6 +58,7 @@ import type {
   SetLiveTargetInput,
   SetLiveVersionInput,
   SetProductDriveInput,
+  SetRollbackBlockInput,
   SetStepAttentionInput,
   StartChangeInput,
   StartLaunchInput,
@@ -647,6 +648,15 @@ export function SetProductDriveInputSchema(): z.ZodObject<
   return z.object({
     driveId: z.string(),
     liveUrl: z.url().nullish(),
+  });
+}
+
+export function SetRollbackBlockInputSchema(): z.ZodObject<
+  Properties<SetRollbackBlockInput>
+> {
+  return z.object({
+    number: z.number(),
+    reason: z.string().nullish(),
   });
 }
 

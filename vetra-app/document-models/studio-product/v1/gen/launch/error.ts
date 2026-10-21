@@ -5,6 +5,7 @@ export type ErrorCode =
   | "ChangeNotReadyError"
   | "VersionNotFoundError"
   | "InvalidVersionStatusError"
+  | "RollbackBlockedError"
   | "NotLiveError"
   | "VersionNumberError"
   | "DuplicatePackageNameError";
@@ -55,6 +56,13 @@ export class InvalidVersionStatusError extends Error implements ReducerError {
   }
 }
 
+export class RollbackBlockedError extends Error implements ReducerError {
+  errorCode = "RollbackBlockedError" as ErrorCode;
+  constructor(message = "RollbackBlockedError") {
+    super(message);
+  }
+}
+
 export class NotLiveError extends Error implements ReducerError {
   errorCode = "NotLiveError" as ErrorCode;
   constructor(message = "NotLiveError") {
@@ -83,11 +91,17 @@ export const errors = {
 
   RequestLaunch: { RequestPendingError, ChangeNotReadyError },
 
-  RequestRollback: { VersionNotFoundError, InvalidVersionStatusError },
+  RequestRollback: {
+    VersionNotFoundError,
+    InvalidVersionStatusError,
+    RollbackBlockedError,
+  },
 
   RequestRestart: { NotLiveError },
 
   StartLaunch: { VersionNumberError },
 
   CompleteLaunch: { DuplicatePackageNameError },
+
+  SetRollbackBlock: { VersionNotFoundError },
 };

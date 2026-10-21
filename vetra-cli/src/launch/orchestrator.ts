@@ -67,6 +67,7 @@ import {
   messageAgent,
   type CompatResult,
 } from "./compat-launch.js";
+import { refreshRollbackBlocks } from "./compat-rollback.js";
 import { LaunchError, launchPermissionState } from "./errors.js";
 import { changedFiles, discardDraft, restoreVersion, snapshot } from "./git-versions.js";
 import {
@@ -239,6 +240,8 @@ export interface LaunchDeps {
   messageAgent?: typeof messageAgent;
   /** How many documents the live product drive holds (D6: is there live data?). */
   countDriveDocuments?: typeof countDriveDocuments;
+  /** F26: which earlier versions the data can't go back to, after each launch. */
+  refreshRollbackBlocks?: typeof refreshRollbackBlocks;
 }
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -262,6 +265,7 @@ const defaultDeps: LaunchDeps = {
   checkCompat: checkLaunchCompat,
   messageAgent,
   countDriveDocuments,
+  refreshRollbackBlocks,
 };
 
 export interface OrchestratorContext extends ProductContext, ProductDriveContext {
@@ -588,6 +592,8 @@ async function runLaunch(
     ]);
     clearLaunchRecord(ctx.workdir);
     ctx.log?.info?.(`[launch] Version ${number} is live at ${liveUrl}`);
+    // F26: the earlier versions' Go back is worked out again (never throws).
+    await (d.refreshRollbackBlocks ?? refreshRollbackBlocks)(ctx);
   } catch (err) {
     const permission = launchPermissionState(err);
     if (permission) {

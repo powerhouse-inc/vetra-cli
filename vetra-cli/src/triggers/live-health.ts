@@ -17,6 +17,10 @@
  *   LAUNCHING/FAILED, `SET_LIVE_VERSION` when it is an earlier live version.
  *   Nothing is ever deleted or rewritten.
  *
+ * Slow tick: every 10 minutes the handlers registered with `onSlowTick` run
+ * (one at a time, never overlapping) — e.g. working out ahead of time which
+ * earlier versions the product's data can't go back to (F26).
+ *
  * While a Version is LAUNCHING the product-requests trigger owns the launch
  * and resumes it (F22); this trigger skips the reconcile and tries the next
  * pass, so the two never race.
@@ -37,6 +41,31 @@ const TAG = "[live-health]";
 export const HEALTH_INTERVAL_MS = 60_000;
 /** Failed checks in a row that make the live app UNHEALTHY. */
 export const HEALTH_FAILURES = 3;
+/** How often the slow-tick handlers run. */
+export const SLOW_TICK_MS = 10 * 60_000;
+
+export type SlowTickHandler = (ctx: OrchestratorContext) => Promise<void>;
+
+const slowTickHandlers = new Set<SlowTickHandler>();
+
+/** Run `handler` every `SLOW_TICK_MS` while the Studio runs (first at start). */
+export function onSlowTick(handler: SlowTickHandler): () => void {
+  slowTickHandlers.add(handler);
+  return () => {
+    slowTickHandlers.delete(handler);
+  };
+}
+
+/** One slow tick: every handler in turn; a failing one never stops the others. */
+export async function slowTickPass(ctx: OrchestratorContext): Promise<void> {
+  for (const handler of slowTickHandlers) {
+    try {
+      await handler(ctx);
+    } catch (err) {
+      ctx.log?.warn?.(`${TAG} slow tick failed: ${message(err)}`);
+    }
+  }
+}
 
 /** The deployment record the cloud keeps for the product (the fields used here). */
 export interface CloudDeployment {
@@ -278,12 +307,14 @@ export async function healthPass(
 interface HealthState extends Record<string, unknown> {
   lastPassAt: number;
   memory: HealthMemory;
+  lastSlowAt: number;
+  slowRunning: boolean;
 }
 
 export const liveHealthTrigger = defineTrigger<HealthState>({
   id: "live-health",
   type: "condition",
-  state: () => ({ lastPassAt: 0, memory: newHealthMemory() }),
+  state: () => ({ lastPassAt: 0, memory: newHealthMemory(), lastSlowAt: 0, slowRunning: false }),
 
   // Returns at once: the check runs detached so the shared loop (chat
   // included) never waits on the network.
@@ -293,6 +324,13 @@ export const liveHealthTrigger = defineTrigger<HealthState>({
     // Reads only on a one-shot run (no reactor booted), and only a Studio.
     if (!ctx.folders || !ctx.config?.environmentId) return null;
     const nowMs = Date.now();
+    if (!state.slowRunning && nowMs - state.lastSlowAt >= SLOW_TICK_MS) {
+      state.lastSlowAt = nowMs;
+      state.slowRunning = true;
+      void slowTickPass(ctx).finally(() => {
+        state.slowRunning = false;
+      });
+    }
     if (nowMs - state.lastPassAt < HEALTH_INTERVAL_MS) return null;
     state.lastPassAt = nowMs;
     void healthPass(ctx, state.memory)

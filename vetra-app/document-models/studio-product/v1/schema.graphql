@@ -518,3 +518,8 @@ input SetHealthInput {
 input SetLaunchPermissionInput {
   state: PermissionState!
 }
+
+input SetRollbackBlockInput {
+  number: Int!
+  reason: String
+}

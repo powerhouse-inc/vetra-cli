@@ -12,6 +12,9 @@
  *   (a PAUSED change is resumed first, so the agent takes the message). This
  *   is also "Keep changing" on a READY change.
  * - A change going live: refused until the launch ends.
+ * - "Undo with the agent" (kind UNDO) never joins: while any change is open
+ *   it is refused (`UNDO_CHANGE_OPEN_TEXT`, as Go back is, E6); otherwise it
+ *   starts its own change from the live code like any other.
  */
 import { actions as chatActions } from "@powerhousedao/clint-common/document-models/chat-session";
 import type { FileNode } from "@powerhousedao/shared/document-drive";
@@ -45,6 +48,8 @@ export type StartChangeDeps = StartProductDeps;
 /** Shown when a request arrives while a change is going live. */
 export const CHANGE_LAUNCHING_TEXT =
   "Your change is going live right now. Ask again once it's live.";
+/** Shown when Undo with the agent is asked while a change is open (E6). */
+export const UNDO_CHANGE_OPEN_TEXT = "Finish or discard your change first.";
 /** Shown for an empty request. */
 export const EMPTY_REQUEST_TEXT = "Describe what should change first.";
 
@@ -164,6 +169,8 @@ async function run(
   };
 
   const open = changes.find((c) => JOINABLE.has(c.status));
+  // An undo is its own change: never folded into the one in progress.
+  if (open && kind === "UNDO") throw new Error(UNDO_CHANGE_OPEN_TEXT);
   if (open) {
     if (open.status === "PAUSED") {
       await deps.dispatch(productId, [

@@ -5,7 +5,7 @@
  * Every few seconds, one pass:
  * 1. on the first pass after a start, any LAUNCHING version is resumed (F22);
  * 2. a waiting request is served — LAUNCH (Make it live / Try again),
- *    ROLLBACK (Go back), RESTART, DISCARD, MIRROR (GitHub arrives in M4);
+ *    ROLLBACK (Go back, after the data check), RESTART, DISCARD, MIRROR (GitHub arrives in M4);
  * 3. otherwise, while nothing is live, a READY change that was never launched
  *    goes live by itself (D3, F6, F10).
  * The access switch (F35) runs in its own lane, so it never waits behind a
@@ -27,11 +27,11 @@ import {
   recordRequestFailure,
   restartLive,
   resumeLaunch,
-  rollbackTo,
   syncAccess,
   type OrchestratorContext,
 } from "../launch/orchestrator.js";
 import { REASONS } from "../launch/cloud-launch.js";
+import { goBack } from "../launch/rollback.js";
 import { dispatchProduct, getProductDoc, productActions as a } from "../product/product-doc.js";
 
 const TAG = "[product-requests]";
@@ -108,7 +108,8 @@ export async function requestsPass(
             await recordRequestFailure(ctx, "ROLLBACK", REASONS.rollbackStudioVersion);
             return "rollback-without-version";
           }
-          await rollbackTo(ctx, request.targetVersion);
+          // The data check first (D6), then the rollback (rollback.ts).
+          await goBack(ctx, request.targetVersion);
           return "rollback";
         case "RESTART":
           await restartLive(ctx);

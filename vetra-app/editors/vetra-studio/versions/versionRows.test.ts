@@ -9,7 +9,6 @@ import {
   productDoc,
   version,
 } from "../test-utils/studioFixtures.js";
-import { startUndo } from "./startUndo.js";
 import {
   BUILT_BY_VETRA,
   FINISH_YOUR_CHANGE_FIRST,
@@ -240,43 +239,5 @@ describe("versionRows", () => {
       "Dec 3, 2025",
     );
     expect(whenText(null, NOW)).toBe("Going live…");
-  });
-});
-
-describe("startUndo", () => {
-  it("starts an UNDO change with its own conversation, then asks the agent", async () => {
-    const calls: { id: string; types: string[]; input: unknown[] }[] = [];
-    let n = 0;
-    const result = await startUndo(
-      { driveId: "drive-1", productId: "product-1", title: "Ready column" },
-      {
-        addDocument: (driveId, name, type) => {
-          calls.push({ id: driveId, types: [`ADD:${type}`], input: [name] });
-          return Promise.resolve({ id: "session-9" });
-        },
-        dispatch: (id, actions) => {
-          calls.push({
-            id,
-            types: actions.map((a) => a.type),
-            input: actions.map((a) => a.input),
-          });
-          return Promise.resolve();
-        },
-        now: () => "2026-10-21T15:00:00.000Z",
-        newId: () => `id-${++n}`,
-      },
-    );
-    expect(result).toEqual({ changeId: "id-1", sessionId: "session-9" });
-    expect(calls.map((c) => [c.id, c.types])).toEqual([
-      ["drive-1", ["ADD:powerhouse/chat-session"]],
-      ["product-1", ["START_CHANGE"]],
-      ["session-9", ["ADD_USER_MESSAGE"]],
-    ]);
-    expect(calls[1].input[0]).toMatchObject({
-      id: "id-1",
-      kind: "UNDO",
-      request: "Undo 'Ready column' but keep existing data",
-      chatSessionId: "session-9",
-    });
   });
 });

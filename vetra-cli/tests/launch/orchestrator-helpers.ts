@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { StudioProductV1 } from "vetra-app/document-models";
 import type { StepKind } from "vetra-app/document-models/studio-product";
-import type { LaunchDeps, OrchestratorContext } from "../../src/launch/orchestrator.js";
+import type { CompatRollbackDeps } from "../../src/launch/compat-rollback.js";
+import type { LaunchDeps } from "../../src/launch/orchestrator.js";
+import type { GoBackContext } from "../../src/launch/rollback.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
 import { productHarness, type ProductHarness } from "../product/helpers.js";
 
@@ -18,7 +20,7 @@ export const TARGET = {
 };
 
 export interface LaunchHarness extends ProductHarness {
-  octx: OrchestratorContext;
+  octx: GoBackContext;
   calls: string[];
   lines: string[];
   sleeps: number[];
@@ -91,6 +93,7 @@ export async function launchHarness(
     },
     checkCompat: async () => ({ breaking: [], unreadable: [] }),
     countDriveDocuments: async () => 0,
+    refreshRollbackBlocks: async () => 0,
     messageAgent: async (_ctx, chatSessionId, text) => {
       calls.push(`message ${chatSessionId} ${text.split("\n")[0]}`);
     },
@@ -99,7 +102,12 @@ export async function launchHarness(
   const log = (msg: string) => {
     lines.push(msg);
   };
-  const octx: OrchestratorContext = {
+  // Go back's data check reads nothing by default: an empty product drive.
+  const compatDeps: Partial<CompatRollbackDeps> = {
+    usedInDrive: async () => ({ documentTypes: new Set(), operationTypes: new Map(), documents: 0 }),
+  };
+  const octx: GoBackContext = {
+    compatDeps,
     ...h.ctx,
     workdir,
     config: { cloudSwitchboardUrl: "https://cloud.example.test", environmentId: "studio-env-1" },

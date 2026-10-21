@@ -11,6 +11,7 @@ import {
   InvalidVersionStatusError,
   NotLiveError,
   RequestPendingError,
+  RollbackBlockedError,
   SlugLockedError,
   VersionNotFoundError,
   VersionNumberError,
@@ -177,6 +178,10 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
       throw new InvalidVersionStatusError(
         `Version ${versionNumber} is ${version.status}; only a previous live version can be made live again.`,
       );
+    }
+    // D6/F26: the product's data can't go back to it; Undo with the agent instead.
+    if (version.rollbackBlockedReason) {
+      throw new RollbackBlockedError(version.rollbackBlockedReason);
     }
     request(state, {
       kind: "ROLLBACK",
@@ -406,5 +411,12 @@ export const studioProductLaunchOperations: StudioProductLaunchOperations = {
   setLaunchPermissionOperation(state, action) {
     normalizeProduct(state);
     state.launchPermission = action.input.state;
+  },
+
+  setRollbackBlockOperation(state, action) {
+    normalizeProduct(state);
+    const { number, reason } = action.input;
+    const version = findVersion(state, number);
+    version.rollbackBlockedReason = reason || null;
   },
 };
