@@ -93,6 +93,10 @@ const WORKING_TEXT: Record<StepKind, string> = {
 export const AUTO_CONTINUE_TEXT = "continue";
 /** Id prefix of the `continue` message the Continue button sends. */
 export const CONTINUE_ID_PREFIX = "studio-continue-";
+/** Id prefix of the notes the Studio writes to the agent (vetra-cli
+ *  `STUDIO_NOTE_ID_PREFIX`, e.g. "make this change additive" after a blocked
+ *  launch): not the customer's words, never a story line. */
+export const STUDIO_NOTE_ID_PREFIX = "studio-note-";
 const CAP_FINISH_REASONS = new Set(["tool-calls", "tool_calls"]);
 
 /** Check names in the story's compact check lines (spec §5.4 Tests step). */
@@ -344,7 +348,8 @@ export function storyLines(
   for (const [index, message] of messages.entries()) {
     if (message.role === "USER" && index !== firstUser) {
       const text = messageText(message);
-      if (!text || isAutoContinue(messages, index)) continue;
+      if (!text || message.id.startsWith(STUDIO_NOTE_ID_PREFIX)) continue;
+      if (isAutoContinue(messages, index)) continue;
       lines.push({
         kind: "steer",
         id: message.id,
