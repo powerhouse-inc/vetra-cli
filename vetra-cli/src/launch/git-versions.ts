@@ -103,21 +103,22 @@ async function treeOf(workdir: string, rev: string): Promise<string> {
 /**
  * A reactor project's own `.git` (left by `ph init` when it fails before
  * reactor-project-init removes it) would be staged as an embedded repository
- * instead of its files. One with no commits holds nothing to lose and is
- * removed; one with commits is refused rather than dropped.
+ * instead of its files. One with no refs at all (no branch, tag or stash,
+ * whatever HEAD points at) holds no commits and is removed; any other, or one
+ * git can't read, is refused and kept.
  */
 async function absorbProjectRepos(workdir: string): Promise<void> {
   for (const dir of await listReactorProjects(workdir)) {
     const projectGit = path.join(workdir, dir, ".git");
     if (!fs.existsSync(projectGit)) continue;
     const projectPath = path.join(workdir, dir);
-    const commits = await gitMaybe(projectPath, ["rev-parse", "-q", "--verify", "HEAD^{commit}"]);
-    const broken = commits === null && (await gitMaybe(projectPath, ["rev-parse", "--git-dir"])) === null;
-    if (commits !== null || broken) {
+    const head = await gitMaybe(projectPath, ["rev-parse", "-q", "--verify", "HEAD^{commit}"]);
+    const refs = await gitMaybe(projectPath, ["for-each-ref", "--format=%(refname)"]);
+    if (head !== null || refs === null || refs !== "") {
       throw new LaunchError(
         "NESTED_REPO",
         `the project "${dir}" has its own git history`,
-        `Project "${dir}" has its own git repository${broken ? "" : " with commits"}; refusing to drop it.`,
+        `Project "${dir}" has its own git repository${refs === null ? " that git can't read" : " with commits"}; refusing to drop it.`,
       );
     }
     fs.rmSync(projectGit, { recursive: true, force: true });

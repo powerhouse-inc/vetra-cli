@@ -115,6 +115,30 @@ describe("Studio volume layout", () => {
     await expect(snapshot(workdir, 1, "A todo app")).rejects.toMatchObject({ code: "NESTED_REPO" });
     expect(fs.existsSync(path.join(todo, ".git"))).toBe(true);
   });
+
+  it("refuses a project whose HEAD is unborn but another branch has commits", async () => {
+    const todo = path.join(workdir, "todo");
+    const inTodo = (...args: string[]) =>
+      execFileSync("git", ["-c", "safe.directory=*", "-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+        cwd: todo,
+      });
+    inTodo("init", "-q", "-b", "dev");
+    inTodo("commit", "-q", "--allow-empty", "-m", "own work");
+    inTodo("symbolic-ref", "HEAD", "refs/heads/master");
+
+    await expect(snapshot(workdir, 1, "A todo app")).rejects.toMatchObject({ code: "NESTED_REPO" });
+    expect(fs.existsSync(path.join(todo, ".git"))).toBe(true);
+    expect(inTodo("rev-parse", "dev").toString().trim()).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("an unreadable workspace repository fails as a plain git failure, not a wrong branch", async () => {
+    fs.writeFileSync(path.join(workdir, ".git"), "gitdir: /nonexistent/vetra-repo\n");
+
+    const err = await ensureWorkspaceRepo(workdir).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LaunchError);
+    expect(err).toMatchObject({ code: "GIT_FAILED", reason: "the code couldn't be saved" });
+    expect((err as LaunchError).reason).not.toMatch(/fatal|\/|nonexistent/);
+  });
 });
 
 describe("snapshot", () => {
