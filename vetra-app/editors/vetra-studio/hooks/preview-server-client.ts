@@ -17,8 +17,46 @@
  * The EventSource is shared across all consumers of `subscribePreviewEvents`
  * so we keep exactly one open connection per browser tab regardless of how
  * many BUILD panes mount.
+ *
+ * Owner-only routes (everything but /healthz, /version, /resolve, /events and
+ * /export/status) carry the signed-in user's Renown bearer — the same token
+ * Connect sends to the switchboard. The daemon checks its wallet against the
+ * Studio's owner (ADMINS); without it they answer 401/403.
  */
+import { ambientRenownTokenProvider } from "@powerhousedao/reactor-browser";
+
 const DIRECT_BASE = "http://127.0.0.1:5180";
+
+/** Mints the signed-in user's Renown bearer; undefined/null when signed out. */
+export type PreviewAuthTokenProvider = () => Promise<string | null | undefined>;
+
+let tokenProvider: PreviewAuthTokenProvider = ambientRenownTokenProvider;
+
+/** Override where owner-route bearers come from (tests); null restores the
+ *  ambient Connect Renown session. */
+export function setPreviewAuthTokenProvider(
+  provider: PreviewAuthTokenProvider | null,
+): void {
+  tokenProvider = provider ?? ambientRenownTokenProvider;
+}
+
+/** `Authorization` for an owner-only route; empty when signed out (the
+ *  daemon then answers 401, which callers surface). */
+async function ownerHeaders(): Promise<Record<string, string>> {
+  try {
+    const token = await tokenProvider();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Shown when the daemon refuses an owner-only call (401/403). */
+export const OWNER_REQUIRED = "Sign in as the Studio owner to do this.";
+
+function isRefused(status: number): boolean {
+  return status === 401 || status === 403;
+}
 
 // Vite dev serves the editor from source, where no daemon writes the config —
 // use the direct port. Safe access: package builds may lack import.meta.env.
@@ -223,6 +261,7 @@ export async function fetchProjectPackage(args: {
   const params = new URLSearchParams({ project: args.project });
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/project-package?${params}`, {
+    headers: await ownerHeaders(),
     signal: args.signal,
   });
   if (!res.ok) {
@@ -257,6 +296,7 @@ export async function fetchReleaseStatus(args: {
   const params = new URLSearchParams({ project: args.project });
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/release-status?${params}`, {
+    headers: await ownerHeaders(),
     signal: args.signal,
   });
   if (!res.ok) {
@@ -293,9 +333,22 @@ export async function publishProject(args: {
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/publish?${params}`, {
     method: "POST",
+    headers: await ownerHeaders(),
     signal: args.signal,
   });
-  return (await res.json()) as PublishProjectResult;
+  const body = (await res.json().catch(() => null)) as
+    (PublishProjectResult & { kind?: string }) | null;
+  // The owner gate answers without a result `kind`.
+  if (!body?.kind) {
+    return {
+      kind: "failed",
+      project: args.project,
+      error: isRefused(res.status)
+        ? OWNER_REQUIRED
+        : `preview-server /publish: ${res.status} ${res.statusText}`,
+    };
+  }
+  return body;
 }
 
 export async function fetchStart(args: {
@@ -306,10 +359,22 @@ export async function fetchStart(args: {
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/start?${params}`, {
     method: "POST",
+    headers: await ownerHeaders(),
     signal: args.signal,
   });
   // 202/200/404/500 are all expected response codes; let caller branch on body.
-  return (await res.json()) as StartResult;
+  const body = (await res.json().catch(() => null)) as
+    (StartResult & { kind?: string }) | null;
+  if (!body?.kind) {
+    return {
+      kind: "failed",
+      project: args.project,
+      error: isRefused(res.status)
+        ? OWNER_REQUIRED
+        : `preview-server /start: ${res.status} ${res.statusText}`,
+    };
+  }
+  return body;
 }
 
 export const RESTART_REFUSED = "Couldn't restart the preview.";
@@ -328,11 +393,12 @@ export async function fetchRestart(args: {
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/restart?${params}`, {
     method: "POST",
+    headers: await ownerHeaders(),
     signal: args.signal,
   });
-  // Owner-only, like the exports: the daemon checks the Studio's owner
-  // sign-in, so the request needs nothing extra. Not allowed: no fallback.
-  if (res.status === 403) throw new Error(RESTART_REFUSED);
+  // Owner-only: the daemon checks the caller's Renown bearer against the
+  // Studio's owner. Not allowed: no fallback.
+  if (isRefused(res.status)) throw new Error(RESTART_REFUSED);
   const body = (await res.json().catch(() => null)) as
     (StartResult & { kind?: string }) | null;
   // An unknown route answers 404 without a result `kind`.
@@ -356,11 +422,16 @@ export async function fetchVersion(signal?: AbortSignal): Promise<VersionInfo> {
   return (await res.json()) as VersionInfo;
 }
 
-/** Absolute URL for the workspace export download. The caller fetches it and
- * checks the status so a 401/409 surfaces a message instead of navigating. */
-export async function resolveWorkspaceExportUrl(): Promise<string> {
+/** Fetch the workspace export zip (owner-only). The caller checks the
+ * status so a 401/409 surfaces a message instead of navigating. */
+export async function fetchWorkspaceExport(
+  signal?: AbortSignal,
+): Promise<Response> {
   const { base } = await resolvePreviewConfig();
-  return `${base}/export?workspace=1`;
+  return fetch(`${base}/export?workspace=1`, {
+    headers: await ownerHeaders(),
+    signal,
+  });
 }
 
 /** Whether the caller may download an export (the daemon's gate resolved
@@ -369,7 +440,10 @@ export async function fetchExportStatus(
   signal?: AbortSignal,
 ): Promise<{ authorized: boolean }> {
   const { base } = await resolvePreviewConfig();
-  const res = await fetch(`${base}/export/status`, { signal });
+  const res = await fetch(`${base}/export/status`, {
+    headers: await ownerHeaders(),
+    signal,
+  });
   if (!res.ok) {
     throw new Error(
       `preview-server /export/status: ${res.status} ${res.statusText}`,
@@ -391,7 +465,10 @@ export async function fetchAuthStatus(
   signal?: AbortSignal,
 ): Promise<AuthState> {
   const { base } = await resolvePreviewConfig();
-  const res = await fetch(`${base}/auth/status`, { signal });
+  const res = await fetch(`${base}/auth/status`, {
+    headers: await ownerHeaders(),
+    signal,
+  });
   if (!res.ok) {
     throw new Error(
       `preview-server /auth/status: ${res.status} ${res.statusText}`,
@@ -406,6 +483,7 @@ export async function startAuth(signal?: AbortSignal): Promise<AuthState> {
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/auth/start`, {
     method: "POST",
+    headers: await ownerHeaders(),
     signal,
   });
   if (!res.ok) {
@@ -428,6 +506,7 @@ export async function confirmAuth(args?: {
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/auth/confirm${qs ? `?${qs}` : ""}`, {
     method: "POST",
+    headers: await ownerHeaders(),
     signal: args?.signal,
   });
   if (!res.ok) {
@@ -443,6 +522,7 @@ export async function logoutAuth(signal?: AbortSignal): Promise<AuthState> {
   const { base } = await resolvePreviewConfig();
   const res = await fetch(`${base}/auth/logout`, {
     method: "POST",
+    headers: await ownerHeaders(),
     signal,
   });
   if (!res.ok) {
