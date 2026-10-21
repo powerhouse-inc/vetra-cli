@@ -76,6 +76,20 @@ describe("AwayCard", () => {
     expect(b.textContent).toBe("");
   });
 
+  it("Got it on a waiting item survives a remount", () => {
+    window.localStorage.setItem(key, String(ms(30)));
+    const p = buildingProduct();
+    const ready = {
+      ...p,
+      changes: p.changes.map((c) => ({ ...c, status: "READY" as const })),
+    };
+    const a = render(<AwayCard studioId="s1" product={ready} />);
+    click(button(a, "Got it"));
+    rerender(a, <span />);
+    const b = render(<AwayCard studioId="s1" product={ready} />);
+    expect(b.textContent).toBe("");
+  });
+
   it("blocked storage renders nothing and does not throw", () => {
     const real = Object.getOwnPropertyDescriptor(window, "localStorage");
     Object.defineProperty(window, "localStorage", {

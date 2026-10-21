@@ -4,6 +4,7 @@ import { awaySummary, readLastVisit, writeLastVisit } from "./awayCard.js";
 
 /** The visit time read when this page visit first opened a Studio, so a
  *  remount (view or dock switch) keeps showing the same card. */
+const dismissedStudios = new Set<string>();
 const sinceByStudio = new Map<string, number | null>();
 function sinceFor(studioId: string): number | null {
   if (!sinceByStudio.has(studioId)) {
@@ -14,6 +15,7 @@ function sinceFor(studioId: string): number | null {
 /** Test hook: forget the cached visit times (a new page visit). */
 export function resetAwayCardVisits(): void {
   sinceByStudio.clear();
+  dismissedStudios.clear();
 }
 
 /** A dismissible card for a returning customer; nothing on a first visit. */
@@ -28,7 +30,7 @@ export function AwayCard({
 }) {
   // Read once on open: the visit time is written on leaving, not on arrival.
   const [since] = useState(() => sinceFor(studioId));
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => dismissedStudios.has(studioId));
   const summary =
     since === null || dismissed ? null : awaySummary(product, since, question);
 
@@ -65,6 +67,7 @@ export function AwayCard({
           const now = Date.now();
           writeLastVisit(studioId, now);
           sinceByStudio.set(studioId, now);
+          dismissedStudios.add(studioId);
           setDismissed(true);
         }}
         className="mt-2 rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-foreground hover:bg-accent"
