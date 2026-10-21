@@ -2,10 +2,6 @@ import {
   inviteGuest,
   revokeGuest,
   utils,
-  reducer,
-  isStudioTeamDocument,
-  InviteGuestInputSchema,
-  RevokeGuestInputSchema,
 } from "document-models/studio-team/v1";
 import { describe, expect, it } from "vitest";
 import { ALICE, apply, at, errorAt, plusDays } from "./helpers.js";
