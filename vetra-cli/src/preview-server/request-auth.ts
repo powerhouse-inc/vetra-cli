@@ -19,9 +19,15 @@
  * which wallet is the owner.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { verifyAuthBearerToken, verifyAuthCredential } from "@renown/sdk/node";
 import { isAdminAddress } from "../auth/renown.js";
+import {
+  CAPABILITIES,
+  type Capability,
+  type CapabilityContext,
+  type Member,
+} from "../team/roles.js";
 
 export type OwnerCheck =
   | { ok: true; via: "operator" | "owner" | "local"; address?: string }
@@ -58,6 +64,35 @@ export type RequestAuthorizer = (
   req: IncomingMessage,
   queryToken: string | null,
 ) => Promise<OwnerCheck>;
+
+/**
+ * The member gate's verdict. `member` is null for the operator secret and
+ * local mode (admin-side paths, not people); `access-unavailable` means Renown
+ * could not answer and the request is refused (the UI's "try again" message).
+ */
+export type MemberCheck =
+  | { ok: true; via: "operator" | "member" | "local"; member: Member | null }
+  | { ok: false; status: 401 | 403; error: string };
+
+export type MemberAuthorizer = (
+  req: IncomingMessage,
+  queryToken: string | null,
+) => Promise<MemberCheck>;
+
+export interface MemberAuthOptions extends RequestAuthOptions {
+  /** Who is a member of *this* Studio, in which role (team/membership.ts). */
+  membership: { resolve(address: string): Promise<Member | null> };
+}
+
+export type AcceptedMemberCheck = Extract<MemberCheck, { ok: true }>;
+
+export type RequireCapability = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: string,
+  cap: Capability,
+  ctx?: CapabilityContext,
+) => Promise<AcceptedMemberCheck | null>;
 
 function sha256Eq(a: string, b: string): boolean {
   const ha = createHash("sha256").update(a).digest();
@@ -179,7 +214,16 @@ function boundedSet<V>(map: Map<string, V>, key: string, value: V): void {
   map.set(key, value);
 }
 
-export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthorizer {
+type GateOutcome =
+  | { kind: "operator" }
+  | { kind: "local" }
+  | { kind: "unauthenticated" }
+  | { kind: "bearer"; claims: BearerClaims; delegated: () => Promise<boolean> };
+
+/** Operator secret, local mode, or a verified Studio-bound bearer; no role yet. */
+function createGate(
+  opts: RequestAuthOptions,
+): (req: IncomingMessage, queryToken: string | null) => Promise<GateOutcome> {
   const now = opts.now ?? Date.now;
   const verifyBearer = opts.verifyBearer ?? defaultVerifyBearer;
   const verifyDelegation =
@@ -255,7 +299,7 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     }
   }
 
-  return async (req, queryToken) => {
+  return async (req, queryToken): Promise<GateOutcome> => {
     const secret = process.env.VETRA_SESSION_EXPORT_SECRET;
     const admins = process.env.ADMINS;
     const bearer = bearerOf(req);
@@ -263,20 +307,19 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     if (secret) {
       const provided = bearer ?? queryToken ?? "";
       if (provided.length > 0 && sha256Eq(provided, secret)) {
-        return { ok: true, via: "operator" };
+        return { kind: "operator" };
       }
     }
 
     const hasAdmins = (admins ?? "").trim().length > 0;
     const localMode = !opts.cloud && !hasAdmins && !secret;
-    if (localMode && isLocalRequest(req)) return { ok: true, via: "local" };
+    if (localMode && isLocalRequest(req)) return { kind: "local" };
 
-    const refused = { ok: false, status: 401, error: "unauthorized" } as const;
-    if (!bearer) return refused;
-    // Fail closed: no owner configured means nobody is the owner, and no known
-    // public origin means no token can be bound to this Studio.
+    if (!bearer) return { kind: "unauthenticated" };
+    // Fail closed: no known public origin means no token can be bound to this
+    // Studio. (Whether an owner/member is configured is the caller's check.)
     const audience = originOf(opts.audience());
-    if (!hasAdmins || !audience) return refused;
+    if (!audience) return { kind: "unauthenticated" };
 
     let claims: BearerClaims | false = false;
     try {
@@ -284,10 +327,86 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     } catch {
       claims = false;
     }
-    if (!claims) return refused;
+    if (!claims) return { kind: "unauthenticated" };
+    return { kind: "bearer", claims, delegated: () => delegated(bearer, audience, claims) };
+  };
+}
+
+const refusedOwner: OwnerCheck = { ok: false, status: 401, error: "unauthorized" };
+const refusedMember: MemberCheck = { ok: false, status: 401, error: "unauthorized" };
+
+/** The Studio's owner gate (S1): ADMINS, then the wallet's app delegation. */
+export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthorizer {
+  const gate = createGate(opts);
+  return async (req, queryToken) => {
+    const out = await gate(req, queryToken);
+    if (out.kind === "operator" || out.kind === "local") return { ok: true, via: out.kind };
+    if (out.kind !== "bearer") return refusedOwner;
+    const admins = process.env.ADMINS ?? "";
     // Address check before the network one: a non-owner never costs a lookup.
-    if (!isAdminAddress(claims.address, admins)) return refused;
-    if (!(await delegated(bearer, audience, claims))) return refused;
-    return { ok: true, via: "owner", address: claims.address };
+    if (!admins.trim() || !isAdminAddress(out.claims.address, admins)) return refusedOwner;
+    if (!(await out.delegated())) return refusedOwner;
+    return { ok: true, via: "owner", address: out.claims.address };
+  };
+}
+
+/**
+ * The member gate (P6): the same Studio-bound bearer rules, but the address is
+ * resolved through Studio membership (org role / ADMINS) instead of ADMINS
+ * alone. A Renown failure refuses (`access-unavailable`) rather than guessing.
+ */
+export function createMemberAuthorizer(opts: MemberAuthOptions): MemberAuthorizer {
+  const gate = createGate(opts);
+  return async (req, queryToken) => {
+    const out = await gate(req, queryToken);
+    if (out.kind === "operator") return { ok: true, via: "operator", member: null };
+    if (out.kind === "local") return { ok: true, via: "local", member: null };
+    if (out.kind !== "bearer") return refusedMember;
+
+    let member: Member | null;
+    try {
+      member = await opts.membership.resolve(out.claims.address);
+    } catch {
+      return { ok: false, status: 403, error: "access-unavailable" };
+    }
+    if (!member) return { ok: false, status: 403, error: "forbidden" };
+    if (!(await out.delegated())) return refusedMember;
+    return { ok: true, via: "member", member };
+  };
+}
+
+function writeAuthError(res: ServerResponse, status: 401 | 403, error: string): void {
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.end(JSON.stringify({ error: status === 403 && error === "access-unavailable" ? error : status === 401 ? "unauthorized" : "forbidden" }));
+}
+
+function queryTokenOf(url: string): string | null {
+  const idx = url.indexOf("?");
+  return idx === -1 ? null : new URLSearchParams(url.slice(idx + 1)).get("token");
+}
+
+/**
+ * The route gate: 401 when unauthenticated, 403 when authenticated without
+ * the capability. Operator and local requests pass (admin-side paths); a
+ * member's capability is checked with the route's context.
+ */
+export function createCapabilityGate(opts: {
+  authorizeMember: MemberAuthorizer;
+}): RequireCapability {
+  return async (req, res, url, cap, ctx = {}) => {
+    const check = await opts.authorizeMember(req, queryTokenOf(url));
+    if (!check.ok) {
+      writeAuthError(res, check.status, check.error);
+      return null;
+    }
+    if (check.via !== "member" || !check.member) return check;
+    if (!CAPABILITIES[cap](check.member, ctx)) {
+      writeAuthError(res, 403, "forbidden");
+      return null;
+    }
+    return check;
   };
 }
