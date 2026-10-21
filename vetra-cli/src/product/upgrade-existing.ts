@@ -357,11 +357,53 @@ export function environmentUrl(state: VetraCloudEnvironmentGlobalState): string 
   return connect ? `https://${sub}-${connect.prefix}.${base}` : `https://${sub}.${base}`;
 }
 
-/** An error that says the environment document is gone (not a passing failure). */
+const GONE_HTTP_STATUSES = new Set([404, 410]);
+const GONE_CODES = new Set(["NOT_FOUND", "DOCUMENT_NOT_FOUND", "GONE"]);
+/** Gone in words. `\b` keeps a DNS failure (`ENOTFOUND`) out. */
+const GONE_WORDS = /\bnot[ _-]?found\b|\bdoes not exist\b|\bdoesn't exist\b|\bno such document\b|\bhas been deleted\b/i;
+/** 404/410 only where a message states an HTTP status, never in ports or ids. */
+const GONE_HTTP_TEXT = /\b(?:HTTP(?:\/\d(?:\.\d)?)?|status(?: code)?:?)\s*(?:404|410)\b|^(?:404|410)\s+(?:not found|gone)\b/i;
+
+function goneStatus(value: unknown): boolean {
+  return typeof value === "number" && GONE_HTTP_STATUSES.has(value);
+}
+
+function goneCode(value: unknown): boolean {
+  return typeof value === "string" && GONE_CODES.has(value.toUpperCase());
+}
+
+/**
+ * An error that says the environment document is gone (not a passing
+ * failure): its words, an HTTP 404/410 status (stated in the message, or on
+ * the error, its response or its cause) or a GraphQL not-found code.
+ */
 export function isGoneError(err: unknown): boolean {
-  return /not[ _-]?found|does not exist|doesn't exist|no such document|\b(404|410)\b|has been deleted/i.test(
-    message(err),
-  );
+  return goneAt(err, 0);
+}
+
+function goneAt(err: unknown, depth: number): boolean {
+  if (depth > 3) return false;
+  const text = message(err);
+  if (GONE_WORDS.test(text) || GONE_HTTP_TEXT.test(text)) return true;
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as {
+    status?: unknown;
+    statusCode?: unknown;
+    response?: { status?: unknown };
+    extensions?: { code?: unknown };
+    graphQLErrors?: unknown;
+    errors?: unknown;
+    cause?: unknown;
+  };
+  if (goneStatus(e.status) || goneStatus(e.statusCode) || goneStatus(e.response?.status)) return true;
+  if (goneCode(e.extensions?.code)) return true;
+  for (const list of [e.graphQLErrors, e.errors]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list as { extensions?: { code?: unknown } }[]) {
+      if (goneCode(item?.extensions?.code)) return true;
+    }
+  }
+  return e.cause !== undefined && goneAt(e.cause, depth + 1);
 }
 
 /** Packages the platform installs itself; they don't make an env someone else's. */
@@ -624,7 +666,13 @@ async function renameProductFile(
   }
 }
 
-/** True for a product made by `adoptExisting` that has no version yet. */
+/**
+ * True for a product made by `adoptExisting` that has no version yet. Same
+ * rule as vetra-app's `adoptedWithoutVersions`
+ * (editors/vetra-studio/shell/firstVersion.ts, not importable here without the
+ * editor bundle): change both together. Both run the cases in
+ * vetra-app/editors/vetra-studio/shell/adoptedWithoutVersions.cases.json.
+ */
 export function adoptedWithoutVersions(state: StudioProductState): boolean {
   return (
     state.liveVersion == null &&

@@ -122,6 +122,35 @@ describe("findOwnerEnvironmentsRunning", () => {
     expect(isGoneError(new Error("Not authorized — you can't act as the user"))).toBe(false);
   });
 
+  it("reads 404/410 only as an HTTP status or an error code, never in ports or ids", () => {
+    // HTTP status in the message, on the error, or on its response/cause.
+    expect(isGoneError(new Error("HTTP 410 Gone"))).toBe(true);
+    expect(isGoneError(new Error("Request failed with status code 404"))).toBe(true);
+    expect(isGoneError(new Error("404 Not Found"))).toBe(true);
+    expect(isGoneError(Object.assign(new Error("request failed"), { status: 404 }))).toBe(true);
+    expect(isGoneError(Object.assign(new Error("request failed"), { statusCode: 410 }))).toBe(true);
+    expect(isGoneError(Object.assign(new Error("request failed"), { response: { status: 404 } }))).toBe(true);
+    expect(isGoneError(new Error("wrapped", { cause: Object.assign(new Error("x"), { status: 410 }) }))).toBe(true);
+    // GraphQL error codes.
+    expect(
+      isGoneError(Object.assign(new Error("query failed"), { extensions: { code: "NOT_FOUND" } })),
+    ).toBe(true);
+    expect(
+      isGoneError(
+        Object.assign(new Error("query failed"), { graphQLErrors: [{ message: "x", extensions: { code: "DOCUMENT_NOT_FOUND" } }] }),
+      ),
+    ).toBe(true);
+    // Numbers that are ports, ids or other statuses.
+    expect(isGoneError(new Error("connect ECONNREFUSED 127.0.0.1:404"))).toBe(false);
+    expect(isGoneError(new Error("connect ECONNREFUSED 10.0.0.1:4100 (attempt 410)"))).toBe(false);
+    expect(isGoneError(new Error("timeout reading env-404 after 410 ms"))).toBe(false);
+    expect(isGoneError(new Error("Document 404-abc could not be signed"))).toBe(false);
+    expect(isGoneError(Object.assign(new Error("request failed"), { status: 503, port: 404 }))).toBe(false);
+    expect(isGoneError(Object.assign(new Error("query failed"), { extensions: { code: "UNAUTHENTICATED" } }))).toBe(false);
+    // A DNS failure is a passing network failure, not a gone document.
+    expect(isGoneError(new Error("getaddrinfo ENOTFOUND switchboard.vetra.io"))).toBe(false);
+  });
+
   it("asks nothing when the workspace has no packages", async () => {
     listMyEnvironments.mockClear();
     expect(await findOwnerEnvironmentsRunning(ctx, { names: [], registries: [] })).toEqual([]);
