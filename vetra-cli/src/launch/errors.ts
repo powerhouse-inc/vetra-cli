@@ -22,6 +22,8 @@ export type LaunchErrorCode =
 export class LaunchError extends Error {
   readonly code: LaunchErrorCode;
   readonly reason: string;
+  /** The cloud's own `extensions.reason`, when it gave one (e.g. why GitHub isn't connected). */
+  cloudReason?: string;
 
   constructor(code: LaunchErrorCode, reason: string, detail?: string) {
     super(detail ?? reason);

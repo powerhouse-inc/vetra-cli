@@ -258,8 +258,22 @@ export async function bringIn(ctx: ChangeBaseContext, state: StudioProductState)
       "Tell the customer in one sentence."
     );
   }
+  // A repository carried over from the Studio's earlier connection may not
+  // share the Studio's history at all: only then are the two joined.
+  let related = true;
   try {
-    await git(["merge", "--no-ff", "--no-commit", GITHUB_MAIN_REF]);
+    await git(["merge-base", "HEAD", GITHUB_MAIN_REF]);
+  } catch {
+    related = false;
+  }
+  try {
+    await git([
+      "merge",
+      "--no-ff",
+      "--no-commit",
+      ...(related ? [] : ["--allow-unrelated-histories"]),
+      GITHUB_MAIN_REF,
+    ]);
     ctx.log?.info?.(`${TAG} GitHub's main (${short}) merged into the change`);
     return (
       `Bring them in: the changes made on GitHub (commit ${short}) are merged into this change's files; ` +
