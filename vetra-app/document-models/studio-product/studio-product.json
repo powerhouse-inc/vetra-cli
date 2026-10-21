@@ -659,6 +659,90 @@
               "scope": "global"
             }
           ]
+        },
+        {
+          "id": "mod-suggestions",
+          "name": "suggestions",
+          "description": "The agent's ideas for the next change, offered after a launch.",
+          "operations": [
+            {
+              "id": "op-set-suggestions",
+              "name": "SET_SUGGESTIONS",
+              "description": "Store the agent's 2–3 ideas for the next change, shown once the given version is live. Replaces the open ideas for that version; used and dismissed ones are kept.",
+              "schema": "input SetSuggestionsItemInput {\n  id: OID!\n  text: String!\n}\n\ninput SetSuggestionsInput {\n  afterVersion: Int!\n  items: [SetSuggestionsItemInput!]!\n}",
+              "template": "Store the agent's 2–3 ideas for the next change, shown once the given version is live. Replaces the open ideas for that version; used and dismissed ones are kept.",
+              "reducer": "",
+              "errors": [
+                {
+                  "id": "err-invalid-suggestion-count",
+                  "name": "InvalidSuggestionCountError",
+                  "code": "INVALID_SUGGESTION_COUNT",
+                  "description": "Suggestions come in sets of 2 to 3.",
+                  "template": ""
+                },
+                {
+                  "id": "err-invalid-suggestion-text",
+                  "name": "InvalidSuggestionTextError",
+                  "code": "INVALID_SUGGESTION_TEXT",
+                  "description": "A suggestion's text is empty or longer than 80 characters.",
+                  "template": ""
+                },
+                {
+                  "id": "err-duplicate-suggestion-id",
+                  "name": "DuplicateSuggestionIdError",
+                  "code": "DUPLICATE_SUGGESTION_ID",
+                  "description": "A suggestion with this id already exists.",
+                  "template": ""
+                },
+                {
+                  "id": "err-invalid-after-version",
+                  "name": "InvalidAfterVersionError",
+                  "code": "INVALID_AFTER_VERSION",
+                  "description": "Suggestions follow a version number of 1 or more.",
+                  "template": ""
+                }
+              ],
+              "examples": [],
+              "scope": "global"
+            },
+            {
+              "id": "op-use-suggestion",
+              "name": "USE_SUGGESTION",
+              "description": "Mark an open suggestion as used: the customer started a change from it.",
+              "schema": "input UseSuggestionInput {\n  id: OID!\n}",
+              "template": "Mark an open suggestion as used: the customer started a change from it.",
+              "reducer": "",
+              "errors": [
+                {
+                  "id": "err-suggestion-not-found",
+                  "name": "SuggestionNotFoundError",
+                  "code": "SUGGESTION_NOT_FOUND",
+                  "description": "No suggestion with this id exists.",
+                  "template": ""
+                },
+                {
+                  "id": "err-suggestion-not-open",
+                  "name": "SuggestionNotOpenError",
+                  "code": "SUGGESTION_NOT_OPEN",
+                  "description": "The suggestion was already used or dismissed.",
+                  "template": ""
+                }
+              ],
+              "examples": [],
+              "scope": "global"
+            },
+            {
+              "id": "op-dismiss-suggestion",
+              "name": "DISMISS_SUGGESTION",
+              "description": "Dismiss an open suggestion; it is never offered again.",
+              "schema": "input DismissSuggestionInput {\n  id: OID!\n}",
+              "template": "Dismiss an open suggestion; it is never offered again.",
+              "reducer": "",
+              "errors": [],
+              "examples": [],
+              "scope": "global"
+            }
+          ]
         }
       ]
     }

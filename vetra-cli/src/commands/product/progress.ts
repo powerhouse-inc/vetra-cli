@@ -15,6 +15,15 @@ import { activePhases, claimedMissingTools, toolsGained } from "../../agents/pha
 import { requestLiveTarget, type OrchestratorContext } from "../../launch/orchestrator.js";
 import { findForbiddenWords } from "../../product/forbidden-words.js";
 import {
+  SUGGESTION_TEXT_MAX,
+  SUGGESTIONS_MAX,
+  SUGGESTIONS_MIN,
+  discardedIdeas,
+  ideaKey,
+  sameIdea,
+  suggestionVersion,
+} from "../../product/suggestions.js";
+import {
   ProductRefusedError,
   activeChange,
   dispatchProduct,
@@ -35,7 +44,7 @@ const inputSchema = z.object({
   action: z
     .enum(["plan", "start", "count", "done", "back", "milestone", "stuck", "suggest", "name", "title"])
     .describe(
-      "plan: set the steps (`steps`). start: begin `step` (optional `label`). count: progress on `step` (`done` of `total`). done: finish `step` (refused until its checks pass). back: return to a finished `step` (`reason`). milestone: one finished thing in the customer's words (`text`). stuck: after 3 failed attempts at the same thing (`reason`, `tried`). name: name the product (`text`, before finishing PLAN). title: title this change (`text`, before finishing PLAN). suggest: ideas for next time (`items`).",
+      "plan: set the steps (`steps`). start: begin `step` (optional `label`). count: progress on `step` (`done` of `total`). done: finish `step` (refused until its checks pass). back: return to a finished `step` (`reason`). milestone: one finished thing in the customer's words (`text`). stuck: after 3 failed attempts at the same thing (`reason`, `tried`). name: name the product (`text`, before finishing PLAN). title: title this change (`text`, before finishing PLAN). suggest: at the end of the Tests step, 2–3 small next improvements the customer could ask for (`items`, each one change, at most 80 characters, in the customer's words).",
     ),
   step: stepKind.optional().describe("The step this action is about."),
   steps: z
@@ -48,7 +57,7 @@ const inputSchema = z.object({
   reason: z.string().optional().describe("For back and stuck: why."),
   tried: z.array(z.string()).optional().describe("For stuck: what was tried."),
   text: z.string().optional().describe("For milestone, name and title."),
-  items: z.array(z.string()).optional().describe("For suggest: the suggestions."),
+  items: z.array(z.string()).optional().describe("For suggest: 2–3 ideas, each at most 80 characters."),
 });
 
 type Input = z.output<typeof inputSchema>;
@@ -184,8 +193,41 @@ function buildActions(
       };
     }
     case "suggest":
-      return { refused: "suggest is not available yet." };
+      return suggest(input.items ?? [], state);
   }
+}
+
+/** `suggest`: 2–3 short ideas in the customer's words, never one the customer threw away. */
+function suggest(
+  raw: string[],
+  state: Parameters<typeof buildActions>[1],
+): { actions: Action[]; ok: string } | { refused: string } {
+  const items = raw.map((t) => t.trim().replace(/\s+/g, " ")).filter(Boolean);
+  if (items.length < SUGGESTIONS_MIN || items.length > SUGGESTIONS_MAX) {
+    return { refused: `Give ${SUGGESTIONS_MIN} to ${SUGGESTIONS_MAX} suggestions in \`items\`.` };
+  }
+  const long = items.filter((t) => t.length > SUGGESTION_TEXT_MAX);
+  if (long.length) {
+    return { refused: `Keep each suggestion to ${SUGGESTION_TEXT_MAX} characters: ${long.map((t) => `"${t}"`).join(", ")}.` };
+  }
+  if (new Set(items.map(ideaKey)).size < items.length) {
+    return { refused: "Each suggestion must be a different idea." };
+  }
+  const bad = rephrase(...items);
+  if (bad) return { refused: bad };
+  const thrownAway = discardedIdeas(state);
+  const again = items.filter((t) => thrownAway.some((idea) => sameIdea(t, idea)));
+  if (again.length) {
+    return {
+      refused: `The customer already discarded ${again.map((t) => `"${t}"`).join(", ")}; suggest something else.`,
+    };
+  }
+  const afterVersion = suggestionVersion(state);
+  if (afterVersion === null) return { refused: "Nothing is being built or live yet." };
+  return {
+    actions: [a.setSuggestions({ afterVersion, items: items.map((text) => ({ id: randomUUID(), text })) })],
+    ok: `Suggestions saved for Version ${afterVersion}.`,
+  };
 }
 
 type ProgressContext = ProductContext & Partial<OrchestratorContext>;
@@ -207,12 +249,11 @@ function prepareLiveTarget(ctx: ProgressContext, state: ProductState): void {
 
 /** Runs one progress action; returns the text the agent sees. */
 export async function runProgress(ctx: ProgressContext, input: Input): Promise<string> {
-  if (input.action === "suggest") return "suggest is not available yet.";
   const product = await getProductDoc(ctx);
   if (!product) return "There is no product in this Studio yet; nothing was recorded.";
-  // `name` acts on the product; everything else on the active change.
+  // `name` and `suggest` act on the product; everything else on the active change.
   const change = activeChange(product.state);
-  if (!change && input.action !== "name") {
+  if (!change && input.action !== "name" && input.action !== "suggest") {
     return "There is no active change; nothing was recorded.";
   }
   const built = buildActions(input, product.state, change);
@@ -233,7 +274,7 @@ export async function runProgress(ctx: ProgressContext, input: Input): Promise<s
 export const productProgress = defineCommand({
   id: "product-progress",
   description:
-    "Record build progress on the Studio's product: plan the steps, start/count/finish a step, go back, add a milestone in the customer's words, report being stuck, name the product, title the change. `done` is refused until the step's checks pass; the reply says why. `start`/`done`/`back` replies name the tools that just became available.",
+    "Record build progress on the Studio's product: plan the steps, start/count/finish a step, go back, add a milestone in the customer's words, report being stuck, name the product, title the change, suggest 2–3 next improvements at the end of the Tests step. `done` is refused until the step's checks pass; the reply says why. `start`/`done`/`back` replies name the tools that just became available.",
   inputSchema,
   execute: async (input, ctx) => ({ text: await runProgress(ctx, input) }),
 });

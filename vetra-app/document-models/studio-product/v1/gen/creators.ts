@@ -8,3 +8,5 @@ export * from "./launch/creators.js";
 export * as studioProductLaunchActions from "./launch/creators.js";
 export * from "./product/creators.js";
 export * as studioProductProductActions from "./product/creators.js";
+export * from "./suggestions/creators.js";
+export * as studioProductSuggestionsActions from "./suggestions/creators.js";

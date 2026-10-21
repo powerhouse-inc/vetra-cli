@@ -25,7 +25,7 @@ you start it** and `skill_read` its references when it says to.
 | PLAN | Bootstrap first (`reactor-project-management`): init + start the project, it installs while you write the product specs (`product-specs`); product name | project started; brief written, named |
 | DATA | Model (`document-modeling`) | `reactor-project-ps` shows it running; `spec-generate` clean; reducers in `v1/src/reducers/` |
 | EDITORS | Editor + Preview (`document-editor-creation`), App if asked (`drive-app-creation`) | `editor.tsx` dispatches the real operations; BUILD pane shows it with sample data |
-| TESTS | Examples (`example-data`), then `reactor-project-check` with `tests: true` | `done TESTS` accepted |
+| TESTS | Examples (`example-data`), then `reactor-project-check` with `tests: true` | `done TESTS` accepted, then `suggest` |
 | LIVE | launches by itself | — |
 
 **Progress.** Record it with `product-progress`; a `Refused:` reply names
