@@ -24,16 +24,16 @@ import {
 } from "document-models/studio-product";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStudioBudget } from "../budget/useStudioBudget.js";
-import { PreviewBody } from "../BuildSection.js";
 import { ConversationPane } from "../ChatPane.js";
+import { StripBudget } from "../budget/BudgetMeter.js";
+import { budgetView } from "../budget/budgetStore.js";
 import {
   ProductDebugPanel,
   isProductDebugEnabled,
 } from "../debug/ProductDebugPanel.js";
-import { useResolvedPreview } from "../hooks/useResolvedPreview.js";
-import { useSessionPreviewTarget } from "../hooks/useSessionPreviewTarget.js";
 import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
+import { PreviewPane } from "../preview/PreviewPane.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { DataDetail } from "../steps/DataDetail.js";
 import { LiveDetail } from "../steps/LiveDetail.js";
@@ -43,6 +43,7 @@ import { TestsDetail } from "../steps/TestsDetail.js";
 import { StoryPane } from "../story/StoryPane.js";
 import { StepStrip } from "../strip/StepStrip.js";
 import { stripChange, stripModel } from "../strip/stripModel.js";
+import { PHASE_AVERAGES } from "../strip/timeLeft.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { useStudioState } from "./useStudioState.js";
 
@@ -194,13 +195,28 @@ function ProductView({
   const budget = useStudioBudget();
   const usage = budget.snapshot.usage;
   const change = product ? stripChange(product) : null;
+  // The time left shown before for this change: it never goes back up.
+  const shownTimeLeft = useRef<{ changeId: string; text: string | null }>(null);
   const view = stripModel(product, {
     budget: usage
       ? { spentUsd: usage.usageUsd, limitUsd: usage.limitUsd }
       : null,
-    averages: {},
+    averages: PHASE_AVERAGES,
     now,
+    prevTimeLeft:
+      change && shownTimeLeft.current?.changeId === change.id
+        ? shownTimeLeft.current.text
+        : null,
   });
+  const right = view.right;
+  const budgetLevel = budgetView(budget.snapshot)?.level;
+  useEffect(() => {
+    if (!change || "liveUrl" in right) return;
+    shownTimeLeft.current = {
+      changeId: change.id,
+      text: right.timeLeft ?? null,
+    };
+  }, [change, right]);
   const [openStep, setOpenStep] = useState<StepKind | null>(null);
 
   const sessionId = change?.chatSessionId ?? fallbackSessionId;
@@ -210,7 +226,13 @@ function ProductView({
     isChatSessionDocument(sessionState.data)
       ? sessionState.data
       : undefined;
-  const preview = useResolvedPreview(useSessionPreviewTarget(sessionDocument));
+  const previewPane = (
+    <PreviewPane
+      change={change}
+      documents={documents}
+      session={sessionDocument}
+    />
+  );
 
   const toast = usePHToast();
   const rename = useCallback(
@@ -240,7 +262,7 @@ function ProductView({
       documents={documents}
       product={product}
       now={now}
-      preview={<PreviewBody preview={preview} />}
+      preview={previewPane}
     />
   );
 
@@ -252,6 +274,15 @@ function ProductView({
         onOpenStep={toggleStep}
         onOpenSettings={onOpenSettings}
         onRename={productId ? rename : undefined}
+        budget={
+          "budget" in right && (right.budget || budgetLevel === "exhausted") ? (
+            <StripBudget
+              text={right.budget}
+              view={budgetView(budget.snapshot)}
+              onRequest={budget.request}
+            />
+          ) : undefined
+        }
       />
       {live ? (
         <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
@@ -298,7 +329,7 @@ function ProductView({
                 </div>
               </div>
             ) : (
-              <PreviewBody preview={preview} />
+              previewPane
             )
           }
         />

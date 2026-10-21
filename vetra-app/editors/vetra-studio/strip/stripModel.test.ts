@@ -187,4 +187,29 @@ describe("stripModel", () => {
       deployedAgo(new Date(NOW.getTime() - 26 * 3600_000).toISOString(), NOW),
     ).toBe("Deployed 1 day ago");
   });
+
+  it("budget and time left while building, never above the last estimate", () => {
+    const product = readProduct(
+      productDoc(
+        ...buildingOps(),
+        actions.completeStep({ changeId: "c1", kind: "PLAN", at: at(29) }),
+      ).state.global,
+    );
+    const averages = { model: 60, editor: 60, check: 60 };
+    // 3 models + 3 screens + 1 check, 1 min in → 6 min.
+    const view = stripModel(product, { ...INPUTS, averages });
+    expect(view.right).toEqual({
+      budget: "$0.31 of $10",
+      timeLeft: "~6 min left",
+    });
+    const held = stripModel(product, {
+      ...INPUTS,
+      averages,
+      prevTimeLeft: "~4 min left",
+    });
+    expect(held.right).toEqual({
+      budget: "$0.31 of $10",
+      timeLeft: "~4 min left",
+    });
+  });
 });

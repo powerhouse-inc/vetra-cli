@@ -1,5 +1,5 @@
 import type { StepKind } from "document-models/studio-product";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { StepIcon, StripStep, StripView } from "./stripModel.js";
 
 /**
@@ -178,6 +178,7 @@ export function StepStrip({
   onOpenStep,
   onOpenSettings,
   onRename,
+  budget,
 }: {
   view: StripView;
   selected: StepKind | null;
@@ -185,6 +186,9 @@ export function StepStrip({
   onOpenSettings: () => void;
   /** Renames the product; the name is read-only without it. */
   onRename?: (name: string) => void;
+  /** The budget meter shown in place of the plain budget text; omitted
+   *  when it would show nothing (so no separator is drawn before it). */
+  budget?: ReactNode;
 }) {
   const right = view.right;
   return (
@@ -221,7 +225,10 @@ export function StepStrip({
           </>
         ) : (
           <span className="tabular-nums">
-            {[right.budget, right.timeLeft].filter(Boolean).join(" · ")}
+            {budget ?? right.budget}
+            {right.timeLeft
+              ? `${budget || right.budget ? " · " : ""}${right.timeLeft}`
+              : null}
           </span>
         )}
         <SettingsButton onOpen={onOpenSettings} />

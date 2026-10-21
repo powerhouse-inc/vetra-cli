@@ -1,5 +1,5 @@
 import { useTheme } from "@powerhousedao/reactor-browser";
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Breadcrumb, type Crumb } from "./Breadcrumb.js";
 import { PreviewStatusChip } from "./PreviewStatusChip.js";
 import type { ResolvedPreview } from "./hooks/useResolvedPreview.js";
@@ -35,7 +35,47 @@ export function BuildSection({
   );
 }
 
-export function PreviewBody({ preview }: { preview: ResolvedPreview }) {
+/** Skeleton copy before anything renders (spec §5.4): never a blank frame. */
+export const SETTING_UP = "Setting up your project (about 30 s)…";
+export const STARTING = "Starting the preview…";
+export const UNREACHABLE = "The preview can't be reached right now.";
+
+/** What the skeleton says for a preview that isn't showing yet. */
+export function previewActivity(preview: ResolvedPreview): string {
+  switch (preview.kind) {
+    case "no-target":
+    case "loading":
+    case "unknown-project":
+      return SETTING_UP;
+    case "project-stopped":
+    case "starting":
+    case "ready":
+      return STARTING;
+    case "error":
+      return UNREACHABLE;
+  }
+}
+
+/**
+ * The preview body: the iframe once the preview is up, else a skeleton with
+ * the current activity. While the same project restarts, the last frame
+ * stays mounted under the skeleton so its scroll position survives; a hot
+ * reload inside the frame keeps it too.
+ */
+export function PreviewBody({
+  preview,
+  reloadKey = 0,
+  activity,
+  note,
+}: {
+  preview: ResolvedPreview;
+  /** Bumped to reload the frame (Restart preview). */
+  reloadKey?: number;
+  /** Replaces the skeleton copy (e.g. "Kitchen queue — building…"). */
+  activity?: string;
+  /** A small line over a showing preview (e.g. "Kitchen queue — building…"). */
+  note?: string;
+}) {
   const { theme } = useTheme();
   const url = preview.kind === "ready" ? preview.url : undefined;
 
@@ -49,92 +89,73 @@ export function PreviewBody({ preview }: { preview: ResolvedPreview }) {
     return u.toString();
   }, [url, theme]);
 
-  if (src) {
-    return (
-      <iframe
-        key={src}
-        src={src}
-        title="Preview"
-        className="block min-h-0 w-full flex-1 border-0"
-      />
-    );
+  // The last frame shown, kept while its project restarts.
+  const last = useRef<{ project: string; src: string } | null>(null);
+  if (src && preview.kind === "ready") {
+    last.current = { project: preview.project, src };
+  } else if (!(
+    (preview.kind === "starting" || preview.kind === "project-stopped") &&
+    last.current?.project === preview.project
+  )) {
+    last.current = null;
   }
+  const frameSrc = src ?? last.current?.src;
+  const frameKey = `${frameSrc ?? ""}#${reloadKey}`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const showing = src !== undefined && loadedKey === frameKey;
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center bg-accent px-6 py-10">
-      <PreviewStatus preview={preview} />
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {frameSrc ? (
+        <iframe
+          key={frameKey}
+          src={frameSrc}
+          title="Preview"
+          onLoad={() => setLoadedKey(frameKey)}
+          className="block min-h-0 w-full flex-1 border-0"
+        />
+      ) : null}
+      {showing ? null : (
+        <PreviewSkeleton
+          text={activity ?? previewActivity(preview)}
+          overlay={frameSrc !== undefined}
+        />
+      )}
+      {showing && note ? (
+        <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-card/95 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+          {note}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function PreviewStatus({ preview }: { preview: ResolvedPreview }) {
-  switch (preview.kind) {
-    case "no-target":
-      return (
-        <StatusBlock
-          title="No preview yet"
-          detail="The BUILD preview appears once the agent scaffolds a project for this session."
-        />
-      );
-    case "loading":
-      return <StatusBlock title="Loading preview…" />;
-    case "starting":
-      return (
-        <StatusBlock
-          title={`Starting "${preview.project}"…`}
-          detail="Reactor project is booting. This usually takes 10–30 seconds."
-        />
-      );
-    case "project-stopped":
-      return (
-        <StatusBlock
-          title={`Starting "${preview.project}"…`}
-          detail="Bringing the reactor project online."
-        />
-      );
-    case "unknown-project":
-      return (
-        <StatusBlock
-          title={`Project "${preview.project}" not found`}
-          detail={preview.error}
-          tone="error"
-        />
-      );
-    case "error":
-      return (
-        <StatusBlock
-          title="Could not reach preview server"
-          detail={preview.message}
-          tone="error"
-        />
-      );
-    default:
-      return null;
-  }
-}
-
-function StatusBlock({
-  title,
-  detail,
-  tone,
+/** Placeholder shapes of a screen with the current activity in words. */
+function PreviewSkeleton({
+  text,
+  overlay,
 }: {
-  title: string;
-  detail?: string;
-  tone?: "error";
+  text: string;
+  overlay: boolean;
 }) {
   return (
-    <div className="max-w-md text-center">
-      <div
-        className={
-          "text-sm font-medium " +
-          (tone === "error" ? "text-destructive" : "text-foreground")
-        }
-      >
-        {title}
+    <div
+      role="status"
+      aria-live="polite"
+      data-preview-skeleton
+      className={`flex min-h-0 flex-1 flex-col gap-4 bg-accent px-8 py-8 ${overlay ? "absolute inset-0" : ""}`}
+    >
+      <div aria-hidden className="flex animate-pulse flex-col gap-3">
+        <div className="h-5 w-1/3 rounded bg-border" />
+        <div className="h-3 w-2/3 rounded bg-border/70" />
+        <div className="mt-2 grid grid-cols-3 gap-3">
+          <div className="h-24 rounded-lg bg-border/60" />
+          <div className="h-24 rounded-lg bg-border/60" />
+          <div className="h-24 rounded-lg bg-border/60" />
+        </div>
+        <div className="h-3 w-1/2 rounded bg-border/70" />
       </div>
-      {detail ? (
-        <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
-      ) : null}
+      <p className="text-sm font-medium text-muted-foreground">{text}</p>
     </div>
   );
 }

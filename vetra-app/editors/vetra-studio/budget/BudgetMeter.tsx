@@ -103,6 +103,54 @@ export function BudgetMeter({
   );
 }
 
+function stripTextClasses(level: BudgetLevel): string {
+  switch (level) {
+    case "ok":
+      return "text-muted-foreground";
+    case "warning":
+      return "font-medium text-warning";
+    case "exhausted":
+      return "font-medium text-destructive";
+  }
+}
+
+/** The strip's budget (spec §5.2): `$0.31 of $10`, amber from 80 %, red with
+ *  "Request more budget" at the limit. The level is also in words for
+ *  screen readers, so colour is never the only signal. */
+export function StripBudget({
+  text,
+  view,
+  onRequest,
+}: {
+  /** `$0.31 of $10` (the strip's wording). */
+  text: string;
+  view: BudgetView | null;
+  onRequest: () => void;
+}) {
+  const level = view?.level ?? "ok";
+  if (!text && level !== "exhausted") return null;
+  return (
+    <span
+      data-level={level}
+      title="AI budget this month"
+      className="inline-flex items-center gap-2"
+    >
+      <span className={`tabular-nums ${stripTextClasses(level)}`}>
+        {text || "Budget used up"}
+        {level === "warning" ? (
+          <span className="sr-only">
+            {" "}
+            — You&apos;ve used 80% of this month&apos;s budget.
+          </span>
+        ) : null}
+      </span>
+      {level === "exhausted" && view ? (
+        <RequestBudgetControl request={view.request} onRequest={onRequest} />
+      ) : null}
+    </span>
+  );
+}
+
 /** The top-bar meter bound to the shared, polled budget store. */
 export function StudioBudgetMeter() {
   const budget = useStudioBudget();

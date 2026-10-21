@@ -11,6 +11,7 @@ import type {
   StudioProductState,
   Version,
 } from "document-models/studio-product";
+import { timeLeft, type PhaseAverages } from "./timeLeft.js";
 
 export type StepIcon = "○" | "◐" | "✓" | "!" | "✕" | "●";
 
@@ -71,10 +72,7 @@ export interface StripView {
   right: StripRight;
 }
 
-/** Measured seconds per unit of planned work (filled by Task 1.7). */
-export type PhaseAverages = Partial<
-  Record<"model" | "editor" | "check", number>
->;
+export type { PhaseAverages };
 
 export interface StripInputs {
   budget: { spentUsd: number; limitUsd: number | null } | null;
@@ -171,6 +169,10 @@ export function githubText(status: GithubStatus): string {
   return GITHUB_TEXT[status];
 }
 
+function withTimeLeft(budget: string, left: string | null): StripRight {
+  return left ? { budget, timeLeft: left } : { budget };
+}
+
 /** The strip for a product (null while the product isn't readable yet). */
 export function stripModel(
   product: StudioProductState | null,
@@ -194,6 +196,9 @@ export function stripModel(
           deployedAgo: deployedAgo(liveVersion?.launchedAt ?? null, inputs.now),
           github: githubText(product.github.status),
         }
-      : { budget: budgetText(inputs.budget) };
+      : withTimeLeft(
+          budgetText(inputs.budget),
+          timeLeft(change, inputs.averages, inputs.now, inputs.prevTimeLeft),
+        );
   return { name, steps, right };
 }
