@@ -63,8 +63,10 @@ export function PublishPermissionModal({
 
   // The product's permission decides too, and a MISSING/EXPIRED state is
   // asked about by the Live row (Task 2.9), not by a modal on every visit.
+  // A local Studio needs no sign-in and has no Renown user to delegate from.
   const open =
     signIn.status === "signed-in" &&
+    signIn.hasUser &&
     !asked &&
     !delegated &&
     state !== "GRANTED" &&
