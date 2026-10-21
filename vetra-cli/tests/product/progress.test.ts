@@ -109,6 +109,39 @@ describe("product-progress", () => {
     expect(change.stuck).toMatchObject({ reason: "Dates do not save", tried: ["a", "b", "c"] });
   });
 
+  it("milestone passes outcome through", async () => {
+    h = await productHarness();
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] });
+    expect(
+      await runProgress(h.ctx, { action: "milestone", text: "Tags added", outcome: "Notes can now carry tags" }),
+    ).toBe("Milestone recorded.");
+    expect((await h.state()).changes[0].milestones[0]).toMatchObject({
+      text: "Tags added",
+      outcome: "Notes can now carry tags",
+    });
+  });
+
+  it("outcome over 120 chars is refused with the one-sentence message", async () => {
+    h = await productHarness();
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] });
+    expect(
+      await runProgress(h.ctx, { action: "milestone", text: "Tags added", outcome: "x".repeat(121) }),
+    ).toBe("Refused: Keep the outcome to one sentence of at most 120 characters.");
+    expect((await h.state()).changes[0].milestones).toEqual([]);
+    expect(
+      await runProgress(h.ctx, { action: "milestone", text: "Tags added", outcome: "x".repeat(120) }),
+    ).toBe("Milestone recorded.");
+  });
+
+  it("outcome with a forbidden word is refused", async () => {
+    h = await productHarness();
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] });
+    expect(
+      await runProgress(h.ctx, { action: "milestone", text: "Tags added", outcome: "The package is published" }),
+    ).toBe("Refused: Rephrase in the customer's words without: package.");
+    expect((await h.state()).changes[0].milestones).toEqual([]);
+  });
+
   it("rejects text with a forbidden word and writes nothing", async () => {
     h = await productHarness();
     for (const action of ["milestone", "title", "name"] as const) {

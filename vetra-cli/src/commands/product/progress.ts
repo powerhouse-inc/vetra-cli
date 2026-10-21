@@ -45,7 +45,7 @@ const inputSchema = z.object({
   action: z
     .enum(["plan", "start", "count", "done", "back", "milestone", "stuck", "suggest", "name", "title"])
     .describe(
-      "plan: set the steps (`steps`). start: begin `step` (optional `label`). count: progress on `step` (`done` of `total`). done: finish `step` (refused until its checks pass). back: return to a finished `step` (`reason`). milestone: one finished thing in the customer's words (`text`). stuck: after 3 failed attempts at the same thing (`reason`, `tried`). name: name the product (`text`, before finishing PLAN). title: title this change (`text`, before finishing PLAN). suggest: at the end of the Tests step, 2–3 small next improvements the customer could ask for (`items`, each one change, at most 80 characters, in the customer's words).",
+      "plan: set the steps (`steps`). start: begin `step` (optional `label`). count: progress on `step` (`done` of `total`). done: finish `step` (refused until its checks pass). back: return to a finished `step` (`reason`). milestone: one finished thing in the customer's words (`text`, plus `outcome`: one customer-facing sentence). stuck: after 3 failed attempts at the same thing (`reason`, `tried`). name: name the product (`text`, before finishing PLAN). title: title this change (`text`, before finishing PLAN). suggest: at the end of the Tests step, 2–3 small next improvements the customer could ask for (`items`, each one change, at most 80 characters, in the customer's words).",
     ),
   step: stepKind.optional().describe("The step this action is about."),
   steps: z
@@ -58,10 +58,16 @@ const inputSchema = z.object({
   reason: z.string().optional().describe("For back and stuck: why."),
   tried: z.array(z.string()).optional().describe("For stuck: what was tried."),
   text: z.string().optional().describe("For milestone, name and title."),
+  outcome: z
+    .string()
+    .optional()
+    .describe("For milestone: one sentence for the customer about what they can now do, at most 120 characters, e.g. \"Notes can now carry tags\"."),
   items: z.array(z.string()).optional().describe("For suggest: 2–3 ideas, each at most 80 characters."),
 });
 
 type Input = z.output<typeof inputSchema>;
+
+const OUTCOME_MAX = 120;
 
 const STEP_NAMES = { PLAN: "Plan", DATA: "Data", EDITORS: "Editors", TESTS: "Tests", LIVE: "Live" } as const;
 
@@ -148,10 +154,13 @@ function buildActions(
     }
     case "milestone": {
       if (!input.text) return { refused: missing("text", "milestone") };
-      const bad = rephrase(input.text);
+      const bad = rephrase(input.text, input.outcome);
       if (bad) return { refused: bad };
+      if (input.outcome && input.outcome.length > OUTCOME_MAX) {
+        return { refused: `Keep the outcome to one sentence of at most ${OUTCOME_MAX} characters.` };
+      }
       return {
-        actions: [a.addMilestone({ changeId, id: randomUUID(), text: input.text, at })],
+        actions: [a.addMilestone({ changeId, id: randomUUID(), text: input.text, outcome: input.outcome || null, at })],
         ok: "Milestone recorded.",
       };
     }

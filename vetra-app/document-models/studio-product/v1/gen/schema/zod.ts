@@ -2,9 +2,13 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import * as z from "zod";
 import type {
+  AcceptSourceNoticeInput,
   AddMilestoneInput,
   AdoptExistingInput,
+  AnswerQuestionInput,
+  AskQuestionInput,
   Change,
+  ChangeCost,
   ChangeKind,
   ChangeMetrics,
   ChangeStatus,
@@ -22,16 +26,25 @@ import type {
   DismissSuggestionInput,
   FailLaunchInput,
   FailRequestInput,
+  FinishRowImportInput,
   GithubLink,
   GithubStatus,
+  GuidedLoop,
+  GuidedLoopStatus,
   InitProductInput,
+  KeepVariantInput,
   LaunchLine,
   LaunchLineKind,
   LineStatus,
   LiveBeforeVersions,
   LiveHealth,
+  MarkExplainersSeenInput,
   MarkStuckInput,
+  MaterialKind,
+  MaterialRef,
   Milestone,
+  NotesSettings,
+  OriginMode,
   PackageVersion,
   PauseChangeInput,
   PendingRequest,
@@ -39,7 +52,11 @@ import type {
   PlanStepInput,
   PlanStepsInput,
   ProductAccess,
+  ProductOrigin,
   ProductStep,
+  PublicSource,
+  PublicSourceKind,
+  QuestionAnswerBy,
   RecordChangeMetricsInput,
   RecordCheckRunInput,
   RenameProductInput,
@@ -52,29 +69,50 @@ import type {
   RequestRestartInput,
   RequestRollbackInput,
   ResumeChangeInput,
+  RoomQuestion,
+  RowImport,
+  RowImportStatus,
   SetAccessInput,
+  SetChangeCostInput,
   SetChangeTitleInput,
+  SetGuidedLoopInput,
   SetHealthInput,
   SetLaunchLineInput,
   SetLaunchPermissionInput,
   SetLiveBeforeVersionsInput,
   SetLiveTargetInput,
   SetLiveVersionInput,
+  SetNotesEnabledInput,
+  SetOriginInput,
   SetProductDriveInput,
+  SetPublicSourceInput,
+  SetReviewSuggestionsInput,
+  SetReviewSuggestionsItemInput,
   SetRollbackBlockInput,
   SetStepAttentionInput,
   SetSuggestionsInput,
   SetSuggestionsItemInput,
+  SetUnderstoodInput,
+  SetUnderstoodMaterialInput,
+  SetUpstreamVersionInput,
+  SetVariantStatusInput,
   StartChangeInput,
   StartLaunchInput,
+  StartRowImportInput,
   StartStepInput,
+  StartVariantsInput,
   StepKind,
   StepStatus,
   Stuck,
   StudioProductState,
   Suggestion,
+  SuggestionKind,
   SuggestionStatus,
+  Understood,
   UseSuggestionInput,
+  Variant,
+  VariantLabel,
+  VariantStatus,
   Version,
   VersionStatus,
   WaiveLintInput,
@@ -126,6 +164,15 @@ export const GithubStatusSchema = z.enum([
   "PUSH_FAILED",
 ]);
 
+export const GuidedLoopStatusSchema = z.enum([
+  "CHANGED",
+  "DISMISSED",
+  "DONE",
+  "NOT_STARTED",
+  "POINTED",
+  "WENT_BACK",
+]);
+
 export const LaunchLineKindSchema = z.enum([
   "DEPLOY",
   "MIRROR",
@@ -144,6 +191,10 @@ export const LineStatusSchema = z.enum([
 
 export const LiveHealthSchema = z.enum(["HEALTHY", "UNHEALTHY", "UNKNOWN"]);
 
+export const MaterialKindSchema = z.enum(["PDF", "PICTURE", "SHEET", "TEXT"]);
+
+export const OriginModeSchema = z.enum(["COMPOSE", "REMIX"]);
+
 export const PermissionStateSchema = z.enum([
   "EXPIRED",
   "GRANTED",
@@ -153,6 +204,10 @@ export const PermissionStateSchema = z.enum([
 
 export const ProductAccessSchema = z.enum(["OWNER_ONLY", "SIGNED_IN"]);
 
+export const PublicSourceKindSchema = z.enum(["GITHUB", "PACKAGE"]);
+
+export const QuestionAnswerBySchema = z.enum(["DEFAULT", "ROOM"]);
+
 export const RequestKindSchema = z.enum([
   "DISCARD",
   "LAUNCH",
@@ -160,6 +215,8 @@ export const RequestKindSchema = z.enum([
   "RESTART",
   "ROLLBACK",
 ]);
+
+export const RowImportStatusSchema = z.enum(["CONFIRMED", "DONE", "FAILED"]);
 
 export const StepKindSchema = z.enum([
   "DATA",
@@ -178,7 +235,19 @@ export const StepStatusSchema = z.enum([
   "WORKING",
 ]);
 
+export const SuggestionKindSchema = z.enum(["IDEA", "REVIEW"]);
+
 export const SuggestionStatusSchema = z.enum(["DISMISSED", "OPEN", "USED"]);
+
+export const VariantLabelSchema = z.enum(["A", "B"]);
+
+export const VariantStatusSchema = z.enum([
+  "BUILDING",
+  "DISCARDED",
+  "FAILED",
+  "KEPT",
+  "READY",
+]);
 
 export const VersionStatusSchema = z.enum([
   "FAILED",
@@ -187,6 +256,14 @@ export const VersionStatusSchema = z.enum([
   "PREVIOUS",
 ]);
 
+export function AcceptSourceNoticeInputSchema(): z.ZodObject<
+  Properties<AcceptSourceNoticeInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+  });
+}
+
 export function AddMilestoneInputSchema(): z.ZodObject<
   Properties<AddMilestoneInput>
 > {
@@ -194,6 +271,7 @@ export function AddMilestoneInputSchema(): z.ZodObject<
     at: z.iso.datetime(),
     changeId: z.string(),
     id: z.string(),
+    outcome: z.string().nullish(),
     recovered: z.boolean().nullish(),
     text: z.string(),
   });
@@ -211,23 +289,60 @@ export function AdoptExistingInputSchema(): z.ZodObject<
   });
 }
 
+export function AnswerQuestionInputSchema(): z.ZodObject<
+  Properties<AnswerQuestionInput>
+> {
+  return z.object({
+    answer: z.string(),
+    answeredAt: z.iso.datetime(),
+    answeredBy: QuestionAnswerBySchema,
+    changeId: z.string(),
+    id: z.string(),
+  });
+}
+
+export function AskQuestionInputSchema(): z.ZodObject<
+  Properties<AskQuestionInput>
+> {
+  return z.object({
+    askedAt: z.iso.datetime(),
+    changeId: z.string(),
+    defaultAnswer: z.string(),
+    id: z.string(),
+    language: z.string(),
+    options: z.array(z.string()),
+    text: z.string(),
+  });
+}
+
 export function ChangeSchema(): z.ZodObject<Properties<Change>> {
   return z.object({
     __typename: z.literal("Change").optional(),
     chatSessionId: z.string().nullish(),
     chatSessionIds: z.array(z.string()),
     checkRuns: z.array(z.lazy(() => CheckRunSchema())),
+    cost: z.lazy(() => ChangeCostSchema().nullish()),
     id: z.string(),
     kind: ChangeKindSchema,
     lintWaivedAt: z.iso.datetime().nullish(),
     metrics: z.lazy(() => ChangeMetricsSchema()),
     milestones: z.array(z.lazy(() => MilestoneSchema())),
+    questions: z.array(z.lazy(() => RoomQuestionSchema())),
     request: z.string(),
     startedAt: z.iso.datetime(),
     status: ChangeStatusSchema,
     steps: z.array(z.lazy(() => ProductStepSchema())),
     stuck: z.lazy(() => StuckSchema().nullish()),
     title: z.string().nullish(),
+    variants: z.array(z.lazy(() => VariantSchema())),
+  });
+}
+
+export function ChangeCostSchema(): z.ZodObject<Properties<ChangeCost>> {
+  return z.object({
+    __typename: z.literal("ChangeCost").optional(),
+    endUsd: z.number().nullish(),
+    startUsd: z.number().nullish(),
   });
 }
 
@@ -370,6 +485,18 @@ export function FailRequestInputSchema(): z.ZodObject<
   });
 }
 
+export function FinishRowImportInputSchema(): z.ZodObject<
+  Properties<FinishRowImportInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    failure: z.string().nullish(),
+    id: z.string(),
+    imported: z.number(),
+    status: RowImportStatusSchema,
+  });
+}
+
 export function GithubLinkSchema(): z.ZodObject<Properties<GithubLink>> {
   return z.object({
     __typename: z.literal("GithubLink").optional(),
@@ -380,6 +507,14 @@ export function GithubLinkSchema(): z.ZodObject<Properties<GithubLink>> {
   });
 }
 
+export function GuidedLoopSchema(): z.ZodObject<Properties<GuidedLoop>> {
+  return z.object({
+    __typename: z.literal("GuidedLoop").optional(),
+    at: z.iso.datetime().nullish(),
+    status: GuidedLoopStatusSchema,
+  });
+}
+
 export function InitProductInputSchema(): z.ZodObject<
   Properties<InitProductInput>
 > {
@@ -387,6 +522,15 @@ export function InitProductInputSchema(): z.ZodObject<
     createdAt: z.iso.datetime(),
     idea: z.string(),
     name: z.string(),
+  });
+}
+
+export function KeepVariantInputSchema(): z.ZodObject<
+  Properties<KeepVariantInput>
+> {
+  return z.object({
+    changeId: z.string(),
+    label: VariantLabelSchema,
   });
 }
 
@@ -410,6 +554,14 @@ export function LiveBeforeVersionsSchema(): z.ZodObject<
   });
 }
 
+export function MarkExplainersSeenInputSchema(): z.ZodObject<
+  Properties<MarkExplainersSeenInput>
+> {
+  return z.object({
+    ids: z.array(z.string()),
+  });
+}
+
 export function MarkStuckInputSchema(): z.ZodObject<
   Properties<MarkStuckInput>
 > {
@@ -421,13 +573,31 @@ export function MarkStuckInputSchema(): z.ZodObject<
   });
 }
 
+export function MaterialRefSchema(): z.ZodObject<Properties<MaterialRef>> {
+  return z.object({
+    __typename: z.literal("MaterialRef").optional(),
+    id: z.string(),
+    kind: MaterialKindSchema,
+    name: z.string(),
+  });
+}
+
 export function MilestoneSchema(): z.ZodObject<Properties<Milestone>> {
   return z.object({
     __typename: z.literal("Milestone").optional(),
     at: z.iso.datetime(),
     id: z.string(),
+    outcome: z.string().nullish(),
     recovered: z.boolean(),
     text: z.string(),
+  });
+}
+
+export function NotesSettingsSchema(): z.ZodObject<Properties<NotesSettings>> {
+  return z.object({
+    __typename: z.literal("NotesSettings").optional(),
+    enabled: z.boolean(),
+    since: z.iso.datetime().nullish(),
   });
 }
 
@@ -479,6 +649,22 @@ export function PlanStepsInputSchema(): z.ZodObject<
   });
 }
 
+export function ProductOriginSchema(): z.ZodObject<Properties<ProductOrigin>> {
+  return z.object({
+    __typename: z.literal("ProductOrigin").optional(),
+    at: z.iso.datetime(),
+    checkedAt: z.iso.datetime().nullish(),
+    latestVersion: z.string().nullish(),
+    license: z.string(),
+    missing: z.array(z.string()),
+    mode: OriginModeSchema,
+    packageName: z.string(),
+    sourceRef: z.string().nullish(),
+    sourceUrl: z.url().nullish(),
+    version: z.string(),
+  });
+}
+
 export function ProductStepSchema(): z.ZodObject<Properties<ProductStep>> {
   return z.object({
     __typename: z.literal("ProductStep").optional(),
@@ -489,6 +675,15 @@ export function ProductStepSchema(): z.ZodObject<Properties<ProductStep>> {
     status: StepStatusSchema,
     total: z.number().nullish(),
     updatedAt: z.iso.datetime().nullish(),
+  });
+}
+
+export function PublicSourceSchema(): z.ZodObject<Properties<PublicSource>> {
+  return z.object({
+    __typename: z.literal("PublicSource").optional(),
+    kind: PublicSourceKindSchema,
+    url: z.url(),
+    version: z.number(),
   });
 }
 
@@ -601,11 +796,51 @@ export function ResumeChangeInputSchema(): z.ZodObject<
   });
 }
 
+export function RoomQuestionSchema(): z.ZodObject<Properties<RoomQuestion>> {
+  return z.object({
+    __typename: z.literal("RoomQuestion").optional(),
+    answer: z.string().nullish(),
+    answeredAt: z.iso.datetime().nullish(),
+    answeredBy: QuestionAnswerBySchema.nullish(),
+    askedAt: z.iso.datetime(),
+    defaultAnswer: z.string(),
+    id: z.string(),
+    language: z.string(),
+    options: z.array(z.string()),
+    text: z.string(),
+  });
+}
+
+export function RowImportSchema(): z.ZodObject<Properties<RowImport>> {
+  return z.object({
+    __typename: z.literal("RowImport").optional(),
+    at: z.iso.datetime(),
+    documentType: z.string(),
+    failure: z.string().nullish(),
+    id: z.string(),
+    imported: z.number(),
+    materialId: z.string(),
+    rows: z.number(),
+    sheet: z.string(),
+    status: RowImportStatusSchema,
+  });
+}
+
 export function SetAccessInputSchema(): z.ZodObject<
   Properties<SetAccessInput>
 > {
   return z.object({
     access: ProductAccessSchema,
+  });
+}
+
+export function SetChangeCostInputSchema(): z.ZodObject<
+  Properties<SetChangeCostInput>
+> {
+  return z.object({
+    changeId: z.string(),
+    endUsd: z.number().nullish(),
+    startUsd: z.number().nullish(),
   });
 }
 
@@ -615,6 +850,15 @@ export function SetChangeTitleInputSchema(): z.ZodObject<
   return z.object({
     changeId: z.string(),
     title: z.string(),
+  });
+}
+
+export function SetGuidedLoopInputSchema(): z.ZodObject<
+  Properties<SetGuidedLoopInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    status: GuidedLoopStatusSchema,
   });
 }
 
@@ -677,12 +921,65 @@ export function SetLiveVersionInputSchema(): z.ZodObject<
   });
 }
 
+export function SetNotesEnabledInputSchema(): z.ZodObject<
+  Properties<SetNotesEnabledInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    enabled: z.boolean(),
+  });
+}
+
+export function SetOriginInputSchema(): z.ZodObject<
+  Properties<SetOriginInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    license: z.string(),
+    missing: z.array(z.string()),
+    mode: OriginModeSchema,
+    packageName: z.string(),
+    sourceRef: z.string().nullish(),
+    sourceUrl: z.url().nullish(),
+    version: z.string(),
+  });
+}
+
 export function SetProductDriveInputSchema(): z.ZodObject<
   Properties<SetProductDriveInput>
 > {
   return z.object({
     driveId: z.string(),
     liveUrl: z.url().nullish(),
+  });
+}
+
+export function SetPublicSourceInputSchema(): z.ZodObject<
+  Properties<SetPublicSourceInput>
+> {
+  return z.object({
+    kind: PublicSourceKindSchema,
+    url: z.url(),
+    version: z.number(),
+  });
+}
+
+export function SetReviewSuggestionsInputSchema(): z.ZodObject<
+  Properties<SetReviewSuggestionsInput>
+> {
+  return z.object({
+    afterVersion: z.number(),
+    items: z.array(z.lazy(() => SetReviewSuggestionsItemInputSchema())),
+  });
+}
+
+export function SetReviewSuggestionsItemInputSchema(): z.ZodObject<
+  Properties<SetReviewSuggestionsItemInput>
+> {
+  return z.object({
+    id: z.string(),
+    screenshot: z.string().nullish(),
+    text: z.string(),
   });
 }
 
@@ -725,6 +1022,49 @@ export function SetSuggestionsItemInputSchema(): z.ZodObject<
   });
 }
 
+export function SetUnderstoodInputSchema(): z.ZodObject<
+  Properties<SetUnderstoodInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    json: z.string(),
+    language: z.string(),
+    materials: z.array(z.lazy(() => SetUnderstoodMaterialInputSchema())),
+  });
+}
+
+export function SetUnderstoodMaterialInputSchema(): z.ZodObject<
+  Properties<SetUnderstoodMaterialInput>
+> {
+  return z.object({
+    id: z.string(),
+    kind: MaterialKindSchema,
+    name: z.string(),
+  });
+}
+
+export function SetUpstreamVersionInputSchema(): z.ZodObject<
+  Properties<SetUpstreamVersionInput>
+> {
+  return z.object({
+    checkedAt: z.iso.datetime(),
+    latestVersion: z.string(),
+    packageName: z.string(),
+  });
+}
+
+export function SetVariantStatusInputSchema(): z.ZodObject<
+  Properties<SetVariantStatusInput>
+> {
+  return z.object({
+    changeId: z.string(),
+    chatSessionId: z.string().nullish(),
+    label: VariantLabelSchema,
+    status: VariantStatusSchema,
+    summary: z.string().nullish(),
+  });
+}
+
 export function StartChangeInputSchema(): z.ZodObject<
   Properties<StartChangeInput>
 > {
@@ -747,6 +1087,19 @@ export function StartLaunchInputSchema(): z.ZodObject<
   });
 }
 
+export function StartRowImportInputSchema(): z.ZodObject<
+  Properties<StartRowImportInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    documentType: z.string(),
+    id: z.string(),
+    materialId: z.string(),
+    rows: z.number(),
+    sheet: z.string(),
+  });
+}
+
 export function StartStepInputSchema(): z.ZodObject<
   Properties<StartStepInput>
 > {
@@ -755,6 +1108,16 @@ export function StartStepInputSchema(): z.ZodObject<
     changeId: z.string(),
     kind: StepKindSchema,
     label: z.string().nullish(),
+  });
+}
+
+export function StartVariantsInputSchema(): z.ZodObject<
+  Properties<StartVariantsInput>
+> {
+  return z.object({
+    branchA: z.string(),
+    branchB: z.string(),
+    changeId: z.string(),
   });
 }
 
@@ -777,7 +1140,9 @@ export function StudioProductStateSchema(): z.ZodObject<
     appId: z.string().nullish(),
     changes: z.array(z.lazy(() => ChangeSchema())),
     createdAt: z.iso.datetime().nullish(),
+    explainersSeen: z.array(z.string()),
     github: z.lazy(() => GithubLinkSchema()),
+    guidedLoop: z.lazy(() => GuidedLoopSchema()),
     health: LiveHealthSchema,
     idea: z.string().nullish(),
     lastRequestFailure: z.lazy(() => RequestFailureSchema().nullish()),
@@ -788,11 +1153,17 @@ export function StudioProductStateSchema(): z.ZodObject<
     liveUrl: z.url().nullish(),
     liveVersion: z.number().nullish(),
     name: z.string().nullish(),
+    notes: z.lazy(() => NotesSettingsSchema()),
+    origins: z.array(z.lazy(() => ProductOriginSchema())),
     pendingRequest: z.lazy(() => PendingRequestSchema().nullish()),
     productDriveId: z.string().nullish(),
     productionEnvironmentId: z.string().nullish(),
+    publicSource: z.lazy(() => PublicSourceSchema().nullish()),
+    rowImports: z.array(z.lazy(() => RowImportSchema())),
     slug: z.string().nullish(),
+    sourceNoticeAcceptedAt: z.iso.datetime().nullish(),
     suggestions: z.array(z.lazy(() => SuggestionSchema())),
+    understood: z.lazy(() => UnderstoodSchema().nullish()),
     versions: z.array(z.lazy(() => VersionSchema())),
   });
 }
@@ -802,8 +1173,20 @@ export function SuggestionSchema(): z.ZodObject<Properties<Suggestion>> {
     __typename: z.literal("Suggestion").optional(),
     afterVersion: z.number(),
     id: z.string(),
+    kind: SuggestionKindSchema,
+    screenshot: z.string().nullish(),
     status: SuggestionStatusSchema,
     text: z.string(),
+  });
+}
+
+export function UnderstoodSchema(): z.ZodObject<Properties<Understood>> {
+  return z.object({
+    __typename: z.literal("Understood").optional(),
+    at: z.iso.datetime(),
+    json: z.string(),
+    language: z.string(),
+    materials: z.array(z.lazy(() => MaterialRefSchema())),
   });
 }
 
@@ -812,6 +1195,17 @@ export function UseSuggestionInputSchema(): z.ZodObject<
 > {
   return z.object({
     id: z.string(),
+  });
+}
+
+export function VariantSchema(): z.ZodObject<Properties<Variant>> {
+  return z.object({
+    __typename: z.literal("Variant").optional(),
+    branch: z.string(),
+    chatSessionId: z.string().nullish(),
+    label: VariantLabelSchema,
+    status: VariantStatusSchema,
+    summary: z.string().nullish(),
   });
 }
 

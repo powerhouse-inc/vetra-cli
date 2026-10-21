@@ -5,13 +5,18 @@ import { createReducer, isDocumentAction } from "document-model";
 import type { StudioProductPHState } from "document-models/studio-product/v1";
 
 import { studioProductChangeOperations } from "../src/reducers/change.js";
+import { studioProductIterateOperations } from "../src/reducers/iterate.js";
 import { studioProductLaunchOperations } from "../src/reducers/launch.js";
 import { studioProductProductOperations } from "../src/reducers/product.js";
 import { studioProductSuggestionsOperations } from "../src/reducers/suggestions.js";
+import { studioProductWorkshopOperations } from "../src/reducers/workshop.js";
 
 import {
+  AcceptSourceNoticeInputSchema,
   AddMilestoneInputSchema,
   AdoptExistingInputSchema,
+  AnswerQuestionInputSchema,
+  AskQuestionInputSchema,
   ClearRequestInputSchema,
   ClearStuckInputSchema,
   CompleteLaunchInputSchema,
@@ -21,7 +26,10 @@ import {
   DismissSuggestionInputSchema,
   FailLaunchInputSchema,
   FailRequestInputSchema,
+  FinishRowImportInputSchema,
   InitProductInputSchema,
+  KeepVariantInputSchema,
+  MarkExplainersSeenInputSchema,
   MarkStuckInputSchema,
   PauseChangeInputSchema,
   PlanStepsInputSchema,
@@ -36,20 +44,31 @@ import {
   RequestRollbackInputSchema,
   ResumeChangeInputSchema,
   SetAccessInputSchema,
+  SetChangeCostInputSchema,
   SetChangeTitleInputSchema,
+  SetGuidedLoopInputSchema,
   SetHealthInputSchema,
   SetLaunchLineInputSchema,
   SetLaunchPermissionInputSchema,
   SetLiveBeforeVersionsInputSchema,
   SetLiveTargetInputSchema,
   SetLiveVersionInputSchema,
+  SetNotesEnabledInputSchema,
+  SetOriginInputSchema,
   SetProductDriveInputSchema,
+  SetPublicSourceInputSchema,
+  SetReviewSuggestionsInputSchema,
   SetRollbackBlockInputSchema,
   SetStepAttentionInputSchema,
   SetSuggestionsInputSchema,
+  SetUnderstoodInputSchema,
+  SetUpstreamVersionInputSchema,
+  SetVariantStatusInputSchema,
   StartChangeInputSchema,
   StartLaunchInputSchema,
+  StartRowImportInputSchema,
   StartStepInputSchema,
+  StartVariantsInputSchema,
   UseSuggestionInputSchema,
   WaiveLintInputSchema,
 } from "./schema/zod.js";
@@ -570,6 +589,210 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       memoizedSchema(DismissSuggestionInputSchema).parse(action.input);
 
       studioProductSuggestionsOperations.dismissSuggestionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_REVIEW_SUGGESTIONS": {
+      memoizedSchema(SetReviewSuggestionsInputSchema).parse(action.input);
+
+      studioProductIterateOperations.setReviewSuggestionsOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "START_VARIANTS": {
+      memoizedSchema(StartVariantsInputSchema).parse(action.input);
+
+      studioProductIterateOperations.startVariantsOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_VARIANT_STATUS": {
+      memoizedSchema(SetVariantStatusInputSchema).parse(action.input);
+
+      studioProductIterateOperations.setVariantStatusOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "KEEP_VARIANT": {
+      memoizedSchema(KeepVariantInputSchema).parse(action.input);
+
+      studioProductIterateOperations.keepVariantOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_ORIGIN": {
+      memoizedSchema(SetOriginInputSchema).parse(action.input);
+
+      studioProductIterateOperations.setOriginOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_UPSTREAM_VERSION": {
+      memoizedSchema(SetUpstreamVersionInputSchema).parse(action.input);
+
+      studioProductIterateOperations.setUpstreamVersionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_NOTES_ENABLED": {
+      memoizedSchema(SetNotesEnabledInputSchema).parse(action.input);
+
+      studioProductIterateOperations.setNotesEnabledOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "ACCEPT_SOURCE_NOTICE": {
+      memoizedSchema(AcceptSourceNoticeInputSchema).parse(action.input);
+
+      studioProductIterateOperations.acceptSourceNoticeOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_PUBLIC_SOURCE": {
+      memoizedSchema(SetPublicSourceInputSchema).parse(action.input);
+
+      studioProductIterateOperations.setPublicSourceOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_UNDERSTOOD": {
+      memoizedSchema(SetUnderstoodInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.setUnderstoodOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "MARK_EXPLAINERS_SEEN": {
+      memoizedSchema(MarkExplainersSeenInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.markExplainersSeenOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_GUIDED_LOOP": {
+      memoizedSchema(SetGuidedLoopInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.setGuidedLoopOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "ASK_QUESTION": {
+      memoizedSchema(AskQuestionInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.askQuestionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "ANSWER_QUESTION": {
+      memoizedSchema(AnswerQuestionInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.answerQuestionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_CHANGE_COST": {
+      memoizedSchema(SetChangeCostInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.setChangeCostOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "START_ROW_IMPORT": {
+      memoizedSchema(StartRowImportInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.startRowImportOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "FINISH_ROW_IMPORT": {
+      memoizedSchema(FinishRowImportInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.finishRowImportOperation(
         (state as any)[action.scope],
         action as any,
         dispatch,

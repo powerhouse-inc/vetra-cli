@@ -42,6 +42,20 @@ export function defaultGlobalState(): StudioProductGlobalState {
       externalChangesSha: null,
     },
     liveBeforeVersions: null,
+    origins: [],
+    notes: {
+      enabled: false,
+      since: null,
+    },
+    publicSource: null,
+    sourceNoticeAcceptedAt: null,
+    understood: null,
+    explainersSeen: [],
+    guidedLoop: {
+      status: "NOT_STARTED",
+      at: null,
+    },
+    rowImports: [],
   };
 }
 

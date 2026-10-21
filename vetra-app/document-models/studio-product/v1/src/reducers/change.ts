@@ -15,6 +15,7 @@ import {
   InvalidCountError,
   LiveBeforeVersionsNotAllowedError,
   NothingToWaiveError,
+  OutcomeTooLongError,
   StepNotDoneError,
   StepNotPlannedError,
 } from "../../gen/change/error.js";
@@ -45,6 +46,9 @@ const STEP_LABELS: Record<StepKind, string> = {
   TESTS: "Tests",
   LIVE: "Live",
 };
+
+/** An Outcome line is one customer-facing sentence. */
+const OUTCOME_MAX = 120;
 
 /** Statuses that count as "in progress" (D13); CLOSED never does. */
 const IN_PROGRESS: ChangeStatus[] = [
@@ -249,6 +253,9 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
       stuck: null,
       metrics: { steps: 0, firstPreviewAt: null, readyAt: null, liveAt: null },
       lintWaivedAt: null,
+      variants: [],
+      questions: [],
+      cost: null,
     });
     state.activeChangeId = id;
   },
@@ -281,6 +288,9 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
       stuck: null,
       metrics: { steps: 0, firstPreviewAt: null, readyAt: null, liveAt: null },
       lintWaivedAt: null,
+      variants: [],
+      questions: [],
+      cost: null,
     });
   },
 
@@ -365,11 +375,18 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
         `A milestone "${id}" already exists.`,
       );
     }
+    const outcome = action.input.outcome?.trim() || null;
+    if (outcome && outcome.length > OUTCOME_MAX) {
+      throw new OutcomeTooLongError(
+        `An outcome is at most ${OUTCOME_MAX} characters, not ${outcome.length}.`,
+      );
+    }
     change.milestones.push({
       id,
       text: action.input.text,
       at: action.input.at,
       recovered: action.input.recovered ?? false,
+      outcome,
     });
     change.stuck = null;
   },

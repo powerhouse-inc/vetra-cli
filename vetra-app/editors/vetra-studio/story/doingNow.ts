@@ -11,21 +11,21 @@ export type ToolCallView = {
   args: unknown;
 };
 
-const WRITE_TOOLS = new Set([
+export const WRITE_TOOLS = new Set([
   "Write",
   "Edit",
   "NotebookEdit",
   "mastra_workspace_write_file",
   "mastra_workspace_edit_file",
 ]);
-const READ_TOOLS = new Set(["Read", "mastra_workspace_read_file"]);
-const SEARCH_TOOLS = new Set([
+export const READ_TOOLS = new Set(["Read", "mastra_workspace_read_file"]);
+export const SEARCH_TOOLS = new Set([
   "Grep",
   "Glob",
   "mastra_workspace_grep",
   "mastra_workspace_list_files",
 ]);
-const SHELL_TOOLS = new Set([
+export const SHELL_TOOLS = new Set([
   "Bash",
   "bash",
   "shell",
@@ -34,7 +34,7 @@ const SHELL_TOOLS = new Set([
 ]);
 
 /** Shell commands that run the project's checks. */
-const CHECK_COMMAND = /\b(tsc|lint|vitest|test|check)\b/;
+export const CHECK_COMMAND = /\b(tsc|lint|vitest|test|check)\b/;
 
 function record(args: unknown): Record<string, unknown> {
   return args && typeof args === "object"

@@ -122,6 +122,61 @@ enum SuggestionStatus {
   DISMISSED
 }
 
+enum SuggestionKind {
+  IDEA
+  REVIEW
+}
+
+enum VariantLabel {
+  A
+  B
+}
+
+enum VariantStatus {
+  BUILDING
+  READY
+  FAILED
+  KEPT
+  DISCARDED
+}
+
+enum OriginMode {
+  REMIX
+  COMPOSE
+}
+
+enum PublicSourceKind {
+  GITHUB
+  PACKAGE
+}
+
+enum MaterialKind {
+  PICTURE
+  PDF
+  SHEET
+  TEXT
+}
+
+enum GuidedLoopStatus {
+  NOT_STARTED
+  POINTED
+  CHANGED
+  WENT_BACK
+  DONE
+  DISMISSED
+}
+
+enum RowImportStatus {
+  CONFIRMED
+  DONE
+  FAILED
+}
+
+enum QuestionAnswerBy {
+  ROOM
+  DEFAULT
+}
+
 enum GithubStatus {
   NOT_CONNECTED
   CONNECTED
@@ -144,6 +199,8 @@ type Milestone {
   text: String!
   at: DateTime!
   recovered: Boolean!
+  # One customer-facing sentence (<= 120 chars) for the Outcome layer.
+  outcome: String
 }
 
 type CheckResult {
@@ -186,6 +243,18 @@ type Change {
   stuck: Stuck
   metrics: ChangeMetrics!
   lintWaivedAt: DateTime
+  variants: [Variant!]!
+  questions: [RoomQuestion!]!
+  cost: ChangeCost
+}
+
+# One of two ways to build a change ("Show me two ways"), on its own branch.
+type Variant {
+  label: VariantLabel!
+  branch: String!
+  status: VariantStatus!
+  chatSessionId: PHID
+  summary: String
 }
 
 type PackageVersion {
@@ -237,6 +306,9 @@ type Suggestion {
   text: String!
   afterVersion: Int!
   status: SuggestionStatus!
+  kind: SuggestionKind!
+  # Attachment ref or URL of the screen a review finding is about.
+  screenshot: String
 }
 
 type GithubLink {
@@ -252,6 +324,89 @@ type LiveBeforeVersions {
   environmentId: String!
   url: URL!
   at: DateTime!
+}
+
+# A published package this product was remixed from or composes (keyed by
+# packageName).
+type ProductOrigin {
+  packageName: String!
+  version: String!
+  mode: OriginMode!
+  license: String!
+  sourceUrl: URL
+  sourceRef: String
+  at: DateTime!
+  missing: [String!]!
+  latestVersion: String
+  checkedAt: DateTime
+}
+
+# Notes from people using the live product (opt-in).
+type NotesSettings {
+  enabled: Boolean!
+  since: DateTime
+}
+
+type PublicSource {
+  kind: PublicSourceKind!
+  url: URL!
+  version: Int!
+}
+
+# A question the agent asks the room while building a change; answered by
+# the room or, after a while, by its default.
+type RoomQuestion {
+  id: OID!
+  text: String!
+  options: [String!]!
+  defaultAnswer: String!
+  language: String!
+  askedAt: DateTime!
+  answer: String
+  answeredAt: DateTime
+  answeredBy: QuestionAnswerBy
+}
+
+# What a change cost in model usage, in US dollars: the meter at its start
+# and at its end.
+type ChangeCost {
+  startUsd: Float
+  endUsd: Float
+}
+
+# A material (picture, PDF, sheet, text) the understanding was built from.
+type MaterialRef {
+  id: OID!
+  name: String!
+  kind: MaterialKind!
+}
+
+# What the agent understood from the idea and the materials, confirmed with
+# "Build this".
+type Understood {
+  json: String!
+  language: String!
+  at: DateTime!
+  materials: [MaterialRef!]!
+}
+
+# Progress through the guided first loop (point, change, go back, done).
+type GuidedLoop {
+  status: GuidedLoopStatus!
+  at: DateTime
+}
+
+# Rows of a sheet imported as documents.
+type RowImport {
+  id: OID!
+  materialId: OID!
+  sheet: String!
+  documentType: String!
+  rows: Int!
+  imported: Int!
+  status: RowImportStatus!
+  at: DateTime!
+  failure: String
 }
 
 type StudioProductState {
@@ -277,6 +432,14 @@ type StudioProductState {
   suggestions: [Suggestion!]!
   github: GithubLink!
   liveBeforeVersions: LiveBeforeVersions
+  origins: [ProductOrigin!]!
+  notes: NotesSettings!
+  publicSource: PublicSource
+  sourceNoticeAcceptedAt: DateTime
+  understood: Understood
+  explainersSeen: [String!]!
+  guidedLoop: GuidedLoop!
+  rowImports: [RowImport!]!
 }
 
 
@@ -362,6 +525,7 @@ input AddMilestoneInput {
   id: OID!
   text: String!
   recovered: Boolean
+  outcome: String
   at: DateTime!
 }
 
@@ -557,4 +721,133 @@ input UseSuggestionInput {
 
 input DismissSuggestionInput {
   id: OID!
+}
+
+# iterate
+
+input SetReviewSuggestionsItemInput {
+  id: OID!
+  text: String!
+  screenshot: String
+}
+
+input SetReviewSuggestionsInput {
+  afterVersion: Int!
+  items: [SetReviewSuggestionsItemInput!]!
+}
+
+input StartVariantsInput {
+  changeId: OID!
+  branchA: String!
+  branchB: String!
+}
+
+input SetVariantStatusInput {
+  changeId: OID!
+  label: VariantLabel!
+  status: VariantStatus!
+  chatSessionId: PHID
+  summary: String
+}
+
+input KeepVariantInput {
+  changeId: OID!
+  label: VariantLabel!
+}
+
+input SetOriginInput {
+  packageName: String!
+  version: String!
+  mode: OriginMode!
+  license: String!
+  sourceUrl: URL
+  sourceRef: String
+  missing: [String!]!
+  at: DateTime!
+}
+
+input SetUpstreamVersionInput {
+  packageName: String!
+  latestVersion: String!
+  checkedAt: DateTime!
+}
+
+input SetNotesEnabledInput {
+  enabled: Boolean!
+  at: DateTime!
+}
+
+input AcceptSourceNoticeInput {
+  at: DateTime!
+}
+
+input SetPublicSourceInput {
+  kind: PublicSourceKind!
+  url: URL!
+  version: Int!
+}
+
+# workshop
+
+input SetUnderstoodMaterialInput {
+  id: OID!
+  name: String!
+  kind: MaterialKind!
+}
+
+input SetUnderstoodInput {
+  json: String!
+  language: String!
+  at: DateTime!
+  materials: [SetUnderstoodMaterialInput!]!
+}
+
+input MarkExplainersSeenInput {
+  ids: [String!]!
+}
+
+input SetGuidedLoopInput {
+  status: GuidedLoopStatus!
+  at: DateTime!
+}
+
+input AskQuestionInput {
+  changeId: OID!
+  id: OID!
+  text: String!
+  options: [String!]!
+  defaultAnswer: String!
+  language: String!
+  askedAt: DateTime!
+}
+
+input AnswerQuestionInput {
+  changeId: OID!
+  id: OID!
+  answer: String!
+  answeredBy: QuestionAnswerBy!
+  answeredAt: DateTime!
+}
+
+input SetChangeCostInput {
+  changeId: OID!
+  startUsd: Float
+  endUsd: Float
+}
+
+input StartRowImportInput {
+  id: OID!
+  materialId: OID!
+  sheet: String!
+  documentType: String!
+  rows: Int!
+  at: DateTime!
+}
+
+input FinishRowImportInput {
+  id: OID!
+  imported: Int!
+  status: RowImportStatus!
+  failure: String
+  at: DateTime!
 }

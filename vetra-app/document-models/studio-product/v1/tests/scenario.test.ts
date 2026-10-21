@@ -1,19 +1,39 @@
 import {
   addMilestone,
+  answerQuestion,
+  askQuestion,
   completeStep,
   countStep,
+  finishRowImport,
   initProduct,
+  keepVariant,
   markStuck,
   planSteps,
   recordChangeMetrics,
   reopenStep,
+  setChangeCost,
   setChangeTitle,
+  setGuidedLoop,
+  setOrigin,
+  setUnderstood,
+  setUpstreamVersion,
+  setVariantStatus,
   startChange,
+  startRowImport,
   startStep,
+  startVariants,
   utils,
 } from "document-models/studio-product/v1";
 import { describe, expect, it } from "vitest";
-import { apply, at, change, lastError, run, step } from "./helpers.js";
+import {
+  apply,
+  at,
+  building,
+  change,
+  lastError,
+  run,
+  step,
+} from "./helpers.js";
 
 describe("first build scenario", () => {
   it("INIT → START_CHANGE → PLAN_STEPS → steps, counts, milestones, check runs → READY", () => {
@@ -146,5 +166,193 @@ describe("first build scenario", () => {
       }),
     );
     expect(lastError(doc)).toMatch(/still in progress/);
+  });
+});
+
+describe("iterate scenarios", () => {
+  it("variants: start → A ready → B ready → keep B", () => {
+    let doc = apply(
+      building("CHANGE"),
+      startVariants({
+        changeId: "c1",
+        branchA: "vetra/variants/c1-a",
+        branchB: "vetra/variants/c1-b",
+      }),
+      setVariantStatus({
+        changeId: "c1",
+        label: "A",
+        status: "READY",
+        chatSessionId: "phd:session-a",
+        summary: "Tags as chips under the title",
+      }),
+    );
+    expect(change(doc).variants.map((v) => v.status)).toEqual([
+      "READY",
+      "BUILDING",
+    ]);
+    doc = apply(
+      doc,
+      setVariantStatus({
+        changeId: "c1",
+        label: "B",
+        status: "READY",
+        chatSessionId: "phd:session-b",
+        summary: "Tags in a side panel",
+      }),
+      keepVariant({ changeId: "c1", label: "B" }),
+    );
+    expect(doc.operations.global.every((o) => !o.error)).toBe(true);
+    expect(change(doc).variants).toEqual([
+      {
+        label: "A",
+        branch: "vetra/variants/c1-a",
+        status: "DISCARDED",
+        chatSessionId: "phd:session-a",
+        summary: "Tags as chips under the title",
+      },
+      {
+        label: "B",
+        branch: "vetra/variants/c1-b",
+        status: "KEPT",
+        chatSessionId: "phd:session-b",
+        summary: "Tags in a side panel",
+      },
+    ]);
+    // Once one is kept, a new pair can't start until both are discarded.
+    doc = apply(
+      doc,
+      startVariants({ changeId: "c1", branchA: "x", branchB: "y" }),
+    );
+    expect(lastError(doc)).toBe('Change "c1" already has variants.');
+  });
+
+  it("remix origin then upstream version", () => {
+    const doc = apply(
+      utils.createDocument(),
+      initProduct({
+        name: "Notes",
+        idea: "start from knowledge-note",
+        createdAt: at(0),
+      }),
+      setOrigin({
+        packageName: "@powerhousedao/knowledge-note",
+        version: "1.0.0",
+        mode: "REMIX",
+        license: "AGPL-3.0",
+        sourceUrl: "https://github.com/apeiron-M/bai-knowledge-note",
+        missing: [],
+        at: at(1),
+      }),
+      setUpstreamVersion({
+        packageName: "@powerhousedao/knowledge-note",
+        latestVersion: "1.1.0",
+        checkedAt: at(2),
+      }),
+    );
+    expect(doc.operations.global.every((o) => !o.error)).toBe(true);
+    expect(doc.state.global.origins).toEqual([
+      {
+        packageName: "@powerhousedao/knowledge-note",
+        version: "1.0.0",
+        mode: "REMIX",
+        license: "AGPL-3.0",
+        sourceUrl: "https://github.com/apeiron-M/bai-knowledge-note",
+        sourceRef: null,
+        at: at(1),
+        missing: [],
+        latestVersion: "1.1.0",
+        checkedAt: at(2),
+      },
+    ]);
+  });
+});
+
+describe("workshop scenarios", () => {
+  it("workshop: understood → build → question answered by default → cost recorded → rows imported", () => {
+    const understood = JSON.stringify({ title: "Dog walks", things: ["Dog"] });
+    let doc = apply(
+      utils.createDocument(),
+      initProduct({
+        name: "Dog walks",
+        idea: "plan dog walks with friends",
+        createdAt: at(0),
+      }),
+      setUnderstood({
+        json: understood,
+        language: "de",
+        at: at(1),
+        materials: [{ id: "mat-1", name: "dogs.xlsx", kind: "SHEET" }],
+      }),
+      // "Build this"
+      startChange({
+        id: "c1",
+        kind: "FIRST_BUILD",
+        request: "plan dog walks with friends",
+        startedAt: at(2),
+      }),
+      setChangeCost({ changeId: "c1", startUsd: 0.5 }),
+      askQuestion({
+        changeId: "c1",
+        id: "q1",
+        text: "Soll ein Spaziergang eine feste Dauer haben?",
+        options: ["Ja", "Nein"],
+        defaultAnswer: "Nein",
+        language: "de",
+        askedAt: at(3),
+      }),
+      // Nobody answered in time: the default stands.
+      answerQuestion({
+        changeId: "c1",
+        id: "q1",
+        answer: "Nein",
+        answeredBy: "DEFAULT",
+        answeredAt: at(4),
+      }),
+      setChangeCost({ changeId: "c1", endUsd: 1.75 }),
+      startRowImport({
+        id: "ri1",
+        materialId: "mat-1",
+        sheet: "Hunde",
+        documentType: "acme/dog",
+        rows: 8,
+        at: at(5),
+      }),
+      finishRowImport({ id: "ri1", imported: 8, status: "DONE", at: at(6) }),
+      setGuidedLoop({ status: "POINTED", at: at(7) }),
+    );
+    expect(doc.operations.global.every((o) => !o.error)).toBe(true);
+    const state = doc.state.global;
+    expect(state.understood).toEqual({
+      json: understood,
+      language: "de",
+      at: at(1),
+      materials: [{ id: "mat-1", name: "dogs.xlsx", kind: "SHEET" }],
+    });
+    expect(change(doc).questions[0]).toMatchObject({
+      answer: "Nein",
+      answeredBy: "DEFAULT",
+      answeredAt: at(4),
+    });
+    expect(change(doc).cost).toEqual({ startUsd: 0.5, endUsd: 1.75 });
+    expect(state.rowImports[0]).toMatchObject({
+      id: "ri1",
+      rows: 8,
+      imported: 8,
+      status: "DONE",
+    });
+    expect(state.guidedLoop).toEqual({ status: "POINTED", at: at(7) });
+
+    // The room can't answer again after the default was taken.
+    doc = apply(
+      doc,
+      answerQuestion({
+        changeId: "c1",
+        id: "q1",
+        answer: "Ja",
+        answeredBy: "ROOM",
+        answeredAt: at(8),
+      }),
+    );
+    expect(lastError(doc)).toBe('Question "q1" was already answered.');
   });
 });

@@ -13,8 +13,13 @@
 import { usePHToast } from "@powerhousedao/reactor-browser";
 import { useEffect, useRef, useState } from "react";
 import { useStudioBudget } from "../budget/useStudioBudget.js";
+import { translate } from "../i18n/language.js";
+import type { MessageKey } from "../i18n/messages.en.js";
+import { useT } from "../i18n/useT.js";
 import { AccountMenu } from "../shell/AccountMenu.js";
+import type { MaterialCard } from "../hooks/workshop-client.js";
 import VetraMitosis from "../VetraMitosis.js";
+import { MaterialDrop } from "./MaterialDrop.js";
 import {
   clearPendingIdea,
   peekPendingIdea,
@@ -22,26 +27,27 @@ import {
 } from "./pendingIdea.js";
 import { useStudioSignIn } from "./useStudioSignIn.js";
 
-export const IDEA_HEADING = "What do you want to build?";
-export const IDEA_PLACEHOLDER =
-  "Describe your product in a sentence or two — who it's for and what they do with it.";
 /** How long Build it waits for an unsettled sign-in state. */
 export const SIGN_IN_CHECK_TIMEOUT_MS = 15_000;
 
-export const IDEA_EXAMPLES: readonly string[] = [
-  "Hotel breakfast orders",
-  "Maintenance requests",
-  "Invoice approvals",
-];
+const IDEA_EXAMPLE_KEYS = [
+  "idea.example.breakfast",
+  "idea.example.maintenance",
+  "idea.example.invoices",
+] as const satisfies readonly MessageKey[];
 
 /** `$10 to spend`: what is left of the Studio's limit; "" when unknown. */
 export function spendText(
   usage: { usageUsd: number; limitUsd: number | null } | null | undefined,
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string = (
+    key,
+    vars,
+  ) => translate("en", key, vars),
 ): string {
   if (!usage || usage.limitUsd === null) return "";
   const left = Math.max(0, usage.limitUsd - usage.usageUsd);
   const amount = Number.isInteger(left) ? `$${left}` : `$${left.toFixed(2)}`;
-  return `${amount} to spend`;
+  return t("idea.spend", { amount });
 }
 
 export type IdeaScreenProps = {
@@ -49,17 +55,23 @@ export type IdeaScreenProps = {
   onStart: (idea: string) => Promise<string | undefined>;
   onStarted: (sessionId: string) => void;
   onOpenSettings: () => void;
+  /** Files are attached: read them with the text (the picture of what was
+   *  understood). Without it, the idea starts as text alone. */
+  onUnderstand?: (input: { cards: MaterialCard[]; text: string }) => void;
 };
 
 export function IdeaScreen({
   onStart,
   onStarted,
   onOpenSettings,
+  onUnderstand,
 }: IdeaScreenProps) {
+  const { t } = useT();
   const auth = useStudioSignIn();
   const budget = useStudioBudget();
   const toast = usePHToast();
   const [idea, setIdea] = useState("");
+  const [cards, setCards] = useState<MaterialCard[]>([]);
   const [starting, setStarting] = useState(false);
   /** Build it was pressed while the sign-in state was still unknown. */
   const [awaitingSignIn, setAwaitingSignIn] = useState(false);
@@ -120,13 +132,13 @@ export function IdeaScreen({
       // A retry resumes where the start stopped (startProduct is resumable).
       toast?.(
         <span className="flex items-center gap-2">
-          <span>Your build couldn&apos;t start.</span>
+          <span>{t("idea.startFailed")}</span>
           <button
             type="button"
             onClick={() => void start(text)}
             className="rounded px-1.5 py-0.5 font-medium underline"
           >
-            Try again
+            {t("idea.tryAgain")}
           </button>
         </span>,
         { type: "error" },
@@ -136,7 +148,13 @@ export function IdeaScreen({
 
   function submit() {
     const text = idea.trim();
-    if (!text || starting || awaitingSignIn) return;
+    const withFiles = cards.length > 0 && onUnderstand !== undefined;
+    if ((!text && !withFiles) || starting || awaitingSignIn) return;
+    if (withFiles && auth.status === "signed-in") {
+      onUnderstand({ cards, text });
+      return;
+    }
+    if (!text) return;
     if (auth.status === "signed-in") {
       sentRef.current = true;
       void start(text);
@@ -153,7 +171,7 @@ export function IdeaScreen({
   }
 
   const busy = starting || awaitingSignIn;
-  const spend = spendText(budget.snapshot.usage);
+  const spend = spendText(budget.snapshot.usage, t);
 
   return (
     <>
@@ -181,43 +199,63 @@ export function IdeaScreen({
         >
           <VetraMitosis size={48} active={busy} />
           <h1 className="text-2xl font-semibold text-foreground">
-            {IDEA_HEADING}
+            {t("idea.heading")}
           </h1>
-          <textarea
-            ref={inputRef}
-            value={idea}
-            onChange={(e) => setIdea(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            rows={4}
+          <MaterialDrop
             disabled={busy}
-            placeholder={IDEA_PLACEHOLDER}
-            aria-label="Your idea"
-            className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-base text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-vetra-primary"
-          />
+            signedIn={auth.status === "signed-in"}
+            onSignInNeeded={() => {
+              const text = idea.trim();
+              if (text) savePendingIdea(text);
+              if (auth.status === "signed-out") auth.signIn();
+            }}
+            onCards={setCards}
+          >
+            <textarea
+              ref={inputRef}
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              rows={4}
+              disabled={busy}
+              placeholder={t("idea.placeholder")}
+              aria-label={t("idea.inputLabel")}
+              className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-base text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-vetra-primary"
+            />
+          </MaterialDrop>
           <button
             type="submit"
-            disabled={busy || !idea.trim()}
+            disabled={
+              busy || (!idea.trim() && !(cards.length > 0 && onUnderstand))
+            }
             className="inline-flex items-center gap-1.5 rounded-lg bg-vetra-primary px-5 py-2 text-sm font-medium text-vetra-primary-fg shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Starting…" : "Build it"}
+            {busy
+              ? t("idea.starting")
+              : cards.length > 0
+                ? t("idea.understand")
+                : t("idea.build")}
           </button>
           <div className="flex flex-wrap justify-center gap-2">
-            {IDEA_EXAMPLES.map((example) => (
-              <button
-                key={example}
-                type="button"
-                disabled={busy}
-                onClick={() => fill(example)}
-                className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-              >
-                {example}
-              </button>
-            ))}
+            {IDEA_EXAMPLE_KEYS.map((key) => {
+              const example = t(key);
+              return (
+                <button
+                  key={example}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => fill(example)}
+                  className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                >
+                  {example}
+                </button>
+              );
+            })}
           </div>
         </form>
       </div>

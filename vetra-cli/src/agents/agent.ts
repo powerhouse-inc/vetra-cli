@@ -46,7 +46,14 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     return createReplayAgent(replayFixture, ctx);
   }
 
-  const settings = resolveLlmSettings(ctx.config);
+  let settings;
+  try {
+    settings = resolveLlmSettings(ctx.config);
+  } catch (err) {
+    // A misconfigured provider must be visible in the logs, not a silent startup crash.
+    ctx.context.log?.error(`[agent] ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  }
   if (!settings) {
     ctx.context.log?.info('[agent] No OpenRouter key (OPENROUTER_API_KEY) — serving in connect-a-model mode.');
     return createNoModelAgent();

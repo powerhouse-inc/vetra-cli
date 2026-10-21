@@ -251,6 +251,152 @@ describe("normalizeProduct", () => {
     });
   });
 
+  it("legacy document gains origins, notes, variants and suggestion kind defaults", () => {
+    const legacy = legacyState(true);
+    // A suggestion written before suggestions had a kind or a screenshot.
+    legacy.suggestions = JSON.parse(
+      JSON.stringify([
+        { id: "s1", text: "Add tags", afterVersion: 1, status: "OPEN" },
+      ]),
+    ) as StudioProductState["suggestions"];
+    const doc = utils.createDocument();
+    doc.state.global = legacy;
+    const out = apply(doc, renameProduct({ name: "Walks" })).state.global;
+    expect(out).toMatchObject({
+      origins: [],
+      notes: { enabled: false, since: null },
+      publicSource: null,
+      sourceNoticeAcceptedAt: null,
+    });
+    expect(out.suggestions).toEqual([
+      {
+        id: "s1",
+        text: "Add tags",
+        afterVersion: 1,
+        status: "OPEN",
+        kind: "IDEA",
+        screenshot: null,
+      },
+    ]);
+    expect(out.changes[0].variants).toEqual([]);
+    expect(out.changes[0].milestones[0].outcome).toBeNull();
+
+    // Partial nested records get their nullable fields.
+    const partial = JSON.parse(
+      JSON.stringify({
+        notes: { enabled: true },
+        origins: [
+          {
+            packageName: "@acme/x",
+            version: "1.0.0",
+            mode: "REMIX",
+            license: "MIT",
+            at: at(0),
+          },
+        ],
+        changes: [
+          {
+            id: "c1",
+            kind: "CHANGE",
+            request: "r",
+            status: "BUILDING",
+            startedAt: at(0),
+            variants: [{ label: "A", branch: "a", status: "BUILDING" }],
+          },
+        ],
+      }),
+    ) as StudioProductState;
+    const filled = normalizeProduct(partial);
+    expect(filled.notes).toEqual({ enabled: true, since: null });
+    expect(filled.origins[0]).toMatchObject({
+      sourceUrl: null,
+      sourceRef: null,
+      missing: [],
+      latestVersion: null,
+      checkedAt: null,
+    });
+    expect(filled.changes[0].variants[0]).toEqual({
+      label: "A",
+      branch: "a",
+      status: "BUILDING",
+      chatSessionId: null,
+      summary: null,
+    });
+  });
+
+  it("legacy document gains understood, explainers, guided loop, row imports, questions and cost defaults", () => {
+    const doc = utils.createDocument();
+    doc.state.global = legacyState(true);
+    const out = apply(doc, renameProduct({ name: "Walks" })).state.global;
+    expect(out).toMatchObject({
+      understood: null,
+      explainersSeen: [],
+      guidedLoop: { status: "NOT_STARTED", at: null },
+      rowImports: [],
+    });
+    expect(out.changes[0].questions).toEqual([]);
+    expect(out.changes[0].cost).toBeNull();
+
+    // Partial nested records get their nullable fields.
+    const partial = JSON.parse(
+      JSON.stringify({
+        understood: { json: "{}", language: "en", at: at(0) },
+        guidedLoop: { status: "POINTED" },
+        rowImports: [
+          {
+            id: "ri1",
+            materialId: "m1",
+            sheet: "S",
+            documentType: "acme/x",
+            rows: 2,
+            status: "CONFIRMED",
+            at: at(0),
+          },
+        ],
+        changes: [
+          {
+            id: "c1",
+            kind: "CHANGE",
+            request: "r",
+            status: "BUILDING",
+            startedAt: at(0),
+            cost: { startUsd: 1 },
+            questions: [
+              {
+                id: "q1",
+                text: "t",
+                options: [],
+                defaultAnswer: "d",
+                language: "en",
+                askedAt: at(0),
+              },
+            ],
+          },
+        ],
+      }),
+    ) as StudioProductState;
+    const filled = normalizeProduct(partial);
+    expect(filled.understood).toEqual({
+      json: "{}",
+      language: "en",
+      at: at(0),
+      materials: [],
+    });
+    expect(filled.guidedLoop).toEqual({ status: "POINTED", at: null });
+    expect(filled.rowImports[0]).toMatchObject({ imported: 0, failure: null });
+    expect(filled.changes[0].cost).toEqual({ startUsd: 1, endUsd: null });
+    expect(filled.changes[0].questions[0]).toMatchObject({
+      answer: null,
+      answeredAt: null,
+      answeredBy: null,
+    });
+    // A bare guided loop object gets its initial status.
+    const bare = normalizeProduct(
+      JSON.parse(JSON.stringify({ guidedLoop: {} })) as StudioProductState,
+    );
+    expect(bare.guidedLoop).toEqual({ status: "NOT_STARTED", at: null });
+  });
+
   it("leaves a complete state unchanged", () => {
     const fresh = utils.createDocument().state.global;
     const copy = JSON.parse(JSON.stringify(fresh)) as StudioProductState;

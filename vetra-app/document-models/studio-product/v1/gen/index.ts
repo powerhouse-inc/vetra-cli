@@ -9,6 +9,7 @@ export * from "./creators.js";
 export * from "./document-model.js";
 export * from "./document-schema.js";
 export * from "./document-type.js";
+export * from "./iterate/operations.js";
 export * from "./launch/operations.js";
 export {
   createState,
@@ -23,3 +24,4 @@ export * from "./schema/index.js";
 export * from "./suggestions/operations.js";
 export * from "./types.js";
 export * from "./utils.js";
+export * from "./workshop/operations.js";

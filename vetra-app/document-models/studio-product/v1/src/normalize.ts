@@ -1,12 +1,22 @@
 import type {
   Change,
+  ChangeCost,
   ChangeMetrics,
   CheckResult,
   CheckRun,
   GithubLink,
+  GuidedLoop,
   LaunchLine,
+  Milestone,
+  NotesSettings,
+  ProductOrigin,
   ProductStep,
+  RoomQuestion,
+  RowImport,
   StudioProductState,
+  Suggestion,
+  Understood,
+  Variant,
   Version,
 } from "../gen/schema/types.js";
 
@@ -38,13 +48,83 @@ export function normalizeProduct(
   s.lastRequestFailure ??= null;
   s.launchPermission ??= "UNKNOWN";
   s.suggestions ??= [];
+  s.suggestions.forEach(normalizeSuggestion);
   s.github = normalizeGithub(s.github);
   s.liveBeforeVersions ??= null;
   s.changes ??= [];
   s.changes.forEach(normalizeChange);
   s.versions ??= [];
   s.versions.forEach(normalizeVersion);
+  s.origins ??= [];
+  s.origins.forEach(normalizeOrigin);
+  s.notes = normalizeNotes(s.notes);
+  s.publicSource ??= null;
+  s.sourceNoticeAcceptedAt ??= null;
+  s.understood = normalizeUnderstood(s.understood);
+  s.explainersSeen ??= [];
+  s.guidedLoop = normalizeGuidedLoop(s.guidedLoop);
+  s.rowImports ??= [];
+  s.rowImports.forEach((rowImport: RowImport) => {
+    const r: Partial<RowImport> = rowImport;
+    r.imported ??= 0;
+    r.failure ??= null;
+  });
   return state;
+}
+
+function normalizeUnderstood(
+  understood: Understood | null | undefined,
+): Understood | null {
+  if (!understood) return null;
+  const u: Partial<Understood> = understood;
+  u.materials ??= [];
+  return understood;
+}
+
+function normalizeGuidedLoop(loop: GuidedLoop | undefined): GuidedLoop {
+  if (!loop) return { status: "NOT_STARTED", at: null };
+  const l: Partial<GuidedLoop> = loop;
+  l.status ??= "NOT_STARTED";
+  l.at ??= null;
+  return loop;
+}
+
+function normalizeCost(cost: ChangeCost | null | undefined): ChangeCost | null {
+  if (!cost) return null;
+  const c: Partial<ChangeCost> = cost;
+  c.startUsd ??= null;
+  c.endUsd ??= null;
+  return cost;
+}
+
+function normalizeQuestion(question: RoomQuestion): void {
+  const q: Partial<RoomQuestion> = question;
+  q.answer ??= null;
+  q.answeredAt ??= null;
+  q.answeredBy ??= null;
+}
+
+function normalizeSuggestion(suggestion: Suggestion): void {
+  const x: Partial<Suggestion> = suggestion;
+  x.kind ??= "IDEA";
+  x.screenshot ??= null;
+}
+
+function normalizeOrigin(origin: ProductOrigin): void {
+  const o: Partial<ProductOrigin> = origin;
+  o.sourceUrl ??= null;
+  o.sourceRef ??= null;
+  o.missing ??= [];
+  o.latestVersion ??= null;
+  o.checkedAt ??= null;
+}
+
+function normalizeNotes(notes: NotesSettings | undefined): NotesSettings {
+  if (!notes) return { enabled: false, since: null };
+  const n: Partial<NotesSettings> = notes;
+  n.enabled ??= false;
+  n.since ??= null;
+  return notes;
 }
 
 function normalizeGithub(github: GithubLink | undefined): GithubLink {
@@ -84,11 +164,24 @@ function normalizeChange(change: Change): void {
   c.steps ??= [];
   c.steps.forEach(normalizeStep);
   c.milestones ??= [];
+  c.milestones.forEach((milestone: Milestone) => {
+    const m: Partial<Milestone> = milestone;
+    m.outcome ??= null;
+  });
   c.checkRuns ??= [];
   c.checkRuns.forEach(normalizeRun);
   c.stuck ??= null;
   c.lintWaivedAt ??= null;
   c.metrics = normalizeMetrics(c.metrics);
+  c.variants ??= [];
+  c.variants.forEach((variant: Variant) => {
+    const v: Partial<Variant> = variant;
+    v.chatSessionId ??= null;
+    v.summary ??= null;
+  });
+  c.questions ??= [];
+  c.questions.forEach(normalizeQuestion);
+  c.cost = normalizeCost(c.cost);
 }
 
 function normalizeStep(step: ProductStep): void {
