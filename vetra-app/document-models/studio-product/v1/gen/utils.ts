@@ -52,6 +52,13 @@ export const initialGlobalState: StudioProductGlobalState = {
     externalChangesSha: null,
   },
   liveBeforeVersions: null,
+  origins: [],
+  notes: {
+    enabled: false,
+    since: null,
+  },
+  publicSource: null,
+  sourceNoticeAcceptedAt: null,
 };
 export const initialLocalState: StudioProductLocalState = {};
 

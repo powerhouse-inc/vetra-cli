@@ -5,6 +5,7 @@
 import { baseActions } from "document-model";
 import {
   studioProductChangeActions,
+  studioProductIterateActions,
   studioProductLaunchActions,
   studioProductProductActions,
   studioProductSuggestionsActions,
@@ -18,4 +19,5 @@ export const actions = {
   ...studioProductChangeActions,
   ...studioProductLaunchActions,
   ...studioProductSuggestionsActions,
+  ...studioProductIterateActions,
 };

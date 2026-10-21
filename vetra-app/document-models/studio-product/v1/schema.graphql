@@ -122,6 +122,34 @@ enum SuggestionStatus {
   DISMISSED
 }
 
+enum SuggestionKind {
+  IDEA
+  REVIEW
+}
+
+enum VariantLabel {
+  A
+  B
+}
+
+enum VariantStatus {
+  BUILDING
+  READY
+  FAILED
+  KEPT
+  DISCARDED
+}
+
+enum OriginMode {
+  REMIX
+  COMPOSE
+}
+
+enum PublicSourceKind {
+  GITHUB
+  PACKAGE
+}
+
 enum GithubStatus {
   NOT_CONNECTED
   CONNECTED
@@ -144,6 +172,8 @@ type Milestone {
   text: String!
   at: DateTime!
   recovered: Boolean!
+  # One customer-facing sentence (<= 120 chars) for the Outcome layer.
+  outcome: String
 }
 
 type CheckResult {
@@ -186,6 +216,16 @@ type Change {
   stuck: Stuck
   metrics: ChangeMetrics!
   lintWaivedAt: DateTime
+  variants: [Variant!]!
+}
+
+# One of two ways to build a change ("Show me two ways"), on its own branch.
+type Variant {
+  label: VariantLabel!
+  branch: String!
+  status: VariantStatus!
+  chatSessionId: PHID
+  summary: String
 }
 
 type PackageVersion {
@@ -237,6 +277,9 @@ type Suggestion {
   text: String!
   afterVersion: Int!
   status: SuggestionStatus!
+  kind: SuggestionKind!
+  # Attachment ref or URL of the screen a review finding is about.
+  screenshot: String
 }
 
 type GithubLink {
@@ -252,6 +295,33 @@ type LiveBeforeVersions {
   environmentId: String!
   url: URL!
   at: DateTime!
+}
+
+# A published package this product was remixed from or composes (keyed by
+# packageName).
+type ProductOrigin {
+  packageName: String!
+  version: String!
+  mode: OriginMode!
+  license: String!
+  sourceUrl: URL
+  sourceRef: String
+  at: DateTime!
+  missing: [String!]!
+  latestVersion: String
+  checkedAt: DateTime
+}
+
+# Notes from people using the live product (opt-in).
+type NotesSettings {
+  enabled: Boolean!
+  since: DateTime
+}
+
+type PublicSource {
+  kind: PublicSourceKind!
+  url: URL!
+  version: Int!
 }
 
 type StudioProductState {
@@ -277,6 +347,10 @@ type StudioProductState {
   suggestions: [Suggestion!]!
   github: GithubLink!
   liveBeforeVersions: LiveBeforeVersions
+  origins: [ProductOrigin!]!
+  notes: NotesSettings!
+  publicSource: PublicSource
+  sourceNoticeAcceptedAt: DateTime
 }
 
 
@@ -362,6 +436,7 @@ input AddMilestoneInput {
   id: OID!
   text: String!
   recovered: Boolean
+  outcome: String
   at: DateTime!
 }
 
@@ -557,4 +632,68 @@ input UseSuggestionInput {
 
 input DismissSuggestionInput {
   id: OID!
+}
+
+# iterate
+
+input SetReviewSuggestionsItemInput {
+  id: OID!
+  text: String!
+  screenshot: String
+}
+
+input SetReviewSuggestionsInput {
+  afterVersion: Int!
+  items: [SetReviewSuggestionsItemInput!]!
+}
+
+input StartVariantsInput {
+  changeId: OID!
+  branchA: String!
+  branchB: String!
+}
+
+input SetVariantStatusInput {
+  changeId: OID!
+  label: VariantLabel!
+  status: VariantStatus!
+  chatSessionId: PHID
+  summary: String
+}
+
+input KeepVariantInput {
+  changeId: OID!
+  label: VariantLabel!
+}
+
+input SetOriginInput {
+  packageName: String!
+  version: String!
+  mode: OriginMode!
+  license: String!
+  sourceUrl: URL
+  sourceRef: String
+  missing: [String!]!
+  at: DateTime!
+}
+
+input SetUpstreamVersionInput {
+  packageName: String!
+  latestVersion: String!
+  checkedAt: DateTime!
+}
+
+input SetNotesEnabledInput {
+  enabled: Boolean!
+  at: DateTime!
+}
+
+input AcceptSourceNoticeInput {
+  at: DateTime!
+}
+
+input SetPublicSourceInput {
+  kind: PublicSourceKind!
+  url: URL!
+  version: Int!
 }

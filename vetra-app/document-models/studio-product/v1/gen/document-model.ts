@@ -17,9 +17,9 @@ export const documentModel: DocumentModelGlobalState = {
       state: {
         global: {
           schema:
-            "# Studio Product: the single read model the Studio page renders from.\n# Natural keys (F54): ProductStep, CheckResult and LaunchLine are keyed by\n# their `kind`, Version by `number`, PackageVersion by `name`; reducers keep\n# them unique within their list.\n\nenum StepKind {\n  PLAN\n  DATA\n  EDITORS\n  TESTS\n  LIVE\n}\n\nenum StepStatus {\n  NOT_STARTED\n  WORKING\n  DONE\n  NEEDS_YOU\n  STOPPED\n  LIVE\n}\n\nenum ChangeKind {\n  FIRST_BUILD\n  CHANGE\n  UNDO\n  BEFORE_VERSIONS\n}\n\nenum ChangeStatus {\n  BUILDING\n  PAUSED\n  READY\n  LAUNCHING\n  LAUNCHED\n  DISCARDED\n  FAILED\n  CLOSED\n}\n\nenum CheckKind {\n  GENERATE\n  TYPECHECK\n  LINT\n  REDUCER_TESTS\n  SMOKE\n}\n\nenum ProductAccess {\n  SIGNED_IN\n  OWNER_ONLY\n}\n\nenum LiveHealth {\n  UNKNOWN\n  HEALTHY\n  UNHEALTHY\n}\n\nenum PermissionState {\n  UNKNOWN\n  GRANTED\n  MISSING\n  EXPIRED\n}\n\nenum RequestKind {\n  LAUNCH\n  ROLLBACK\n  DISCARD\n  RESTART\n  MIRROR\n}\n\nenum VersionStatus {\n  LAUNCHING\n  LIVE\n  PREVIOUS\n  FAILED\n}\n\nenum LaunchLineKind {\n  SNAPSHOT\n  PUBLISH\n  DEPLOY\n  VERIFY\n  MIRROR\n}\n\nenum LineStatus {\n  WAITING\n  RUNNING\n  DONE\n  FAILED\n  SKIPPED\n}\n\nenum SuggestionStatus {\n  OPEN\n  USED\n  DISMISSED\n}\n\nenum GithubStatus {\n  NOT_CONNECTED\n  CONNECTED\n  DISCONNECTED\n  PUSH_FAILED\n}\n\ntype ProductStep {\n  kind: StepKind!\n  status: StepStatus!\n  done: Int\n  total: Int\n  label: String\n  reason: String\n  updatedAt: DateTime\n}\n\ntype Milestone {\n  id: OID!\n  text: String!\n  at: DateTime!\n  recovered: Boolean!\n}\n\ntype CheckResult {\n  kind: CheckKind!\n  passed: Boolean!\n  reason: String\n}\n\ntype CheckRun {\n  id: OID!\n  at: DateTime!\n  results: [CheckResult!]!\n}\n\ntype Stuck {\n  reason: String!\n  tried: [String!]!\n  at: DateTime!\n}\n\ntype ChangeMetrics {\n  steps: Int!\n  firstPreviewAt: DateTime\n  readyAt: DateTime\n  liveAt: DateTime\n}\n\ntype Change {\n  id: OID!\n  kind: ChangeKind!\n  request: String!\n  title: String\n  chatSessionId: PHID\n  chatSessionIds: [PHID!]!\n  status: ChangeStatus!\n  startedAt: DateTime!\n  steps: [ProductStep!]!\n  milestones: [Milestone!]!\n  checkRuns: [CheckRun!]!\n  stuck: Stuck\n  metrics: ChangeMetrics!\n  lintWaivedAt: DateTime\n}\n\ntype PackageVersion {\n  name: String!\n  version: String!\n}\n\ntype LaunchLine {\n  kind: LaunchLineKind!\n  status: LineStatus!\n  detail: String\n}\n\ntype Version {\n  number: Int!\n  title: String!\n  summary: String\n  changeId: OID\n  gitTag: String!\n  sha: String!\n  packages: [PackageVersion!]!\n  deploymentId: String\n  launchedAt: DateTime\n  launchedBy: String!\n  trigger: String!\n  status: VersionStatus!\n  lines: [LaunchLine!]!\n  changedFiles: [String!]!\n  failure: String\n  rollbackBlockedReason: String\n}\n\ntype PendingRequest {\n  kind: RequestKind!\n  changeId: OID\n  targetVersion: Int\n  requestedAt: DateTime!\n  requestedBy: String!\n}\n\ntype RequestFailure {\n  kind: RequestKind!\n  reason: String!\n  at: DateTime!\n}\n\ntype Suggestion {\n  id: OID!\n  text: String!\n  afterVersion: Int!\n  status: SuggestionStatus!\n}\n\ntype GithubLink {\n  status: GithubStatus!\n  repoFullName: String\n  lastError: String\n  externalChangesSha: String\n}\n\n# An environment that already ran this workspace's packages before the\n# product had versions (spec 6.6): shown as live until Version 1.\ntype LiveBeforeVersions {\n  environmentId: String!\n  url: URL!\n  at: DateTime!\n}\n\ntype StudioProductState {\n  name: String\n  idea: String\n  slug: String\n  liveUrl: URL\n  appId: String\n  productionEnvironmentId: String\n  productDriveId: PHID\n  createdAt: DateTime\n  access: ProductAccess!\n  changes: [Change!]!\n  activeChangeId: OID\n  liveVersion: Int\n  liveSince: DateTime\n  liveDeploymentId: String\n  versions: [Version!]!\n  health: LiveHealth!\n  pendingRequest: PendingRequest\n  lastRequestFailure: RequestFailure\n  launchPermission: PermissionState!\n  suggestions: [Suggestion!]!\n  github: GithubLink!\n  liveBeforeVersions: LiveBeforeVersions\n}\n",
+            '# Studio Product: the single read model the Studio page renders from.\n# Natural keys (F54): ProductStep, CheckResult and LaunchLine are keyed by\n# their `kind`, Version by `number`, PackageVersion by `name`; reducers keep\n# them unique within their list.\n\nenum StepKind {\n  PLAN\n  DATA\n  EDITORS\n  TESTS\n  LIVE\n}\n\nenum StepStatus {\n  NOT_STARTED\n  WORKING\n  DONE\n  NEEDS_YOU\n  STOPPED\n  LIVE\n}\n\nenum ChangeKind {\n  FIRST_BUILD\n  CHANGE\n  UNDO\n  BEFORE_VERSIONS\n}\n\nenum ChangeStatus {\n  BUILDING\n  PAUSED\n  READY\n  LAUNCHING\n  LAUNCHED\n  DISCARDED\n  FAILED\n  CLOSED\n}\n\nenum CheckKind {\n  GENERATE\n  TYPECHECK\n  LINT\n  REDUCER_TESTS\n  SMOKE\n}\n\nenum ProductAccess {\n  SIGNED_IN\n  OWNER_ONLY\n}\n\nenum LiveHealth {\n  UNKNOWN\n  HEALTHY\n  UNHEALTHY\n}\n\nenum PermissionState {\n  UNKNOWN\n  GRANTED\n  MISSING\n  EXPIRED\n}\n\nenum RequestKind {\n  LAUNCH\n  ROLLBACK\n  DISCARD\n  RESTART\n  MIRROR\n}\n\nenum VersionStatus {\n  LAUNCHING\n  LIVE\n  PREVIOUS\n  FAILED\n}\n\nenum LaunchLineKind {\n  SNAPSHOT\n  PUBLISH\n  DEPLOY\n  VERIFY\n  MIRROR\n}\n\nenum LineStatus {\n  WAITING\n  RUNNING\n  DONE\n  FAILED\n  SKIPPED\n}\n\nenum SuggestionStatus {\n  OPEN\n  USED\n  DISMISSED\n}\n\nenum SuggestionKind {\n  IDEA\n  REVIEW\n}\n\nenum VariantLabel {\n  A\n  B\n}\n\nenum VariantStatus {\n  BUILDING\n  READY\n  FAILED\n  KEPT\n  DISCARDED\n}\n\nenum OriginMode {\n  REMIX\n  COMPOSE\n}\n\nenum PublicSourceKind {\n  GITHUB\n  PACKAGE\n}\n\nenum GithubStatus {\n  NOT_CONNECTED\n  CONNECTED\n  DISCONNECTED\n  PUSH_FAILED\n}\n\ntype ProductStep {\n  kind: StepKind!\n  status: StepStatus!\n  done: Int\n  total: Int\n  label: String\n  reason: String\n  updatedAt: DateTime\n}\n\ntype Milestone {\n  id: OID!\n  text: String!\n  at: DateTime!\n  recovered: Boolean!\n  # One customer-facing sentence (<= 120 chars) for the Outcome layer.\n  outcome: String\n}\n\ntype CheckResult {\n  kind: CheckKind!\n  passed: Boolean!\n  reason: String\n}\n\ntype CheckRun {\n  id: OID!\n  at: DateTime!\n  results: [CheckResult!]!\n}\n\ntype Stuck {\n  reason: String!\n  tried: [String!]!\n  at: DateTime!\n}\n\ntype ChangeMetrics {\n  steps: Int!\n  firstPreviewAt: DateTime\n  readyAt: DateTime\n  liveAt: DateTime\n}\n\ntype Change {\n  id: OID!\n  kind: ChangeKind!\n  request: String!\n  title: String\n  chatSessionId: PHID\n  chatSessionIds: [PHID!]!\n  status: ChangeStatus!\n  startedAt: DateTime!\n  steps: [ProductStep!]!\n  milestones: [Milestone!]!\n  checkRuns: [CheckRun!]!\n  stuck: Stuck\n  metrics: ChangeMetrics!\n  lintWaivedAt: DateTime\n  variants: [Variant!]!\n}\n\n# One of two ways to build a change ("Show me two ways"), on its own branch.\ntype Variant {\n  label: VariantLabel!\n  branch: String!\n  status: VariantStatus!\n  chatSessionId: PHID\n  summary: String\n}\n\ntype PackageVersion {\n  name: String!\n  version: String!\n}\n\ntype LaunchLine {\n  kind: LaunchLineKind!\n  status: LineStatus!\n  detail: String\n}\n\ntype Version {\n  number: Int!\n  title: String!\n  summary: String\n  changeId: OID\n  gitTag: String!\n  sha: String!\n  packages: [PackageVersion!]!\n  deploymentId: String\n  launchedAt: DateTime\n  launchedBy: String!\n  trigger: String!\n  status: VersionStatus!\n  lines: [LaunchLine!]!\n  changedFiles: [String!]!\n  failure: String\n  rollbackBlockedReason: String\n}\n\ntype PendingRequest {\n  kind: RequestKind!\n  changeId: OID\n  targetVersion: Int\n  requestedAt: DateTime!\n  requestedBy: String!\n}\n\ntype RequestFailure {\n  kind: RequestKind!\n  reason: String!\n  at: DateTime!\n}\n\ntype Suggestion {\n  id: OID!\n  text: String!\n  afterVersion: Int!\n  status: SuggestionStatus!\n  kind: SuggestionKind!\n  # Attachment ref or URL of the screen a review finding is about.\n  screenshot: String\n}\n\ntype GithubLink {\n  status: GithubStatus!\n  repoFullName: String\n  lastError: String\n  externalChangesSha: String\n}\n\n# An environment that already ran this workspace\'s packages before the\n# product had versions (spec 6.6): shown as live until Version 1.\ntype LiveBeforeVersions {\n  environmentId: String!\n  url: URL!\n  at: DateTime!\n}\n\n# A published package this product was remixed from or composes (keyed by\n# packageName).\ntype ProductOrigin {\n  packageName: String!\n  version: String!\n  mode: OriginMode!\n  license: String!\n  sourceUrl: URL\n  sourceRef: String\n  at: DateTime!\n  missing: [String!]!\n  latestVersion: String\n  checkedAt: DateTime\n}\n\n# Notes from people using the live product (opt-in).\ntype NotesSettings {\n  enabled: Boolean!\n  since: DateTime\n}\n\ntype PublicSource {\n  kind: PublicSourceKind!\n  url: URL!\n  version: Int!\n}\n\ntype StudioProductState {\n  name: String\n  idea: String\n  slug: String\n  liveUrl: URL\n  appId: String\n  productionEnvironmentId: String\n  productDriveId: PHID\n  createdAt: DateTime\n  access: ProductAccess!\n  changes: [Change!]!\n  activeChangeId: OID\n  liveVersion: Int\n  liveSince: DateTime\n  liveDeploymentId: String\n  versions: [Version!]!\n  health: LiveHealth!\n  pendingRequest: PendingRequest\n  lastRequestFailure: RequestFailure\n  launchPermission: PermissionState!\n  suggestions: [Suggestion!]!\n  github: GithubLink!\n  liveBeforeVersions: LiveBeforeVersions\n  origins: [ProductOrigin!]!\n  notes: NotesSettings!\n  publicSource: PublicSource\n  sourceNoticeAcceptedAt: DateTime\n}\n',
           initialValue:
-            '{\n  "name": null,\n  "idea": null,\n  "slug": null,\n  "liveUrl": null,\n  "appId": null,\n  "productionEnvironmentId": null,\n  "productDriveId": null,\n  "createdAt": null,\n  "access": "SIGNED_IN",\n  "changes": [],\n  "activeChangeId": null,\n  "liveVersion": null,\n  "liveSince": null,\n  "liveDeploymentId": null,\n  "versions": [],\n  "health": "UNKNOWN",\n  "pendingRequest": null,\n  "lastRequestFailure": null,\n  "launchPermission": "UNKNOWN",\n  "suggestions": [],\n  "github": {\n    "status": "NOT_CONNECTED",\n    "repoFullName": null,\n    "lastError": null,\n    "externalChangesSha": null\n  },\n  "liveBeforeVersions": null\n}',
+            '{\n  "name": null,\n  "idea": null,\n  "slug": null,\n  "liveUrl": null,\n  "appId": null,\n  "productionEnvironmentId": null,\n  "productDriveId": null,\n  "createdAt": null,\n  "access": "SIGNED_IN",\n  "changes": [],\n  "activeChangeId": null,\n  "liveVersion": null,\n  "liveSince": null,\n  "liveDeploymentId": null,\n  "versions": [],\n  "health": "UNKNOWN",\n  "pendingRequest": null,\n  "lastRequestFailure": null,\n  "launchPermission": "UNKNOWN",\n  "suggestions": [],\n  "github": {\n    "status": "NOT_CONNECTED",\n    "repoFullName": null,\n    "lastError": null,\n    "externalChangesSha": null\n  },\n  "liveBeforeVersions": null,\n  "origins": [],\n  "notes": {\n    "enabled": false,\n    "since": null\n  },\n  "publicSource": null,\n  "sourceNoticeAcceptedAt": null\n}',
           examples: [],
         },
         local: {
@@ -298,10 +298,12 @@ export const documentModel: DocumentModelGlobalState = {
             {
               id: "op-add-milestone",
               name: "ADD_MILESTONE",
-              description: "Add a story line to a change. Clears stuck.",
+              description:
+                "Add a story line to a change, optionally with a customer-facing outcome sentence. Clears stuck.",
               schema:
-                "input AddMilestoneInput {\n  changeId: OID!\n  id: OID!\n  text: String!\n  recovered: Boolean\n  at: DateTime!\n}",
-              template: "Add a story line to a change. Clears stuck.",
+                "input AddMilestoneInput {\n  changeId: OID!\n  id: OID!\n  text: String!\n  recovered: Boolean\n  outcome: String\n  at: DateTime!\n}",
+              template:
+                "Add a story line to a change, optionally with a customer-facing outcome sentence. Clears stuck.",
               reducer: "",
               errors: [
                 {
@@ -309,6 +311,13 @@ export const documentModel: DocumentModelGlobalState = {
                   name: "DuplicateMilestoneIdError",
                   code: "DUPLICATE_MILESTONE_ID",
                   description: "A milestone with this id already exists.",
+                  template: "",
+                },
+                {
+                  id: "err-outcome-too-long",
+                  name: "OutcomeTooLongError",
+                  code: "OUTCOME_TOO_LONG",
+                  description: "An outcome is longer than 120 characters.",
                   template: "",
                 },
               ],
@@ -831,11 +840,11 @@ export const documentModel: DocumentModelGlobalState = {
               id: "op-set-suggestions",
               name: "SET_SUGGESTIONS",
               description:
-                "Store the agent's 2\u20133 ideas for the next change, shown once the given version is live. Replaces the open ideas for that version; used and dismissed ones are kept.",
+                "Store the agent's 2\u20133 ideas for the next change, shown once the given version is live. Replaces the open ideas for that version; used and dismissed ones, and review findings, are kept.",
               schema:
                 "input SetSuggestionsItemInput {\n  id: OID!\n  text: String!\n}\n\ninput SetSuggestionsInput {\n  afterVersion: Int!\n  items: [SetSuggestionsItemInput!]!\n}",
               template:
-                "Store the agent's 2\u20133 ideas for the next change, shown once the given version is live. Replaces the open ideas for that version; used and dismissed ones are kept.",
+                "Store the agent's 2\u20133 ideas for the next change, shown once the given version is live. Replaces the open ideas for that version; used and dismissed ones, and review findings, are kept.",
               reducer: "",
               errors: [
                 {
@@ -910,6 +919,260 @@ export const documentModel: DocumentModelGlobalState = {
                 "Dismiss an open suggestion; it is never offered again.",
               reducer: "",
               errors: [],
+              examples: [],
+              scope: "global",
+            },
+          ],
+        },
+        {
+          id: "mod-iterate",
+          name: "iterate",
+          description:
+            "Variants, remix and compose origins, review findings, notes and public source.",
+          operations: [
+            {
+              id: "op-set-review-suggestions",
+              name: "SET_REVIEW_SUGGESTIONS",
+              description:
+                "Store the agent's review findings (0\u20133) for a version. Replaces the open findings for that version; ideas and used or dismissed findings are kept.",
+              schema:
+                "input SetReviewSuggestionsItemInput {\n  id: OID!\n  text: String!\n  screenshot: String\n}\n\ninput SetReviewSuggestionsInput {\n  afterVersion: Int!\n  items: [SetReviewSuggestionsItemInput!]!\n}",
+              template:
+                "Store the agent's review findings (0\u20133) for a version. Replaces the open findings for that version; ideas and used or dismissed findings are kept.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-invalid-review-count",
+                  name: "InvalidReviewCountError",
+                  code: "INVALID_REVIEW_COUNT",
+                  description: "Review findings come in sets of 0 to 3.",
+                  template: "",
+                },
+                {
+                  id: "err-invalid-review-text",
+                  name: "InvalidReviewTextError",
+                  code: "INVALID_REVIEW_TEXT",
+                  description:
+                    "A finding's text is empty or longer than 80 characters.",
+                  template: "",
+                },
+                {
+                  id: "err-duplicate-review-id",
+                  name: "DuplicateReviewIdError",
+                  code: "DUPLICATE_REVIEW_ID",
+                  description: "A suggestion with this id already exists.",
+                  template: "",
+                },
+                {
+                  id: "err-unknown-version",
+                  name: "UnknownVersionError",
+                  code: "UNKNOWN_VERSION",
+                  description: "No version with this number exists.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-start-variants",
+              name: "START_VARIANTS",
+              description:
+                "Start building two variants (A and B) of a change, each on its own branch.",
+              schema:
+                "input StartVariantsInput {\n  changeId: OID!\n  branchA: String!\n  branchB: String!\n}",
+              template:
+                "Start building two variants (A and B) of a change, each on its own branch.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-variant-change-not-found",
+                  name: "VariantChangeNotFoundError",
+                  code: "VARIANT_CHANGE_NOT_FOUND",
+                  description: "No change with this id exists.",
+                  template: "",
+                },
+                {
+                  id: "err-variants-exist",
+                  name: "VariantsExistError",
+                  code: "VARIANTS_EXIST",
+                  description:
+                    "The change already has variants that were not discarded.",
+                  template: "",
+                },
+                {
+                  id: "err-change-not-open",
+                  name: "ChangeNotOpenError",
+                  code: "CHANGE_NOT_OPEN",
+                  description:
+                    "Variants start only while the change is building or ready.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-variant-status",
+              name: "SET_VARIANT_STATUS",
+              description:
+                "Record that a variant finished building (READY) or failed (FAILED).",
+              schema:
+                "input SetVariantStatusInput {\n  changeId: OID!\n  label: VariantLabel!\n  status: VariantStatus!\n  chatSessionId: PHID\n  summary: String\n}",
+              template:
+                "Record that a variant finished building (READY) or failed (FAILED).",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-variant-change-not-found",
+                  name: "VariantChangeNotFoundError",
+                  code: "VARIANT_CHANGE_NOT_FOUND",
+                  description: "No change with this id exists.",
+                  template: "",
+                },
+                {
+                  id: "err-variant-not-found",
+                  name: "VariantNotFoundError",
+                  code: "VARIANT_NOT_FOUND",
+                  description: "The change has no variant with this label.",
+                  template: "",
+                },
+                {
+                  id: "err-invalid-variant-transition",
+                  name: "InvalidVariantTransitionError",
+                  code: "INVALID_VARIANT_TRANSITION",
+                  description:
+                    "A variant only moves from BUILDING to READY or FAILED.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-keep-variant",
+              name: "KEEP_VARIANT",
+              description:
+                "Keep one ready variant as the change and discard the other.",
+              schema:
+                "input KeepVariantInput {\n  changeId: OID!\n  label: VariantLabel!\n}",
+              template:
+                "Keep one ready variant as the change and discard the other.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-variant-change-not-found",
+                  name: "VariantChangeNotFoundError",
+                  code: "VARIANT_CHANGE_NOT_FOUND",
+                  description: "No change with this id exists.",
+                  template: "",
+                },
+                {
+                  id: "err-variant-not-found",
+                  name: "VariantNotFoundError",
+                  code: "VARIANT_NOT_FOUND",
+                  description: "The change has no variant with this label.",
+                  template: "",
+                },
+                {
+                  id: "err-variant-not-ready",
+                  name: "VariantNotReadyError",
+                  code: "VARIANT_NOT_READY",
+                  description: "Only a ready variant can be kept.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-origin",
+              name: "SET_ORIGIN",
+              description:
+                "Record a published package this product was remixed from or composes. Replaces the entry with the same package name.",
+              schema:
+                "input SetOriginInput {\n  packageName: String!\n  version: String!\n  mode: OriginMode!\n  license: String!\n  sourceUrl: URL\n  sourceRef: String\n  missing: [String!]!\n  at: DateTime!\n}",
+              template:
+                "Record a published package this product was remixed from or composes. Replaces the entry with the same package name.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-invalid-origin",
+                  name: "InvalidOriginError",
+                  code: "INVALID_ORIGIN",
+                  description: "An origin needs a package name and a version.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-upstream-version",
+              name: "SET_UPSTREAM_VERSION",
+              description:
+                "Record the latest published version of an origin's package.",
+              schema:
+                "input SetUpstreamVersionInput {\n  packageName: String!\n  latestVersion: String!\n  checkedAt: DateTime!\n}",
+              template:
+                "Record the latest published version of an origin's package.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-origin-not-found",
+                  name: "OriginNotFoundError",
+                  code: "ORIGIN_NOT_FOUND",
+                  description: "No origin with this package name exists.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-notes-enabled",
+              name: "SET_NOTES_ENABLED",
+              description:
+                "Turn notes from people using the live product on or off.",
+              schema:
+                "input SetNotesEnabledInput {\n  enabled: Boolean!\n  at: DateTime!\n}",
+              template:
+                "Turn notes from people using the live product on or off.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-accept-source-notice",
+              name: "ACCEPT_SOURCE_NOTICE",
+              description:
+                "Record that the owner accepted the notice about publishing the product's source.",
+              schema: "input AcceptSourceNoticeInput {\n  at: DateTime!\n}",
+              template:
+                "Record that the owner accepted the notice about publishing the product's source.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-public-source",
+              name: "SET_PUBLIC_SOURCE",
+              description: "Record where the product's source is published.",
+              schema:
+                "input SetPublicSourceInput {\n  kind: PublicSourceKind!\n  url: URL!\n  version: Int!\n}",
+              template: "Record where the product's source is published.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-invalid-public-source",
+                  name: "InvalidPublicSourceError",
+                  code: "INVALID_PUBLIC_SOURCE",
+                  description: "A public source version is 1 or more.",
+                  template: "",
+                },
+              ],
               examples: [],
               scope: "global",
             },
