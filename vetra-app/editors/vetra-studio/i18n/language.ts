@@ -14,7 +14,11 @@ export function asLanguage(value: unknown): Language {
 }
 
 export function detectLanguage(languages: readonly string[]): Language {
-  return languages.some((l) => l.toLowerCase().startsWith("de")) ? "de" : "en";
+  for (const l of languages) {
+    const primary = l.toLowerCase().split("-")[0];
+    if (primary === "de" || primary === "en") return primary;
+  }
+  return "en";
 }
 
 export function readLanguageOverride(): Language | null {

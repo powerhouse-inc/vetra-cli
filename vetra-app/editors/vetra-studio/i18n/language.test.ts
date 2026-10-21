@@ -20,6 +20,11 @@ describe("language", () => {
   it("detects German from de-AT", () => {
     expect(detectLanguage(["de-AT", "en"])).toBe("de");
   });
+  it("the first supported language decides", () => {
+    expect(detectLanguage(["en-US", "de"])).toBe("en");
+    expect(detectLanguage(["fr-FR", "de-AT"])).toBe("de");
+    expect(detectLanguage(["den"])).toBe("en");
+  });
   it("defaults to English for fr-FR", () => {
     expect(detectLanguage(["fr-FR"])).toBe("en");
     expect(detectLanguage([])).toBe("en");

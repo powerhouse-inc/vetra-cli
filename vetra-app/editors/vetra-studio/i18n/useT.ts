@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
   currentLanguage,
   translate,
@@ -47,7 +47,7 @@ export function useT(): {
     getLanguage,
     (): Language => "en",
   );
-  applyToDocument(lang);
+  useEffect(() => applyToDocument(lang), [lang]);
   const t = useCallback(
     (key: MessageKey, vars?: Record<string, string | number>) =>
       translate(lang, key, vars),
