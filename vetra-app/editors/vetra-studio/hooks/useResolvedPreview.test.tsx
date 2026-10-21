@@ -16,7 +16,6 @@ vi.mock("./preview-server-client.js", () => ({
     return Promise.resolve({
       kind: "project-stopped",
       project: args.project,
-      projectPath: `/w/${String(args.project)}`,
     });
   },
   fetchStart: ({ project }: { project: string }) => {

@@ -20,7 +20,9 @@ import {
   startPreviewServer,
   type PreviewServerHandle,
 } from "../preview-server/index.js";
+import { setRequireAdminIdentity } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
+import { resolveStudioRenownUrl } from "../lifecycle/connect-drive-url.js";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
 import { DEFAULT_PH_VERSION } from "../ph-version.gen.js";
 import { VETRA_CLI_VERSION } from "../version-banner.js";
@@ -52,6 +54,8 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
     }
 
     const { renownUrl } = resolveCloudConfig(ctx.context.config);
+    // Cloud Studio: the agent's Renown identity must be an ADMINS wallet.
+    setRequireAdminIdentity(Boolean(ctx.context.config.environmentId?.trim()));
 
     try {
       ctx.state.handle = await startPreviewServer({
@@ -65,6 +69,15 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         versions: { vetraCli: VETRA_CLI_VERSION, ph: DEFAULT_PH_VERSION },
         getReactor: () => getEmbeddedDrive(ctx.commandContext),
         agentLogging: ctx.context.config.agentLogging,
+        cloud: Boolean(ctx.context.config.environmentId?.trim()),
+        // Verify owner bearers on the Renown the Studio's Connect logs in on.
+        gateRenownUrl: resolveStudioRenownUrl(
+          process.env.RENOWN_URL,
+          ctx.context.config.cloudRenownUrl,
+          { warn: (m) => ctx.context.log?.warn?.(m) },
+        ),
+        // Read per request: the proxy's public URL can land after startup.
+        getProxyPublicUrl: () => ctx.commandContext.proxy?.url,
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),

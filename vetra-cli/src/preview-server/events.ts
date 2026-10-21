@@ -54,7 +54,9 @@ export function createSseBroadcaster(args: {
     args.subscribe(type, (raw) => {
       const e = raw as ServiceEvent;
       if (e?.id !== "reactor-project") return;
-      broadcast({ type, instanceId: e.instanceId, error: e.error });
+      // Public stream: event types only — failure text (paths, commands)
+      // stays server-side; the studio refetches /resolve on any event.
+      broadcast({ type, instanceId: e.instanceId });
     });
   }
 
