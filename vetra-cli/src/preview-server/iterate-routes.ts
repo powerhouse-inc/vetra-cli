@@ -17,6 +17,7 @@ import {
   type RunProcess,
   type StudioEditContext,
 } from "../product/studio-edit.js";
+import { applyTextEdit } from "../product/text-edit.js";
 
 export interface IterateRouteDeps {
   /** The server's owner gate: false (and the 401/403 written) when refused. */
@@ -104,11 +105,32 @@ export function createIterateRoutes(deps: IterateRouteDeps): IterateRoutes {
   async function route(
     path: string,
     method: string,
-    _req: IncomingMessage,
+    req: IncomingMessage,
     res: ServerResponse,
   ): Promise<boolean> {
     if (path === "/iterate/healthz" && method === "GET") {
       deps.writeJson(res, 200, { ok: true });
+      return true;
+    }
+    if (path === "/iterate/text" && method === "POST") {
+      const body = (await readJsonBody(req)) as {
+        oldText?: unknown;
+        newText?: unknown;
+      };
+      if (
+        typeof body.oldText !== "string" ||
+        typeof body.newText !== "string" ||
+        !body.oldText.trim()
+      ) {
+        throw new BodyError(400, "oldText and newText must be strings");
+      }
+      const ctx = studioEditContext(deps);
+      if (!ctx) {
+        throw new StudioEditRefusedError(
+          "The Studio can't edit files right now.",
+        );
+      }
+      deps.writeJson(res, 200, await applyTextEdit(ctx, body.oldText, body.newText));
       return true;
     }
     return false;

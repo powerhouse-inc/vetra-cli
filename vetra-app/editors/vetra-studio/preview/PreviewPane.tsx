@@ -10,7 +10,9 @@
 import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import type { PHDocument } from "document-model";
 import type { Change } from "document-models/studio-product";
+import { usePHToast } from "@powerhousedao/reactor-browser";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -18,8 +20,10 @@ import {
   useSyncExternalStore,
 } from "react";
 import { PreviewBody, STARTING } from "../BuildSection.js";
+import { editText } from "../hooks/iterate-client.js";
 import { fetchRestart, fetchStart } from "../hooks/preview-server-client.js";
 import { ChangeThis } from "./ChangeThis.js";
+import { startInlineEdit } from "./inlineText.js";
 import { describeElement, type PointTarget } from "./pointTarget.js";
 import { pointShot } from "./pointShot.js";
 import {
@@ -199,26 +203,36 @@ export function PreviewPane({
   const [pointed, setPointed] = useState<{
     target: PointTarget;
     shot: Blob | null;
+    initial?: string;
   } | null>(null);
   const selectedElement = point.selected;
+  const editingElement = point.editing;
+  const toast = usePHToast();
+
+  /** The element described with its rect moved into the pane's coordinates. */
+  const targetInPane = useCallback(
+    (el: Element): PointTarget => {
+      const screen = screens.find((s) => s.id === selected) ?? null;
+      const target = describeElement(el, { screen });
+      const frameBox = frameRef.current?.getBoundingClientRect();
+      const paneBox = paneRef.current?.getBoundingClientRect();
+      if (frameBox && paneBox) {
+        target.rect = {
+          ...target.rect,
+          x: target.rect.x + frameBox.left - paneBox.left,
+          y: target.rect.y + frameBox.top - paneBox.top,
+        };
+      }
+      return target;
+    },
+    [screens, selected],
+  );
 
   useEffect(() => {
     if (!selectedElement) return;
-    const screen = screens.find((s) => s.id === selected) ?? null;
-    const target = describeElement(selectedElement, { screen });
-    const frame = frameRef.current;
-    const pane = paneRef.current;
-    const frameBox = frame?.getBoundingClientRect();
-    const paneBox = pane?.getBoundingClientRect();
-    if (frameBox && paneBox) {
-      target.rect = {
-        ...target.rect,
-        x: target.rect.x + frameBox.left - paneBox.left,
-        y: target.rect.y + frameBox.top - paneBox.top,
-      };
-    }
-    setPointed({ target, shot: null });
+    setPointed({ target: targetInPane(selectedElement), shot: null });
     let live = true;
+    const frame = frameRef.current;
     if (frame) {
       void pointShot(frame, selectedElement).then((shot) => {
         if (live) {
@@ -229,7 +243,45 @@ export function PreviewPane({
     return () => {
       live = false;
     };
-  }, [selectedElement, selected, screens]);
+  }, [selectedElement, targetInPane]);
+
+  // Double-click: edit the text in place; one match is applied, anything
+  // ambiguous goes to the agent with the words prefilled.
+  useEffect(() => {
+    if (!editingElement) return;
+    // The element lives in the frame's document (another realm, so
+    // `instanceof HTMLElement` would be false here); it is an element node.
+    const editing = editingElement as HTMLElement;
+    const oldText = editing.textContent.replace(/\s+/g, " ").trim();
+    if (!oldText) return;
+    const started = startInlineEdit(editing, (next) => {
+      if (next === null || next === oldText) return;
+      void (async () => {
+        try {
+          const result = await editText(oldText, next);
+          if (result.applied) {
+            toast?.(`Changed '${oldText}' to '${next}'`, { type: "success" });
+          } else {
+            setPointed({
+              target: targetInPane(editing),
+              shot: null,
+              initial: `Change the text '${oldText}' to '${next}'`,
+            });
+          }
+        } catch (err) {
+          toast?.(
+            err instanceof Error
+              ? err.message
+              : "Couldn't change the text. Try again.",
+            { type: "error" },
+          );
+        } finally {
+          point.clear();
+        }
+      })();
+    });
+    if (started) setPointed(null);
+  }, [editingElement, targetInPane, toast, point.clear]);
 
   useEffect(() => {
     if (!point.active) setPointed(null);
@@ -305,6 +357,7 @@ export function PreviewPane({
         <ChangeThis
           target={pointed.target}
           shot={pointed.shot}
+          initialText={pointed.initial}
           onSend={sendPoint}
           onCancel={() => {
             point.clear();

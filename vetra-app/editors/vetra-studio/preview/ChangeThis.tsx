@@ -16,6 +16,8 @@ export type ChangeThisProps = {
   shot: Blob | null;
   onSend: (text: string) => Promise<void>;
   onCancel: () => void;
+  /** Text already in the box (a text edit that went to the agent). */
+  initialText?: string;
 };
 
 /** The pointed element's request box. */
@@ -24,8 +26,9 @@ export function ChangeThis({
   shot,
   onSend,
   onCancel,
+  initialText = "",
 }: ChangeThisProps) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
