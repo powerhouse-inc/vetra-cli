@@ -37,6 +37,22 @@ export interface CloudContext {
   fetch?: typeof fetch;
   bearerToken?: () => Promise<string | null>;
   env?: Record<string, string | undefined>;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/** Plain reasons per call (the UI prefixes "Couldn't go live:"; F39). */
+export const REASONS = {
+  ensureStudioProduct: "your live address couldn't be set up",
+  launchStudioVersion: "the new version didn't start",
+  rollbackStudioVersion: "the earlier version couldn't be started again",
+  studioDeployment: "the new version didn't start",
+} as const;
+
+export type StudioOperation = keyof typeof REASONS;
+
+/** HTTP statuses worth another try; any other 4xx is a refusal. */
+function retryableStatus(status: number): boolean {
+  return status >= 500 || status === 408 || status === 429;
 }
 
 function studioSecret(ctx: CloudContext): string {
@@ -66,7 +82,7 @@ interface GqlError {
 /** One GraphQL call on the agent's Studio path; throws `LaunchError` with the cloud's code. */
 export async function studioGql<T>(
   ctx: CloudContext,
-  operation: string,
+  operation: StudioOperation,
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T> {
@@ -118,19 +134,40 @@ export async function studioGql<T>(
     const permission = code === "DELEGATION_EXPIRED" || code === "DELEGATION_MISSING";
     throw new LaunchError(
       code,
-      permission ? "your Studio needs your OK to publish" : "the new version didn't start",
+      permission ? "your Studio needs your OK to publish" : REASONS[operation],
       `${operation}: ${detail}`,
     );
   }
   if (!res.ok || !body?.data) {
     ctx.log?.warn?.(`[launch] ${operation} failed: HTTP ${res.status}`);
+    const retry = res.ok || retryableStatus(res.status);
     throw new LaunchError(
-      "CLOUD_UNAVAILABLE",
-      "Vetra didn't answer",
+      retry ? "CLOUD_UNAVAILABLE" : "CLOUD_REFUSED",
+      retry ? "Vetra didn't answer" : REASONS[operation],
       `${operation}: HTTP ${res.status}`,
     );
   }
   return body.data;
+}
+
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Launch tries: the call is idempotent on (appId, versionNumber, sha), so a timed-out try is safe to repeat. */
+export const LAUNCH_ATTEMPTS = 3;
+const LAUNCH_BACKOFF_MS = 2_000;
+
+/** Repeat `call` while the cloud didn't answer, with growing pauses; refusals end at once. */
+async function retryUnavailable<T>(ctx: CloudContext, call: () => Promise<T>): Promise<T> {
+  const sleep = ctx.sleep ?? realSleep;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      const unavailable = err instanceof LaunchError && err.code === "CLOUD_UNAVAILABLE";
+      if (!unavailable || attempt >= LAUNCH_ATTEMPTS) throw err;
+      await sleep(LAUNCH_BACKOFF_MS * 2 ** (attempt - 1));
+    }
+  }
 }
 
 export interface DeploymentRef {
@@ -146,15 +183,22 @@ export interface LaunchInput {
   packages: { name: string; version: string }[];
 }
 
-/** Deploy Version n of the product (`launchStudioVersion`, trigger STUDIO_LAUNCH). */
+/**
+ * Deploy Version n of the product (`launchStudioVersion`, trigger
+ * STUDIO_LAUNCH). A try the cloud didn't answer (timeout, 5xx) is repeated
+ * with the same input up to `LAUNCH_ATTEMPTS` times; the cloud returns the
+ * same deployment for the same (appId, versionNumber, sha).
+ */
 export async function cloudLaunch(ctx: CloudContext, input: LaunchInput): Promise<DeploymentRef> {
-  const data = await studioGql<{ launchStudioVersion: { id: string; status: string } }>(
-    ctx,
-    "launchStudioVersion",
-    `mutation LaunchStudioVersion($input: LaunchStudioVersionInput!) {
-      launchStudioVersion(input: $input) { id status }
-    }`,
-    { input },
+  const data = await retryUnavailable(ctx, () =>
+    studioGql<{ launchStudioVersion: { id: string; status: string } }>(
+      ctx,
+      "launchStudioVersion",
+      `mutation LaunchStudioVersion($input: LaunchStudioVersionInput!) {
+        launchStudioVersion(input: $input) { id status }
+      }`,
+      { input },
+    ),
   );
   return { deploymentId: data.launchStudioVersion.id, status: data.launchStudioVersion.status };
 }

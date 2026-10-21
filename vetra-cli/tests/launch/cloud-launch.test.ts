@@ -23,6 +23,7 @@ function harness(respond: (c: Captured) => { status?: number; json: unknown }) {
   const bearer = randomBytes(24).toString("hex");
   const calls: Captured[] = [];
   const lines: string[] = [];
+  const sleeps: number[] = [];
   const logLine = (msg: string) => {
     lines.push(msg);
   };
@@ -46,8 +47,11 @@ function harness(respond: (c: Captured) => { status?: number; json: unknown }) {
     fetch: fetchFn,
     bearerToken: async () => bearer,
     env: { [STUDIO_SECRET_ENV]: secret },
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+    },
   };
-  return { ctx, calls, lines, secret, bearer };
+  return { ctx, calls, lines, secret, bearer, sleeps };
 }
 
 const input = {
@@ -123,9 +127,36 @@ describe("cloudLaunch", () => {
     expect(signedOut.calls).toHaveLength(0);
   });
 
-  it("reports an unreachable cloud as CLOUD_UNAVAILABLE", async () => {
+  it("retries a timed-out launch with the same input and gets one deployment", async () => {
+    let n = 0;
+    const h = harness(() =>
+      n++ === 0
+        ? { status: 504, json: { message: "Gateway Timeout" } }
+        : { json: { data: { launchStudioVersion: { id: "dep-9", status: "PENDING" } } } },
+    );
+    expect(await cloudLaunch(h.ctx, input)).toEqual({ deploymentId: "dep-9", status: "PENDING" });
+    expect(h.calls).toHaveLength(2);
+    expect(h.calls[1].body.variables).toEqual(h.calls[0].body.variables);
+    expect(h.sleeps).toHaveLength(1);
+  });
+
+  it("gives up after 3 tries when the cloud stays unreachable", async () => {
     const h = harness(() => ({ status: 504, json: { message: "Gateway Timeout" } }));
-    await expect(cloudLaunch(h.ctx, input)).rejects.toMatchObject({ code: "CLOUD_UNAVAILABLE" });
+    await expect(cloudLaunch(h.ctx, input)).rejects.toMatchObject({
+      code: "CLOUD_UNAVAILABLE",
+      reason: "Vetra didn't answer",
+    });
+    expect(h.calls).toHaveLength(3);
+    expect(h.sleeps).toEqual([2_000, 4_000]);
+  });
+
+  it("does not retry a refusal", async () => {
+    const h = harness(() => ({ status: 403, json: {} }));
+    await expect(cloudLaunch(h.ctx, input)).rejects.toMatchObject({
+      code: "CLOUD_REFUSED",
+      reason: "the new version didn't start",
+    });
+    expect(h.calls).toHaveLength(1);
   });
 });
 
@@ -181,6 +212,21 @@ describe("ensureProduct", () => {
     const out = await ensureProduct(h.ctx, "Team todo");
     expect(out.slug).toBe("team-todo");
     expect(out.liveUrl).toBe("https://team-todo.vetra.io");
+  });
+
+  it("explains a refusal in its own words", async () => {
+    const h = harness(() => ({
+      json: { errors: [{ message: "Slug reserved", extensions: { code: "BAD_REQUEST" } }] },
+    }));
+    await expect(ensureProduct(h.ctx, "x")).rejects.toMatchObject({
+      reason: "your live address couldn't be set up",
+    });
+    const r = harness(() => ({
+      json: { errors: [{ message: "Not READY", extensions: { code: "BAD_REQUEST" } }] },
+    }));
+    await expect(cloudRollback(r.ctx, "dep-1")).rejects.toMatchObject({
+      reason: "the earlier version couldn't be started again",
+    });
   });
 
   it("needs the Studio's environment id", async () => {

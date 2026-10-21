@@ -176,29 +176,51 @@ export async function snapshot(
   const tag = versionTag(n);
   const author = opts.author ?? DEFAULT_AUTHOR;
 
-  await stageAll(workdir);
-  const head = await headSha(workdir);
-  const existing = await tagSha(workdir, tag);
-  const clean = head !== null && (await nothingToCommit(workdir));
+  try {
+    await stageAll(workdir);
+    const head = await headSha(workdir);
+    const existing = await tagSha(workdir, tag);
+    const clean = head !== null && (await nothingToCommit(workdir));
 
-  if (existing && existing === head && clean) return { sha: head, tag };
-  if (existing && !opts.allowRetag) {
-    throw new LaunchError(
-      "TAG_EXISTS",
-      `Version ${n} already exists`,
-      `Tag ${tag} already points at ${existing.slice(0, 12)}; refusing to move it.`,
-    );
+    if (existing && existing === head && clean) return { sha: head, tag };
+    if (existing && !opts.allowRetag) {
+      throw new LaunchError(
+        "TAG_EXISTS",
+        `Version ${n} already exists`,
+        `Tag ${tag} already points at ${existing.slice(0, 12)}; refusing to move it.`,
+      );
+    }
+
+    const message = `Version ${n}: ${title.trim() || "Untitled"}`;
+    // A version is always its own commit, even when the code didn't change
+    // since the last one (e.g. the first launch of an existing workspace).
+    await git(workdir, ["commit", "-q", "--allow-empty", "--no-verify", "-m", message], {
+      author,
+    });
+    const sha = (await headSha(workdir))!;
+    await git(workdir, ["tag", "-f", tag, sha]);
+    return { sha, tag };
+  } catch (err) {
+    await unstageAll(workdir);
+    throw err;
   }
+}
 
-  const message = `Version ${n}: ${title.trim() || "Untitled"}`;
-  // A version is always its own commit, even when the code didn't change
-  // since the last one (e.g. the first launch of an existing workspace).
-  await git(workdir, ["commit", "-q", "--allow-empty", "--no-verify", "-m", message], {
-    author,
-  });
-  const sha = (await headSha(workdir))!;
-  await git(workdir, ["tag", "-f", tag, sha]);
-  return { sha, tag };
+/** Put the index back to HEAD (nothing staged) after a failed snapshot. */
+async function unstageAll(workdir: string): Promise<void> {
+  if (await headSha(workdir)) await gitMaybe(workdir, ["reset", "-q"]);
+  else await gitMaybe(workdir, ["read-tree", "--empty"]);
+}
+
+/** Non-ignored working-tree changes other than our own `.gitignore` entries. */
+async function draftChanges(workdir: string): Promise<string[]> {
+  const out = await git(workdir, ["status", "--porcelain", "--untracked-files=all"]);
+  return out
+    .split("\n")
+    .filter(Boolean)
+    // `git()` trims the output, so the first line may have lost its leading space.
+    .map((line) => line.replace(/^\s*\S{1,2}\s+/, ""))
+    .filter((p) => p !== ".gitignore");
 }
 
 /** Point `main` at a new commit with `tree` on top of HEAD (no history rewrite). */
@@ -227,8 +249,9 @@ async function commitTree(
  * Go back to Version m (Ruling E5): a new commit on `main` whose tree equals
  * `v<m>`, message `Go back to Version <m>`, and the working tree follows it.
  * Newer versions stay reachable by their tags. Rollback is only offered while
- * no change is open (E6), so there is no draft to lose here; ignored files
- * (`.ph/`, `node_modules/`) are untouched.
+ * no change is open (E6); any non-ignored change in the working tree is
+ * refused with `DRAFT_OPEN` and nothing is touched. Ignored files (`.ph/`,
+ * `node_modules/`) are never touched.
  */
 export async function restoreVersion(
   workdir: string,
@@ -244,12 +267,17 @@ export async function restoreVersion(
       `Tag ${tag} not found.`,
     );
   }
+  const draft = await draftChanges(workdir);
+  if (draft.length > 0) {
+    throw new LaunchError(
+      "DRAFT_OPEN",
+      "there are unsaved changes in your Studio",
+      `Refusing to go back to ${tag} over ${draft.length} changed file(s): ${draft.slice(0, 5).join(", ")}`,
+    );
+  }
   const head = await headSha(workdir);
   const target = await treeOf(workdir, tag);
-  if (head && (await treeOf(workdir, "HEAD")) === target) {
-    await git(workdir, ["reset", "-q", "--hard", "HEAD"]);
-    return { sha: head };
-  }
+  if (head && (await treeOf(workdir, "HEAD")) === target) return { sha: head };
   const sha = await commitTree(
     workdir,
     target,
@@ -257,12 +285,19 @@ export async function restoreVersion(
     opts.author ?? DEFAULT_AUTHOR,
   );
   await git(workdir, ["reset", "-q", "--hard", sha]);
+  // The restored tree may predate newer .gitignore entries; keep them.
+  ensureWorkspaceGitignore(workdir);
   return { sha };
 }
 
-/** Reactor project dirs: those on disk plus those in `rev` (a draft may add or delete one). */
-async function projectDirs(workdir: string, rev: string | null): Promise<string[]> {
-  const dirs = new Set(await listReactorProjects(workdir));
+/** Reactor project dirs: those on disk plus those in `rev` (a draft may add or delete one).
+ * With `onDisk: false`, only those in `rev`. */
+export async function projectDirs(
+  workdir: string,
+  rev: string | null,
+  opts: { onDisk?: boolean } = {},
+): Promise<string[]> {
+  const dirs = new Set(opts.onDisk === false ? [] : await listReactorProjects(workdir));
   if (rev) {
     const files = await git(workdir, ["ls-tree", "-r", "--name-only", rev]);
     for (const file of files.split("\n")) {

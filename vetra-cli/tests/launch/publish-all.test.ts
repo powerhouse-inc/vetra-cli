@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import {
+  assignPackageNames,
   LAUNCH_PUBLISH_FETCH_TIMEOUT_MS,
   productPackageName,
   publishAll,
@@ -12,6 +14,10 @@ import type { PackumentResult } from "../../src/cloud/registry-packument.js";
 
 const REGISTRY = "https://registry.example.test";
 let workdir: string;
+
+function git(...args: string[]): void {
+  execFileSync("git", args, { cwd: workdir });
+}
 
 function project(dir: string, version: string): string {
   const p = path.join(workdir, dir);
@@ -55,6 +61,38 @@ describe("productPackageName", () => {
   it("names the product @vetra-apps/<slug>, per project when there are several", () => {
     expect(productPackageName("team-todo", "todo", 1)).toBe("@vetra-apps/team-todo");
     expect(productPackageName("team-todo", "Billing_App", 2)).toBe("@vetra-apps/team-todo-billing_app");
+  });
+});
+
+describe("assignPackageNames", () => {
+  it("keeps recorded names and never reuses one for a new project", () => {
+    const live = {
+      projects: ["billing", "todo"],
+      names: ["@vetra-apps/s-billing", "@vetra-apps/s-todo"],
+    };
+    const names = assignPackageNames("s", ["billing", "reports", "todo"], live);
+    expect(Object.fromEntries(names)).toEqual({
+      billing: "@vetra-apps/s-billing",
+      reports: "@vetra-apps/s-reports",
+      todo: "@vetra-apps/s-todo",
+    });
+  });
+
+  it("gives the bare name only to the live tag's single project", () => {
+    const live = { projects: ["todo"], names: ["@vetra-apps/s"] };
+    // The old project is gone; the new single project must not take the bare name.
+    expect(Object.fromEntries(assignPackageNames("s", ["app"], live))).toEqual({
+      app: "@vetra-apps/s-app",
+    });
+    expect(Object.fromEntries(assignPackageNames("s", ["app"], null))).toEqual({
+      app: "@vetra-apps/s",
+    });
+  });
+
+  it("avoids a name already recorded for another project", () => {
+    const live = { projects: ["a", "b"], names: ["@vetra-apps/s-a", "@vetra-apps/s-b"] };
+    // "B" and "b" both map to s-b: the newcomer gets a numbered name.
+    expect(assignPackageNames("s", ["a", "b", "B"], live).get("B")).toBe("@vetra-apps/s-b-2");
   });
 });
 
@@ -112,6 +150,40 @@ describe("publishAll", () => {
       code: "PERMISSION",
     });
     expect(fs.readFileSync(path.join(workdir, "todo/package.json"), "utf8")).toBe(pkg);
+  });
+
+  it("restores package.json when the publish throws", async () => {
+    const pkg = project("todo", "1.0.0");
+    const { deps, publish } = fakeDeps({});
+    publish.mockImplementationOnce(async (opts: PublishOpts) => {
+      fs.writeFileSync(path.join(opts.projectPath, "package.json"), "{}");
+      throw new Error("spawn npm ENOENT");
+    });
+    await expect(publishAll(ctx, workdir, { slug: "team-todo" }, deps)).rejects.toThrow("ENOENT");
+    expect(fs.readFileSync(path.join(workdir, "todo/package.json"), "utf8")).toBe(pkg);
+  });
+
+  it("keeps the first project's name when a second project is added", async () => {
+    project("todo", "1.0.0");
+    git("init", "-q", "-b", "main");
+    git("add", "-A");
+    git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "v1");
+    git("tag", "v1");
+    project("billing", "1.0.0");
+    const { deps } = fakeDeps({
+      "@vetra-apps/team-todo": { kind: "ok", latest: "1.0.0", versions: { "1.0.0": {} } },
+    });
+
+    const out = await publishAll(
+      ctx,
+      workdir,
+      { slug: "team-todo", live: { tag: "v1", packages: [{ name: "@vetra-apps/team-todo", version: "1.0.0" }] } },
+      deps,
+    );
+    expect(out).toEqual([
+      { name: "@vetra-apps/team-todo-billing", version: "1.0.0" },
+      { name: "@vetra-apps/team-todo", version: "1.0.1" },
+    ]);
   });
 
   it("stops at the first failed publish with a plain reason", async () => {

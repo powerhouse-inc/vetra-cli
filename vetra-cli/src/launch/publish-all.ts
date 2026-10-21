@@ -22,6 +22,7 @@ import {
 } from "../commands/reactor-project/publish-core.js";
 import { listReactorProjects } from "../helpers/project.js";
 import { LaunchError } from "./errors.js";
+import { projectDirs } from "./git-versions.js";
 
 /** npm scope every Studio product is published under (X13). */
 export const PRODUCT_SCOPE = "@vetra-apps";
@@ -56,9 +57,9 @@ function npmSegment(value: string): string {
 }
 
 /**
- * The package name for `project`: `@vetra-apps/<slug>` when the workspace has
- * one reactor project (the normal case), `@vetra-apps/<slug>-<project>` for
- * each project when it has several.
+ * The package name for `project` on a product's first launch:
+ * `@vetra-apps/<slug>` when the workspace has one reactor project (the normal
+ * case), `@vetra-apps/<slug>-<project>` for each project when it has several.
  */
 export function productPackageName(slug: string, project: string, projectCount: number): string {
   const base = npmSegment(slug);
@@ -68,6 +69,54 @@ export function productPackageName(slug: string, project: string, projectCount: 
     : `${PRODUCT_SCOPE}/${base}`;
 }
 
+/** What is live now: its git tag and the packages recorded on its Version. */
+export interface LiveRelease {
+  tag: string;
+  packages: { name: string; version: string }[];
+}
+
+/**
+ * Stable package names (X24): a project keeps the name it was published
+ * under in the live version. The recorded names are matched back to the
+ * project dirs of the live tag: the bare `@vetra-apps/<slug>` belongs to the
+ * only project the live tag had; `@vetra-apps/<slug>-<dir>` to that dir. A
+ * project with no recorded name gets `@vetra-apps/<slug>-<dir>` (or the bare
+ * name on a first launch with one project), never one already recorded.
+ */
+export function assignPackageNames(
+  slug: string,
+  projects: string[],
+  live: { projects: string[]; names: string[] } | null,
+): Map<string, string> {
+  const bare = productPackageName(slug, "", 1);
+  const recorded = new Map<string, string>();
+  if (live) {
+    for (const name of live.names) {
+      if (name === bare) {
+        if (live.projects.length === 1) recorded.set(live.projects[0], name);
+        continue;
+      }
+      const dir = live.projects.find((d) => productPackageName(slug, d, 2) === name);
+      if (dir) recorded.set(dir, name);
+    }
+  }
+  const taken = new Set(live?.names ?? []);
+  const names = new Map<string, string>();
+  for (const project of projects) {
+    const kept = recorded.get(project);
+    if (kept) {
+      names.set(project, kept);
+      continue;
+    }
+    const fresh = live?.names.length ? 2 : projects.length;
+    let name = productPackageName(slug, project, fresh);
+    for (let i = 2; taken.has(name); i++) name = `${productPackageName(slug, project, 2)}-${i}`;
+    taken.add(name);
+    names.set(project, name);
+  }
+  return names;
+}
+
 export interface PublishedPackage {
   name: string;
   version: string;
@@ -75,14 +124,15 @@ export interface PublishedPackage {
 
 /**
  * Publish every reactor project of the workspace for one launch and return
- * the package versions to deploy. Projects publish one after another; the
+ * the package versions to deploy. Pass the live release (`live`) on every
+ * launch after the first so each project keeps its package name. Projects publish one after another; the
  * first failure stops the launch (`LaunchError` `PERMISSION` when the agent
  * may not publish, else `PUBLISH_FAILED`).
  */
 export async function publishAll(
   ctx: PublishContext,
   workdir: string,
-  opts: { slug: string },
+  opts: { slug: string; live?: LiveRelease | null },
   deps: PublishDeps = defaultDeps,
 ): Promise<PublishedPackage[]> {
   const projects = await listReactorProjects(workdir);
@@ -94,11 +144,18 @@ export async function publishAll(
     );
   }
   const { renownUrl } = resolveCloudConfig(ctx.config);
+  const live = opts.live
+    ? {
+        projects: await projectDirs(workdir, opts.live.tag, { onDisk: false }),
+        names: opts.live.packages.map((p) => p.name),
+      }
+    : null;
+  const names = assignPackageNames(opts.slug, projects, live);
   const published: PublishedPackage[] = [];
 
   for (const project of projects) {
     const projectPath = path.join(workdir, project);
-    const name = productPackageName(opts.slug, project, projects.length);
+    const name = names.get(project)!;
     const packageJsonPath = path.join(projectPath, "package.json");
     const original = await readFile(packageJsonPath, "utf-8").catch(() => null);
     if (original === null) {

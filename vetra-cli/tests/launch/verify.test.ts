@@ -5,7 +5,10 @@ import { checkLive, DEPLOY_FAILED_REASON, waitForDeployment } from "../../src/la
 
 function cloud(responses: Array<{ status?: number; json: unknown } | Error>) {
   let i = 0;
-  const fetchFn = jest.fn(async () => {
+  const queries: string[] = [];
+  const fetchFn = jest.fn(async (url: unknown, init?: RequestInit) => {
+    void url;
+    queries.push((JSON.parse(String(init?.body)) as { query: string }).query);
     const r = responses[Math.min(i++, responses.length - 1)];
     if (r instanceof Error) throw r;
     return new Response(JSON.stringify(r.json), { status: r.status ?? 200 });
@@ -17,11 +20,11 @@ function cloud(responses: Array<{ status?: number; json: unknown } | Error>) {
     bearerToken: async () => "bearer",
     env: { [STUDIO_SECRET_ENV]: randomBytes(32).toString("hex") },
   };
-  return { ctx, fetchFn };
+  return { ctx, fetchFn, queries };
 }
 
 const dep = (status: string, error: string | null = null) => ({
-  json: { data: { appDeployment: { id: "dep-1", status, error } } },
+  json: { data: { studioDeployment: { id: "dep-1", status, error } } },
 });
 
 function clock() {
@@ -64,6 +67,26 @@ describe("waitForDeployment", () => {
       code: "DELEGATION_EXPIRED",
     });
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("waitForDeployment refusals", () => {
+  it("polls the binding-checked studioDeployment read", async () => {
+    const { ctx, queries } = cloud([dep("READY")]);
+    await waitForDeployment(ctx, "dep-1", { ...clock() });
+    expect(queries[0]).toContain("studioDeployment(id: $id)");
+    expect(queries[0]).not.toContain("appDeployment");
+  });
+
+  it("treats a 4xx other than 408/429 as a refusal, and 429 as a blip", async () => {
+    const refused = cloud([{ status: 403, json: {} }]);
+    await expect(waitForDeployment(refused.ctx, "dep-1", { ...clock() })).rejects.toMatchObject({
+      code: "CLOUD_REFUSED",
+    });
+    expect(refused.fetchFn).toHaveBeenCalledTimes(1);
+
+    const busy = cloud([{ status: 429, json: {} }, { status: 408, json: {} }, dep("READY")]);
+    expect(await waitForDeployment(busy.ctx, "dep-1", { ...clock() })).toBe("READY");
   });
 });
 

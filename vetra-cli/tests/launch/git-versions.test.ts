@@ -53,6 +53,8 @@ describe("ensureWorkspaceRepo", () => {
     await ensureWorkspaceRepo(workdir);
     expect(git("symbolic-ref", "--short", "HEAD")).toBe("main");
     expect(read(".gitignore")).toContain(".ph/");
+    expect(read(".gitignore")).toContain(".env*");
+    expect(read(".gitignore")).toContain(".npmrc");
   });
 
   it("moves a repository created on another default branch onto main", async () => {
@@ -87,6 +89,8 @@ describe("snapshot", () => {
     await snapshot(workdir, 1, "First");
     write("todo/src/model.ts", "export const v = 2;\n");
     await expect(snapshot(workdir, 1, "First")).rejects.toMatchObject({ code: "TAG_EXISTS" });
+    // The refused snapshot leaves nothing staged.
+    expect(git("diff", "--cached", "--name-only")).toBe("");
 
     const retried = await snapshot(workdir, 1, "First", { allowRetag: true });
     expect(git("rev-parse", "v1^{commit}")).toBe(retried.sha);
@@ -120,6 +124,27 @@ describe("restoreVersion", () => {
     expect(read("todo/src/extra.ts")).toBeNull();
     expect(read(".ph/vetra/.mastra/chat.db")).toBe("chat history");
     expect(git("status", "--porcelain")).toBe("");
+  });
+
+  it("refuses to go back over unsaved changes and changes nothing", async () => {
+    await snapshot(workdir, 1, "First");
+    write("todo/src/model.ts", "export const v = 2;\n");
+    const v2 = await snapshot(workdir, 2, "Second");
+    write("todo/src/model.ts", "export const v = 3;\n");
+    write("todo/src/new.ts", "new\n");
+
+    await expect(restoreVersion(workdir, 1)).rejects.toMatchObject({ code: "DRAFT_OPEN" });
+    expect(git("rev-parse", "HEAD")).toBe(v2.sha);
+    expect(read("todo/src/model.ts")).toBe("export const v = 3;\n");
+    expect(read("todo/src/new.ts")).toBe("new\n");
+  });
+
+  it("does not count ignored files or new .gitignore entries as unsaved changes", async () => {
+    await snapshot(workdir, 1, "First");
+    await snapshot(workdir, 2, "Second");
+    write(".env.local", "TOKEN=x\n");
+    fs.appendFileSync(path.join(workdir, ".gitignore"), "dist/\n");
+    await expect(restoreVersion(workdir, 1)).resolves.toBeDefined();
   });
 
   it("does nothing when main already has that version's code", async () => {

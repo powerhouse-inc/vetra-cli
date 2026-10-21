@@ -4,8 +4,9 @@
  *
  * `waitForDeployment` polls (one short request every few seconds) instead of
  * holding a request open, so nothing ever waits on a long HTTP call (the
- * ingress cuts requests at 30 s). Short network blips are tolerated; a refused
- * call (permission, binding) ends the wait at once.
+ * ingress cuts requests at 30 s). The read is the cloud's binding-checked
+ * `studioDeployment` (Task 2.3). Short network blips, 5xx, 408 and 429 are
+ * tolerated; a refusal (permission, binding, any other 4xx) ends the wait at once.
  */
 import { LaunchError } from "./errors.js";
 import { studioGql, type CloudContext } from "./cloud-launch.js";
@@ -48,14 +49,14 @@ export async function waitForDeployment(
   for (;;) {
     try {
       const data = await studioGql<{
-        appDeployment: { id: string; status: string; error: string | null } | null;
+        studioDeployment: { id: string; status: string; error: string | null } | null;
       }>(
         ctx,
-        "appDeployment",
-        `query AppDeployment($id: ID!) { appDeployment(id: $id) { id status error } }`,
+        "studioDeployment",
+        `query StudioDeployment($id: ID!) { studioDeployment(id: $id) { id status error } }`,
         { id },
       );
-      const d = data.appDeployment;
+      const d = data.studioDeployment;
       if (!d) {
         return { failed: DEPLOY_FAILED_REASON, detail: `Deployment ${id} not found.` };
       }
