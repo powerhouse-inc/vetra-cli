@@ -2,6 +2,7 @@
  * Client for the Studio's workshop routes (owner-only, on the preview
  * server): upload a piece of material, then ask for it to be understood.
  */
+import type { UnderstoodDraft } from "../../../shared/understood-draft.js";
 import type { Language } from "../i18n/language.js";
 import { ownerHeaders, resolvePreviewConfig } from "./preview-server-client.js";
 
@@ -14,9 +15,8 @@ export type MaterialCard = {
   sheets?: { sheet: string; header: string[]; rowCount: number }[];
 };
 
-/** The structured draft the model read out of the material. The shared type
- *  arrives with the understanding step, which switches this to it. */
-export type UnderstoodDraft = { version: 1; [k: string]: unknown };
+/** The structured draft the model read out of the material. */
+export type { UnderstoodDraft };
 
 export type UnderstandResult = {
   draft: UnderstoodDraft;
