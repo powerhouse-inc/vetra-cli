@@ -11,6 +11,7 @@ import {
 } from "./_helpers.js";
 import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
 import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
+import { planStudioSigning } from "../../auth/studio-mode.js";
 import { applyActions, saveSpec } from "./registry.js";
 
 export const specUpdate = defineCommand({
@@ -48,6 +49,11 @@ export const specUpdate = defineCommand({
   }),
   execute: async (input, context) => {
     const { workdir } = context;
+    const signatureMode = planStudioSigning(workdir, context.config).mode;
+    const drive = await getEmbeddedDrive(context);
+    if (signatureMode === "v2-required" && !drive) {
+      throw new Error("The Studio isn't running yet; try again in a moment.");
+    }
     // Workspace-root product specs are reachable without a reactor project.
     const base = await resolveNamedSpecBase(workdir, input.project, input.name);
     const doc = await loadByName(base, input.name);
@@ -72,7 +78,8 @@ export const specUpdate = defineCommand({
       (opScopes.global?.length ?? 0) + (opScopes.local?.length ?? 0);
     const path = await saveSpec(next, base);
     // Push the updated ops into the embedded drive when a reactor is running.
-    const drive = await getEmbeddedDrive(context);
+    // In a signed Studio the reactor signs them and the file is rewritten from
+    // the signed document.
     if (drive) {
       await applyFsChangesToReactor(
         [path],
@@ -80,6 +87,8 @@ export const specUpdate = defineCommand({
         drive.reactor,
         drive.driveId,
         context.log,
+        undefined,
+        { signatureMode },
       );
     }
     let text = `Applied ${actions.length} action(s) to ${next.header.documentType} "${next.header.name}" (now ${opsCount} op(s) total) → ${path}`;

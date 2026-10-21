@@ -8,6 +8,7 @@ import {
 } from "../../helpers/project.js";
 import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
 import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
+import { planStudioSigning } from "../../auth/studio-mode.js";
 import { assertKnownDocumentType, slugify } from "./_helpers.js";
 import {
   createSpecDocument,
@@ -58,7 +59,20 @@ export const specCreate = defineCommand({
       // A stub project (hand-written config, never installed) can't generate.
       await assertProjectInstalled(base, input.project);
     }
-    const doc = createSpecDocument(input.type, { name: input.name });
+    // A new cloud Studio signs every document (Task 5.SIG, X39); the spec is
+    // then created through the reactor and mirrored back signed.
+    const signatureMode = planStudioSigning(workdir, context.config).mode;
+    const signed = signatureMode === "v2-required";
+    const drive = await getEmbeddedDrive(context);
+    if (signed && !drive) {
+      throw new Error(
+        "The Studio isn't running yet; try again in a moment.",
+      );
+    }
+    const doc = createSpecDocument(input.type, {
+      name: input.name,
+      signaturePolicy: signatureMode,
+    });
     /* `createDocument` only seeds `name`; populate slug from it so the doc
      * has a stable short handle alongside its display name and id. */
     doc.header.slug = slugify(input.name);
@@ -80,8 +94,8 @@ export const specCreate = defineCommand({
     }
     const path = await saveSpec(doc, base);
     // When a reactor is already running (daemon), push the new spec straight
-    // into the embedded drive so Studio reflects it without the watcher.
-    const drive = await getEmbeddedDrive(context);
+    // into the embedded drive so Studio reflects it without the watcher. In a
+    // signed Studio this is the only write path (signed, derived id).
     if (drive) {
       await applyFsChangesToReactor(
         [path],
@@ -89,6 +103,8 @@ export const specCreate = defineCommand({
         drive.reactor,
         drive.driveId,
         context.log,
+        undefined,
+        { signatureMode },
       );
     }
     return {

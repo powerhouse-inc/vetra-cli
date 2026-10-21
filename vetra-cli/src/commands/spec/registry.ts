@@ -129,17 +129,23 @@ export function specDir(projectDir: string, documentType: string): string {
 
 /** Create an in-memory spec document. The caller persists it with `saveSpec`.
  *
- * Specs are legacy-signature documents: their operations are applied unsigned
- * on disk and mirrored into the embedded drive under the file's id, while a
- * v2-required document (the 6.2.3 `createDocument()` default) would need
- * signed operations and a header-derived id. */
+ * The signature policy decides the whole write path (Task 5.SIG, X39):
+ * - `legacy` (local Studios and cloud Studios from before 2a): operations are
+ *   applied unsigned on disk and mirrored into the embedded drive under the
+ *   file's id;
+ * - `v2-required` (a new cloud Studio): the document has a header-derived id
+ *   and is created/written through the reactor, so every operation is signed. */
 export function createSpecDocument(
   documentType: string,
-  opts: { name?: string; initialState?: unknown } = {},
+  opts: {
+    name?: string;
+    initialState?: unknown;
+    signaturePolicy?: "legacy" | "v2-required";
+  } = {},
 ): PHDocument {
   const doc = withSignaturePolicy(
     resolveSpecEntry(documentType).createDocument(opts.initialState),
-    "legacy",
+    opts.signaturePolicy ?? "legacy",
   );
   if (opts.name) doc.header.name = opts.name;
   return doc;

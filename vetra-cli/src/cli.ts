@@ -11,6 +11,7 @@ import { z } from 'zod';
 import path from 'node:path';
 import { CLI_NAME, CLI_VERSION, CLI_ROOT } from './config.js';
 import { configSchema, secretsSchema } from './framework.js';
+import type { Config } from './framework.js';
 import { documentModels } from './vetra-app-models.js';
 import { documentModels as vetraModels } from '@powerhousedao/vetra';
 import { documentModels as extModels } from '@powerhousedao/clint-common';
@@ -28,7 +29,23 @@ import { reactorProject, proxyBasePathHook } from './services/reactor-project.js
 import { specSyncTrigger } from './triggers/spec-sync.js';
 import { specFsSyncTrigger } from './triggers/spec-fs-sync.js';
 import { previewServerTrigger } from './triggers/preview-server.js';
-import { connectDriveUrlOnSwitchboardReady } from './lifecycle/connect-drive-url.js';
+import {
+  connectDriveUrlOnSwitchboardReady,
+  resolveStudioRenownUrl,
+  stampCreateSignaturePolicy,
+} from './lifecycle/connect-drive-url.js';
+import {
+  commitStudioSigningPlan,
+  planStudioSigning,
+} from './auth/studio-mode.js';
+import {
+  cloudStudioDriveConfig,
+  signerHasUser,
+  studioReactorSigning,
+} from './auth/reactor-signing.js';
+import { resolveCloudConfig } from './cloud/config.js';
+import { studioBootstrapTrigger } from './triggers/studio-bootstrap.js';
+import type { ReactorSigningOptions } from '@powerhousedao/ph-clint';
 import { connectExternalPackagesLayerOrder } from './lifecycle/connect-layer-order.js';
 import { DEFAULT_PREVIEW_SERVER_PORT } from './preview-server/index.js';
 import { genGuard } from './lifecycle/gen-guard.js';
@@ -96,6 +113,9 @@ export const cli = defineCli({
     previewServerTrigger,
     studioUrlTrigger,
     studioRedirectTrigger,
+    // New cloud Studio: creates its v2-required drive once the agent is
+    // authorized (first-run creation order, Task 5.SIG).
+    studioBootstrapTrigger({ vetraAppDir: CONNECT_ASSETS_ROOT }),
     productSupervisorTrigger,
     productRequestsTrigger,
     liveHealthTrigger,
@@ -301,18 +321,62 @@ export const cli = defineCli({
 
 // @clint:begin reactor
 cli.configureReactor({
-  create: (ctx) =>
-    buildDefaultReactor(ctx, {
+  create: async (ctx) => {
+    // Task 5.SIG (X39): a NEW cloud Studio creates its documents
+    // v2-required and signs every write; local Studios and cloud Studios from
+    // before the marker keep the legacy, unsigned path.
+    const config = ctx.config as Config;
+    const plan = planStudioSigning(ctx.workdir, config);
+    // Sticky before anything is created: a restart cannot fall back to legacy.
+    commitStudioSigningPlan(ctx.workdir, plan);
+    const connectDir = 'dist/connect';
+    const log = {
+      debug: (m: string) => console.debug(m),
+      info: (m: string) => console.log(m),
+      warn: (m: string) => console.warn(m),
+    };
+    try {
+      stampCreateSignaturePolicy(CONNECT_ASSETS_ROOT, plan.mode, connectDir, log);
+    } catch (err: unknown) {
+      log.warn(
+        `[signing] could not stamp the browser create policy: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const v2 = plan.mode === 'v2-required';
+    // The same Renown the browser logs in on and the switchboard verifies
+    // against (R21): RENOWN_URL, else cloudRenownUrl, else the cloud default.
+    const renownUrl =
+      resolveStudioRenownUrl(process.env.RENOWN_URL, config.cloudRenownUrl, {
+        warn: (m) => log.warn(m),
+      }) ?? resolveCloudConfig(config).renownUrl;
+    const signature = v2
+      ? await studioReactorSigning({
+          workdir: ctx.workdir,
+          renownUrl,
+          log,
+        })
+      : undefined;
+    const signing: ReactorSigningOptions | undefined = signature?.signing;
+    const drive = v2
+      ? cloudStudioDriveConfig(ctx.workdir, {
+          preferredEditor: 'vetra-studio',
+          canCreate: () =>
+            signature ? signerHasUser(signature.renown.signer) : false,
+        })
+      : {
+          name: 'Home',
+          // Salt with the absolute workdir so each workdir is its own drive
+          // (stable across restarts, distinct across workdirs).
+          id: deterministicId(CLI_NAME, path.resolve(ctx.workdir)),
+          preferredEditor: 'vetra-studio',
+        };
+    return buildDefaultReactor(ctx, {
       documentModels: [...documentModels, ...vetraModels, ...extModels] as DocumentModelModule<any>[],
-      drive: {
-        name: 'Home',
-        // Salt with the absolute workdir so each workdir is its own drive
-        // (stable across restarts, distinct across workdirs).
-        id: deterministicId(CLI_NAME, path.resolve(ctx.workdir)),
-        preferredEditor: 'vetra-studio',
-      },
+      drive,
+      ...(signing ? { signing } : {}),
       subscriptions: {},
-    }),
+    });
+  },
   switchboard: {
     enabled: true,
     // Scan up from the derived default so a parallel studio gets a free port.

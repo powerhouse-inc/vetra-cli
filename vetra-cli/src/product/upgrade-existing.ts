@@ -216,6 +216,8 @@ interface UpgradeClient {
   get(documentId: string): Promise<unknown>;
   execute(documentId: string, branch: string, actions: Action[]): Promise<unknown>;
   createDocumentInDrive(driveId: string, document: unknown): Promise<{ header: { id: string } }>;
+  /** What the client creates new documents as (v2-required in a new cloud Studio). */
+  getCreateSignaturePolicy?(): Promise<"legacy" | "v2-required">;
 }
 
 interface ChatMessageLike {
@@ -619,7 +621,8 @@ export async function adoptExisting(ctx: UpgradeContext): Promise<"created" | "s
   if (!productId) {
     // Created under a marker name: until its operations are in, the page
     // keeps today's view for it (vetra-app `ideaStartStatus`).
-    const doc = withSignaturePolicy(StudioProductV1.utils.createDocument(), "legacy");
+    const policy = (await client.getCreateSignaturePolicy?.()) ?? "legacy";
+    const doc = withSignaturePolicy(StudioProductV1.utils.createDocument(), policy);
     doc.header.name = UPGRADING_PRODUCT_NAME;
     productId = (await client.createDocumentInDrive(drive.driveId, doc)).header.id;
   }

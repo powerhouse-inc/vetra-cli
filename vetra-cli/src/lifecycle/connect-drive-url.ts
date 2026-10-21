@@ -146,6 +146,7 @@ export function connectDriveUrlOnSwitchboardReady(
             environmentId,
             packageRegistryUrl,
             cloudSwitchboardUrl,
+            driveIdFromUrl(driveUrl),
             ctx.log,
           );
         } catch (err: unknown) {
@@ -193,7 +194,7 @@ export function resolveStudioRenownUrl(
  * Points `connect.drives.defaultDrives` in the runtime config at the live
  * drive and, when configured, `connect.renown.url` at the cloud Renown.
  */
-function patchRuntimeConfig(
+export function patchRuntimeConfig(
   bundleDir: string,
   driveUrl: string,
   renownUrl: string,
@@ -248,6 +249,7 @@ function writeStudioConfig(
   environmentId: string | undefined,
   packageRegistryUrl: string | null,
   cloudSwitchboardUrl: string | undefined,
+  studioDriveId: string | undefined,
   log: Log,
 ): void {
   if (!existsSync(bundleDir)) {
@@ -259,10 +261,12 @@ function writeStudioConfig(
     packageRegistryUrl?: string;
     environmentId?: string;
     cloudSwitchboardUrl?: string;
+    studioDriveId?: string;
   } = { previewServerUrl };
   if (packageRegistryUrl) config.packageRegistryUrl = packageRegistryUrl;
   if (environmentId) config.environmentId = environmentId;
   if (cloudSwitchboardUrl) config.cloudSwitchboardUrl = cloudSwitchboardUrl;
+  if (studioDriveId) config.studioDriveId = studioDriveId;
   const next = `${JSON.stringify(config, null, 2)}\n`;
 
   if (existsSync(file) && readFileSync(file, "utf8") === next) {
@@ -275,5 +279,88 @@ function writeStudioConfig(
   writeFileSync(file, next);
   log.info(
     `[connect-drive-url] Wrote studio.config.json (preview-server ${previewServerUrl}). Reload your browser to apply.`,
+  );
+}
+
+/** The drive id in a stamped drive URL (`…/d/<id>`), if it has one. */
+export function driveIdFromUrl(driveUrl: string): string | undefined {
+  const id = driveUrl.split("/d/").pop()?.split(/[/?#]/)[0];
+  return id ? id : undefined;
+}
+
+/**
+ * Point the Connect bundle at the Studio drive after it was created late (a
+ * new cloud Studio whose agent was authorized after boot). The browser keeps
+ * the old config until it reloads.
+ */
+export function stampStudioDrive(
+  vetraAppDir: string,
+  driveUrl: string,
+  renownUrl: string | undefined,
+  connectDir: string,
+  log: Log,
+): void {
+  patchRuntimeConfig(
+    path.join(vetraAppDir, connectDir),
+    driveUrl,
+    renownUrl ?? DEFAULT_CONNECT_RENOWN_URL,
+    log,
+  );
+  setStudioDriveId(path.join(vetraAppDir, connectDir), driveIdFromUrl(driveUrl), log);
+}
+
+/** Record the Studio drive id in `studio.config.json` (open tabs watch it). */
+export function setStudioDriveId(
+  bundleDir: string,
+  studioDriveId: string | undefined,
+  log: Log,
+): void {
+  if (!studioDriveId) return;
+  const file = path.join(bundleDir, "studio.config.json");
+  if (!existsSync(file)) return;
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  if (config.studioDriveId === studioDriveId) return;
+  config.studioDriveId = studioDriveId;
+  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+  log.info(
+    `[connect-drive-url] Studio drive is now ${studioDriveId}. Reload your browser to open it.`,
+  );
+}
+
+/**
+ * Stamp the create policy the browser uses for new documents (Task 5.SIG):
+ * `v2-required` in a new cloud Studio, `legacy` everywhere else. The daemon is
+ * the only source of truth, so a browser can never create a legacy document in
+ * a signed Studio. A missing stamp leaves Connect's safe default
+ * (`v2-required`).
+ */
+export function stampCreateSignaturePolicy(
+  vetraAppDir: string,
+  policy: "legacy" | "v2-required",
+  connectDir: string,
+  log: Pick<Log, "debug" | "info">,
+): void {
+  const configFile = path.join(vetraAppDir, connectDir, "powerhouse.config.json");
+  if (!existsSync(configFile)) {
+    log.debug(
+      `[connect-drive-url] no Connect runtime config at ${configFile}; leaving its create policy.`,
+    );
+    return;
+  }
+  const config = JSON.parse(readFileSync(configFile, "utf8")) as {
+    connect?: { reactor?: { createSignaturePolicy?: string } };
+  };
+  const connect = (config.connect ??= {});
+  const reactor = (connect.reactor ??= {});
+  if (reactor.createSignaturePolicy === policy) return;
+  reactor.createSignaturePolicy = policy;
+  writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
+  log.info(
+    `[connect-drive-url] New documents are created ${policy} in this Studio. Reload your browser to apply.`,
   );
 }
