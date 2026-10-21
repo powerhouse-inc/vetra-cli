@@ -3,6 +3,7 @@ import { BrandSheet as BrandSheetV1 } from "document-models/brand-sheet/v1";
 import { Feature as FeatureV1 } from "document-models/feature/v1";
 import { ProblemSheet as ProblemSheetV1 } from "document-models/problem-sheet/v1";
 import { StudioProduct as StudioProductV1 } from "document-models/studio-product/v1";
+import { StudioTeam as StudioTeamV1 } from "document-models/studio-team/v1";
 import { WorkBreakdownStructure as WorkBreakdownStructureV1 } from "document-models/work-breakdown-structure/v1";
 
 /**
@@ -16,5 +17,6 @@ export const documentModels = [
   FeatureV1,
   ProblemSheetV1,
   StudioProductV1,
+  StudioTeamV1,
   WorkBreakdownStructureV1,
 ] as const;

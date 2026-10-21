@@ -1,0 +1,136 @@
+scalar Unknown
+scalar DateTime
+scalar Address
+scalar AttachmentRef
+scalar Amount_Tokens
+scalar EthereumAddress
+scalar EmailAddress
+scalar Amount_Percentage
+scalar Date
+scalar URL
+scalar Amount_Money
+scalar OLabel
+scalar Currency
+scalar PHID
+scalar OID
+scalar Amount_Fiat
+scalar Amount_Currency
+scalar Amount_Crypto
+scalar Amount
+scalar Upload
+
+# Studio Team: who may do what in one Studio. One document per Studio.
+# Authority never comes from this document (it is browser-writable); it holds
+# the team's preferences and the guest list the agent enforces.
+enum StudioRole {
+  OWNER
+  MAKER
+  VIEWER
+}
+
+enum GuestRights {
+  COMMENT
+  COMMENT_STEER
+}
+
+type TeamPerson {
+  address: EthereumAddress!
+  name: String
+  addedAt: DateTime!
+}
+
+type RoleOverride {
+  address: EthereumAddress!
+  role: StudioRole!
+  at: DateTime!
+}
+
+type Guest {
+  id: OID!
+  address: EthereumAddress!
+  name: String
+  changeId: OID!
+  rights: GuestRights!
+  expiresAt: DateTime!
+  invitedAt: DateTime!
+  revokedAt: DateTime
+}
+
+type MemberLimit {
+  address: EthereumAddress!
+  monthlyUsd: Float!
+  at: DateTime!
+}
+
+type StudioTeamState {
+  initialized: Boolean!
+  orgId: String
+  reviewRequired: Boolean!
+  reviewers: [TeamPerson!]!
+  roleOverrides: [RoleOverride!]!
+  guests: [Guest!]!
+  memberLimits: [MemberLimit!]!
+}
+
+
+# team
+
+input InitTeamInput {
+  orgId: String
+  reviewRequired: Boolean!
+  at: DateTime!
+}
+
+input SetReviewRequiredInput {
+  required: Boolean!
+  at: DateTime!
+}
+
+input AddReviewerInput {
+  address: EthereumAddress!
+  name: String
+  at: DateTime!
+}
+
+input RemoveReviewerInput {
+  address: EthereumAddress!
+}
+
+input SetRoleOverrideInput {
+  address: EthereumAddress!
+  role: StudioRole!
+  at: DateTime!
+}
+
+input ClearRoleOverrideInput {
+  address: EthereumAddress!
+}
+
+# guests
+
+input InviteGuestInput {
+  id: OID!
+  address: EthereumAddress!
+  name: String
+  changeId: OID!
+  rights: GuestRights!
+  expiresAt: DateTime!
+  invitedAt: DateTime!
+}
+
+input RevokeGuestInput {
+  id: OID!
+  at: DateTime!
+}
+
+# limits
+
+input SetMemberLimitInput {
+  address: EthereumAddress!
+  monthlyUsd: Float!
+  at: DateTime!
+}
+
+input ClearMemberLimitInput {
+  address: EthereumAddress!
+}

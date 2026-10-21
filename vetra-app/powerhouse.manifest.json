@@ -30,6 +30,10 @@
     {
       "id": "vetra/studio-product",
       "name": "Studio Product"
+    },
+    {
+      "id": "vetra/studio-team",
+      "name": "Studio Team"
     }
   ],
   "apps": [
