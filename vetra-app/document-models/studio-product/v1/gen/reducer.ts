@@ -7,6 +7,7 @@ import type { StudioProductPHState } from "document-models/studio-product/v1";
 import { studioProductChangeOperations } from "../src/reducers/change.js";
 import { studioProductLaunchOperations } from "../src/reducers/launch.js";
 import { studioProductProductOperations } from "../src/reducers/product.js";
+import { studioProductSuggestionsOperations } from "../src/reducers/suggestions.js";
 
 import {
   AddMilestoneInputSchema,
@@ -17,6 +18,7 @@ import {
   CompleteStepInputSchema,
   CountStepInputSchema,
   DiscardChangeInputSchema,
+  DismissSuggestionInputSchema,
   FailLaunchInputSchema,
   FailRequestInputSchema,
   InitProductInputSchema,
@@ -42,9 +44,11 @@ import {
   SetLiveVersionInputSchema,
   SetProductDriveInputSchema,
   SetStepAttentionInputSchema,
+  SetSuggestionsInputSchema,
   StartChangeInputSchema,
   StartLaunchInputSchema,
   StartStepInputSchema,
+  UseSuggestionInputSchema,
   WaiveLintInputSchema,
 } from "./schema/zod.js";
 
@@ -504,6 +508,42 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       memoizedSchema(SetLaunchPermissionInputSchema).parse(action.input);
 
       studioProductLaunchOperations.setLaunchPermissionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_SUGGESTIONS": {
+      memoizedSchema(SetSuggestionsInputSchema).parse(action.input);
+
+      studioProductSuggestionsOperations.setSuggestionsOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "USE_SUGGESTION": {
+      memoizedSchema(UseSuggestionInputSchema).parse(action.input);
+
+      studioProductSuggestionsOperations.useSuggestionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "DISMISS_SUGGESTION": {
+      memoizedSchema(DismissSuggestionInputSchema).parse(action.input);
+
+      studioProductSuggestionsOperations.dismissSuggestionOperation(
         (state as any)[action.scope],
         action as any,
         dispatch,

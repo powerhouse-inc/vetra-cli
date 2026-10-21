@@ -518,3 +518,23 @@ input SetHealthInput {
 input SetLaunchPermissionInput {
   state: PermissionState!
 }
+
+# suggestions
+
+input SetSuggestionsItemInput {
+  id: OID!
+  text: String!
+}
+
+input SetSuggestionsInput {
+  afterVersion: Int!
+  items: [SetSuggestionsItemInput!]!
+}
+
+input UseSuggestionInput {
+  id: OID!
+}
+
+input DismissSuggestionInput {
+  id: OID!
+}
