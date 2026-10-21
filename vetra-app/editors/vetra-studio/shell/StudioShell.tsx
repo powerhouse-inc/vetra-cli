@@ -43,6 +43,8 @@ import { startChange } from "../change/startChange.js";
 import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
 import { usePublishPermission } from "../permission/usePublishPermission.js";
 import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
+import type { PointTarget } from "../preview/pointTarget.js";
+import { sendPointRequest } from "../preview/sendPointRequest.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { DataDetail } from "../steps/DataDetail.js";
 import { LiveDetail } from "../steps/LiveDetail.js";
@@ -293,13 +295,6 @@ function StudioPage({
   // product shows the Live | Preview split (§5.7) on the same surface.
   const liveView = live && product !== null;
   const stateTwo = liveView && openChange(product) === null;
-  const previewPane = (
-    <PreviewPane
-      change={change}
-      documents={documents}
-      session={sessionDocument}
-    />
-  );
 
   // An existing Studio's work before versions is closed: the next request
   // starts a change, which becomes Version 1 (spec §6.6).
@@ -311,6 +306,32 @@ function StudioPage({
             new Error("Your product is still loading. Try again in a moment."),
           ),
     [drive, productId],
+  );
+
+  // A pointed request joins the open change or starts one (Task 3.3).
+  const onPointRequest = useCallback(
+    async (args: {
+      request: string;
+      target: PointTarget;
+      shot: Blob | null;
+    }) => {
+      if (!productId) {
+        throw new Error(
+          "Your product is still loading. Try again in a moment.",
+        );
+      }
+      await sendPointRequest({ ...args, drive, productId, openChange: change });
+    },
+    [change, drive, productId],
+  );
+
+  const previewPane = (
+    <PreviewPane
+      change={change}
+      documents={documents}
+      session={sessionDocument}
+      onPointRequest={onPointRequest}
+    />
   );
 
   // X33: an existing Studio's product gets Version 1 only on the customer's

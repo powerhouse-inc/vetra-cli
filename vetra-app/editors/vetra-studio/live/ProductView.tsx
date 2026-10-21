@@ -16,6 +16,7 @@ import type {
 import { ChangeBubble } from "../change/ChangeDrawer.js";
 import { FailureLine } from "../failures/FailureLine.js";
 import type { Failure } from "../failures/failureStates.js";
+import type { PointTarget } from "../preview/pointTarget.js";
 import { PreviewPane } from "../preview/PreviewPane.js";
 import { LiveBanner } from "./LiveBanner.js";
 import { LiveEmbed } from "./LiveEmbed.js";
@@ -28,6 +29,7 @@ export function ProductView({
   now,
   onOpenAccess,
   onChangeSomething,
+  onPointRequest,
   suggestions,
 }: {
   /** Normalised product state with a live version (`readProduct`). */
@@ -42,6 +44,12 @@ export function ProductView({
   onOpenAccess: () => void;
   /** Opens the change drawer; no bubble while it is open. */
   onChangeSomething?: () => void;
+  /** Sends a pointed request from the preview of the live version. */
+  onPointRequest?: (args: {
+    request: string;
+    target: PointTarget;
+    shot: Blob | null;
+  }) => Promise<void>;
   /** The "Make it better" card (spec §5.8), under the banner. */
   suggestions?: ReactNode;
 }) {
@@ -91,6 +99,7 @@ export function ProductView({
             change={change}
             documents={documents}
             session={session}
+            onPointRequest={onPointRequest}
           />
         }
       />

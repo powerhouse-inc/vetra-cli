@@ -68,3 +68,6 @@ files.
 **Changes** after launch: `plan` only the steps the change touches, then
 TESTS and LIVE. A request while a change is open joins it: reply
 `I'll include that in this change`.
+
+A `[Pointed at]` block names the exact element the customer means — change
+that element; don't ask where it is.

@@ -20,7 +20,10 @@
  * dispatch as START_CHANGE, or on its own when joining. A suggestion that is
  * no longer open (used or dismissed elsewhere) never stops the request.
  */
-import { actions as chatActions } from "@powerhousedao/clint-common/document-models/chat-session";
+import {
+  actions as chatActions,
+  type UserContentPartInput,
+} from "@powerhousedao/clint-common/document-models/chat-session";
 import type { FileNode } from "@powerhousedao/shared/document-drive";
 import type { Action, PHDocument } from "document-model";
 import { actions as productActions } from "document-models/studio-product";
@@ -40,6 +43,8 @@ export interface StartChangeInput {
   kind: StartChangeKind;
   /** The suggestion the request started from, when it did. */
   suggestionId?: string | null;
+  /** Extra parts of the first message (a pointed screenshot). */
+  contentParts?: UserContentPartInput[];
 }
 
 export interface StartChangeResult {
@@ -155,7 +160,14 @@ export function startChange(
 }
 
 async function run(
-  { drive, productId, request, kind, suggestionId }: StartChangeInput,
+  {
+    drive,
+    productId,
+    request,
+    kind,
+    suggestionId,
+    contentParts = [],
+  }: StartChangeInput,
   deps: StartChangeDeps,
 ): Promise<StartChangeResult> {
   const text = request.trim();
@@ -174,7 +186,7 @@ async function run(
     deps.dispatch(sessionId, [
       chatActions.addUserMessage({
         id: deps.newId(),
-        content: [{ id: deps.newId(), type: "TEXT", text }],
+        content: [{ id: deps.newId(), type: "TEXT", text }, ...contentParts],
         createdAt: at,
       }),
     ]);
