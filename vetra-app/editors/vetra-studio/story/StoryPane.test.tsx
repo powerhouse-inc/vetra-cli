@@ -3,7 +3,7 @@ import { actions } from "document-models/studio-product";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readProduct } from "../shell/useStudioState.js";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
-import { button, click, render } from "../test-utils/render.js";
+import { button, click, render, typeInto } from "../test-utils/render.js";
 import {
   PRODUCT_ID,
   SESSION_ID,
@@ -45,6 +45,49 @@ function changeOf(product: ReturnType<typeof buildingProduct>) {
 }
 
 describe("StoryPane", () => {
+  it("an existing Studio's closed work asks for the next change instead of steering it", () => {
+    const product = readProduct(
+      productDoc(
+        actions.initProduct({
+          name: "Old app",
+          idea: "old work",
+          createdAt: at(0),
+        }),
+        actions.adoptExisting({
+          changeId: "c0",
+          request: "Before versions",
+          chatSessionIds: [SESSION_ID],
+          doneSteps: ["PLAN"],
+          at: at(0),
+        }),
+      ).state.global,
+    );
+    const change = product.changes[0];
+    const onStartChange = vi.fn(() => Promise.resolve());
+    const container = render(
+      <StoryPane
+        product={product}
+        change={change}
+        chat={chat(user("u0", "build me a todo app", at(1), at(1)))}
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        now={new Date(at(5))}
+        onStartChange={onStartChange}
+      />,
+    );
+    expect(container.querySelector('input[aria-label="Steer it"]')).toBeNull();
+    expect(button(container, "Pause")).toBeUndefined();
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="What should change?"]',
+    );
+    typeInto(input, "add due dates");
+    click(button(container, "Send"));
+    expect(onStartChange).toHaveBeenCalledWith("add due dates");
+    // Nothing is written into the old conversation.
+    expect(hoisted.dispatched).toEqual([]);
+    expectNoForbiddenWords(container);
+  });
+
   it("tells the build as a story: idea, milestones, doing now, replies", () => {
     const product = buildingProduct();
     const container = render(

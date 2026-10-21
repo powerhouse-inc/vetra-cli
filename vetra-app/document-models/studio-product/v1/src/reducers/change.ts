@@ -13,6 +13,7 @@ import {
   InvalidChangeKindError,
   InvalidChangeStatusError,
   InvalidCountError,
+  LiveBeforeVersionsNotAllowedError,
   NothingToWaiveError,
   StepNotDoneError,
   StepNotPlannedError,
@@ -486,5 +487,18 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
       live.updatedAt = at;
     }
     if (state.activeChangeId === changeId) state.activeChangeId = null;
+  },
+  setLiveBeforeVersionsOperation(state, action) {
+    normalizeProduct(state);
+    // Spec 6.6: only a product adopted from before versions, before its
+    // first version, can say what was live before versions.
+    const adopted = state.changes.some((c) => c.kind === "BEFORE_VERSIONS");
+    if (!adopted || state.versions.length > 0) {
+      throw new LiveBeforeVersionsNotAllowedError(
+        "Only a product adopted from before versions, with no version yet, can record what was live before versions.",
+      );
+    }
+    const { environmentId, url, at } = action.input;
+    state.liveBeforeVersions = { environmentId, url, at };
   },
 };

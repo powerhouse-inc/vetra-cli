@@ -38,6 +38,7 @@ import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
 import { LiveSurface } from "../change/LiveSurface.js";
+import { startChange } from "../change/startChange.js";
 import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
 import { usePublishPermission } from "../permission/usePublishPermission.js";
 import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
@@ -313,6 +314,18 @@ function StudioPage({
     />
   );
 
+  // An existing Studio's work before versions is closed: the next request
+  // starts a change, which becomes Version 1 (spec §6.6).
+  const startNextChange = useCallback(
+    (request: string) =>
+      productId
+        ? startChange({ drive, productId, request, kind: "CHANGE" })
+        : Promise.reject(
+            new Error("Your product is still loading. Try again in a moment."),
+          ),
+    [drive, productId],
+  );
+
   const story =
     product && change ? (
       <StoryPane
@@ -330,6 +343,7 @@ function StudioPage({
           requestedBy: signIn.name ?? "you",
           allowPublish: permission.allow,
         }}
+        onStartChange={productId ? startNextChange : undefined}
       />
     ) : sessionId ? (
       /* No readable product yet: the conversation as it is. */

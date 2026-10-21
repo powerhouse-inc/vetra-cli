@@ -207,23 +207,40 @@ export function ideaStartStatus(
   if (product) {
     const doc = byId.get(product.id);
     if (!doc) return "started";
+    const view = productView(doc);
+    // An older Studio whose upgrade (vetra-cli upgrade-existing) stopped
+    // after creating the product keeps today's page until it completes.
+    if (
+      !view.hasChanges &&
+      !view.initialised &&
+      hasOlderWork(drive, byId, false)
+    ) {
+      return "legacy";
+    }
     const sessions = filesOfType(drive, CHAT_SESSION_TYPE).map((n) => ({
       id: n.id,
       doc: byId.get(n.id),
     }));
-    return productStarted(productView(doc), sessions) === "no"
-      ? "idea"
-      : "started";
+    return productStarted(view, sessions) === "no" ? "idea" : "started";
   }
+  return hasOlderWork(drive, byId, true) ? "legacy" : "idea";
+}
+
+/** Project documents, or a conversation with messages (`unloaded`: one not
+ *  loaded yet counts too). */
+function hasOlderWork(
+  drive: StartProductDrive,
+  byId: ReadonlyMap<string, PHDocument>,
+  unloaded: boolean,
+): boolean {
   const hasProject = drive.state.global.nodes.some(
     (n) => n.kind === "file" && SPECIFY_TYPES.has((n as FileNode).documentType),
   );
-  if (hasProject) return "legacy";
-  const usedSession = filesOfType(drive, CHAT_SESSION_TYPE).some((n) => {
+  if (hasProject) return true;
+  return filesOfType(drive, CHAT_SESSION_TYPE).some((n) => {
     const doc = byId.get(n.id);
-    return !doc || messagesOf(doc).length > 0;
+    return doc ? messagesOf(doc).length > 0 : unloaded;
   });
-  return usedSession ? "legacy" : "idea";
 }
 
 /** The story's first line for a new product (spec §5.3). */

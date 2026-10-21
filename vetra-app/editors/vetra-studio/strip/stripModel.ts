@@ -262,6 +262,10 @@ export function stripModel(
           change?.steps.find((s) => s.kind === kind),
           live,
         );
+    if (kind === "LIVE" && !live && step.status === "NOT_STARTED") {
+      const before = liveBeforeVersionsStep(product);
+      if (before) return before;
+    }
     return unhealthy && kind === "LIVE"
       ? { ...step, icon: "!", stateText: "not responding" }
       : step;
@@ -284,6 +288,31 @@ export function stripModel(
   return open
     ? { name, steps, right, change: changeProgress(open) }
     : { name, steps, right };
+}
+
+/** Shown on the Live step of an existing Studio's product (spec §6.6). */
+export const LIVE_BEFORE_VERSIONS_TEXT = "(set up before versions)";
+
+/**
+ * An existing Studio's environment that already runs its work, until
+ * Version 1: `● Live (set up before versions)`. Not clickable — there is no
+ * version to show yet.
+ */
+function liveBeforeVersionsStep(
+  product: StudioProductState | null,
+): StripStep | null {
+  if (!product?.liveBeforeVersions || product.liveVersion !== null) {
+    return null;
+  }
+  return {
+    kind: "LIVE",
+    status: "LIVE",
+    icon: STATUS_ICON.LIVE,
+    label: STEP_LABELS.LIVE,
+    stateText: `${STATUS_TEXT.LIVE} ${LIVE_BEFORE_VERSIONS_TEXT}`,
+    count: LIVE_BEFORE_VERSIONS_TEXT,
+    clickable: false,
+  };
 }
 
 /** The live version's strip while a change is open: its steps all done,

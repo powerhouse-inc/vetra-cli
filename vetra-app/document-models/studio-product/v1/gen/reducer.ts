@@ -40,6 +40,7 @@ import {
   SetHealthInputSchema,
   SetLaunchLineInputSchema,
   SetLaunchPermissionInputSchema,
+  SetLiveBeforeVersionsInputSchema,
   SetLiveTargetInputSchema,
   SetLiveVersionInputSchema,
   SetProductDriveInputSchema,
@@ -124,6 +125,18 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       memoizedSchema(AdoptExistingInputSchema).parse(action.input);
 
       studioProductChangeOperations.adoptExistingOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_LIVE_BEFORE_VERSIONS": {
+      memoizedSchema(SetLiveBeforeVersionsInputSchema).parse(action.input);
+
+      studioProductChangeOperations.setLiveBeforeVersionsOperation(
         (state as any)[action.scope],
         action as any,
         dispatch,

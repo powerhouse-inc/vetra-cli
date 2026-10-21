@@ -3,6 +3,7 @@ export type ErrorCode =
   | "DuplicateChangeIdError"
   | "InvalidChangeKindError"
   | "AdoptNotAllowedError"
+  | "LiveBeforeVersionsNotAllowedError"
   | "ChangeNotFoundError"
   | "InvalidChangeStatusError"
   | "DuplicateStepKindError"
@@ -44,6 +45,16 @@ export class InvalidChangeKindError extends Error implements ReducerError {
 export class AdoptNotAllowedError extends Error implements ReducerError {
   errorCode = "AdoptNotAllowedError" as ErrorCode;
   constructor(message = "AdoptNotAllowedError") {
+    super(message);
+  }
+}
+
+export class LiveBeforeVersionsNotAllowedError
+  extends Error
+  implements ReducerError
+{
+  errorCode = "LiveBeforeVersionsNotAllowedError" as ErrorCode;
+  constructor(message = "LiveBeforeVersionsNotAllowedError") {
     super(message);
   }
 }
@@ -140,6 +151,8 @@ export const errors = {
   },
 
   AdoptExisting: { AdoptNotAllowedError },
+
+  SetLiveBeforeVersions: { LiveBeforeVersionsNotAllowedError },
 
   PlanSteps: {
     ChangeNotFoundError,

@@ -150,6 +150,56 @@ describe("stripModel", () => {
     expect(view.right).toEqual({ budget: "$0.31 of $10" });
   });
 
+  it("an existing Studio's product: its work done and Live (set up before versions)", () => {
+    const adopted = [
+      actions.initProduct({
+        name: "Old app",
+        idea: "old work",
+        createdAt: at(0),
+      }),
+      actions.adoptExisting({
+        changeId: "c0",
+        request: "Before versions",
+        chatSessionIds: ["s-old"],
+        doneSteps: ["PLAN", "DATA", "EDITORS"],
+        at: at(0),
+      }),
+    ];
+    const plain = strip(...adopted);
+    expect(plain.steps.map((s) => s.icon).join("")).toBe("✓✓✓○○");
+    const view = strip(
+      ...adopted,
+      actions.setLiveBeforeVersions({
+        environmentId: "env-old",
+        url: "https://old-app-connect.vetra.io",
+        at: at(1),
+      }),
+    );
+    expect(view.steps.map((s) => s.icon).join("")).toBe("✓✓✓○●");
+    expect(step(view, "LIVE")).toMatchObject({
+      label: "Live",
+      count: "(set up before versions)",
+      clickable: false,
+    });
+    // Still building: the budget stays on the right, no version yet.
+    expect(view.right).toEqual({ budget: "$0.31 of $10" });
+    // Version 1 takes over once it is live.
+    const live = readProduct(
+      productDoc(
+        ...adopted,
+        actions.setLiveBeforeVersions({
+          environmentId: "env-old",
+          url: "https://old-app-connect.vetra.io",
+          at: at(1),
+        }),
+      ).state.global,
+    );
+    live.liveVersion = 1;
+    expect(step(stripModel(live, INPUTS), "LIVE").count).not.toBe(
+      "(set up before versions)",
+    );
+  });
+
   it("live product: ● Live with the address, deployed time and GitHub", () => {
     const product = readProduct(productDoc(...buildingOps()).state.global);
     product.liveVersion = 1;

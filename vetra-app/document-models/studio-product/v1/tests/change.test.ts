@@ -14,6 +14,7 @@ import {
   reopenStep,
   resumeChange,
   setChangeTitle,
+  setLiveBeforeVersions,
   setStepAttention,
   startChange,
   startStep,
@@ -193,6 +194,72 @@ describe("ADOPT_EXISTING", () => {
     expect(errorAt(doc, 1)).toMatch(/CLOSED/);
     expect(errorAt(doc, 2)).toBeNull();
     expect(doc.state.global.activeChangeId).toBe("c1");
+  });
+});
+
+describe("SET_LIVE_BEFORE_VERSIONS", () => {
+  const live = setLiveBeforeVersions({
+    environmentId: "env-old",
+    url: "https://bold-crow-connect.vetra.io",
+    at: at(1),
+  });
+  const adopt = adoptExisting({
+    changeId: "c0",
+    request: "Before versions",
+    chatSessionIds: ["phd:old-1"],
+    doneSteps: ["PLAN"],
+    at: at(0),
+  });
+
+  it("records what was live before versions on an adopted product", () => {
+    const doc = apply(utils.createDocument(), adopt, live);
+    expect(errorAt(doc, 1)).toBeNull();
+    expect(doc.state.global.liveBeforeVersions).toEqual({
+      environmentId: "env-old",
+      url: "https://bold-crow-connect.vetra.io",
+      at: at(1),
+    });
+    // Nothing else moves: no live version, no live target.
+    expect(doc.state.global.liveVersion).toBeNull();
+    expect(doc.state.global.appId).toBeNull();
+    expect(doc.state.global.liveUrl).toBeNull();
+  });
+
+  it("is refused on a product that was not adopted", () => {
+    const doc = apply(building(), live);
+    expect(lastError(doc)).toMatch(/adopted from before versions/);
+    expect(doc.state.global.liveBeforeVersions).toBeNull();
+  });
+
+  it("is refused once the product has a version", () => {
+    const doc = apply(
+      withState({
+        changes: [craftedChange("c0", "CLOSED", { kind: "BEFORE_VERSIONS" })],
+        versions: [
+          {
+            number: 1,
+            title: "t",
+            summary: null,
+            changeId: "c1",
+            gitTag: "v1",
+            sha: "s",
+            packages: [],
+            deploymentId: null,
+            launchedAt: null,
+            launchedBy: "vetra",
+            trigger: "STUDIO_LAUNCH",
+            status: "LAUNCHING",
+            lines: [],
+            changedFiles: [],
+            failure: null,
+            rollbackBlockedReason: null,
+          },
+        ],
+      }),
+      live,
+    );
+    expect(errorAt(doc, 0)).toMatch(/no version yet/);
+    expect(doc.state.global.liveBeforeVersions).toBeNull();
   });
 });
 

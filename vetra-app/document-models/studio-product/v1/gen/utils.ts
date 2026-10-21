@@ -51,6 +51,7 @@ export const initialGlobalState: StudioProductGlobalState = {
     lastError: null,
     externalChangesSha: null,
   },
+  liveBeforeVersions: null,
 };
 export const initialLocalState: StudioProductLocalState = {};
 

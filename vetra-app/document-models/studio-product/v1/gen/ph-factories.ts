@@ -41,6 +41,7 @@ export function defaultGlobalState(): StudioProductGlobalState {
       lastError: null,
       externalChangesSha: null,
     },
+    liveBeforeVersions: null,
   };
 }
 

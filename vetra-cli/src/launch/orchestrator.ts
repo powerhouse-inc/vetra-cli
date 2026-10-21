@@ -80,6 +80,7 @@ import {
 import { publishAll, type LiveRelease, type PublishedPackage } from "./publish-all.js";
 import { askForSuggestions, chatBudgetUsedUp, hasSuggestionsFor } from "./suggestions.js";
 import { checkLive, waitForDeployment } from "./verify.js";
+import { ensureProductTarget } from "../product/upgrade-existing.js";
 
 /* ------------------------------------------------------------------------ */
 /* Words and small rules                                                     */
@@ -325,7 +326,10 @@ async function doEnsureLiveTarget(ctx: OrchestratorContext): Promise<StudioProdu
   if (!name) {
     throw new LaunchError("NO_NAME", LAUNCH_REASONS.noLiveAddress, "The product has no name yet.");
   }
-  const target = await cloudCall(ctx, () => depsOf(ctx).ensureProduct(ctx, name));
+  // An existing Studio's product adopts the environment live before versions (§6.6).
+  const target = await ensureProductTarget(ctx, s, name, (n, opts) =>
+    cloudCall(ctx, () => depsOf(ctx).ensureProduct(ctx, n, opts)),
+  );
   await dispatchProduct(ctx, [a.setLiveTarget(target)]);
   ctx.log?.info?.(`[launch] live address ${target.slug}.${CLOUD_BASE_DOMAIN} set up`);
   return (await getProductDoc(ctx))!.state;

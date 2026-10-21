@@ -204,6 +204,26 @@ describe("ensureProduct", () => {
     });
   });
 
+  it("asks the cloud to adopt an existing Studio's environment (F28)", async () => {
+    const h = harness(() => ({
+      json: {
+        data: {
+          ensureStudioProduct: {
+            id: "app-1",
+            slug: "bold-crow",
+            productionEnvironmentId: "env-old",
+            productionUrls: { connect: "https://bold-crow.vetra.io" },
+          },
+        },
+      },
+    }));
+    const out = await ensureProduct(h.ctx, "Todo", { adoptEnvironmentId: "env-old" });
+    expect(out.productionEnvironmentId).toBe("env-old");
+    expect(h.calls[0].body.variables).toEqual({
+      input: { studioEnvironmentId: "studio-env-1", name: "Todo", adoptEnvironmentId: "env-old" },
+    });
+  });
+
   it("falls back to the App slug while the environment has no address yet", async () => {
     const h = harness(() => ({
       json: {

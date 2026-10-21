@@ -223,6 +223,12 @@ export type LaunchLineKind =
 
 export type LineStatus = "DONE" | "FAILED" | "RUNNING" | "SKIPPED" | "WAITING";
 
+export type LiveBeforeVersions = {
+  at: Scalars["DateTime"]["output"];
+  environmentId: Scalars["String"]["output"];
+  url: Scalars["URL"]["output"];
+};
+
 export type LiveHealth = "HEALTHY" | "UNHEALTHY" | "UNKNOWN";
 
 export type MarkStuckInput = {
@@ -373,6 +379,12 @@ export type SetLaunchPermissionInput = {
   state: PermissionState;
 };
 
+export type SetLiveBeforeVersionsInput = {
+  at: Scalars["DateTime"]["input"];
+  environmentId: Scalars["String"]["input"];
+  url: Scalars["URL"]["input"];
+};
+
 export type SetLiveTargetInput = {
   appId: Scalars["String"]["input"];
   liveUrl: Scalars["URL"]["input"];
@@ -452,6 +464,7 @@ export type StudioProductState = {
   idea: Maybe<Scalars["String"]["output"]>;
   lastRequestFailure: Maybe<RequestFailure>;
   launchPermission: PermissionState;
+  liveBeforeVersions: Maybe<LiveBeforeVersions>;
   liveDeploymentId: Maybe<Scalars["String"]["output"]>;
   liveSince: Maybe<Scalars["DateTime"]["output"]>;
   liveUrl: Maybe<Scalars["URL"]["output"]>;

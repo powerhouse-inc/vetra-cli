@@ -288,6 +288,25 @@ describe("ideaStartStatus", () => {
     expect(ideaStartStatus(unloaded.drive, [])).toBe("legacy");
   });
 
+  it("keeps today's page while an older Studio's upgrade is half-done", () => {
+    // The upgrade created the product but stopped before INIT/ADOPT.
+    const s = store();
+    s.add("s", CHAT_TYPE, { messages: [{ role: "USER" }] });
+    s.add("p", PRODUCT_TYPE, { changes: [] });
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("legacy");
+    // A new Studio's own start that stopped there still offers the idea box.
+    const fresh = store();
+    fresh.add("s", CHAT_TYPE, { messages: [] });
+    fresh.add("p", PRODUCT_TYPE, { changes: [] });
+    expect(ideaStartStatus(fresh.drive, fresh.documents())).toBe("idea");
+    // Once adopted, the product page.
+    s.docs.set("p", {
+      idea: "old work",
+      changes: [{ kind: "BEFORE_VERSIONS", status: "CLOSED" }],
+    });
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+  });
+
   it("never offers a second first message while documents are syncing", () => {
     const s = store();
     s.add("p", PRODUCT_TYPE, {});

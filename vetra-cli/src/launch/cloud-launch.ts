@@ -248,9 +248,16 @@ interface AppPayload {
 /**
  * The product's App + production environment, created on first call and
  * returned as-is afterwards (`ensureStudioProduct` is idempotent per Studio).
- * The result feeds `SET_LIVE_TARGET`.
+ * The result feeds `SET_LIVE_TARGET`. `adoptEnvironmentId` (an existing
+ * Studio's environment from before versions, Ruling F28) makes that
+ * environment the App's production environment instead of a new one; the
+ * cloud refuses one it can't adopt with `ADOPT_NOT_ALLOWED`.
  */
-export async function ensureProduct(ctx: CloudContext, name: string): Promise<ProductTarget> {
+export async function ensureProduct(
+  ctx: CloudContext,
+  name: string,
+  opts: { adoptEnvironmentId?: string } = {},
+): Promise<ProductTarget> {
   const studioEnvironmentId = ctx.config.environmentId?.trim();
   if (!studioEnvironmentId) {
     throw new LaunchError(
@@ -267,7 +274,11 @@ export async function ensureProduct(ctx: CloudContext, name: string): Promise<Pr
         id slug productionEnvironmentId productionUrls { connect }
       }
     }`,
-    { input: { studioEnvironmentId, name } },
+    {
+      input: opts.adoptEnvironmentId
+        ? { studioEnvironmentId, name, adoptEnvironmentId: opts.adoptEnvironmentId }
+        : { studioEnvironmentId, name },
+    },
   );
   const app = data.ensureStudioProduct;
   const connect = app.productionUrls?.connect ?? null;
