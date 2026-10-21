@@ -182,17 +182,80 @@ describe("layers", () => {
       tried: ["a"],
       at: at(6),
     }) as unknown as Op;
+    const needsYou = actions.setStepAttention({
+      changeId: "c1",
+      kind: "EDITORS",
+      status: "NEEDS_YOU",
+      reason: "Needs a look.",
+      at: at(6),
+    }) as unknown as Op;
     const msgs = chat(
       user("u0", "x", atSec(0, 30)),
       reply("r1", "Which colour?", atSec(7, 0), atSec(7, 1)),
     );
     for (const which of ["outcome", "activity", "raw"] as const) {
-      const { out } = layer([milestone("m1", 3, "One"), stuck], msgs, which);
+      const { out } = layer(
+        [milestone("m1", 3, "One"), stuck, needsYou],
+        msgs,
+        which,
+      );
       expect(out.some((l) => l.kind === "stuck")).toBe(true);
+      expect(out.some((l) => l.kind === "attention")).toBe(true);
     }
     const q = layer([milestone("m1", 3, "One")], null, "outcome");
     expect(q.out.some((l) => l.kind === "milestone")).toBe(true);
     const asked = layer([milestone("m1", 3, "One")], msgs, "outcome");
     expect(asked.out.some((l) => l.kind === "reply")).toBe(true);
+  });
+
+  it("failure fixed in the next milestone folds as recovered, never failing", () => {
+    const { out } = layer(
+      [
+        milestone("m1", 3, "One"),
+        milestone("m2", 6, "Two"),
+        run("k1", 4, false),
+        run("k2", 7, true),
+      ],
+      null,
+      "activity",
+    );
+    const sums = out.flatMap((l) =>
+      l.kind === "milestone" ? [l.summary] : [],
+    );
+    expect(sums.join("|")).not.toMatch(/failing/);
+    expect(sums[0]).toMatch(/[Cc]hecks passed after 2 tries/);
+  });
+
+  it("outcome layer keeps a failing latest run and paused", () => {
+    const pause = actions.pauseChange({
+      changeId: "c1",
+      at: at(9),
+    }) as unknown as Op;
+    const { out } = layer(
+      [
+        milestone("m1", 3, "One"),
+        run("k1", 4, true),
+        run("k2", 5, false),
+        pause,
+      ],
+      null,
+      "outcome",
+    );
+    expect(out.map((l) => l.id)).toContain("checks:k2");
+    expect(out.map((l) => l.id)).not.toContain("checks:k1");
+    expect(out.some((l) => l.kind === "paused")).toBe(true);
+  });
+
+  it("steps before the first milestone count in the first summary", () => {
+    const { out } = layer(
+      [milestone("m1", 3, "One")],
+      chat(
+        user("u0", "x", atSec(0, 30)),
+        toolCall("t0", "spec-create", { name: "Task" }, atSec(1, 0)),
+      ),
+      "activity",
+    );
+    const m1 = out.find((l) => l.kind === "milestone" && l.id === "m1");
+    expect(m1 && m1.kind === "milestone" && m1.summary).toMatch(/Wrote 1 spec/);
   });
 });

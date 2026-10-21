@@ -64,6 +64,33 @@ function windows(
   return result;
 }
 
+/**
+ * What a window's summary may say about checks. Only the newest run overall
+ * can read "failing". A window whose last run failed and was fixed later
+ * reads as recovered: the runs from its first failure up to the first
+ * all-pass run after it. A past failure never fixed has nothing to say.
+ */
+function summaryRuns(
+  windowRuns: readonly CheckRun[],
+  all: readonly CheckRun[],
+): CheckRun[] {
+  const last = windowRuns.at(-1);
+  if (!last) return [];
+  const passes = (r: CheckRun) => r.results.every((x) => x.passed);
+  let runs = [...windowRuns];
+  if (!passes(last) && last !== all.at(-1)) {
+    const after = all.slice(all.indexOf(last) + 1);
+    const fix = after.findIndex(passes);
+    if (fix === -1) {
+      const lastPass = runs.findLastIndex(passes);
+      return runs.slice(0, lastPass + 1);
+    }
+    runs = [...runs, ...after.slice(0, fix + 1)];
+  }
+  const firstFail = runs.findIndex((r) => !passes(r));
+  return firstFail === -1 ? runs : runs.slice(firstFail);
+}
+
 function activityLines(
   lines: readonly StoryLine[],
   change: Change,
@@ -74,6 +101,8 @@ function activityLines(
   const runsOf = windows(milestones, change.checkRuns);
   const sorted = [...change.checkRuns].sort((a, b) => time(a.at) - time(b.at));
   const open = foldedFailures(sorted).open;
+  const firstMilestone = milestones[0]?.id;
+  const early = lines.find((l) => l.kind === "idea")?.detail ?? [];
   const lastReply = lines.findLast((l) => l.kind === "reply");
 
   const out: StoryLine[] = [];
@@ -81,9 +110,15 @@ function activityLines(
   for (const line of lines) {
     switch (line.kind) {
       case "milestone":
+        // Work before the first milestone counts in the first summary.
         out.push({
           ...line,
-          summary: activitySummary(line.detail, runsOf.get(line.id) ?? []),
+          summary: activitySummary(
+            line.id === firstMilestone
+              ? [...early, ...line.detail]
+              : line.detail,
+            summaryRuns(runsOf.get(line.id) ?? [], sorted),
+          ),
         });
         break;
       case "checks":
@@ -110,6 +145,9 @@ function outcomeLayer(
   lines: readonly StoryLine[],
   change: Change,
 ): StoryLine[] {
+  const open = foldedFailures(
+    [...change.checkRuns].sort((a, b) => time(a.at) - time(b.at)),
+  ).open;
   const marks = new Map(
     lines.flatMap((l) => (l.kind === "milestone" ? [[l.id, l.mark]] : [])),
   );
@@ -128,6 +166,8 @@ function outcomeLayer(
     (l) =>
       l.kind === "stuck" ||
       l.kind === "attention" ||
+      l.kind === "paused" ||
+      (open !== null && l.id === `checks:${open.id}`) ||
       (l.kind === "reply" && l.question),
   );
   const idea = lines.filter((l) => l.kind === "idea");
