@@ -26,6 +26,8 @@ import { resolveStudioRenownUrl } from "../lifecycle/connect-drive-url.js";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
 import { DEFAULT_PH_VERSION } from "../ph-version.gen.js";
 import { VETRA_CLI_VERSION } from "../version-banner.js";
+import { resolveLlmSettings } from "../agents/llm.js";
+import { createUnderstandDeps } from "../workshop/understand.js";
 
 interface TriggerState {
   handle: PreviewServerHandle | undefined;
@@ -78,6 +80,11 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         ),
         // Read per request: the proxy's public URL can land after startup.
         getProxyPublicUrl: () => ctx.commandContext.proxy?.url,
+        // Read per request: the Studio's model settings (provider, key) can change.
+        understandDeps: () => {
+          const settings = resolveLlmSettings(ctx.context.config);
+          return settings ? createUnderstandDeps(settings) : null;
+        },
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),

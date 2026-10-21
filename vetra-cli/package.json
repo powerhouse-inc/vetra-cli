@@ -76,6 +76,7 @@
     "@toon-format/toon": "^2.2.0",
     "@types/node": "catalog:",
     "@types/proper-lockfile": "^4.1.4",
+    "ai": "5.0.270",
     "chokidar": "^3.6.0",
     "devcert": "1.2.3",
     "document-model": "catalog:",

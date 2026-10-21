@@ -37,6 +37,7 @@ import { createRequestAuthorizer, type RequestAuthorizer } from "./request-auth.
 import { buildSessionExport, listSessions } from "./session-export.js";
 import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-export.js";
 import { createWorkshopRoutes } from "./workshop-routes.js";
+import type { UnderstandDeps } from "../workshop/understand.js";
 import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
 import {
   confirmAuth,
@@ -72,6 +73,8 @@ interface PreviewServerDeps {
   /** Live public proxy URL; its origin is the `aud` owner bearers must carry.
    *  Falls back to `proxyPublicUrl`. */
   getProxyPublicUrl?: () => string | undefined;
+  /** Model access of the "What I understood" pass; null/undefined = no model connected. */
+  understandDeps?: () => UnderstandDeps | null;
   /** Owner gate override (tests); default `createRequestAuthorizer`. */
   authorizeRequest?: RequestAuthorizer;
   log?: {
@@ -170,7 +173,12 @@ export async function startPreviewServer(
     return false;
   }
 
-  const workshopRoutes = createWorkshopRoutes({ workdir, requireOwner, log });
+  const workshopRoutes = createWorkshopRoutes({
+    workdir,
+    requireOwner,
+    understandDeps: deps.understandDeps,
+    log,
+  });
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void handleRequest(req, res);
