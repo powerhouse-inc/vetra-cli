@@ -239,6 +239,16 @@ async function clientFor(ctx: ProductDriveContext, switchboardUrl: string): Prom
   return ctx.driveClient ? ctx.driveClient(switchboardUrl) : createDriveClient(ctx, switchboardUrl);
 }
 
+/** How many documents the product drive holds on the live server (D6: is there live data?). */
+export async function countDriveDocuments(
+  ctx: ProductDriveContext,
+  switchboardUrl: string,
+  driveId: string,
+): Promise<number> {
+  const client = await clientFor(ctx, switchboardGraphqlEndpoint(switchboardUrl));
+  return (await client.listDocuments(driveId)).length;
+}
+
 /** The example documents of every project; schema-invalid ones are logged and left out. */
 function loadExamples(ctx: ProductDriveContext, projectPath: EnsureProductDriveOptions["projectPath"]): SeedDocument[] {
   const projects = projectPath ? [projectPath].flat() : [];

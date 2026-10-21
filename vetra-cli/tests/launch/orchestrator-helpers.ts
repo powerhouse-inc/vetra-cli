@@ -88,7 +88,8 @@ export async function launchHarness(
     sleep: async (ms) => {
       sleeps.push(ms);
     },
-    checkCompat: async () => ({ breaking: [] }),
+    checkCompat: async () => ({ breaking: [], unreadable: [] }),
+    countDriveDocuments: async () => 0,
     messageAgent: async (_ctx, chatSessionId, text) => {
       calls.push(`message ${chatSessionId} ${text.split("\n")[0]}`);
     },

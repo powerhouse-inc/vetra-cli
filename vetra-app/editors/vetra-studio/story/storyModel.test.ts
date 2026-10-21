@@ -13,6 +13,7 @@ import {
 } from "./storyFixtures.js";
 import {
   CONTINUE_ID_PREFIX,
+  STUDIO_NOTE_ID_PREFIX,
   staleness,
   storyLines,
   type StoryLine,
@@ -283,6 +284,29 @@ describe("auto-continue", () => {
         // Sent while paused: its turn stopped at its first step, no reply.
         user("m1", "make the cards blue", atSec(3, 1), atSec(3, 2)),
         user(`${CONTINUE_ID_PREFIX}1`, "continue", atSec(3, 5), atSec(3, 6)),
+      ),
+      new Date(at(4)),
+    );
+    expect(lines.flatMap((l) => (l.kind === "steer" ? [l.text] : []))).toEqual([
+      "make the cards blue",
+    ]);
+  });
+
+  it("the Studio's note to the agent is not a steer (D6 blocked launch)", () => {
+    const product = buildingProduct();
+    const lines = storyLines(
+      product,
+      changeOf(product),
+      chat(
+        user("u0", "a task board", at(1), at(1)),
+        { ...reply("a1", "Done.", at(2), at(3)), finishReason: "stop" },
+        user(
+          `${STUDIO_NOTE_ID_PREFIX}1`,
+          "Make this change additive: keep existing fields and operations, add new ones as optional.",
+          atSec(3, 1),
+          atSec(3, 2),
+        ),
+        user("u2", "make the cards blue", atSec(3, 5), atSec(3, 6)),
       ),
       new Date(at(4)),
     );

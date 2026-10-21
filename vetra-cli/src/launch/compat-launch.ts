@@ -49,14 +49,26 @@ const execFileAsync = promisify(execFile);
 /* ------------------------------------------------------------------------ */
 
 /** The start of the plain reason a blocked launch records with FAIL_LAUNCH. */
-export const BREAKING_REASON_PREFIX = "This change would break data your users already have";
+export const BREAKING_REASON_PREFIX = "this change would break data your users already have";
+/**
+ * The plain reason when the check couldn't run while live documents exist (or
+ * the product drive couldn't be read): the launch fails closed; Try again
+ * runs the check again.
+ */
+export const COMPAT_UNCHECKED_REASON = "we couldn't check that this change keeps your users' data safe";
+/**
+ * Id prefix of the agent messages the Studio writes into a conversation (not
+ * the customer's words; the story hides them — vetra-app storyModel
+ * `STUDIO_NOTE_ID_PREFIX`).
+ */
+export const STUDIO_NOTE_ID_PREFIX = "studio-note-";
 /** What the agent is told when a launch is blocked. */
 export const MAKE_ADDITIVE_MESSAGE =
   "Make this change additive: keep existing fields and operations, add new ones as optional.";
 /** How many breaks the plain reason names before "and n more". */
 export const REASON_MAX_ITEMS = 3;
 
-/** `This change would break data your users already have: <what>.` */
+/** `this change would break data your users already have: <what>.` */
 export function breakingReason(breaking: Breaking[]): string {
   const whats = breaking.map((b) => b.what);
   const shown = whats.slice(0, REASON_MAX_ITEMS);
@@ -84,6 +96,16 @@ export type ModelSpec = {
   stateSchema: string;
   operations: { name: string; inputSchema: string }[];
 };
+
+/**
+ * `breaking`: what would break. `unreadable`: live descriptions that couldn't
+ * be read, so nothing was compared for them (the gate treats that like a
+ * check that couldn't run).
+ */
+export interface CompatResult {
+  breaking: Breaking[];
+  unreadable: string[];
+}
 
 export interface Breaking {
   model: string;
@@ -174,7 +196,8 @@ function newlyRequired(live: GraphQLSchema, next: GraphQLSchema): string[] {
 
 /**
  * What would break between two SDL fragments; null when the live one can't be
- * read (nothing to compare with). A next fragment that doesn't read is a break.
+ * read (nothing compared; the caller reports it). A next fragment that doesn't
+ * read is a break.
  */
 function compareFragments(liveSdl: string, nextSdl: string, state: boolean): string[] | null {
   let live: GraphQLSchema;
@@ -199,8 +222,9 @@ function compareFragments(liveSdl: string, nextSdl: string, state: boolean): str
  * Additive changes (new optional fields, new operations, new models) are fine;
  * everything else is listed in `breaking`.
  */
-export function compareModels(live: ModelSpec[], next: ModelSpec[]): { breaking: Breaking[] } {
+export function compareModels(live: ModelSpec[], next: ModelSpec[]): CompatResult {
   const breaking: Breaking[] = [];
+  const unreadable: string[] = [];
   const nextByType = new Map(next.map((m) => [m.documentType, m]));
   for (const liveModel of live) {
     const model = liveModel.documentType;
@@ -209,9 +233,9 @@ export function compareModels(live: ModelSpec[], next: ModelSpec[]): { breaking:
       breaking.push({ model, what: `${quoted(model)} was removed` });
       continue;
     }
-    for (const what of compareFragments(liveModel.stateSchema, nextModel.stateSchema, true) ?? []) {
-      breaking.push({ model, what });
-    }
+    const state = compareFragments(liveModel.stateSchema, nextModel.stateSchema, true);
+    if (state === null) unreadable.push(`${model} state`);
+    for (const what of state ?? []) breaking.push({ model, what });
     const nextOps = new Map(nextModel.operations.map((o) => [o.name, o]));
     for (const op of liveModel.operations) {
       const nextOp = nextOps.get(op.name);
@@ -219,12 +243,12 @@ export function compareModels(live: ModelSpec[], next: ModelSpec[]): { breaking:
         breaking.push({ model, what: `operation ${quoted(op.name)} was removed` });
         continue;
       }
-      for (const what of compareFragments(op.inputSchema, nextOp.inputSchema, false) ?? []) {
-        breaking.push({ model, what: `operation ${quoted(op.name)}: ${what}` });
-      }
+      const input = compareFragments(op.inputSchema, nextOp.inputSchema, false);
+      if (input === null) unreadable.push(`${model} operation ${op.name}`);
+      for (const what of input ?? []) breaking.push({ model, what: `operation ${quoted(op.name)}: ${what}` });
     }
   }
-  return { breaking };
+  return { breaking, unreadable };
 }
 
 /* ------------------------------------------------------------------------ */
@@ -301,7 +325,7 @@ export async function readWorkingModelSpecs(workdir: string): Promise<ModelSpec[
 }
 
 /** The gate: the working tree against the live version's tag. */
-export async function checkLaunchCompat(workdir: string, liveTag: string): Promise<{ breaking: Breaking[] }> {
+export async function checkLaunchCompat(workdir: string, liveTag: string): Promise<CompatResult> {
   const [live, next] = await Promise.all([readModelSpecs(workdir, liveTag), readWorkingModelSpecs(workdir)]);
   return compareModels(live, next);
 }
@@ -314,14 +338,17 @@ interface ChatClient {
   execute(documentId: string, branch: string, actions: Action[]): Promise<unknown>;
 }
 
-/** Write `text` into a chat session as a user message (the agent picks it up). */
+/**
+ * Write `text` into a chat session as a user message (the agent picks it up),
+ * marked as the Studio's note so the story never shows it as the customer's.
+ */
 export async function messageAgent(ctx: ProductContext, chatSessionId: string, text: string, at: string): Promise<void> {
   const drive = await getEmbeddedDrive(ctx);
   if (!drive) throw new Error("no reactor to reach the chat");
   const client = drive.reactor.client as ChatClient;
   await client.execute(chatSessionId, "main", [
     chatActions.addUserMessage({
-      id: randomUUID(),
+      id: `${STUDIO_NOTE_ID_PREFIX}${randomUUID()}`,
       createdAt: at,
       content: [{ id: randomUUID(), type: "TEXT", text }],
     }),

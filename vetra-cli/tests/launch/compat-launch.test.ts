@@ -4,7 +4,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  COMPAT_UNCHECKED_REASON,
   MAKE_ADDITIVE_MESSAGE,
+  STUDIO_NOTE_ID_PREFIX,
   agentMessage,
   breakingReason,
   checkLaunchCompat,
@@ -13,11 +15,12 @@ import {
   readModelSpecs,
   readWorkingModelSpecs,
   toModelSpec,
+  type CompatResult,
   type ModelSpec,
 } from "../../src/launch/compat-launch.js";
-import { LAUNCH_TRIGGER, launch } from "../../src/launch/orchestrator.js";
+import { LAUNCH_TRIGGER, launch, launchFailureText, type LaunchDeps } from "../../src/launch/orchestrator.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
-import { a, AT, launchHarness, makeReady, type LaunchHarness } from "./orchestrator-helpers.js";
+import { a, AT, TARGET, launchHarness, makeReady, type LaunchHarness } from "./orchestrator-helpers.js";
 
 const STATE = `
 type TodoState {
@@ -81,7 +84,7 @@ describe("compareModels (D6)", () => {
     const { breaking } = compareModels([todo()], [next]);
     expect(breaking).toEqual([{ model: "acme/todo", what: 'field "TodoState.title" was removed' }]);
     expect(breakingReason(breaking)).toBe(
-      'This change would break data your users already have: field "TodoState.title" was removed.',
+      'this change would break data your users already have: field "TodoState.title" was removed.',
     );
   });
 
@@ -145,9 +148,13 @@ describe("compareModels (D6)", () => {
     expect(whats([todo()], [])).toEqual(['"acme/todo" was removed']);
   });
 
-  it("a next description that doesn't read blocks; a live one that doesn't read is not compared", () => {
+  it("a next description that doesn't read blocks; a live one that doesn't read is reported, not compared", () => {
     expect(whats([todo()], [todo({ stateSchema: "type TodoState {" })])).toEqual(["its description can't be read"]);
-    expect(whats([todo({ stateSchema: "type TodoState {" })], [todo()])).toEqual([]);
+    const bad = todo({ stateSchema: "type TodoState {", operations: [{ name: "ADD_ITEM", inputSchema: "input {" }] });
+    expect(compareModels([bad], [todo()])).toEqual({
+      breaking: [],
+      unreadable: ["acme/todo state", "acme/todo operation ADD_ITEM"],
+    });
   });
 
   it("an emptied state description removes its types", () => {
@@ -160,7 +167,7 @@ describe("compareModels (D6)", () => {
   it("the plain reason names three breaks and counts the rest", () => {
     const breaking = ["a", "b", "c", "d", "e"].map((w) => ({ model: "acme/todo", what: w }));
     expect(breakingReason(breaking)).toBe(
-      "This change would break data your users already have: a; b; c; and 2 more.",
+      "this change would break data your users already have: a; b; c; and 2 more.",
     );
   });
 
@@ -240,7 +247,7 @@ describe("reading models at a version", () => {
     await fs.writeFile(note + "/note.json", modelJson({ id: "acme/note", state: "type NoteState { t: String }", ops: [] }));
     const next = await readWorkingModelSpecs(wd);
     expect(next.map((m) => m.documentType).sort()).toEqual(["acme/note", "acme/todo"]);
-    expect(await checkLaunchCompat(wd, "v1")).toEqual({ breaking: [] });
+    expect(await checkLaunchCompat(wd, "v1")).toEqual({ breaking: [], unreadable: [] });
   });
 
   it("a removed field in the working tree is found against the tag", async () => {
@@ -251,6 +258,7 @@ describe("reading models at a version", () => {
     );
     expect(await checkLaunchCompat(wd, "v1")).toEqual({
       breaking: [{ model: "acme/todo", what: 'field "TodoState.title" was removed' }],
+      unreadable: [],
     });
   });
 
@@ -278,13 +286,18 @@ describe("the gate in a launch", () => {
     h = undefined;
   });
 
-  async function liveThenChange(breaking: { model: string; what: string }[], chatSessionId: string | null = "chat-2") {
+  async function liveThenChange(
+    breaking: { model: string; what: string }[],
+    chatSessionId: string | null = "chat-2",
+    over: Partial<LaunchDeps> = {},
+  ) {
     const checked: string[] = [];
     h = await launchHarness({
       checkCompat: async (_wd, tag) => {
         checked.push(tag);
-        return { breaking };
+        return { breaking, unreadable: [] };
       },
+      ...over,
     });
     await makeReady(h);
     await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
@@ -293,6 +306,7 @@ describe("the gate in a launch", () => {
     ]);
     await makeReady(h, "change-2");
     h.calls.length = 0;
+    h.lines.length = 0;
     return checked;
   }
 
@@ -304,14 +318,22 @@ describe("the gate in a launch", () => {
     expect(checked).toEqual(["v1"]);
   });
 
-  it("a breaking change stops before anything runs, records the plain reason and tells the agent", async () => {
-    await liveThenChange([{ model: "acme/todo", what: 'field "TodoState.title" was removed' }]);
+  it("a breaking change stops before anything runs, records the plain reason, then tells the agent", async () => {
+    let statusWhenTold: string | undefined;
+    await liveThenChange([{ model: "acme/todo", what: 'field "TodoState.title" was removed' }], "chat-2", {
+      messageAgent: async (_ctx, chatSessionId, text) => {
+        statusWhenTold = (await h!.state()).versions.find((v) => v.number === 2)?.status;
+        h!.calls.push(`message ${chatSessionId} ${text.split("\n")[0]}`);
+      },
+    });
 
     const out = await launch(h!.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
 
-    const reason = 'This change would break data your users already have: field "TodoState.title" was removed.';
+    const reason = 'this change would break data your users already have: field "TodoState.title" was removed.';
     expect(out).toEqual({ status: "FAILED", number: 2, reason });
     expect(h!.calls).toEqual([`message chat-2 ${MAKE_ADDITIVE_MESSAGE}`]);
+    // FAIL_LAUNCH is on the product before the agent hears about it.
+    expect(statusWhenTold).toBe("FAILED");
     const s = await h!.state();
     expect(s.liveVersion).toBe(1);
     const v2 = s.versions.find((v) => v.number === 2)!;
@@ -321,6 +343,12 @@ describe("the gate in a launch", () => {
     const change = s.changes.find((c) => c.id === "change-2")!;
     expect(change.status).toBe("READY");
     expect(change.steps.find((st) => st.kind === "LIVE")).toMatchObject({ status: "STOPPED", reason });
+    // One period at the end of the log line's reason.
+    expect(
+      h!.lines.some((l) =>
+        l.endsWith('Couldn\'t go live: this change would break data your users already have: field "TodoState.title" was removed. Your live app is still on Version 1.'),
+      ),
+    ).toBe(true);
   });
 
   it("without a conversation, or when the message can't go out, the launch is still stopped", async () => {
@@ -331,34 +359,75 @@ describe("the gate in a launch", () => {
     expect(h!.lines.some((l) => l.includes("no conversation"))).toBe(true);
     await h!.cleanup();
 
-    h = await launchHarness({
-      checkCompat: async () => ({ breaking: [{ model: "acme/todo", what: "x" }] }),
+    await liveThenChange([{ model: "acme/todo", what: "x" }], "chat-2", {
       messageAgent: async () => {
         throw new Error("reactor down");
       },
     });
-    await makeReady(h);
-    await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
-    await dispatchProduct(h.ctx, [a.startChange({ id: "change-2", kind: "CHANGE", request: "r", chatSessionId: "chat-2", startedAt: AT })]);
-    await makeReady(h, "change-2");
-    const again = await launch(h.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
+    const again = await launch(h!.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
     expect(again.status).toBe("FAILED");
-    expect(h.lines.some((l) => l.includes("couldn't be told: reactor down"))).toBe(true);
+    expect(h!.lines.some((l) => l.includes("couldn't be told: reactor down"))).toBe(true);
   });
 
-  it("a check that can't run lets the launch go on and is logged", async () => {
-    h = await launchHarness({
-      checkCompat: async () => {
-        throw new Error("not a git repository");
+  const notGit = async (): Promise<CompatResult> => {
+    throw new Error("not a git repository");
+  };
+
+  it("a check that can't run while live documents exist fails closed: nothing is snapshotted", async () => {
+    const counted: string[] = [];
+    await liveThenChange([], "chat-2", {
+      checkCompat: notGit,
+      countDriveDocuments: async (_ctx, url, driveId) => {
+        counted.push(`${url} ${driveId}`);
+        return 3;
       },
     });
-    await makeReady(h);
-    await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
-    await dispatchProduct(h.ctx, [a.startChange({ id: "change-2", kind: "CHANGE", request: "r", startedAt: AT })]);
-    await makeReady(h, "change-2");
-    const out = await launch(h.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
+
+    const out = await launch(h!.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
+
+    expect(out).toEqual({ status: "FAILED", number: 2, reason: COMPAT_UNCHECKED_REASON });
+    expect(COMPAT_UNCHECKED_REASON).toBe("we couldn't check that this change keeps your users' data safe");
+    expect(counted).toEqual([`https://${TARGET.slug}-switchboard.vetra.io drive-1`]);
+    expect(h!.calls).toEqual([]);
+    const s = await h!.state();
+    expect(s.liveVersion).toBe(1);
+    expect(s.versions.find((v) => v.number === 2)).toMatchObject({ status: "FAILED", failure: COMPAT_UNCHECKED_REASON });
+    expect(h!.lines.some((l) => l.includes("holds 3 document(s): not a git repository"))).toBe(true);
+  });
+
+  it("a product drive that can't be read fails closed too", async () => {
+    await liveThenChange([], "chat-2", {
+      checkCompat: notGit,
+      countDriveDocuments: async () => {
+        throw new Error("server down");
+      },
+    });
+    const out = await launch(h!.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
+    expect(out).toEqual({ status: "FAILED", number: 2, reason: COMPAT_UNCHECKED_REASON });
+    expect(h!.calls).toEqual([]);
+    expect(h!.lines.some((l) => l.includes("product drive couldn't be read: server down"))).toBe(true);
+  });
+
+  it("a live description that can't be read counts as a check that couldn't run", async () => {
+    await liveThenChange([], "chat-2", {
+      checkCompat: async () => ({ breaking: [], unreadable: ["acme/todo state"] }),
+      countDriveDocuments: async () => 1,
+    });
+    const out = await launch(h!.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
+    expect(out).toEqual({ status: "FAILED", number: 2, reason: COMPAT_UNCHECKED_REASON });
+    expect(h!.lines.some((l) => l.includes("live descriptions not read: acme/todo state"))).toBe(true);
+  });
+
+  it("an empty product drive lets the launch go on, logged at error", async () => {
+    await liveThenChange([], "chat-2", { checkCompat: notGit, countDriveDocuments: async () => 0 });
+    const out = await launch(h!.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
     expect(out).toEqual({ status: "LIVE", number: 2 });
-    expect(h.lines.some((l) => l.includes("data compatibility not checked: not a git repository"))).toBe(true);
+    expect(h!.lines.some((l) => l.includes("no live documents, going on): not a git repository"))).toBe(true);
+  });
+
+  it("the failure line has one period whatever the reason ends with", () => {
+    expect(launchFailureText("a reason.", 1)).toBe("Couldn't go live: a reason. Your live app is still on Version 1.");
+    expect(launchFailureText("a reason", null)).toBe("Couldn't go live: a reason. Your app isn't live yet.");
   });
 });
 
@@ -379,10 +448,14 @@ describe("messageAgent", () => {
     await messageAgent(ctx, "chat-2", "hello", AT);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ id: "chat-2", branch: "main" });
-    expect(sent[0].actions[0]).toMatchObject({
+    const action = sent[0].actions[0] as { type: string; input: { id: string } };
+    expect(action).toMatchObject({
       type: "ADD_USER_MESSAGE",
       input: { createdAt: AT, content: [{ type: "TEXT", text: "hello" }] },
     });
+    // The Studio's note, never shown as the customer's words.
+    expect(action.input.id.startsWith(STUDIO_NOTE_ID_PREFIX)).toBe(true);
+    expect(STUDIO_NOTE_ID_PREFIX).toBe("studio-note-");
     await expect(messageAgent({}, "chat-2", "hello", AT)).rejects.toThrow("no reactor");
   });
 });
