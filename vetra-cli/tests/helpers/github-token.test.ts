@@ -50,8 +50,11 @@ const legacyToken = (token: string) => ({
 });
 const gqlError = (code: string, message = code) => ({ data: null, errors: [{ message, extensions: { code } }] });
 
-const notConnected = () =>
-  new LaunchError("GITHUB_NOT_CONNECTED", "GitHub didn't let Vetra in", "studioPushToken: no repository");
+const notConnected = (cloudReason?: string) => {
+  const err = new LaunchError("GITHUB_NOT_CONNECTED", "GitHub didn't let Vetra in", "studioPushToken: no repository");
+  err.cloudReason = cloudReason;
+  return err;
+};
 
 describe("push token selector", () => {
   it("pushes with the product's GitHub connection when the product has a repository", async () => {
@@ -72,7 +75,9 @@ describe("push token selector", () => {
     const c = cloud((query) =>
       query.includes("myGithubConnection") ? connected("frank/my-shop-studio") : legacyToken("ghs_legacy_token"),
     );
-    const token = await productPushToken(c.ctx, "app-1", { studio: async () => Promise.reject(notConnected()) });
+    const token = await productPushToken(c.ctx, "app-1", {
+      studio: async () => Promise.reject(notConnected("NEVER_CONNECTED")),
+    });
     expect(token).toEqual({
       token: "ghs_legacy_token",
       expiresAt: "2026-10-21T11:00:00.000Z",
@@ -83,20 +88,56 @@ describe("push token selector", () => {
     expect(c.lines.join("\n")).not.toContain("ghs_legacy_token");
   });
 
-  it("an older cloud without studioPushToken falls back too", async () => {
+  it("only a product that never had a repository falls back", async () => {
     const c = cloud((query) =>
       query.includes("myGithubConnection") ? connected("frank/shop") : legacyToken("ghs_legacy_token"),
     );
+    for (const why of ["DISCONNECTED", "TOKEN_REFUSED"]) {
+      const err = notConnected(why);
+      let asked = 0;
+      await expect(
+        productPushToken(c.ctx, "app-1", {
+          studio: async () => Promise.reject(err),
+          legacy: async () => {
+            asked++;
+            return PRODUCT_TOKEN;
+          },
+        }),
+      ).rejects.toBe(err);
+      expect(asked).toBe(0);
+    }
+  });
+
+  it("a cloud that doesn't say why falls back only when the product has no repository", async () => {
+    const product = (repository: unknown) => (query: string) =>
+      query.includes("studioProduct")
+        ? { data: { studioProduct: { id: "app-1", repository } } }
+        : query.includes("myGithubConnection")
+          ? connected("frank/shop")
+          : legacyToken("ghs_legacy_token");
     const unsupported = new LaunchError("GRAPHQL_VALIDATION_FAILED", "GitHub didn't let Vetra in", "Cannot query field");
-    const token = await productPushToken(c.ctx, "app-1", { studio: async () => Promise.reject(unsupported) });
-    expect(token.remoteUrl).toBe("https://github.com/frank/shop.git");
+    for (const err of [notConnected(), unsupported]) {
+      const none = cloud(product(null));
+      const token = await productPushToken(none.ctx, "app-1", { studio: async () => Promise.reject(err) });
+      expect(token.remoteUrl).toBe("https://github.com/frank/shop.git");
+      expect(none.seen[0].variables).toEqual({ studioEnvironmentId: STUDIO_ENV });
+
+      const had = cloud(product({ fullName: "acme/shop", disconnectedAt: "2026-10-03T00:00:00.000Z" }));
+      await expect(productPushToken(had.ctx, "app-1", { studio: async () => Promise.reject(err) })).rejects.toBe(err);
+      expect(had.seen).toHaveLength(1);
+
+      const unknown = cloud(() => new Response("down", { status: 503 }));
+      await expect(productPushToken(unknown.ctx, "app-1", { studio: async () => Promise.reject(err) })).rejects.toBe(
+        err,
+      );
+    }
   });
 
   it("a Studio with neither connection is not connected", async () => {
     const c = cloud(() => ({
       data: { VetraGithubAuth: { myGithubConnection: { connected: false, connection: null } } },
     }));
-    const err = notConnected();
+    const err = notConnected("NEVER_CONNECTED");
     await expect(productPushToken(c.ctx, "app-1", { studio: async () => Promise.reject(err) })).rejects.toBe(err);
     // Only asked whether there is a connection.
     expect(c.seen).toHaveLength(1);

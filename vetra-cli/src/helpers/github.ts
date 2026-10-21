@@ -2,6 +2,8 @@ import { getBearerToken } from '../auth/renown.js';
 import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from '../cloud/config.js';
 import {
   GITHUB_NOT_CONNECTED_CODE,
+  NEVER_CONNECTED_REASON,
+  cloudProductHasRepository,
   cloudPushToken,
   isUnsupported,
   redact,
@@ -294,28 +296,61 @@ export async function legacyPushToken(ctx: CloudContext): Promise<PushTokenWithR
 export interface PushTokenSources {
   studio: (ctx: CloudContext, appId: string) => Promise<PushTokenWithRemote>;
   legacy: (ctx: CloudContext) => Promise<PushTokenWithRemote | null>;
+  /** Whether the product has (or had) a repository; for a cloud that doesn't say why. */
+  hasRepository: (ctx: CloudContext, studioEnvironmentId: string) => Promise<boolean>;
+}
+
+/**
+ * Whether a refused product token means the product never had a
+ * repository: the cloud says so (`NEVER_CONNECTED`), or, for a cloud that
+ * doesn't say why, `studioProduct.repository` is null. Anything else
+ * (disconnected, token refused, or the cloud can't tell) is no.
+ */
+async function neverHadRepository(
+  ctx: CloudContext,
+  err: unknown,
+  hasRepository: PushTokenSources['hasRepository'],
+): Promise<boolean> {
+  if (!(err instanceof LaunchError)) return false;
+  const notConnected = err.code === GITHUB_NOT_CONNECTED_CODE;
+  if (!notConnected && !isUnsupported(err)) return false;
+  if (notConnected && err.cloudReason) return err.cloudReason === NEVER_CONNECTED_REASON;
+  const studioEnvironmentId = ctx.config.environmentId?.trim();
+  if (!studioEnvironmentId) return false;
+  try {
+    return !(await hasRepository(ctx, studioEnvironmentId));
+  } catch (checkErr) {
+    ctx.log?.debug?.(
+      `[github] couldn't tell whether the product had a repository: ${checkErr instanceof Error ? checkErr.message : String(checkErr)}`,
+    );
+    return false;
+  }
 }
 
 /**
  * The token every mirror push and fetch uses (`MirrorDeps.pushToken`): the
  * product's own GitHub connection (`studioPushToken`, which also carries an
- * earlier Studio repository over cloud-side). When the product has no
- * repository (or the cloud doesn't know the call yet), the Studio's earlier
- * connection, so Studios not moved yet keep pushing with no customer action.
- * Any other refusal stands. Throws the product's refusal when neither exists.
+ * earlier Studio repository over cloud-side). Only for a product that never
+ * had a repository, the Studio's earlier connection, so Studios not moved
+ * yet keep pushing with no customer action. A product whose repository was
+ * disconnected or refused is never pushed the old way. Throws the product's
+ * refusal when there is no token.
  */
 export async function productPushToken(
   ctx: CloudContext,
   appId: string,
   sources: Partial<PushTokenSources> = {},
 ): Promise<PushTokenWithRemote> {
-  const { studio, legacy } = { studio: cloudPushToken, legacy: legacyPushToken, ...sources };
+  const { studio, legacy, hasRepository } = {
+    studio: cloudPushToken,
+    legacy: legacyPushToken,
+    hasRepository: cloudProductHasRepository,
+    ...sources,
+  };
   try {
     return await studio(ctx, appId);
   } catch (err) {
-    const noRepository =
-      err instanceof LaunchError && (err.code === GITHUB_NOT_CONNECTED_CODE || isUnsupported(err));
-    if (!noRepository) throw err;
+    if (!(await neverHadRepository(ctx, err, hasRepository))) throw err;
     const earlier = await legacy(ctx);
     if (!earlier) throw err;
     ctx.log?.debug?.("[github] pushing with the Studio's earlier GitHub connection");

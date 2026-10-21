@@ -37,6 +37,7 @@ import {
   prepareChangeBase,
 } from "../../src/product/changes.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
+import { productPushToken } from "../../src/helpers/github.js";
 import { newRequestsMemory, requestsPass } from "../../src/triggers/product-requests.js";
 import { AT, a, launchHarness, makeReady, type LaunchHarness } from "./orchestrator-helpers.js";
 
@@ -195,6 +196,16 @@ function mergeHead(root: string): string | null {
 async function launchReady(m: Mirrored, changeId: string): Promise<void> {
   const out = await launch(m.h.octx, { changeId, trigger: LAUNCH_TRIGGER, launchedBy: BY });
   expect(out.status).toBe("LIVE");
+}
+
+/** A second change after launch, with an edit, made live. */
+async function secondChange(m: Mirrored): Promise<void> {
+  await dispatchProduct(m.h.ctx, [
+    a.startChange({ id: "change-2", kind: "CHANGE", request: "Add a due date", startedAt: AT }),
+  ]);
+  write(m.h.workdir, "todo/src/model.ts", "export const v = 2;\n");
+  await makeReady(m.h, "change-2");
+  await launchReady(m, "change-2");
 }
 
 describe("GitHub mirror", () => {
@@ -377,6 +388,52 @@ describe("GitHub mirror", () => {
     };
     expect(await pushFullHistory(m.h.octx)).toEqual({ skipped: MIRROR_REASONS.notConnected });
     expect((await m.h.state()).github).toMatchObject({ status: "DISCONNECTED", repoFullName: "acme/team-todo" });
+  });
+
+  it("a disconnected product with an earlier Studio connection isn't pushed with the old one", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    const before = remoteRefs(m.gh.bare);
+    const mm = m;
+    let legacyAsked = 0;
+    (m.h.octx as { mirrorDeps: Partial<MirrorDeps> }).mirrorDeps.pushToken = (ctx, appId) =>
+      productPushToken(ctx, appId, {
+        studio: async () => {
+          const err = new LaunchError("GITHUB_NOT_CONNECTED", "GitHub didn't let Vetra in", "studioPushToken: disconnected");
+          err.cloudReason = "DISCONNECTED";
+          throw err;
+        },
+        legacy: async () => {
+          legacyAsked++;
+          return { token: mm.token, expiresAt: "2026-10-21T10:00:00.000Z", remoteUrl: mm.gh.url };
+        },
+      });
+    await secondChange(m);
+    const s = await m.h.state();
+    expect(s.versions.find((v) => v.number === 2)!.lines.find((l) => l.kind === "MIRROR")).toMatchObject({
+      status: "SKIPPED",
+    });
+    expect(s.github).toMatchObject({ status: "DISCONNECTED" });
+    expect(legacyAsked).toBe(0);
+    expect(remoteRefs(m.gh.bare)).toEqual(before);
+    expect(m.gitCalls.filter((c) => c.args[0] === "push")).toHaveLength(1);
+  });
+
+  it("a flagged commit that vanished from GitHub is cleared by the next successful mirror", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    const v1 = (await m.h.state()).versions[0].sha;
+    const theirs = pushOnGithub(m.gh.bare, "todo/src/extra.ts", "export const x = 1;\n");
+    m.external.sha = theirs;
+    expect(await syncExternalChanges(m.h.octx, await m.h.state())).toBe("set");
+    // Someone resets GitHub's main back to the Studio's version: the flagged commit is gone.
+    git(m.gh.bare, "update-ref", "refs/heads/main", v1);
+    await secondChange(m);
+    const s = await m.h.state();
+    expect(s.github).toMatchObject({ status: "CONNECTED", externalChangesSha: null });
+    expect(m.cleared).toEqual(["app-1"]);
   });
 
   it("an unreadable workspace fails the mirror with git's own error, not silently", async () => {

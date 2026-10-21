@@ -304,7 +304,7 @@ export async function mirror(ctx: MirrorContext, opts: { tags: string[] }): Prom
   }
   ctx.log?.info?.(`${TAG} saved to GitHub${repo ? ` (${repo})` : ""}: ${MAIN_BRANCH} ${sha.slice(0, 12)}${tags.length ? ` + ${tags.join(" ")}` : ""}`);
   await recordGithub(ctx, { status: "CONNECTED", repoFullName: repo, lastError: null });
-  await clearIfBroughtIn(ctx, state, appId, sha);
+  await clearIfBroughtIn(ctx, state, appId);
   return { sha };
 }
 
@@ -351,23 +351,19 @@ function failedInput(
 }
 
 /**
- * Once `main` on GitHub contains the changes made there (they were brought in
- * and launched), the flag is cleared in the cloud and in the product.
+ * After every successful mirror the flag is cleared in the cloud and in the
+ * product: GitHub took `main` without force, so GitHub's `main` was part of
+ * the Studio's and nothing from outside is left there (changes brought in
+ * and launched, or a flagged commit since removed from GitHub).
  */
 async function clearIfBroughtIn(
   ctx: MirrorContext,
   state: StudioProductState,
   appId: string,
-  sha: string,
 ): Promise<void> {
   const external = state.github.externalChangesSha;
   if (!external) return;
   const d = mirrorDepsOf(ctx);
-  try {
-    await d.git(ctx.workdir, ["merge-base", "--is-ancestor", external, sha]);
-  } catch {
-    return; // not (yet) part of what was pushed
-  }
   try {
     if (!(await d.clearExternalChanges(ctx, appId))) {
       ctx.log?.debug?.(`${TAG} the cloud doesn't clear changes made on GitHub yet`);
