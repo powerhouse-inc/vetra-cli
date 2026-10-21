@@ -19,6 +19,7 @@ import type {
   CompleteStepInput,
   CountStepInput,
   DiscardChangeInput,
+  DismissSuggestionInput,
   FailLaunchInput,
   FailRequestInput,
   GithubLink,
@@ -27,6 +28,7 @@ import type {
   LaunchLine,
   LaunchLineKind,
   LineStatus,
+  LiveBeforeVersions,
   LiveHealth,
   MarkStuckInput,
   Milestone,
@@ -55,10 +57,14 @@ import type {
   SetHealthInput,
   SetLaunchLineInput,
   SetLaunchPermissionInput,
+  SetLiveBeforeVersionsInput,
   SetLiveTargetInput,
   SetLiveVersionInput,
   SetProductDriveInput,
+  SetRollbackBlockInput,
   SetStepAttentionInput,
+  SetSuggestionsInput,
+  SetSuggestionsItemInput,
   StartChangeInput,
   StartLaunchInput,
   StartStepInput,
@@ -68,6 +74,7 @@ import type {
   StudioProductState,
   Suggestion,
   SuggestionStatus,
+  UseSuggestionInput,
   Version,
   VersionStatus,
   WaiveLintInput,
@@ -335,6 +342,14 @@ export function DiscardChangeInputSchema(): z.ZodObject<
   });
 }
 
+export function DismissSuggestionInputSchema(): z.ZodObject<
+  Properties<DismissSuggestionInput>
+> {
+  return z.object({
+    id: z.string(),
+  });
+}
+
 export function FailLaunchInputSchema(): z.ZodObject<
   Properties<FailLaunchInput>
 > {
@@ -381,6 +396,17 @@ export function LaunchLineSchema(): z.ZodObject<Properties<LaunchLine>> {
     detail: z.string().nullish(),
     kind: LaunchLineKindSchema,
     status: LineStatusSchema,
+  });
+}
+
+export function LiveBeforeVersionsSchema(): z.ZodObject<
+  Properties<LiveBeforeVersions>
+> {
+  return z.object({
+    __typename: z.literal("LiveBeforeVersions").optional(),
+    at: z.iso.datetime(),
+    environmentId: z.string(),
+    url: z.url(),
   });
 }
 
@@ -620,6 +646,16 @@ export function SetLaunchPermissionInputSchema(): z.ZodObject<
   });
 }
 
+export function SetLiveBeforeVersionsInputSchema(): z.ZodObject<
+  Properties<SetLiveBeforeVersionsInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    environmentId: z.string(),
+    url: z.url(),
+  });
+}
+
 export function SetLiveTargetInputSchema(): z.ZodObject<
   Properties<SetLiveTargetInput>
 > {
@@ -650,6 +686,15 @@ export function SetProductDriveInputSchema(): z.ZodObject<
   });
 }
 
+export function SetRollbackBlockInputSchema(): z.ZodObject<
+  Properties<SetRollbackBlockInput>
+> {
+  return z.object({
+    number: z.number(),
+    reason: z.string().nullish(),
+  });
+}
+
 export function SetStepAttentionInputSchema(): z.ZodObject<
   Properties<SetStepAttentionInput>
 > {
@@ -659,6 +704,24 @@ export function SetStepAttentionInputSchema(): z.ZodObject<
     kind: StepKindSchema,
     reason: z.string().nullish(),
     status: StepStatusSchema,
+  });
+}
+
+export function SetSuggestionsInputSchema(): z.ZodObject<
+  Properties<SetSuggestionsInput>
+> {
+  return z.object({
+    afterVersion: z.number(),
+    items: z.array(z.lazy(() => SetSuggestionsItemInputSchema())),
+  });
+}
+
+export function SetSuggestionsItemInputSchema(): z.ZodObject<
+  Properties<SetSuggestionsItemInput>
+> {
+  return z.object({
+    id: z.string(),
+    text: z.string(),
   });
 }
 
@@ -719,6 +782,7 @@ export function StudioProductStateSchema(): z.ZodObject<
     idea: z.string().nullish(),
     lastRequestFailure: z.lazy(() => RequestFailureSchema().nullish()),
     launchPermission: PermissionStateSchema,
+    liveBeforeVersions: z.lazy(() => LiveBeforeVersionsSchema().nullish()),
     liveDeploymentId: z.string().nullish(),
     liveSince: z.iso.datetime().nullish(),
     liveUrl: z.url().nullish(),
@@ -740,6 +804,14 @@ export function SuggestionSchema(): z.ZodObject<Properties<Suggestion>> {
     id: z.string(),
     status: SuggestionStatusSchema,
     text: z.string(),
+  });
+}
+
+export function UseSuggestionInputSchema(): z.ZodObject<
+  Properties<UseSuggestionInput>
+> {
+  return z.object({
+    id: z.string(),
   });
 }
 

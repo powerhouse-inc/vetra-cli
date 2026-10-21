@@ -86,7 +86,9 @@ export function LiveBanner({
     if (!alreadySeen) markSeen(studioId, version);
   }, [alreadySeen, studioId, version]);
 
-  if (alreadySeen) {
+  // The arrival banner is the first launch's (§5.5); a later version says
+  // "Version <n> is live." in the change drawer (§5.7).
+  if (alreadySeen || version > 1) {
     return (
       <p
         data-banner="went-live"

@@ -7,6 +7,11 @@
  * (triggers/product-requests.ts) calls these from the agent process.
  *
  * Launch of Version n (spec §6.5, Ruling F7b), each a line on the Version:
+ * Before SNAPSHOT, while a version is live, the data-compatibility gate (D6,
+ * compat-launch.ts) compares the document models with the live version's: a
+ * change that would break live documents stops here with `FAIL_LAUNCH` (no
+ * line runs) and the agent is told, in the change's conversation, to make it
+ * additive.
  *   SNAPSHOT  "Saving version <n>"         commit + tag `v<n>` (detail: sha)
  *   PUBLISH   "Publishing your product"    packages (detail: name@version …)
  *   DEPLOY    "Starting your live app at <slug>.vetra.io"
@@ -54,9 +59,19 @@ import {
   ensureProduct,
   isSecretPending,
 } from "./cloud-launch.js";
+import {
+  COMPAT_UNCHECKED_REASON,
+  agentMessage,
+  breakingReason,
+  checkLaunchCompat,
+  messageAgent,
+  type CompatResult,
+} from "./compat-launch.js";
+import { refreshRollbackBlocks } from "./compat-rollback.js";
 import { LaunchError, launchPermissionState } from "./errors.js";
 import { changedFiles, discardDraft, restoreVersion, snapshot } from "./git-versions.js";
 import {
+  countDriveDocuments,
   ensureProductDrive,
   markAccessAdopted,
   readProductDriveRecord,
@@ -64,7 +79,10 @@ import {
   type ProductDriveContext,
 } from "./product-drive.js";
 import { publishAll, type LiveRelease, type PublishedPackage } from "./publish-all.js";
+import { awaitRollbackSettle } from "../triggers/live-health.js";
+import { askForSuggestions, chatBudgetUsedUp, hasSuggestionsFor } from "./suggestions.js";
 import { checkLive, waitForDeployment } from "./verify.js";
+import { adoptedWithoutVersions, ensureProductTarget } from "../product/upgrade-existing.js";
 
 /* ------------------------------------------------------------------------ */
 /* Words and small rules                                                     */
@@ -107,9 +125,10 @@ export function launchLineText(kind: LaunchLineKind, number: number, slug: strin
 
 /** The full failure line (logs only; the page composes it from the plain reason, F39). */
 export function launchFailureText(reason: string, liveVersion: number | null): string {
+  const plain = reason.trim().replace(/[.\s]+$/, "");
   return liveVersion === null
-    ? `Couldn't go live: ${reason}. Your app isn't live yet.`
-    : `Couldn't go live: ${reason}. Your live app is still on Version ${liveVersion}.`;
+    ? `Couldn't go live: ${plain}. Your app isn't live yet.`
+    : `Couldn't go live: ${plain}. Your live app is still on Version ${liveVersion}.`;
 }
 
 /** F13: the change's title, else its request cut to 60 characters. */
@@ -147,6 +166,10 @@ export function nextVersionNumber(state: StudioProductState): { number: number; 
  */
 export function autoLaunchCandidate(state: StudioProductState): Change | null {
   if (state.liveVersion != null) return null;
+  // X33: an existing Studio's product gets Version 1 only when the customer
+  // says Make it live — also while its live check is still pending, since an
+  // environment found at launch time would be adopted.
+  if (adoptedWithoutVersions(state)) return null;
   if (state.versions.some((v) => v.status === "LAUNCHING")) return null;
   return (
     state.changes.find(
@@ -214,10 +237,18 @@ export interface LaunchDeps {
   changedFiles: typeof changedFiles;
   listProjects: (workdir: string) => Promise<string[]>;
   sleep: (ms: number) => Promise<void>;
-  /** The suggestions step after a launch (Task 3.4); none until then. */
+  /** The short suggestions turn after a launch without suggestions (F11). */
   afterLaunch?: (ctx: OrchestratorContext, number: number) => Promise<void>;
-  /** True when this month's budget is used up: the suggestions step is skipped. */
-  budgetUsedUp?: () => Promise<boolean>;
+  /** True when this month's budget is used up: the suggestions turn is skipped. */
+  budgetUsedUp?: (ctx: OrchestratorContext, number: number) => Promise<boolean>;
+  /** The data-compatibility gate (D6): the working tree against the live tag. */
+  checkCompat?: typeof checkLaunchCompat;
+  /** Writes a message into a change's conversation for the agent. */
+  messageAgent?: typeof messageAgent;
+  /** How many documents the live product drive holds (D6: is there live data?). */
+  countDriveDocuments?: typeof countDriveDocuments;
+  /** F26: which earlier versions the data can't go back to, after each launch. */
+  refreshRollbackBlocks?: typeof refreshRollbackBlocks;
 }
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -238,6 +269,12 @@ const defaultDeps: LaunchDeps = {
   changedFiles,
   listProjects: listReactorProjects,
   sleep: realSleep,
+  checkCompat: checkLaunchCompat,
+  messageAgent,
+  countDriveDocuments,
+  refreshRollbackBlocks,
+  afterLaunch: askForSuggestions,
+  budgetUsedUp: chatBudgetUsedUp,
 };
 
 export interface OrchestratorContext extends ProductContext, ProductDriveContext {
@@ -298,7 +335,10 @@ async function doEnsureLiveTarget(ctx: OrchestratorContext): Promise<StudioProdu
   if (!name) {
     throw new LaunchError("NO_NAME", LAUNCH_REASONS.noLiveAddress, "The product has no name yet.");
   }
-  const target = await cloudCall(ctx, () => depsOf(ctx).ensureProduct(ctx, name));
+  // An existing Studio's product adopts the environment live before versions (§6.6).
+  const target = await ensureProductTarget(ctx, s, name, (n, opts) =>
+    cloudCall(ctx, () => depsOf(ctx).ensureProduct(ctx, n, opts)),
+  );
   await dispatchProduct(ctx, [a.setLiveTarget(target)]);
   ctx.log?.info?.(`[launch] live address ${target.slug}.${CLOUD_BASE_DOMAIN} set up`);
   return (await getProductDoc(ctx))!.state;
@@ -466,6 +506,13 @@ async function runLaunch(
       throw new LaunchError("NO_LIVE_TARGET", LAUNCH_REASONS.noLiveAddress, "No live target after ensureLiveTarget.");
     }
 
+    // The data-compatibility gate (D6): only while a version is live, and
+    // only before the snapshot (a resumed launch past it already passed).
+    const liveTag = state.versions.find((v) => v.number === state?.liveVersion)?.gitTag ?? null;
+    if (liveTag && !isDone("SNAPSHOT")) {
+      await compatGate(ctx, number, liveTag, change?.chatSessionId ?? null, state);
+    }
+
     // SNAPSHOT
     let sha: string;
     let gitTag = version.gitTag;
@@ -556,7 +603,12 @@ async function runLaunch(
       }),
     ]);
     clearLaunchRecord(ctx.workdir);
+    // A later launch settles any Go back still waiting on the cloud.
+    awaitRollbackSettle(null);
     ctx.log?.info?.(`[launch] Version ${number} is live at ${liveUrl}`);
+    // F26: the earlier versions' Go back is worked out again, in the
+    // background (it reads the live drive; never throws).
+    void (d.refreshRollbackBlocks ?? refreshRollbackBlocks)(ctx);
   } catch (err) {
     const permission = launchPermissionState(err);
     if (permission) {
@@ -591,13 +643,19 @@ async function runLaunch(
       ctx.log?.error?.(`[launch] Version ${number}: the failure couldn't be recorded: ${message(recordErr)}`);
     }
     clearLaunchRecord(ctx.workdir);
+    // D6: the agent hears about it once the failure is on the product.
+    if (err instanceof BreakingChangeError) await tellAgent(ctx, number, err);
     return { status: "FAILED", number, reason };
   }
 
-  // After the launch: suggestions (Task 3.4), never when the budget is used up.
+  // F11: the agent wrote its suggestions in the Tests step; only when there
+  // are none for this version, one short turn asks — never on a spent budget.
   if (d.afterLaunch) {
     try {
-      if (d.budgetUsedUp && (await d.budgetUsedUp())) {
+      const after = (await getProductDoc(ctx))?.state;
+      if (after && hasSuggestionsFor(after, number)) {
+        ctx.log?.debug?.(`[launch] Version ${number}: suggestions already written`);
+      } else if (d.budgetUsedUp && (await d.budgetUsedUp(ctx, number))) {
         ctx.log?.info?.(`[launch] Version ${number}: budget used up, no suggestions`);
       } else {
         await d.afterLaunch(ctx, number);
@@ -607,6 +665,99 @@ async function runLaunch(
     }
   }
   return { status: "LIVE", number };
+}
+
+/** D6: the launch would break live documents; the agent is told after FAIL_LAUNCH is recorded. */
+class BreakingChangeError extends LaunchError {
+  constructor(
+    reason: string,
+    readonly agentText: string,
+    readonly chatSessionId: string | null,
+    detail: string,
+  ) {
+    super("BREAKING_CHANGE", reason, detail);
+  }
+}
+
+/**
+ * D6 at launch: throws a `LaunchError` (→ FAIL_LAUNCH with the plain reason)
+ * when the change would break documents of the live version. When the check
+ * can't run (or a live description can't be read) it fails closed while the
+ * product drive holds documents or can't be read, and lets the launch go on
+ * only when the drive is missing or empty; both are logged at error.
+ */
+async function compatGate(
+  ctx: OrchestratorContext,
+  number: number,
+  liveTag: string,
+  chatSessionId: string | null,
+  state: StudioProductState,
+): Promise<void> {
+  const d = depsOf(ctx);
+  let result: CompatResult | null = null;
+  let problem: string;
+  try {
+    result = await (d.checkCompat ?? checkLaunchCompat)(ctx.workdir, liveTag);
+    problem = result.unreadable.length ? `live descriptions not read: ${result.unreadable.join(", ")}` : "";
+  } catch (err) {
+    problem = message(err);
+  }
+  if (problem) await uncheckedGate(ctx, number, state, problem);
+  const breaking = result?.breaking ?? [];
+  if (breaking.length === 0) return;
+  ctx.log?.warn?.(
+    `[launch] Version ${number} stopped: ${breaking.map((b) => `${b.model}: ${b.what}`).join("; ")}`,
+  );
+  throw new BreakingChangeError(
+    breakingReason(breaking),
+    agentMessage(breaking),
+    chatSessionId,
+    `Version ${number} would break live documents.`,
+  );
+}
+
+/** The check couldn't run: fail closed unless the product drive is missing or empty. */
+async function uncheckedGate(
+  ctx: OrchestratorContext,
+  number: number,
+  state: StudioProductState,
+  problem: string,
+): Promise<void> {
+  const d = depsOf(ctx);
+  const driveId = state.productDriveId;
+  let documents = 0;
+  if (driveId && state.slug) {
+    try {
+      documents = await (d.countDriveDocuments ?? countDriveDocuments)(ctx, liveSwitchboardUrl(state.slug), driveId);
+    } catch (err) {
+      ctx.log?.error?.(
+        `[launch] Version ${number}: data compatibility not checked (${problem}) and the product drive couldn't be read: ${message(err)}`,
+      );
+      throw new LaunchError("COMPAT_UNCHECKED", COMPAT_UNCHECKED_REASON, problem);
+    }
+  }
+  if (documents > 0) {
+    ctx.log?.error?.(
+      `[launch] Version ${number}: data compatibility not checked while the product drive holds ${documents} document(s): ${problem}`,
+    );
+    throw new LaunchError("COMPAT_UNCHECKED", COMPAT_UNCHECKED_REASON, problem);
+  }
+  ctx.log?.error?.(
+    `[launch] Version ${number}: data compatibility not checked (no live documents, going on): ${problem}`,
+  );
+}
+
+/** D6: tell the agent, in the change's conversation, to make the change additive. */
+async function tellAgent(ctx: OrchestratorContext, number: number, err: BreakingChangeError): Promise<void> {
+  if (!err.chatSessionId) {
+    ctx.log?.warn?.(`[launch] Version ${number}: the change has no conversation to tell the agent in`);
+    return;
+  }
+  try {
+    await (depsOf(ctx).messageAgent ?? messageAgent)(ctx, err.chatSessionId, err.agentText, nowIso(ctx));
+  } catch (sendErr) {
+    ctx.log?.warn?.(`[launch] Version ${number}: the agent couldn't be told: ${message(sendErr)}`);
+  }
 }
 
 /**
@@ -689,12 +840,23 @@ async function redeploy(ctx: OrchestratorContext, deploymentId: string): Promise
   return ref.deploymentId;
 }
 
+/** How often SET_LIVE_VERSION is tried after the cloud made Version m live. */
+export const LIVE_VERSION_TRIES = 3;
+/** Plain reason when Go back's deployment hadn't settled when the agent stopped waiting. */
+export const ROLLBACK_SLOW_REASON = "the earlier version is still starting — it goes live as soon as it's up";
+
 /**
  * Go back to Version m (spec §5.7, Ruling E5): the code goes back to `v<m>`
  * (refused while the Studio has unsaved changes — E6), the cloud re-deploys
- * Version m's deployment, and Version m becomes live. On a cloud failure the
- * code is put back on the version that is still live. The request is cleared
+ * Version m's deployment, and Version m becomes live. The request is cleared
  * either way.
+ *
+ * The code is put back on the live version only when the cloud definitely
+ * failed (the re-deploy was refused, or its deployment FAILED). When the
+ * wait gives up before the deployment settles, the code stays on m and the
+ * live-health reconcile settles it from the cloud's record
+ * (`awaitRollbackSettle`). A failed SET_LIVE_VERSION after READY is tried
+ * again on its own; if it still fails, the reconcile records it.
  */
 export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<RequestOutcome> {
   const d = depsOf(ctx);
@@ -719,16 +881,10 @@ export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<R
     await recordRequestFailure(ctx, "ROLLBACK", reason);
     return { status: "REFUSED", reason };
   }
-  try {
-    const deploymentId = await redeploy(ctx, target.deploymentId);
-    await dispatchProduct(ctx, [
-      a.setLiveVersion({ number: m, at: nowIso(ctx), deploymentId }),
-      a.clearRequest({}),
-    ]);
-    ctx.log?.info?.(`[launch] Version ${m} is live again`);
-    return { status: "DONE" };
-  } catch (err) {
-    ctx.log?.error?.(`[launch] Go back to Version ${m} failed: ${message(err)}`);
+
+  /** The cloud definitely didn't make Version m live: the code goes back too. */
+  const definitelyFailed = async (reason: string, why: string): Promise<RequestOutcome> => {
+    ctx.log?.error?.(`[launch] Go back to Version ${m} failed: ${why}`);
     if (liveNumber !== null) {
       try {
         await d.restoreVersion(ctx.workdir, liveNumber);
@@ -736,9 +892,65 @@ export async function rollbackTo(ctx: OrchestratorContext, m: number): Promise<R
         ctx.log?.error?.(`[launch] code not put back on Version ${liveNumber}: ${message(restoreErr)}`);
       }
     }
-    const reason = err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected;
     await recordRequestFailure(ctx, "ROLLBACK", reason);
     return { status: "FAILED", reason };
+  };
+  /** Not known yet: the code stays on m; the reconcile settles it. */
+  const unsettled = async (why: string): Promise<RequestOutcome> => {
+    ctx.log?.error?.(`[launch] Go back to Version ${m} not settled yet, the reconcile will settle it: ${why}`);
+    awaitRollbackSettle({ number: m, previous: liveNumber });
+    await recordRequestFailure(ctx, "ROLLBACK", ROLLBACK_SLOW_REASON);
+    return { status: "FAILED", reason: ROLLBACK_SLOW_REASON };
+  };
+
+  let ref: { deploymentId: string };
+  try {
+    ref = await cloudCall(ctx, () => d.cloudRollback(ctx, target.deploymentId!));
+  } catch (err) {
+    // Only the cloud's refusal is definite; a lost answer may have started it.
+    if (err instanceof LaunchError && err.code !== "CLOUD_UNAVAILABLE") {
+      return definitelyFailed(err.reason, message(err));
+    }
+    return unsettled(message(err));
+  }
+  let outcome: Awaited<ReturnType<typeof d.waitForDeployment>>;
+  try {
+    outcome = await cloudCall(ctx, () => d.waitForDeployment(ctx, ref.deploymentId));
+  } catch (err) {
+    return unsettled(message(err));
+  }
+  if (outcome !== "READY") {
+    if (outcome.timedOut) return unsettled(outcome.detail ?? outcome.failed);
+    return definitelyFailed(REASONS.rollbackStudioVersion, outcome.detail ?? outcome.failed);
+  }
+
+  // READY: the cloud runs Version m. Record it, trying the write again on its own.
+  for (let i = 1; ; i++) {
+    try {
+      await dispatchProduct(ctx, [
+        a.setLiveVersion({ number: m, at: nowIso(ctx), deploymentId: ref.deploymentId }),
+        a.clearRequest({}),
+      ]);
+      ctx.log?.info?.(`[launch] Version ${m} is live again`);
+      return { status: "DONE" };
+    } catch (err) {
+      if (i < LIVE_VERSION_TRIES) {
+        ctx.log?.warn?.(`[launch] Version ${m} is live; recording it failed (try ${i}): ${message(err)}`);
+        await d.sleep(2_000 * i);
+        continue;
+      }
+      ctx.log?.error?.(
+        `[launch] Version ${m} is live but couldn't be recorded; the reconcile will record it: ${message(err)}`,
+      );
+      awaitRollbackSettle({ number: m, previous: liveNumber });
+      // Never leave the request waiting (it would run again every pass).
+      try {
+        await dispatchProduct(ctx, [a.clearRequest({})]);
+      } catch (clearErr) {
+        ctx.log?.error?.(`[launch] Go back request not cleared: ${message(clearErr)}`);
+      }
+      return { status: "DONE" };
+    }
   }
 }
 
@@ -788,7 +1000,8 @@ export async function discardChange(ctx: OrchestratorContext, changeId: string |
   const live = state?.versions.find((v) => v.number === state.liveVersion);
   try {
     if (live) {
-      await depsOf(ctx).discardDraft(ctx.workdir, live.gitTag);
+      const unsaved = await depsOf(ctx).discardDraft(ctx.workdir, live.gitTag, { label: changeId });
+      if (unsaved) ctx.log?.info?.(`[launch] the discarded code is kept at ${unsaved}`);
       ctx.log?.info?.(`[launch] change ${changeId} discarded; code back on Version ${live.number}`);
     } else {
       ctx.log?.info?.(`[launch] change ${changeId} discarded with nothing live; files kept`);

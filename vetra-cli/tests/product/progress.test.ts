@@ -230,10 +230,10 @@ describe("product-progress", () => {
     );
   });
 
-  it("suggest is not available yet; missing product or input is explained", async () => {
+  it("missing product or input is explained", async () => {
     h = await productHarness({ product: false });
-    expect(await runProgress(h.ctx, { action: "suggest", items: ["x"] })).toBe(
-      "suggest is not available yet.",
+    expect(await runProgress(h.ctx, { action: "suggest", items: ["x", "y"] })).toBe(
+      "There is no product in this Studio yet; nothing was recorded.",
     );
     expect(await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] })).toBe(
       "There is no product in this Studio yet; nothing was recorded.",

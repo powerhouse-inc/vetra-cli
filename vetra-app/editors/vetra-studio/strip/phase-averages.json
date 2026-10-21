@@ -1,15 +1,15 @@
 {
   "$comment": "Seconds per unit of planned work for the strip's time left (spec §5.2, D9). `averages` is what the Studio reads: model = one data model in the Data step, editor = one screen (editor or app) in the Editors step, check = one check in the Tests step. To update: add a row to `runs` (one fresh build each) and set each average to the mean of its per-unit seconds over the runs that measured it; note the source in `sources`.",
   "averages": {
-    "model": 100,
-    "editor": 100,
-    "check": 10
+    "model": 185,
+    "editor": 177,
+    "check": 4
   },
   "updatedAt": "2026-10-21",
   "sources": {
-    "model": "local run (Task 0.6, full run): Plan done at ~100 s, Data done at ~200 s for 1 model -> ~100 s per model.",
-    "editor": "baseline (M0, staging): first preview at 300.7 s; minus Plan + Data (~200 s, Task 0.6) for 1 editor -> ~100 s per screen.",
-    "check": "baseline (M0, staging): working editor at 310.8 s, 10.1 s after the first preview; no per-check split measured -> 10 s per check (rough)."
+    "model": "three dev.10 staging builds (M1 acceptance): Plan→Data done per model 190 s, 148 s, ~218 s -> mean 185 s.",
+    "editor": "the same three builds: Data→Editors done per screen 270 s, 100 s, ~160 s -> mean 177 s.",
+    "check": "the same builds: Editors→Tests done over 5 checks 4 s each -> mean 4 s (the checks are fast; the old 10 s guess was high)."
   },
   "runs": [
     {
@@ -45,6 +45,57 @@
       "toolCalls": null,
       "costUsd": null,
       "note": "Reached the step cap mid-Editors."
+    },
+    {
+      "id": "m1-acceptance-warm-lion",
+      "date": "2026-10-21",
+      "where": "staging, fresh Studio (pool dev.10)",
+      "prompt": "create todo app product",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "units": { "models": 1, "editors": 1, "checks": 5 },
+      "seconds": {
+        "planDone": 234,
+        "dataDone": 452,
+        "firstPreview": 612,
+        "workingEditor": 632
+      },
+      "toolCalls": null,
+      "costUsd": 0.07,
+      "note": "Estimated from the run's strip log (Plan/Done lines; the log was later overwritten); editor in the preview at 612 s, steer confirmed 20 s later."
+    },
+    {
+      "id": "m1-acceptance-fair-yak",
+      "date": "2026-10-21",
+      "where": "staging, fresh Studio (dev.10, controller-provisioned model)",
+      "prompt": "create todo app product",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "units": { "models": 1, "editors": 1, "checks": 5 },
+      "seconds": {
+        "planDone": 182,
+        "dataDone": 372,
+        "firstPreview": 632,
+        "workingEditor": 642
+      },
+      "toolCalls": 26,
+      "costUsd": null,
+      "note": "80-step cap + one supervisor continue; tests done at 662 s. Harness failed only the old navigation detector."
+    },
+    {
+      "id": "m1-acceptance-prime-hen",
+      "date": "2026-10-21",
+      "where": "staging, fresh Studio (dev.10, controller-provisioned model)",
+      "prompt": "create todo app product",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "units": { "models": 1, "editors": 1, "checks": 5 },
+      "seconds": {
+        "planDone": 292,
+        "dataDone": 442,
+        "firstPreview": 542,
+        "workingEditor": 552
+      },
+      "toolCalls": null,
+      "costUsd": null,
+      "note": "Tests done at 562 s; one 80 s G3 gap during Plan; the steer field used HIGH/MEDIUM/LOW badges (the harness looked for the word 'priority')."
     }
   ]
 }

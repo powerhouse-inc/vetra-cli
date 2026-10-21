@@ -22,7 +22,7 @@ import {
   type StepKind,
   type StudioProductState,
 } from "document-models/studio-product";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStudioBudget } from "../budget/useStudioBudget.js";
 import { ConversationPane } from "../ChatPane.js";
 import { StripBudget } from "../budget/BudgetMeter.js";
@@ -37,7 +37,9 @@ import { useStudioRestarting } from "../failures/useStudioRestarting.js";
 import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
-import { ProductView as LiveProductView } from "../live/ProductView.js";
+import { LiveSurface } from "../change/LiveSurface.js";
+import { ReadyBar } from "../change/ReadyBar.js";
+import { startChange } from "../change/startChange.js";
 import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
 import { usePublishPermission } from "../permission/usePublishPermission.js";
 import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
@@ -51,7 +53,9 @@ import { StoryPane } from "../story/StoryPane.js";
 import { StepStrip } from "../strip/StepStrip.js";
 import { openChange, stripChange, stripModel } from "../strip/stripModel.js";
 import { PHASE_AVERAGES } from "../strip/timeLeft.js";
+import { useVersionsPanel } from "../versions/VersionsPanel.js";
 import { VetraStudio } from "../VetraStudio.js";
+import { showsFirstVersionBar } from "./firstVersion.js";
 import { useStudioState } from "./useStudioState.js";
 
 const STORY_WIDTH_STORAGE_KEY = "vetra-studio:story-width";
@@ -274,6 +278,19 @@ function StudioPage({
     requestBudget: budget.request,
     restartPreview,
   });
+  // Versions (§5.7): every Go back — the panel's and the unhealthy
+  // banner's — goes through the same confirmation and checks.
+  const versions = useVersionsPanel({
+    product,
+    productId,
+    drive,
+    now,
+    requestRollback: handlers.requestRollback,
+  });
+  const liveHandlers = useMemo(
+    () => ({ ...handlers, requestRollback: versions.confirmGoBack }),
+    [handlers, versions.confirmGoBack],
+  );
   // The strip marks the step a failure is on (spec §5.9); state 2's row uses
   // the same failure.
   const failure = failureFor(
@@ -284,12 +301,13 @@ function StudioPage({
       studioRestarting,
       publish: permission.state ? { state: permission.state } : null,
     },
-    { now, handlers },
+    { now, handlers: liveHandlers },
   );
   const view = withFailure(plainView, failure);
-  // State 2 (spec §5.6): live, and no change in progress. While a change is
-  // open the page keeps the build surface (the Live | Preview split is 3.5).
-  const stateTwo = live && product !== null && openChange(product) === null;
+  // State 2 (spec §5.6): live, and no change in progress; a change on a live
+  // product shows the Live | Preview split (§5.7) on the same surface.
+  const liveView = live && product !== null;
+  const stateTwo = liveView && openChange(product) === null;
   const previewPane = (
     <PreviewPane
       change={change}
@@ -297,6 +315,63 @@ function StudioPage({
       session={sessionDocument}
     />
   );
+
+  // An existing Studio's work before versions is closed: the next request
+  // starts a change, which becomes Version 1 (spec §6.6).
+  const startNextChange = useCallback(
+    (request: string) =>
+      productId
+        ? startChange({ drive, productId, request, kind: "CHANGE" })
+        : Promise.reject(
+            new Error("Your product is still loading. Try again in a moment."),
+          ),
+    [drive, productId],
+  );
+
+  // X33: an existing Studio's product gets Version 1 only on the customer's
+  // Make it live (no automatic first launch).
+  const firstVersionBar =
+    product && change && showsFirstVersionBar(product, change) ? (
+      <ReadyBar
+        product={product}
+        productId={productId}
+        change={change}
+        requestedBy={signIn.name ?? "you"}
+        onKeepChanging={NO_FOCUS}
+      />
+    ) : null;
+
+  const story =
+    product && change ? (
+      <StoryPane
+        product={product}
+        change={change}
+        chat={chat}
+        sessionId={sessionId ?? null}
+        productId={productId}
+        failureContext={{
+          budget: failureBudget,
+          requestBudget: budget.request,
+          studioRestarting,
+          restartPreview,
+          publish: permission.state ? { state: permission.state } : null,
+          requestedBy: signIn.name ?? "you",
+          allowPublish: permission.allow,
+        }}
+        onStartChange={productId ? startNextChange : undefined}
+      />
+    ) : sessionId ? (
+      /* No readable product yet: the conversation as it is. */
+      <ConversationPane
+        document={drive}
+        sessionId={sessionId}
+        driveLoaded={true}
+      />
+    ) : (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Getting ready…
+      </div>
+    );
 
   const toast = usePHToast();
   const rename = useCallback(
@@ -318,7 +393,9 @@ function StudioPage({
     setOpenStep((current) => (current === kind ? null : kind));
   }, []);
 
-  const following = openStep === null || (!stateTwo && openStep === "EDITORS");
+  // A change on a live product keeps its split: no step detail over it.
+  const following =
+    openStep === null || (!stateTwo && (liveView || openStep === "EDITORS"));
   const detail = following ? null : (
     <StepDetail
       kind={openStep}
@@ -338,6 +415,11 @@ function StudioPage({
         onOpenStep={toggleStep}
         onOpenSettings={onOpenSettings}
         onRename={productId ? rename : undefined}
+        versions={
+          product?.liveVersion != null
+            ? { live: product.liveVersion, onOpen: versions.openPanel }
+            : undefined
+        }
         budget={
           "budget" in right && (right.budget || budgetLevel === "exhausted") ? (
             <StripBudget
@@ -348,58 +430,30 @@ function StudioPage({
           ) : undefined
         }
       />
-      {stateTwo ? (
+      {liveView ? (
         detail ? (
           <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
             {detail}
           </main>
         ) : (
           <main className="flex min-h-0 flex-1 flex-col">
-            <LiveProductView
+            <LiveSurface
               product={product}
-              studioId={drive.header.id}
+              productId={productId}
+              drive={drive}
               documents={documents}
               failure={failure}
               now={now}
+              story={change ? story : null}
+              preview={previewPane}
+              requestedBy={signIn.name ?? "you"}
               onOpenAccess={onOpenAccess}
             />
           </main>
         )
       ) : (
         <BuildSplit
-          story={
-            product && change ? (
-              <StoryPane
-                product={product}
-                change={change}
-                chat={chat}
-                sessionId={sessionId ?? null}
-                productId={productId}
-                failureContext={{
-                  budget: failureBudget,
-                  requestBudget: budget.request,
-                  studioRestarting,
-                  restartPreview,
-                  publish: permission.state
-                    ? { state: permission.state }
-                    : null,
-                  requestedBy: signIn.name ?? "you",
-                  allowPublish: permission.allow,
-                }}
-              />
-            ) : sessionId ? (
-              /* No readable product yet: the conversation as it is. */
-              <ConversationPane
-                document={drive}
-                sessionId={sessionId}
-                driveLoaded={true}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Getting ready…
-              </div>
-            )
-          }
+          story={story}
           main={
             detail ? (
               <div className="flex min-h-0 flex-1 flex-col">
@@ -416,6 +470,11 @@ function StudioPage({
                   {detail}
                 </div>
               </div>
+            ) : firstVersionBar ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                {firstVersionBar}
+                {previewPane}
+              </div>
             ) : (
               previewPane
             )
@@ -426,6 +485,7 @@ function StudioPage({
         /* The session ended: sign in again over the page, which stays. */
         <SignInModal onSignIn={signIn.signIn} />
       ) : null}
+      {versions.element}
     </>
   );
 }

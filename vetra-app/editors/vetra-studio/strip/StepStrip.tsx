@@ -179,6 +179,7 @@ export function StepStrip({
   onOpenSettings,
   onRename,
   budget,
+  versions,
 }: {
   view: StripView;
   selected: StepKind | null;
@@ -189,6 +190,8 @@ export function StepStrip({
   /** The budget meter shown in place of the plain budget text; omitted
    *  when it would show nothing (so no separator is drawn before it). */
   budget?: ReactNode;
+  /** `Version <n> ▾` next to the live line: opens the Versions panel. */
+  versions?: { live: number; onOpen: () => void };
 }) {
   const right = view.right;
   return (
@@ -208,6 +211,20 @@ export function StepStrip({
           </li>
         ))}
       </ol>
+      {view.change ? (
+        <span
+          data-change-progress
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${tone(view.change.icon)}`}
+        >
+          <span
+            aria-hidden
+            className={view.change.icon === "◐" ? "animate-pulse" : ""}
+          >
+            {view.change.icon}
+          </span>
+          <span>{view.change.text}</span>
+        </span>
+      ) : null}
       <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
         {"liveUrl" in right ? (
           /* Live: "· <slug>.vetra.io ↗" over "Deployed 2 min ago · GitHub ✓". */
@@ -225,6 +242,19 @@ export function StepStrip({
             </span>
             <span>
               {right.deployedAgo} · {right.github}
+              {versions ? (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    onClick={versions.onOpen}
+                    className="rounded px-1 font-medium text-foreground hover:bg-accent"
+                  >
+                    Version {versions.live} ▾
+                  </button>
+                </>
+              ) : null}
             </span>
           </div>
         ) : (

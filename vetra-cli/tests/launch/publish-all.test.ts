@@ -129,6 +129,36 @@ describe("publishAll", () => {
     expect(fs.readFileSync(path.join(workdir, "todo/package.json"), "utf8")).toBe(todoPkg);
   });
 
+  it("a Studio without a named registry publishes to its stack's registry, writing nothing (R25)", async () => {
+    const saved = process.env.PH_REGISTRY_URL;
+    delete process.env.PH_REGISTRY_URL;
+    try {
+      project("todo", "1.0.0");
+      const { deps, publish } = fakeDeps({});
+      const studio = {
+        config: { cloudSwitchboardUrl: "https://switchboard.vetra.io", environmentId: "studio-env" },
+      };
+      await publishAll(studio, workdir, { slug: "s" }, deps);
+      expect(publish.mock.calls[0][0]).toMatchObject({ registry: "https://registry.vetra.io" });
+      expect(deps.fetchPackument).toHaveBeenCalledWith("https://registry.vetra.io", "@vetra-apps/s", "registry-token");
+      expect(fs.readFileSync(path.join(workdir, "todo/powerhouse.config.json"), "utf8")).toBe("{}\n");
+      // Outside a Studio, or on an unknown stack, a missing registry still fails loudly.
+      await expect(
+        publishAll({ config: { cloudSwitchboardUrl: "https://switchboard.vetra.io" } }, workdir, { slug: "s" }, deps),
+      ).rejects.toThrow("No package registry configured");
+      await expect(
+        publishAll(
+          { config: { cloudSwitchboardUrl: "https://switchboard.example.org", environmentId: "studio-env" } },
+          workdir,
+          { slug: "s" },
+          deps,
+        ),
+      ).rejects.toThrow("No package registry configured");
+    } finally {
+      if (saved !== undefined) process.env.PH_REGISTRY_URL = saved;
+    }
+  });
+
   it("publishes a single project as @vetra-apps/<slug>", async () => {
     project("todo", "1.0.0");
     const { deps } = fakeDeps({

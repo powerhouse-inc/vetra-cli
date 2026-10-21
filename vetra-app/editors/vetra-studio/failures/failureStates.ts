@@ -35,6 +35,10 @@ import {
 } from "../live/liveCopy.js";
 import { checkList, type CheckLine } from "../steps/checkList.js";
 import {
+  UNDO_WITH_THE_AGENT,
+  requestFailureText,
+} from "../versions/versionRows.js";
+import {
   agentWorking,
   deliveryOf,
   type StoryChat,
@@ -386,8 +390,13 @@ function unhealthyLive(
     { label: RESTART, run: () => handlers.requestRestart() },
   ];
   if (live > 1) {
+    // F26: a version the data can't go back to never gets a plain Go back;
+    // the same confirm then shows why and offers Undo with the agent.
+    const before = product.versions.find((v) => v.number === live - 1);
     actions.push({
-      label: goBackLabel(live - 1),
+      label: before?.rollbackBlockedReason
+        ? UNDO_WITH_THE_AGENT
+        : goBackLabel(live - 1),
       run: () => handlers.requestRollback(live - 1),
     });
   }
@@ -400,7 +409,11 @@ function requestFailure(product: StudioProductState): Failure | null {
   const failed = product.lastRequestFailure;
   if (!failed) return null;
   if (time(failed.at) <= time(product.liveSince)) return null;
-  return { situation: "request-failed", text: failed.reason, actions: [] };
+  return {
+    situation: "request-failed",
+    text: requestFailureText(failed),
+    actions: [],
+  };
 }
 
 /** What is wrong with the live product now, the most pressing first. */
@@ -637,6 +650,13 @@ export function withFailure(
 ): StripView {
   if (!failure?.stripStep || !failure.stripIcon) return view;
   const { stripStep, stripIcon } = failure;
+  // A change on a live product: the pills are the live version's, so the
+  // change's own line carries every mark — a build step's, a failed launch
+  // (✕) and a needed OK (!) alike (§5.7). The live app's health has no
+  // strip step and stays on Live (stripModel).
+  if (view.change) {
+    return { ...view, change: { ...view.change, icon: stripIcon } };
+  }
   return {
     ...view,
     steps: view.steps.map((step) =>

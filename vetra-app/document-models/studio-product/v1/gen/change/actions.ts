@@ -18,6 +18,7 @@ import type {
   ReopenStepInput,
   ResumeChangeInput,
   SetChangeTitleInput,
+  SetLiveBeforeVersionsInput,
   SetStepAttentionInput,
   StartChangeInput,
   StartStepInput,
@@ -31,6 +32,10 @@ export type StartChangeAction = Action & {
 export type AdoptExistingAction = Action & {
   type: "ADOPT_EXISTING";
   input: AdoptExistingInput;
+};
+export type SetLiveBeforeVersionsAction = Action & {
+  type: "SET_LIVE_BEFORE_VERSIONS";
+  input: SetLiveBeforeVersionsInput;
 };
 export type PlanStepsAction = Action & {
   type: "PLAN_STEPS";
@@ -100,6 +105,7 @@ export type DiscardChangeAction = Action & {
 export type StudioProductChangeAction =
   | StartChangeAction
   | AdoptExistingAction
+  | SetLiveBeforeVersionsAction
   | PlanStepsAction
   | StartStepAction
   | CountStepAction

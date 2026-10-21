@@ -14,6 +14,7 @@ import { createNoModelAgent } from './no-model-agent.js';
 import { createReplayAgent } from './replay-agent.js';
 import { bindRecorderContext } from '../lifecycle/check-recorder.js';
 import { PauseProcessor, agentLogger } from './pause.js';
+import { ChangeBaseProcessor } from './change-base.js';
 import { PhaseToolsProcessor } from './phase-tools.js';
 
 /**
@@ -129,6 +130,8 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     // only — a sub-agent would take the session's steers.
     inputProcessors: [
       new PauseProcessor(ctx.context),
+      // F19: a new change's starting code, before the model's first step.
+      new ChangeBaseProcessor(ctx.context),
       createSteerProcessor(),
       new PhaseToolsProcessor(ctx.context),
       new TokenLimiterProcessor({ limit: mainLimit }),

@@ -77,6 +77,12 @@ export interface ProductDriveClient {
   createDrive(input: { slug: string; name: string; preferredEditor?: string }): Promise<string>;
   /** The documents already in the drive. */
   listDocuments(driveId: string): Promise<FoundDocument[]>;
+  /**
+   * The distinct action types in a document's operation history (every
+   * scope), read page by page; throws once more than `maxOperations` would
+   * have to be read. Read-only (go back's data check, D6).
+   */
+  operationTypes?(documentId: string, maxOperations: number): Promise<string[]>;
   /** Create one empty document in the drive, named `name`; returns its id. */
   createDocument(driveId: string, input: { documentType: string; name: string }): Promise<string>;
   /**
@@ -237,6 +243,16 @@ function message(err: unknown): string {
 
 async function clientFor(ctx: ProductDriveContext, switchboardUrl: string): Promise<ProductDriveClient> {
   return ctx.driveClient ? ctx.driveClient(switchboardUrl) : createDriveClient(ctx, switchboardUrl);
+}
+
+/** How many documents the product drive holds on the live server (D6: is there live data?). */
+export async function countDriveDocuments(
+  ctx: ProductDriveContext,
+  switchboardUrl: string,
+  driveId: string,
+): Promise<number> {
+  const client = await clientFor(ctx, switchboardGraphqlEndpoint(switchboardUrl));
+  return (await client.listDocuments(driveId)).length;
 }
 
 /** The example documents of every project; schema-invalid ones are logged and left out. */
@@ -565,6 +581,27 @@ export async function createDriveClient(
       scrubbed(async () =>
         (await find({ parentId: driveId })).map((d) => ({ id: d.id, name: d.name, documentType: d.documentType })),
       ),
+    operationTypes: (documentId, maxOperations) =>
+      scrubbed(async () => {
+        const types = new Set<string>();
+        let read = 0;
+        let cursor: string | null | undefined;
+        for (;;) {
+          const res = await client.GetDocumentOperations({
+            filter: { documentIdOrSlug: documentId },
+            paging: { limit: PAGE, ...(cursor ? { cursor } : {}) },
+          });
+          const page = res.documentOperations;
+          for (const op of page.items) types.add(op.action.type);
+          read += page.items.length;
+          if (!page.hasNextPage || !page.cursor || page.items.length === 0) break;
+          if (read >= maxOperations) {
+            throw new Error(`Document ${documentId} has more than ${maxOperations} operations.`);
+          }
+          cursor = page.cursor;
+        }
+        return [...types];
+      }),
     createDocument: (driveId, { documentType, name }) =>
       scrubbed(async () => {
         const created = await client.CreateEmptyDocument({ documentType, parentIdentifier: driveId });

@@ -173,6 +173,7 @@ describe("normalizeProduct", () => {
         lastError: null,
         externalChangesSha: null,
       },
+      liveBeforeVersions: null,
     });
     const c = out.changes[0];
     expect(c).toMatchObject({

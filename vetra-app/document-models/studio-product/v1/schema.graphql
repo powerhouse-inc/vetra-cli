@@ -246,6 +246,14 @@ type GithubLink {
   externalChangesSha: String
 }
 
+# An environment that already ran this workspace's packages before the
+# product had versions (spec 6.6): shown as live until Version 1.
+type LiveBeforeVersions {
+  environmentId: String!
+  url: URL!
+  at: DateTime!
+}
+
 type StudioProductState {
   name: String
   idea: String
@@ -268,6 +276,7 @@ type StudioProductState {
   launchPermission: PermissionState!
   suggestions: [Suggestion!]!
   github: GithubLink!
+  liveBeforeVersions: LiveBeforeVersions
 }
 
 
@@ -302,6 +311,12 @@ input AdoptExistingInput {
   request: String!
   chatSessionIds: [PHID!]!
   doneSteps: [StepKind!]!
+  at: DateTime!
+}
+
+input SetLiveBeforeVersionsInput {
+  environmentId: String!
+  url: URL!
   at: DateTime!
 }
 
@@ -517,4 +532,29 @@ input SetHealthInput {
 
 input SetLaunchPermissionInput {
   state: PermissionState!
+}
+
+input SetRollbackBlockInput {
+  number: Int!
+  reason: String
+}
+
+# suggestions
+
+input SetSuggestionsItemInput {
+  id: OID!
+  text: String!
+}
+
+input SetSuggestionsInput {
+  afterVersion: Int!
+  items: [SetSuggestionsItemInput!]!
+}
+
+input UseSuggestionInput {
+  id: OID!
+}
+
+input DismissSuggestionInput {
+  id: OID!
 }

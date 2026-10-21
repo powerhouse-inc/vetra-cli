@@ -19,6 +19,7 @@ import type {
   SetLiveTargetInput,
   SetLiveVersionInput,
   SetProductDriveInput,
+  SetRollbackBlockInput,
   StartLaunchInput,
 } from "../types.js";
 
@@ -86,6 +87,10 @@ export type SetLaunchPermissionAction = Action & {
   type: "SET_LAUNCH_PERMISSION";
   input: SetLaunchPermissionInput;
 };
+export type SetRollbackBlockAction = Action & {
+  type: "SET_ROLLBACK_BLOCK";
+  input: SetRollbackBlockInput;
+};
 
 export type StudioProductLaunchAction =
   | SetLiveTargetAction
@@ -103,4 +108,5 @@ export type StudioProductLaunchAction =
   | FailLaunchAction
   | SetLiveVersionAction
   | SetHealthAction
-  | SetLaunchPermissionAction;
+  | SetLaunchPermissionAction
+  | SetRollbackBlockAction;

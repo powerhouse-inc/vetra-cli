@@ -41,6 +41,40 @@ describe("studioState", () => {
     ).toBe("legacy");
   });
 
+  it("an upgraded old Studio leaves the old view for the product page (F4, §6.6)", () => {
+    const model = file("model-1", "powerhouse/document-model");
+    const adopted = productDoc(
+      actions.initProduct({
+        name: "Old app",
+        idea: "old work",
+        createdAt: at(0),
+      }),
+      actions.adoptExisting({
+        changeId: "c0",
+        request: "Before versions",
+        chatSessionIds: [SESSION_ID],
+        doneSteps: ["PLAN", "DATA"],
+        at: at(0),
+      }),
+    );
+    expect(
+      studioState(
+        readProduct(adopted.state.global),
+        drive([model, SESSION, PRODUCT]),
+        [chatDoc(SESSION_ID, 2), adopted],
+      ),
+    ).toBe("building");
+    // Until the upgrade has written its operations, the old view stays.
+    const empty = productDoc();
+    expect(
+      studioState(
+        readProduct(empty.state.global),
+        drive([model, SESSION, PRODUCT]),
+        [chatDoc(SESSION_ID, 2), empty],
+      ),
+    ).toBe("legacy");
+  });
+
   it("idea state while the product has no change or its first message isn't sent", () => {
     const initialised = productDoc(buildingOps()[0]);
     expect(

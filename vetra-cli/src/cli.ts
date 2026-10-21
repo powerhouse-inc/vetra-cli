@@ -42,6 +42,7 @@ import { studioRedirectTrigger } from './triggers/studio-redirect.js';
 import { productSupervisorTrigger } from './product/supervisor.js';
 import { productRequestsTrigger } from './triggers/product-requests.js';
 import { liveHealthTrigger } from './triggers/live-health.js';
+import { existingStudioUpgradeTrigger } from './product/upgrade-existing.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
@@ -97,6 +98,8 @@ export const cli = defineCli({
     productSupervisorTrigger,
     productRequestsTrigger,
     liveHealthTrigger,
+    // Existing Studios open in the product page: once per start, detached.
+    existingStudioUpgradeTrigger,
   ],
   // @clint:end triggers
 
@@ -140,7 +143,7 @@ export const cli = defineCli({
           'Use your {{skillId}} skill in {{mode}} mode for: {{prompt}}',
       },
       'example-data': {
-        description: 'Tests step: write the product\'s example documents (seed/<document-type>.json, names starting "Example — delete me") from the preview sample data. They fill the live product the first time it launches and are checked with the preview smoke check.',
+        description: 'Tests step: write the product\'s example documents (seed/<document-type>.json, names starting "Example — delete me") from the preview sample data. They fill the live product the first time it launches and are checked with the preview smoke check. Ends the step with `product-progress suggest` (2–3 next improvements).',
       },
       'product-specs': {
         description: 'Create and refine product specs at the workspace root — brand, problem and audience sheets, features and their work breakdown structure (ordering, outcome links, feature bets, WBS tasks). For a product/app request, write them alongside the build, never instead of it.',

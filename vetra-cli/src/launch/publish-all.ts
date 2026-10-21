@@ -15,7 +15,7 @@ import type { Config } from "../framework.js";
 import { getRegistryToken } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
 import { fetchPackument } from "../cloud/registry-packument.js";
-import { resolveRegistryUrl } from "../cloud/registry-url.js";
+import { resolveLaunchRegistryUrl } from "../cloud/registry-url.js";
 import {
   nextPublishVersion,
   publishReactorProject,
@@ -31,7 +31,8 @@ export const PRODUCT_SCOPE = "@vetra-apps";
 export const LAUNCH_PUBLISH_FETCH_TIMEOUT_MS = 30 * 60_000;
 
 export interface PublishContext {
-  config: Pick<Config, "registryUrl" | "cloudRenownUrl">;
+  config: Pick<Config, "registryUrl" | "cloudRenownUrl"> &
+    Partial<Pick<Config, "environmentId" | "cloudSwitchboardUrl">>;
   log?: { info?: (msg: string) => void; warn?: (msg: string) => void };
 }
 
@@ -166,7 +167,13 @@ export async function publishAll(
       );
     }
     const localVersion = (JSON.parse(original) as { version?: string }).version ?? null;
-    const registryUrl = resolveRegistryUrl({ registry: ctx.config.registryUrl, projectPath });
+    // R25: a Studio without a named registry publishes to its stack's one.
+    const registryUrl = resolveLaunchRegistryUrl({
+      registry: ctx.config.registryUrl,
+      projectPath,
+      environmentId: ctx.config.environmentId,
+      cloudSwitchboardUrl: ctx.config.cloudSwitchboardUrl,
+    });
 
     const token = await deps.registryToken(workdir, renownUrl, registryUrl);
     const packument = await deps.fetchPackument(registryUrl, name, token);
@@ -194,7 +201,7 @@ export async function publishAll(
         projectPath,
         workdir,
         renownUrl,
-        registry: ctx.config.registryUrl,
+        registry: registryUrl,
         packageName: name,
         version,
         bumpOnConflict: true,

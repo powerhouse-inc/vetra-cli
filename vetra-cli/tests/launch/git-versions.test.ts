@@ -8,6 +8,7 @@ import {
   discardDraft,
   ensureWorkspaceRepo,
   restoreVersion,
+  saveUnsaved,
   snapshot,
 } from "../../src/launch/git-versions.js";
 import { LaunchError } from "../../src/launch/errors.js";
@@ -61,6 +62,98 @@ describe("ensureWorkspaceRepo", () => {
     execFileSync("git", ["init", "-q", "-b", "master"], { cwd: workdir });
     await ensureWorkspaceRepo(workdir);
     expect(git("symbolic-ref", "--short", "HEAD")).toBe("main");
+  });
+
+  it("says so at info when it renames a branch with history to main", async () => {
+    execFileSync("git", ["init", "-q", "-b", "master"], { cwd: workdir });
+    fs.writeFileSync(path.join(workdir, "a.txt"), "a");
+    execFileSync("git", ["add", "a.txt"], { cwd: workdir });
+    execFileSync(
+      "git",
+      ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "a"],
+      { cwd: workdir },
+    );
+    const infos: string[] = [];
+    await ensureWorkspaceRepo(workdir, { log: { info: (m) => infos.push(m) } });
+    expect(git("symbolic-ref", "--short", "HEAD")).toBe("main");
+    expect(infos).toEqual(['[git] workspace branch "master" renamed to "main"']);
+  });
+});
+
+/**
+ * The staging Studio layout (bright-quail, vetra 0.0.8-dev.11): the workspace
+ * is a volume root owned by root (the agent runs as `clint`), so git sees
+ * "dubious ownership"; a failed `ph init --clone` left the project's own
+ * unborn `.git` on `master`; and the pnpm store lives in the workspace.
+ */
+describe("Studio volume layout", () => {
+  const asOwner = (...args: string[]) =>
+    execFileSync("git", ["-c", `safe.directory=*`, ...args], {
+      cwd: workdir,
+      encoding: "utf8",
+    }).trim();
+  let saved: string | undefined;
+
+  beforeEach(() => {
+    saved = process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
+    process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = "1";
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
+    else process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = saved;
+  });
+
+  it("launches Version 1 from a workspace owned by another user with a leftover project repo", async () => {
+    execFileSync("git", ["init", "-q", "-b", "master"], { cwd: path.join(workdir, "todo") });
+    write(".pnpm-store/v10/index/abc.json", "{}");
+
+    const v1 = await snapshot(workdir, 1, "A todo app");
+
+    expect(asOwner("symbolic-ref", "--short", "HEAD")).toBe("main");
+    expect(asOwner("rev-parse", "v1^{commit}")).toBe(v1.sha);
+    const files = asOwner("ls-tree", "-r", "--name-only", "v1").split("\n");
+    expect(files).toContain("todo/src/model.ts");
+    expect(files).toContain("specs/product/idea.md");
+    expect(files.some((f) => f.startsWith(".pnpm-store/"))).toBe(false);
+    expect(fs.existsSync(path.join(workdir, "todo", ".git"))).toBe(false);
+    expect(read("todo/src/model.ts")).toBe("export const v = 1;\n");
+  });
+
+  it("refuses a project that has its own commits instead of dropping them", async () => {
+    const todo = path.join(workdir, "todo");
+    execFileSync("git", ["init", "-q", "-b", "master"], { cwd: todo });
+    execFileSync(
+      "git",
+      ["-c", "safe.directory=*", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "own"],
+      { cwd: todo },
+    );
+
+    await expect(snapshot(workdir, 1, "A todo app")).rejects.toMatchObject({ code: "NESTED_REPO" });
+    expect(fs.existsSync(path.join(todo, ".git"))).toBe(true);
+  });
+
+  it("refuses a project whose HEAD is unborn but another branch has commits", async () => {
+    const todo = path.join(workdir, "todo");
+    const inTodo = (...args: string[]) =>
+      execFileSync("git", ["-c", "safe.directory=*", "-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+        cwd: todo,
+      });
+    inTodo("init", "-q", "-b", "dev");
+    inTodo("commit", "-q", "--allow-empty", "-m", "own work");
+    inTodo("symbolic-ref", "HEAD", "refs/heads/master");
+
+    await expect(snapshot(workdir, 1, "A todo app")).rejects.toMatchObject({ code: "NESTED_REPO" });
+    expect(fs.existsSync(path.join(todo, ".git"))).toBe(true);
+    expect(inTodo("rev-parse", "dev").toString().trim()).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("an unreadable workspace repository fails as a plain git failure, not a wrong branch", async () => {
+    fs.writeFileSync(path.join(workdir, ".git"), "gitdir: /nonexistent/vetra-repo\n");
+
+    const err = await ensureWorkspaceRepo(workdir).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LaunchError);
+    expect(err).toMatchObject({ code: "GIT_FAILED", reason: "the code couldn't be saved" });
+    expect((err as LaunchError).reason).not.toMatch(/fatal|\/|nonexistent/);
   });
 });
 
@@ -168,8 +261,13 @@ describe("discardDraft", () => {
     write("specs/product/idea.md", "# Idea, refined\n");
     write(".ph/vetra/.mastra/chat.db", "chat history + more");
 
-    await discardDraft(workdir, "v1");
+    const kept = await discardDraft(workdir, "v1", { label: "c 1", now: () => 42 });
 
+    // Snapshotted first, without moving main.
+    expect(kept).toBe("refs/vetra/unsaved/c_1-42");
+    expect(git("show", `${kept}:todo/src/draft.ts`)).toBe("export const draft = 1;");
+    expect(git("show", `${kept}:todo/src/model.ts`)).toBe("export const v = 99;");
+    expect(git("ls-tree", "-r", "--name-only", kept!)).not.toMatch(/\.ph\//);
     expect(read("todo/src/model.ts")).toBe("export const v = 1;\n");
     expect(read("todo/package.json")).toBe('{"name":"todo","version":"1.0.0"}\n');
     expect(read("todo/src/draft.ts")).toBeNull();
@@ -196,6 +294,39 @@ describe("discardDraft", () => {
     expect(git("show", "HEAD:specs/product/idea.md")).toBe("# Idea v2");
     expect(read("todo/src/stray.ts")).toBeNull();
     expect(git("status", "--porcelain")).toBe("");
+  });
+
+  it("keeps nothing when the code already is the live version's", async () => {
+    await snapshot(workdir, 1, "First");
+    expect(await discardDraft(workdir, "v1")).toBeNull();
+    expect(git("for-each-ref", "refs/vetra/")).toBe("");
+  });
+
+  it("brings back a project the live version has but HEAD and the disk lack", async () => {
+    write("second/powerhouse.config.json", "{}\n");
+    write("second/src/a.ts", "a\n");
+    await snapshot(workdir, 1, "First");
+    git("rm", "-r", "-q", "second");
+    git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "drop second");
+    write("todo/src/model.ts", "export const v = 5;\n");
+
+    const kept = await discardDraft(workdir, "v1", { label: "c1", now: () => 7 });
+
+    expect(kept).toBe("refs/vetra/unsaved/c1-7");
+    expect(git("show", `${kept}:todo/src/model.ts`)).toBe("export const v = 5;");
+    expect(read("second/src/a.ts")).toBe("a\n");
+    expect(read("todo/src/model.ts")).toBe("export const v = 1;\n");
+  });
+
+  it("never overwrites a kept snapshot", async () => {
+    await snapshot(workdir, 1, "First");
+    write("todo/src/model.ts", "export const v = 2;\n");
+    const first = await saveUnsaved(workdir, ["todo"], "c1", { now: () => 9 });
+    write("todo/src/model.ts", "export const v = 3;\n");
+    const second = await saveUnsaved(workdir, ["todo"], "c1", { now: () => 9 });
+    expect([first, second]).toEqual(["refs/vetra/unsaved/c1-9", "refs/vetra/unsaved/c1-9-2"]);
+    expect(git("show", `${first}:todo/src/model.ts`)).toBe("export const v = 2;");
+    expect(git("show", `${second}:todo/src/model.ts`)).toBe("export const v = 3;");
   });
 
   it("removes a reactor project the draft added", async () => {

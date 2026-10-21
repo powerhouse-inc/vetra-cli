@@ -24,6 +24,7 @@ import {
   setLiveTarget,
   setLiveVersion,
   setProductDrive,
+  setRollbackBlock,
   startChange,
   startLaunch,
   startStep,
@@ -916,6 +917,50 @@ describe("LaunchOperations", () => {
       // Re-marking the live version is a no-op, not an error.
       expect(errorAt(doc, i + 2)).toBeNull();
       expect(doc.state.global.liveVersion).toBe(1);
+    });
+  });
+
+  describe("SET_ROLLBACK_BLOCK", () => {
+    const BLOCKED =
+      "Can't go back automatically: Version 2 added data your users have already used. Ask the agent to undo the change instead.";
+
+    it("records and clears the reason, and REQUEST_ROLLBACK refuses a blocked version", () => {
+      const base = twoVersions();
+      const blocked = apply(
+        base,
+        setRollbackBlock({ number: 1, reason: BLOCKED }),
+        requestRollback({
+          versionNumber: 1,
+          requestedAt: at(40),
+          requestedBy: by,
+        }),
+        setRollbackBlock({ number: 9, reason: BLOCKED }),
+      );
+      const i = base.operations.global.length;
+      expect(errorAt(blocked, i)).toBeNull();
+      expect(version(blocked, 1).rollbackBlockedReason).toBe(BLOCKED);
+      expect(errorAt(blocked, i + 1)).toBe(BLOCKED);
+      expect(blocked.state.global.pendingRequest).toBeNull();
+      expect(errorAt(blocked, i + 2)).toBe("No version 9 exists.");
+      // Nothing else about the version changes.
+      expect(version(blocked, 1)).toMatchObject({
+        status: "PREVIOUS",
+        deploymentId: "dep-1",
+      });
+
+      const cleared = apply(
+        blocked,
+        setRollbackBlock({ number: 1, reason: null }),
+        setRollbackBlock({ number: 2, reason: "" }),
+        requestRollback({
+          versionNumber: 1,
+          requestedAt: at(41),
+          requestedBy: by,
+        }),
+      );
+      expect(version(cleared, 1).rollbackBlockedReason).toBeNull();
+      expect(version(cleared, 2).rollbackBlockedReason).toBeNull();
+      expect(cleared.state.global.pendingRequest?.targetVersion).toBe(1);
     });
   });
 

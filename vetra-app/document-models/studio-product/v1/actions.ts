@@ -7,6 +7,7 @@ import {
   studioProductChangeActions,
   studioProductLaunchActions,
   studioProductProductActions,
+  studioProductSuggestionsActions,
 } from "./gen/creators.js";
 
 /** Actions for the StudioProduct document model */
@@ -16,4 +17,5 @@ export const actions = {
   ...studioProductProductActions,
   ...studioProductChangeActions,
   ...studioProductLaunchActions,
+  ...studioProductSuggestionsActions,
 };

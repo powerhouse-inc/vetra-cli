@@ -115,11 +115,7 @@ export type ChangeStatus =
   | "READY";
 
 export type CheckKind =
-  | "GENERATE"
-  | "LINT"
-  | "REDUCER_TESTS"
-  | "SMOKE"
-  | "TYPECHECK";
+  "GENERATE" | "LINT" | "REDUCER_TESTS" | "SMOKE" | "TYPECHECK";
 
 export type CheckResult = {
   kind: CheckKind;
@@ -184,6 +180,10 @@ export type DiscardChangeInput = {
   changeId: Scalars["OID"]["input"];
 };
 
+export type DismissSuggestionInput = {
+  id: Scalars["OID"]["input"];
+};
+
 export type FailLaunchInput = {
   at: Scalars["DateTime"]["input"];
   number: Scalars["Int"]["input"];
@@ -204,10 +204,7 @@ export type GithubLink = {
 };
 
 export type GithubStatus =
-  | "CONNECTED"
-  | "DISCONNECTED"
-  | "NOT_CONNECTED"
-  | "PUSH_FAILED";
+  "CONNECTED" | "DISCONNECTED" | "NOT_CONNECTED" | "PUSH_FAILED";
 
 export type InitProductInput = {
   createdAt: Scalars["DateTime"]["input"];
@@ -222,13 +219,15 @@ export type LaunchLine = {
 };
 
 export type LaunchLineKind =
-  | "DEPLOY"
-  | "MIRROR"
-  | "PUBLISH"
-  | "SNAPSHOT"
-  | "VERIFY";
+  "DEPLOY" | "MIRROR" | "PUBLISH" | "SNAPSHOT" | "VERIFY";
 
 export type LineStatus = "DONE" | "FAILED" | "RUNNING" | "SKIPPED" | "WAITING";
+
+export type LiveBeforeVersions = {
+  at: Scalars["DateTime"]["output"];
+  environmentId: Scalars["String"]["output"];
+  url: Scalars["URL"]["output"];
+};
 
 export type LiveHealth = "HEALTHY" | "UNHEALTHY" | "UNKNOWN";
 
@@ -326,11 +325,7 @@ export type RequestFailure = {
 };
 
 export type RequestKind =
-  | "DISCARD"
-  | "LAUNCH"
-  | "MIRROR"
-  | "RESTART"
-  | "ROLLBACK";
+  "DISCARD" | "LAUNCH" | "MIRROR" | "RESTART" | "ROLLBACK";
 
 export type RequestLaunchInput = {
   changeId: Scalars["OID"]["input"];
@@ -384,6 +379,12 @@ export type SetLaunchPermissionInput = {
   state: PermissionState;
 };
 
+export type SetLiveBeforeVersionsInput = {
+  at: Scalars["DateTime"]["input"];
+  environmentId: Scalars["String"]["input"];
+  url: Scalars["URL"]["input"];
+};
+
 export type SetLiveTargetInput = {
   appId: Scalars["String"]["input"];
   liveUrl: Scalars["URL"]["input"];
@@ -402,12 +403,27 @@ export type SetProductDriveInput = {
   liveUrl?: InputMaybe<Scalars["URL"]["input"]>;
 };
 
+export type SetRollbackBlockInput = {
+  number: Scalars["Int"]["input"];
+  reason?: InputMaybe<Scalars["String"]["input"]>;
+};
+
 export type SetStepAttentionInput = {
   at: Scalars["DateTime"]["input"];
   changeId: Scalars["OID"]["input"];
   kind: StepKind;
   reason?: InputMaybe<Scalars["String"]["input"]>;
   status: StepStatus;
+};
+
+export type SetSuggestionsInput = {
+  afterVersion: Scalars["Int"]["input"];
+  items: Array<SetSuggestionsItemInput>;
+};
+
+export type SetSuggestionsItemInput = {
+  id: Scalars["OID"]["input"];
+  text: Scalars["String"]["input"];
 };
 
 export type StartChangeInput = {
@@ -434,12 +450,7 @@ export type StartStepInput = {
 export type StepKind = "DATA" | "EDITORS" | "LIVE" | "PLAN" | "TESTS";
 
 export type StepStatus =
-  | "DONE"
-  | "LIVE"
-  | "NEEDS_YOU"
-  | "NOT_STARTED"
-  | "STOPPED"
-  | "WORKING";
+  "DONE" | "LIVE" | "NEEDS_YOU" | "NOT_STARTED" | "STOPPED" | "WORKING";
 
 export type Stuck = {
   at: Scalars["DateTime"]["output"];
@@ -458,6 +469,7 @@ export type StudioProductState = {
   idea: Maybe<Scalars["String"]["output"]>;
   lastRequestFailure: Maybe<RequestFailure>;
   launchPermission: PermissionState;
+  liveBeforeVersions: Maybe<LiveBeforeVersions>;
   liveDeploymentId: Maybe<Scalars["String"]["output"]>;
   liveSince: Maybe<Scalars["DateTime"]["output"]>;
   liveUrl: Maybe<Scalars["URL"]["output"]>;
@@ -479,6 +491,10 @@ export type Suggestion = {
 };
 
 export type SuggestionStatus = "DISMISSED" | "OPEN" | "USED";
+
+export type UseSuggestionInput = {
+  id: Scalars["OID"]["input"];
+};
 
 export type Version = {
   changeId: Maybe<Scalars["OID"]["output"]>;

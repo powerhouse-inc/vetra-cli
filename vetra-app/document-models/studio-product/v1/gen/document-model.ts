@@ -17,9 +17,9 @@ export const documentModel: DocumentModelGlobalState = {
       state: {
         global: {
           schema:
-            "# Studio Product: the single read model the Studio page renders from.\n# Natural keys (F54): ProductStep, CheckResult and LaunchLine are keyed by\n# their `kind`, Version by `number`, PackageVersion by `name`; reducers keep\n# them unique within their list.\n\nenum StepKind {\n  PLAN\n  DATA\n  EDITORS\n  TESTS\n  LIVE\n}\n\nenum StepStatus {\n  NOT_STARTED\n  WORKING\n  DONE\n  NEEDS_YOU\n  STOPPED\n  LIVE\n}\n\nenum ChangeKind {\n  FIRST_BUILD\n  CHANGE\n  UNDO\n  BEFORE_VERSIONS\n}\n\nenum ChangeStatus {\n  BUILDING\n  PAUSED\n  READY\n  LAUNCHING\n  LAUNCHED\n  DISCARDED\n  FAILED\n  CLOSED\n}\n\nenum CheckKind {\n  GENERATE\n  TYPECHECK\n  LINT\n  REDUCER_TESTS\n  SMOKE\n}\n\nenum ProductAccess {\n  SIGNED_IN\n  OWNER_ONLY\n}\n\nenum LiveHealth {\n  UNKNOWN\n  HEALTHY\n  UNHEALTHY\n}\n\nenum PermissionState {\n  UNKNOWN\n  GRANTED\n  MISSING\n  EXPIRED\n}\n\nenum RequestKind {\n  LAUNCH\n  ROLLBACK\n  DISCARD\n  RESTART\n  MIRROR\n}\n\nenum VersionStatus {\n  LAUNCHING\n  LIVE\n  PREVIOUS\n  FAILED\n}\n\nenum LaunchLineKind {\n  SNAPSHOT\n  PUBLISH\n  DEPLOY\n  VERIFY\n  MIRROR\n}\n\nenum LineStatus {\n  WAITING\n  RUNNING\n  DONE\n  FAILED\n  SKIPPED\n}\n\nenum SuggestionStatus {\n  OPEN\n  USED\n  DISMISSED\n}\n\nenum GithubStatus {\n  NOT_CONNECTED\n  CONNECTED\n  DISCONNECTED\n  PUSH_FAILED\n}\n\ntype ProductStep {\n  kind: StepKind!\n  status: StepStatus!\n  done: Int\n  total: Int\n  label: String\n  reason: String\n  updatedAt: DateTime\n}\n\ntype Milestone {\n  id: OID!\n  text: String!\n  at: DateTime!\n  recovered: Boolean!\n}\n\ntype CheckResult {\n  kind: CheckKind!\n  passed: Boolean!\n  reason: String\n}\n\ntype CheckRun {\n  id: OID!\n  at: DateTime!\n  results: [CheckResult!]!\n}\n\ntype Stuck {\n  reason: String!\n  tried: [String!]!\n  at: DateTime!\n}\n\ntype ChangeMetrics {\n  steps: Int!\n  firstPreviewAt: DateTime\n  readyAt: DateTime\n  liveAt: DateTime\n}\n\ntype Change {\n  id: OID!\n  kind: ChangeKind!\n  request: String!\n  title: String\n  chatSessionId: PHID\n  chatSessionIds: [PHID!]!\n  status: ChangeStatus!\n  startedAt: DateTime!\n  steps: [ProductStep!]!\n  milestones: [Milestone!]!\n  checkRuns: [CheckRun!]!\n  stuck: Stuck\n  metrics: ChangeMetrics!\n  lintWaivedAt: DateTime\n}\n\ntype PackageVersion {\n  name: String!\n  version: String!\n}\n\ntype LaunchLine {\n  kind: LaunchLineKind!\n  status: LineStatus!\n  detail: String\n}\n\ntype Version {\n  number: Int!\n  title: String!\n  summary: String\n  changeId: OID\n  gitTag: String!\n  sha: String!\n  packages: [PackageVersion!]!\n  deploymentId: String\n  launchedAt: DateTime\n  launchedBy: String!\n  trigger: String!\n  status: VersionStatus!\n  lines: [LaunchLine!]!\n  changedFiles: [String!]!\n  failure: String\n  rollbackBlockedReason: String\n}\n\ntype PendingRequest {\n  kind: RequestKind!\n  changeId: OID\n  targetVersion: Int\n  requestedAt: DateTime!\n  requestedBy: String!\n}\n\ntype RequestFailure {\n  kind: RequestKind!\n  reason: String!\n  at: DateTime!\n}\n\ntype Suggestion {\n  id: OID!\n  text: String!\n  afterVersion: Int!\n  status: SuggestionStatus!\n}\n\ntype GithubLink {\n  status: GithubStatus!\n  repoFullName: String\n  lastError: String\n  externalChangesSha: String\n}\n\ntype StudioProductState {\n  name: String\n  idea: String\n  slug: String\n  liveUrl: URL\n  appId: String\n  productionEnvironmentId: String\n  productDriveId: PHID\n  createdAt: DateTime\n  access: ProductAccess!\n  changes: [Change!]!\n  activeChangeId: OID\n  liveVersion: Int\n  liveSince: DateTime\n  liveDeploymentId: String\n  versions: [Version!]!\n  health: LiveHealth!\n  pendingRequest: PendingRequest\n  lastRequestFailure: RequestFailure\n  launchPermission: PermissionState!\n  suggestions: [Suggestion!]!\n  github: GithubLink!\n}\n",
+            "# Studio Product: the single read model the Studio page renders from.\n# Natural keys (F54): ProductStep, CheckResult and LaunchLine are keyed by\n# their `kind`, Version by `number`, PackageVersion by `name`; reducers keep\n# them unique within their list.\n\nenum StepKind {\n  PLAN\n  DATA\n  EDITORS\n  TESTS\n  LIVE\n}\n\nenum StepStatus {\n  NOT_STARTED\n  WORKING\n  DONE\n  NEEDS_YOU\n  STOPPED\n  LIVE\n}\n\nenum ChangeKind {\n  FIRST_BUILD\n  CHANGE\n  UNDO\n  BEFORE_VERSIONS\n}\n\nenum ChangeStatus {\n  BUILDING\n  PAUSED\n  READY\n  LAUNCHING\n  LAUNCHED\n  DISCARDED\n  FAILED\n  CLOSED\n}\n\nenum CheckKind {\n  GENERATE\n  TYPECHECK\n  LINT\n  REDUCER_TESTS\n  SMOKE\n}\n\nenum ProductAccess {\n  SIGNED_IN\n  OWNER_ONLY\n}\n\nenum LiveHealth {\n  UNKNOWN\n  HEALTHY\n  UNHEALTHY\n}\n\nenum PermissionState {\n  UNKNOWN\n  GRANTED\n  MISSING\n  EXPIRED\n}\n\nenum RequestKind {\n  LAUNCH\n  ROLLBACK\n  DISCARD\n  RESTART\n  MIRROR\n}\n\nenum VersionStatus {\n  LAUNCHING\n  LIVE\n  PREVIOUS\n  FAILED\n}\n\nenum LaunchLineKind {\n  SNAPSHOT\n  PUBLISH\n  DEPLOY\n  VERIFY\n  MIRROR\n}\n\nenum LineStatus {\n  WAITING\n  RUNNING\n  DONE\n  FAILED\n  SKIPPED\n}\n\nenum SuggestionStatus {\n  OPEN\n  USED\n  DISMISSED\n}\n\nenum GithubStatus {\n  NOT_CONNECTED\n  CONNECTED\n  DISCONNECTED\n  PUSH_FAILED\n}\n\ntype ProductStep {\n  kind: StepKind!\n  status: StepStatus!\n  done: Int\n  total: Int\n  label: String\n  reason: String\n  updatedAt: DateTime\n}\n\ntype Milestone {\n  id: OID!\n  text: String!\n  at: DateTime!\n  recovered: Boolean!\n}\n\ntype CheckResult {\n  kind: CheckKind!\n  passed: Boolean!\n  reason: String\n}\n\ntype CheckRun {\n  id: OID!\n  at: DateTime!\n  results: [CheckResult!]!\n}\n\ntype Stuck {\n  reason: String!\n  tried: [String!]!\n  at: DateTime!\n}\n\ntype ChangeMetrics {\n  steps: Int!\n  firstPreviewAt: DateTime\n  readyAt: DateTime\n  liveAt: DateTime\n}\n\ntype Change {\n  id: OID!\n  kind: ChangeKind!\n  request: String!\n  title: String\n  chatSessionId: PHID\n  chatSessionIds: [PHID!]!\n  status: ChangeStatus!\n  startedAt: DateTime!\n  steps: [ProductStep!]!\n  milestones: [Milestone!]!\n  checkRuns: [CheckRun!]!\n  stuck: Stuck\n  metrics: ChangeMetrics!\n  lintWaivedAt: DateTime\n}\n\ntype PackageVersion {\n  name: String!\n  version: String!\n}\n\ntype LaunchLine {\n  kind: LaunchLineKind!\n  status: LineStatus!\n  detail: String\n}\n\ntype Version {\n  number: Int!\n  title: String!\n  summary: String\n  changeId: OID\n  gitTag: String!\n  sha: String!\n  packages: [PackageVersion!]!\n  deploymentId: String\n  launchedAt: DateTime\n  launchedBy: String!\n  trigger: String!\n  status: VersionStatus!\n  lines: [LaunchLine!]!\n  changedFiles: [String!]!\n  failure: String\n  rollbackBlockedReason: String\n}\n\ntype PendingRequest {\n  kind: RequestKind!\n  changeId: OID\n  targetVersion: Int\n  requestedAt: DateTime!\n  requestedBy: String!\n}\n\ntype RequestFailure {\n  kind: RequestKind!\n  reason: String!\n  at: DateTime!\n}\n\ntype Suggestion {\n  id: OID!\n  text: String!\n  afterVersion: Int!\n  status: SuggestionStatus!\n}\n\ntype GithubLink {\n  status: GithubStatus!\n  repoFullName: String\n  lastError: String\n  externalChangesSha: String\n}\n\n# An environment that already ran this workspace's packages before the\n# product had versions (spec 6.6): shown as live until Version 1.\ntype LiveBeforeVersions {\n  environmentId: String!\n  url: URL!\n  at: DateTime!\n}\n\ntype StudioProductState {\n  name: String\n  idea: String\n  slug: String\n  liveUrl: URL\n  appId: String\n  productionEnvironmentId: String\n  productDriveId: PHID\n  createdAt: DateTime\n  access: ProductAccess!\n  changes: [Change!]!\n  activeChangeId: OID\n  liveVersion: Int\n  liveSince: DateTime\n  liveDeploymentId: String\n  versions: [Version!]!\n  health: LiveHealth!\n  pendingRequest: PendingRequest\n  lastRequestFailure: RequestFailure\n  launchPermission: PermissionState!\n  suggestions: [Suggestion!]!\n  github: GithubLink!\n  liveBeforeVersions: LiveBeforeVersions\n}\n",
           initialValue:
-            '{\n  "name": null,\n  "idea": null,\n  "slug": null,\n  "liveUrl": null,\n  "appId": null,\n  "productionEnvironmentId": null,\n  "productDriveId": null,\n  "createdAt": null,\n  "access": "SIGNED_IN",\n  "changes": [],\n  "activeChangeId": null,\n  "liveVersion": null,\n  "liveSince": null,\n  "liveDeploymentId": null,\n  "versions": [],\n  "health": "UNKNOWN",\n  "pendingRequest": null,\n  "lastRequestFailure": null,\n  "launchPermission": "UNKNOWN",\n  "suggestions": [],\n  "github": {\n    "status": "NOT_CONNECTED",\n    "repoFullName": null,\n    "lastError": null,\n    "externalChangesSha": null\n  }\n}',
+            '{\n  "name": null,\n  "idea": null,\n  "slug": null,\n  "liveUrl": null,\n  "appId": null,\n  "productionEnvironmentId": null,\n  "productDriveId": null,\n  "createdAt": null,\n  "access": "SIGNED_IN",\n  "changes": [],\n  "activeChangeId": null,\n  "liveVersion": null,\n  "liveSince": null,\n  "liveDeploymentId": null,\n  "versions": [],\n  "health": "UNKNOWN",\n  "pendingRequest": null,\n  "lastRequestFailure": null,\n  "launchPermission": "UNKNOWN",\n  "suggestions": [],\n  "github": {\n    "status": "NOT_CONNECTED",\n    "repoFullName": null,\n    "lastError": null,\n    "externalChangesSha": null\n  },\n  "liveBeforeVersions": null\n}',
           examples: [],
         },
         local: {
@@ -140,6 +140,29 @@ export const documentModel: DocumentModelGlobalState = {
                   name: "AdoptNotAllowedError",
                   code: "ADOPT_NOT_ALLOWED",
                   description: "The product already has changes.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-live-before-versions",
+              name: "SET_LIVE_BEFORE_VERSIONS",
+              description:
+                "Record the environment that already runs this workspace's packages from before versions (existing Studios, spec 6.6). Allowed only on a product adopted with ADOPT_EXISTING that has no version yet.",
+              schema:
+                "input SetLiveBeforeVersionsInput {\n  environmentId: String!\n  url: URL!\n  at: DateTime!\n}",
+              template:
+                "Record the environment that already runs this workspace's packages from before versions.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-live-before-versions-not-allowed",
+                  name: "LiveBeforeVersionsNotAllowedError",
+                  code: "LIVE_BEFORE_VERSIONS_NOT_ALLOWED",
+                  description:
+                    "Only a product adopted from before versions, with no version yet, can record what was live before versions.",
                   template: "",
                 },
               ],
@@ -572,6 +595,14 @@ export const documentModel: DocumentModelGlobalState = {
                     "The version's status does not allow this operation.",
                   template: "",
                 },
+                {
+                  id: "err-rollback-blocked",
+                  name: "RollbackBlockedError",
+                  code: "ROLLBACK_BLOCKED",
+                  description:
+                    "The product's data can't go back to this version (its rollbackBlockedReason is set).",
+                  template: "",
+                },
               ],
               examples: [],
               scope: "global",
@@ -761,6 +792,122 @@ export const documentModel: DocumentModelGlobalState = {
                 "input SetLaunchPermissionInput {\n  state: PermissionState!\n}",
               template:
                 "Record whether the Studio may publish and launch on the owner's behalf.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-rollback-block",
+              name: "SET_ROLLBACK_BLOCK",
+              description:
+                "Record whether the product's data can go back to a version (D6): `reason` is the plain sentence shown instead of Go back, null when going back is allowed. Never touches the version otherwise.",
+              schema:
+                "input SetRollbackBlockInput {\n  number: Int!\n  reason: String\n}",
+              template:
+                "Record whether the product's data can go back to a version (D6): `reason` is the plain sentence shown instead of Go back, null when going back is allowed. Never touches the version otherwise.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-version-not-found",
+                  name: "VersionNotFoundError",
+                  code: "VERSION_NOT_FOUND",
+                  description: "No version with this number exists.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+          ],
+        },
+        {
+          id: "mod-suggestions",
+          name: "suggestions",
+          description:
+            "The agent's ideas for the next change, offered after a launch.",
+          operations: [
+            {
+              id: "op-set-suggestions",
+              name: "SET_SUGGESTIONS",
+              description:
+                "Store the agent's 2\u20133 ideas for the next change, shown once the given version is live. Replaces the open ideas for that version; used and dismissed ones are kept.",
+              schema:
+                "input SetSuggestionsItemInput {\n  id: OID!\n  text: String!\n}\n\ninput SetSuggestionsInput {\n  afterVersion: Int!\n  items: [SetSuggestionsItemInput!]!\n}",
+              template:
+                "Store the agent's 2\u20133 ideas for the next change, shown once the given version is live. Replaces the open ideas for that version; used and dismissed ones are kept.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-invalid-suggestion-count",
+                  name: "InvalidSuggestionCountError",
+                  code: "INVALID_SUGGESTION_COUNT",
+                  description: "Suggestions come in sets of 2 to 3.",
+                  template: "",
+                },
+                {
+                  id: "err-invalid-suggestion-text",
+                  name: "InvalidSuggestionTextError",
+                  code: "INVALID_SUGGESTION_TEXT",
+                  description:
+                    "A suggestion's text is empty or longer than 80 characters.",
+                  template: "",
+                },
+                {
+                  id: "err-duplicate-suggestion-id",
+                  name: "DuplicateSuggestionIdError",
+                  code: "DUPLICATE_SUGGESTION_ID",
+                  description: "A suggestion with this id already exists.",
+                  template: "",
+                },
+                {
+                  id: "err-invalid-after-version",
+                  name: "InvalidAfterVersionError",
+                  code: "INVALID_AFTER_VERSION",
+                  description:
+                    "Suggestions follow a version number of 1 or more.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-use-suggestion",
+              name: "USE_SUGGESTION",
+              description:
+                "Mark an open suggestion as used: the customer started a change from it.",
+              schema: "input UseSuggestionInput {\n  id: OID!\n}",
+              template:
+                "Mark an open suggestion as used: the customer started a change from it.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-suggestion-not-found",
+                  name: "SuggestionNotFoundError",
+                  code: "SUGGESTION_NOT_FOUND",
+                  description: "No suggestion with this id exists.",
+                  template: "",
+                },
+                {
+                  id: "err-suggestion-not-open",
+                  name: "SuggestionNotOpenError",
+                  code: "SUGGESTION_NOT_OPEN",
+                  description: "The suggestion was already used or dismissed.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-dismiss-suggestion",
+              name: "DISMISS_SUGGESTION",
+              description:
+                "Dismiss an open suggestion; it is never offered again.",
+              schema: "input DismissSuggestionInput {\n  id: OID!\n}",
+              template:
+                "Dismiss an open suggestion; it is never offered again.",
               reducer: "",
               errors: [],
               examples: [],

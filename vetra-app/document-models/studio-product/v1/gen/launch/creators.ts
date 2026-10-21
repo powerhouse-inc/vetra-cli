@@ -19,6 +19,7 @@ import {
   SetLiveTargetInputSchema,
   SetLiveVersionInputSchema,
   SetProductDriveInputSchema,
+  SetRollbackBlockInputSchema,
   StartLaunchInputSchema,
 } from "../schema/zod.js";
 import type {
@@ -37,6 +38,7 @@ import type {
   SetLiveTargetInput,
   SetLiveVersionInput,
   SetProductDriveInput,
+  SetRollbackBlockInput,
   StartLaunchInput,
 } from "../types.js";
 import type {
@@ -55,6 +57,7 @@ import type {
   SetLiveTargetAction,
   SetLiveVersionAction,
   SetProductDriveAction,
+  SetRollbackBlockAction,
   StartLaunchAction,
 } from "./actions.js";
 
@@ -199,5 +202,14 @@ export const setLaunchPermission = (input: SetLaunchPermissionInput) =>
     { ...input },
     undefined,
     SetLaunchPermissionInputSchema,
+    "global",
+  );
+
+export const setRollbackBlock = (input: SetRollbackBlockInput) =>
+  createAction<SetRollbackBlockAction>(
+    "SET_ROLLBACK_BLOCK",
+    { ...input },
+    undefined,
+    SetRollbackBlockInputSchema,
     "global",
   );

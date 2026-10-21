@@ -1,17 +1,19 @@
 /**
  * State 2 (spec §5.6): the product once it is live and no change is open —
  * the live app filling the page under the step strip, with the arrival
- * banner and, when something is wrong, the one failure row that says what.
- * While a change is open the page keeps the build surface (Task 2.9; the
- * Live | Preview split is Task 3.5).
+ * banner, when something is wrong the one failure row that says what, and
+ * the "Change something" bubble that opens the change drawer (Task 3.5's
+ * LiveSurface; while a change is open it shows the Live | Preview split).
  */
 import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import { useDocumentSafe } from "@powerhousedao/reactor-browser";
 import type { PHDocument } from "document-model";
+import type { ReactNode } from "react";
 import type {
   Change,
   StudioProductState,
 } from "document-models/studio-product";
+import { ChangeBubble } from "../change/ChangeDrawer.js";
 import { FailureLine } from "../failures/FailureLine.js";
 import type { Failure } from "../failures/failureStates.js";
 import { PreviewPane } from "../preview/PreviewPane.js";
@@ -25,6 +27,8 @@ export function ProductView({
   failure,
   now,
   onOpenAccess,
+  onChangeSomething,
+  suggestions,
 }: {
   /** Normalised product state with a live version (`readProduct`). */
   product: StudioProductState;
@@ -36,6 +40,10 @@ export function ProductView({
   failure: Failure | null;
   now: Date;
   onOpenAccess: () => void;
+  /** Opens the change drawer; no bubble while it is open. */
+  onChangeSomething?: () => void;
+  /** The "Make it better" card (spec §5.8), under the banner. */
+  suggestions?: ReactNode;
 }) {
   const version = product.liveVersion;
   const live =
@@ -60,7 +68,7 @@ export function ProductView({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <LiveBanner
         studioId={studioId}
         version={version}
@@ -74,6 +82,7 @@ export function ProductView({
           <FailureLine failure={failure} />
         </div>
       ) : null}
+      {suggestions}
       <LiveEmbed
         liveUrl={product.liveUrl}
         version={version}
@@ -85,6 +94,7 @@ export function ProductView({
           />
         }
       />
+      {onChangeSomething ? <ChangeBubble onOpen={onChangeSomething} /> : null}
     </div>
   );
 }

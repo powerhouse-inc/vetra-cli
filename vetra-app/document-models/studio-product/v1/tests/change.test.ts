@@ -14,6 +14,7 @@ import {
   reopenStep,
   resumeChange,
   setChangeTitle,
+  setLiveBeforeVersions,
   setStepAttention,
   startChange,
   startStep,
@@ -193,6 +194,72 @@ describe("ADOPT_EXISTING", () => {
     expect(errorAt(doc, 1)).toMatch(/CLOSED/);
     expect(errorAt(doc, 2)).toBeNull();
     expect(doc.state.global.activeChangeId).toBe("c1");
+  });
+});
+
+describe("SET_LIVE_BEFORE_VERSIONS", () => {
+  const live = setLiveBeforeVersions({
+    environmentId: "env-old",
+    url: "https://bold-crow-connect.vetra.io",
+    at: at(1),
+  });
+  const adopt = adoptExisting({
+    changeId: "c0",
+    request: "Before versions",
+    chatSessionIds: ["phd:old-1"],
+    doneSteps: ["PLAN"],
+    at: at(0),
+  });
+
+  it("records what was live before versions on an adopted product", () => {
+    const doc = apply(utils.createDocument(), adopt, live);
+    expect(errorAt(doc, 1)).toBeNull();
+    expect(doc.state.global.liveBeforeVersions).toEqual({
+      environmentId: "env-old",
+      url: "https://bold-crow-connect.vetra.io",
+      at: at(1),
+    });
+    // Nothing else moves: no live version, no live target.
+    expect(doc.state.global.liveVersion).toBeNull();
+    expect(doc.state.global.appId).toBeNull();
+    expect(doc.state.global.liveUrl).toBeNull();
+  });
+
+  it("is refused on a product that was not adopted", () => {
+    const doc = apply(building(), live);
+    expect(lastError(doc)).toMatch(/adopted from before versions/);
+    expect(doc.state.global.liveBeforeVersions).toBeNull();
+  });
+
+  it("is refused once the product has a version", () => {
+    const doc = apply(
+      withState({
+        changes: [craftedChange("c0", "CLOSED", { kind: "BEFORE_VERSIONS" })],
+        versions: [
+          {
+            number: 1,
+            title: "t",
+            summary: null,
+            changeId: "c1",
+            gitTag: "v1",
+            sha: "s",
+            packages: [],
+            deploymentId: null,
+            launchedAt: null,
+            launchedBy: "vetra",
+            trigger: "STUDIO_LAUNCH",
+            status: "LAUNCHING",
+            lines: [],
+            changedFiles: [],
+            failure: null,
+            rollbackBlockedReason: null,
+          },
+        ],
+      }),
+      live,
+    );
+    expect(errorAt(doc, 0)).toMatch(/no version yet/);
+    expect(doc.state.global.liveBeforeVersions).toBeNull();
   });
 });
 
@@ -886,6 +953,49 @@ describe("DISCARD_CHANGE", () => {
     );
     expect(lastError(doc)).toBeNull();
     expect(change(doc).status).toBe("DISCARDED");
+    expect(doc.state.global.activeChangeId).toBe("c2");
+  });
+
+  it("keeps the change's story and lets the next change start (D13, D17)", () => {
+    const doc = apply(
+      utils.createDocument(),
+      startChange({
+        id: "c1",
+        kind: "CHANGE",
+        request: "Add a notes field",
+        chatSessionId: "s1",
+        startedAt: at(1),
+      }),
+      addMilestone({
+        changeId: "c1",
+        id: "m1",
+        text: "Added notes",
+        at: at(2),
+      }),
+      discardChange({ changeId: "c1", at: at(3) }),
+      startChange({
+        id: "c2",
+        kind: "UNDO",
+        request: "Undo the notes field",
+        chatSessionId: "s2",
+        startedAt: at(4),
+      }),
+    );
+    expect(lastError(doc)).toBeNull();
+    const [discarded, next] = doc.state.global.changes;
+    expect(discarded).toMatchObject({
+      id: "c1",
+      status: "DISCARDED",
+      request: "Add a notes field",
+      chatSessionId: "s1",
+      chatSessionIds: ["s1"],
+    });
+    expect(discarded.milestones.map((m) => m.text)).toEqual(["Added notes"]);
+    expect(next).toMatchObject({
+      id: "c2",
+      status: "BUILDING",
+      chatSessionId: "s2",
+    });
     expect(doc.state.global.activeChangeId).toBe("c2");
   });
 

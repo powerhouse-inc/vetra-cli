@@ -22,6 +22,7 @@ import {
   buildingOps,
   productDoc,
   withFailedLaunch,
+  version,
   withLiveVersion,
 } from "../test-utils/studioFixtures.js";
 import {
@@ -49,6 +50,7 @@ import {
   RESTARTING_TEXT,
   RESTART_FAILED_TEXT,
   RETRIED_TEXT,
+  NO_HANDLERS,
   TURN_FAILED_TEXT,
   failureFor,
   withFailure,
@@ -714,7 +716,10 @@ describe("the live product's failure rows (spec §5.6–§5.9)", () => {
       }),
       liveFailure(p, publish),
     );
-    return Object.fromEntries(view.steps.map((s) => [s.kind, s.icon]));
+    return {
+      ...Object.fromEntries(view.steps.map((s) => [s.kind, s.icon])),
+      CHANGE: view.change?.icon,
+    };
   }
 
   it("launch failure says the live app is still on the previous version", () => {
@@ -727,7 +732,9 @@ describe("the live product's failure rows (spec §5.6–§5.9)", () => {
     expect(failure?.text).toBe(
       "Couldn't go live: the new version didn't start. Your live app is still on Version 1.",
     );
-    expect(liveStrip(p).LIVE).toBe("✕");
+    // The failed change is open again (READY): its line carries the ✕,
+    // the live version keeps ● Live.
+    expect(liveStrip(p)).toMatchObject({ CHANGE: "✕", LIVE: "●" });
 
     const container = render(<LiveRows p={p} />);
     expect(container.textContent).toContain(
@@ -791,7 +798,10 @@ describe("the live product's failure rows (spec §5.6–§5.9)", () => {
     const failure = liveFailure(p, { state: "MISSING" });
     expect(failure?.situation).toBe("permission");
     expect(failure?.text).toBe(PERMISSION_NEEDED);
-    expect(liveStrip(p, { state: "MISSING" }).LIVE).toBe("!");
+    expect(liveStrip(p, { state: "MISSING" })).toMatchObject({
+      CHANGE: "!",
+      LIVE: "●",
+    });
 
     const allowPublish = vi.fn(() => Promise.resolve(true));
     const container = render(
@@ -846,6 +856,36 @@ describe("the live product's failure rows (spec §5.6–§5.9)", () => {
       },
     ]);
     expectNoForbiddenWords(container);
+  });
+
+  it("health banner: a blocked version before offers Undo with the agent, never a plain Go back", () => {
+    const doc = withLiveVersion(productDoc(...buildingOps()), { number: 3 });
+    doc.state.global.health = "UNHEALTHY";
+    doc.state.global.versions = [
+      version(2, at(20), {
+        status: "PREVIOUS",
+        deploymentId: "dep-2",
+        rollbackBlockedReason:
+          "Can't go back automatically: Version 3 added data your users have already used. Ask the agent to undo the change instead.",
+      }),
+      ...doc.state.global.versions,
+    ];
+    const requestRollback = vi.fn();
+    const failure = failureFor(
+      readProduct(doc.state.global),
+      null,
+      null,
+      { studioRestarting: false, publish: null },
+      {
+        now: new Date(at(45)),
+        handlers: { ...NO_HANDLERS, requestRollback },
+      },
+    );
+    const labels = failure?.actions.map((a) => a.label);
+    expect(labels).toEqual(["Restart", "Undo with the agent"]);
+    // The shell routes it to the Go back confirm, which shows the reason.
+    void failure?.actions[1].run();
+    expect(requestRollback).toHaveBeenCalledWith(2);
   });
 
   it("a Go back that failed keeps its plain reason until the live version moves on", () => {
