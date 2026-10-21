@@ -368,6 +368,23 @@ export async function discardDraft(
 }
 
 /**
+ * Whether the reactor projects on disk are exactly `tag`'s (tracked edits,
+ * deletions and untracked, non-ignored files all count; workspace-level files
+ * such as the product specs don't). False when the tag doesn't exist.
+ */
+export async function draftMatches(workdir: string, tag: string): Promise<boolean> {
+  if (!fs.existsSync(path.join(workdir, ".git")) || !(await tagSha(workdir, tag))) return false;
+  const dirs = await projectDirs(workdir, tag);
+  if (dirs.length === 0) return true;
+  // `git diff <tag>` compares the working tree with the tag for every path in
+  // the tag or the index; untracked files are listed separately.
+  const changed = await git(workdir, ["diff", "--name-only", tag, "--", ...dirs]);
+  if (changed) return false;
+  const untracked = await git(workdir, ["ls-files", "--others", "--exclude-standard", "--", ...dirs]);
+  return untracked === "";
+}
+
+/**
  * Files that differ between the previous version's tag and `toSha` (for the
  * Versions panel's "what changed"). With no previous version, every file in
  * `toSha`.

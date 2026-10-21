@@ -6,7 +6,9 @@
  * 1. on the first pass after a start, any LAUNCHING version is resumed (F22);
  * 2. a waiting request is served — LAUNCH (Make it live / Try again),
  *    ROLLBACK (Go back), RESTART, DISCARD, MIRROR (GitHub arrives in M4);
- * 3. otherwise, while nothing is live, a READY change that was never launched
+ * 3. otherwise, a new change after launch that the agent hasn't planned yet
+ *    gets the live version's code under it (F19, `prepareChangeBase`);
+ * 4. otherwise, while nothing is live, a READY change that was never launched
  *    goes live by itself (D3, F6, F10).
  * The access switch (F35) runs in its own lane, so it never waits behind a
  * launch.
@@ -32,7 +34,13 @@ import {
   type OrchestratorContext,
 } from "../launch/orchestrator.js";
 import { REASONS } from "../launch/cloud-launch.js";
-import { dispatchProduct, getProductDoc, productActions as a } from "../product/product-doc.js";
+import { awaitsBase, prepareChangeBase } from "../product/changes.js";
+import {
+  activeChange,
+  dispatchProduct,
+  getProductDoc,
+  productActions as a,
+} from "../product/product-doc.js";
 
 const TAG = "[product-requests]";
 /** How often a pass starts (a request should be picked up within seconds). */
@@ -45,10 +53,12 @@ export const ACCESS_RETRY_MS = 60_000;
 export interface RequestsMemory {
   /** Changes the automatic launch already tried in this process (F10 belt and braces). */
   autoTried: Set<string>;
+  /** Changes whose starting code was checked in this process (F19). */
+  based: Set<string>;
 }
 
 export function newRequestsMemory(): RequestsMemory {
-  return { autoTried: new Set<string>() };
+  return { autoTried: new Set<string>(), based: new Set<string>() };
 }
 
 function message(err: unknown): string {
@@ -121,6 +131,13 @@ export async function requestsPass(
           await dispatchProduct(ctx, [a.clearRequest({})]);
           return "mirror";
       }
+    }
+
+    const active = activeChange(state);
+    if (active && awaitsBase(active) && !memory.based.has(active.id)) {
+      const outcome = await prepareChangeBase(ctx, active, { state, deps: ctx.deps });
+      memory.based.add(active.id);
+      if (outcome === "restored") return "change-base";
     }
 
     const candidate = autoLaunchCandidate(state);

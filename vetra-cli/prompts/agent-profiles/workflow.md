@@ -11,8 +11,8 @@ skill in `one-shot` mode**: where a skill or its references give per-mode
 steps, follow the one-shot step, never the expert/discovery "confirm with
 the user" step. One-shot covers the build phases only: deploy and
 destructive or costly steps (deleting documents, projects or environments,
-publishing, anything that costs the customer money or can't be undone)
-always keep their own confirmations. Ask only when it is genuinely unclear
+publishing, anything that costs money or can't be undone) keep their own
+confirmations. Ask only when it is genuinely unclear
 *what* to build (no subject at all, or two incompatible readings) — one
 direct question, then build.
 
@@ -57,8 +57,12 @@ themselves: load the `deploy` skill only for an explicit "deploy to my
 environment X" request.
 
 Deviations: edits to an existing model jump to the Model phase and
-regenerate (no restart, no new preview unless asked); a model-only request
+regenerate (no restart or new preview); a model-only request
 stops after Model and asks before an editor; an editor-only or app-only
 request runs that phase alone. A `spec-generate` schema error is almost
 always TypeScript instead of GraphQL SDL — fix the spec, never generated
 files.
+
+**Changes** after launch: `plan` only the steps the change touches, then
+TESTS and LIVE. A request while a change is open joins it: reply
+`I'll include that in this change`.

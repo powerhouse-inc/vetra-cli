@@ -889,6 +889,49 @@ describe("DISCARD_CHANGE", () => {
     expect(doc.state.global.activeChangeId).toBe("c2");
   });
 
+  it("keeps the change's story and lets the next change start (D13, D17)", () => {
+    const doc = apply(
+      utils.createDocument(),
+      startChange({
+        id: "c1",
+        kind: "CHANGE",
+        request: "Add a notes field",
+        chatSessionId: "s1",
+        startedAt: at(1),
+      }),
+      addMilestone({
+        changeId: "c1",
+        id: "m1",
+        text: "Added notes",
+        at: at(2),
+      }),
+      discardChange({ changeId: "c1", at: at(3) }),
+      startChange({
+        id: "c2",
+        kind: "UNDO",
+        request: "Undo the notes field",
+        chatSessionId: "s2",
+        startedAt: at(4),
+      }),
+    );
+    expect(lastError(doc)).toBeNull();
+    const [discarded, next] = doc.state.global.changes;
+    expect(discarded).toMatchObject({
+      id: "c1",
+      status: "DISCARDED",
+      request: "Add a notes field",
+      chatSessionId: "s1",
+      chatSessionIds: ["s1"],
+    });
+    expect(discarded.milestones.map((m) => m.text)).toEqual(["Added notes"]);
+    expect(next).toMatchObject({
+      id: "c2",
+      status: "BUILDING",
+      chatSessionId: "s2",
+    });
+    expect(doc.state.global.activeChangeId).toBe("c2");
+  });
+
   it("refuses a change that is launching, already closed or unknown", () => {
     const launching = apply(
       withState({ changes: [craftedChange("c1", "LAUNCHING")] }),

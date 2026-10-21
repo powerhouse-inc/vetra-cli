@@ -77,7 +77,8 @@ async function readDocument(id: string): Promise<PHDocument | undefined> {
   }
 }
 
-const defaultDeps: StartProductDeps = {
+/** The Studio's real documents (startChange uses the same ones). */
+export const defaultStartDeps: StartProductDeps = {
   addDocument: (driveId, name, documentType) =>
     addAgentWritableDocument(driveId, name, documentType),
   dispatch: dispatchOrThrow,
@@ -241,7 +242,7 @@ const inFlight = new Map<string, Promise<StartProductResult>>();
 
 export function startProduct(
   input: StartProductInput,
-  deps: StartProductDeps = defaultDeps,
+  deps: StartProductDeps = defaultStartDeps,
 ): Promise<StartProductResult> {
   const driveId = input.drive.header.id;
   const running = inFlight.get(driveId);
