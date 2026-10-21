@@ -31,6 +31,7 @@ import { resolveCloudConfig } from "../cloud/config.js";
 import type { Config } from "../framework.js";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
 import type { ProductContext } from "../product/product-doc.js";
+import type { Operation } from "./trust.js";
 
 export const STUDIO_TEAM_TYPE = "vetra/studio-team";
 export const TEAM_DOC_FILE = path.join(".ph", "vetra", "team", "doc.json");
@@ -50,6 +51,10 @@ export interface TeamContext extends ProductContext {
 
 interface TeamClient {
   get(documentId: string): Promise<unknown>;
+  getOperations(
+    documentId: string,
+    opts: { branch: string; scopes: string[] },
+  ): Promise<{ results: Operation[] }>;
   execute(documentId: string, branch: string, actions: Action[]): Promise<unknown>;
   createDocumentInDrive(driveId: string, doc: unknown): Promise<{ header: { id: string } }>;
 }
@@ -219,4 +224,28 @@ export async function getTeamState(ctx: TeamContext): Promise<StudioTeamState | 
   const drive = await getEmbeddedDrive(ctx);
   if (!drive) return null;
   return readState(drive.reactor.client as unknown as TeamClient, id);
+}
+
+/** The stored team document and its global operations (task 1.8's trust input). */
+export interface TeamDocumentSnapshot {
+  documentId: string;
+  state: StudioTeamState | null;
+  operations: Operation[];
+}
+
+/**
+ * Read the team document's operations. Throws when the reactor cannot answer:
+ * a security decision must refuse rather than judge against an empty list.
+ */
+export async function readTeamDocument(ctx: TeamContext): Promise<TeamDocumentSnapshot | null> {
+  const documentId = readDocId(ctx.workdir);
+  if (!documentId) return null;
+  const drive = await getEmbeddedDrive(ctx);
+  if (!drive) return null;
+  const client = drive.reactor.client as unknown as TeamClient;
+  const { results } = await client.getOperations(documentId, {
+    branch: "main",
+    scopes: ["global"],
+  });
+  return { documentId, state: await readState(client, documentId), operations: results };
 }
