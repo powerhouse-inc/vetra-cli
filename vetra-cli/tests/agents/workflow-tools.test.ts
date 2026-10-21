@@ -77,7 +77,8 @@ describe('workflow and step tool sets agree (M0)', () => {
     const row = tableRows().get(step)!;
     const skills = namedSkills(row);
     const tools = namedTools([row, ...skills.map(skillText)].join('\n'));
-    if (step !== 'LIVE') expect(tools.length).toBeGreaterThan(0);
+    // LIVE launches by itself and names no tool.
+    expect(tools.length > 0).toBe(step !== 'LIVE');
     expect({ step, skills, hidden: hidden(tools, step) }).toEqual({ step, skills, hidden: [] });
     // Real tool names, so the NONE set (every tool) has them too.
     expect(selectTools(tools, null)).toEqual(tools);
