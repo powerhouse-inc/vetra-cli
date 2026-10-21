@@ -89,7 +89,7 @@ export function setPreviewAuthTokenProvider(
 /** `Authorization` for an owner-only route; empty when signed out or when the
  *  Studio's origin is unknown (the daemon then answers 401, which callers
  *  surface). */
-async function ownerHeaders(): Promise<Record<string, string>> {
+export async function ownerHeaders(): Promise<Record<string, string>> {
   try {
     const config = await resolvePreviewConfig();
     if (!config.loaded || config.base === DIRECT_BASE) return {};
@@ -176,7 +176,7 @@ export function memoizeUntilLoaded<T extends { loaded: boolean }>(
 
 // Resolve (memoized once it loads) the preview-server base from
 // studio.config.json. A failed fetch is not kept: the next call tries again.
-const resolvePreviewConfig = memoizeUntilLoaded(loadPreviewConfig);
+export const resolvePreviewConfig = memoizeUntilLoaded(loadPreviewConfig);
 
 async function loadPreviewConfig(): Promise<PreviewConfig> {
   if (isDev()) return { base: DIRECT_BASE, loaded: true };

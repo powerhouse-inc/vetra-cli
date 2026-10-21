@@ -17,7 +17,9 @@ import { translate } from "../i18n/language.js";
 import type { MessageKey } from "../i18n/messages.en.js";
 import { useT } from "../i18n/useT.js";
 import { AccountMenu } from "../shell/AccountMenu.js";
+import type { MaterialCard } from "../hooks/workshop-client.js";
 import VetraMitosis from "../VetraMitosis.js";
+import { MaterialDrop } from "./MaterialDrop.js";
 import {
   clearPendingIdea,
   peekPendingIdea,
@@ -53,18 +55,23 @@ export type IdeaScreenProps = {
   onStart: (idea: string) => Promise<string | undefined>;
   onStarted: (sessionId: string) => void;
   onOpenSettings: () => void;
+  /** Files are attached: read them with the text (the picture of what was
+   *  understood). Without it, the idea starts as text alone. */
+  onUnderstand?: (input: { cards: MaterialCard[]; text: string }) => void;
 };
 
 export function IdeaScreen({
   onStart,
   onStarted,
   onOpenSettings,
+  onUnderstand,
 }: IdeaScreenProps) {
   const { t } = useT();
   const auth = useStudioSignIn();
   const budget = useStudioBudget();
   const toast = usePHToast();
   const [idea, setIdea] = useState("");
+  const [cards, setCards] = useState<MaterialCard[]>([]);
   const [starting, setStarting] = useState(false);
   /** Build it was pressed while the sign-in state was still unknown. */
   const [awaitingSignIn, setAwaitingSignIn] = useState(false);
@@ -141,7 +148,13 @@ export function IdeaScreen({
 
   function submit() {
     const text = idea.trim();
-    if (!text || starting || awaitingSignIn) return;
+    const withFiles = cards.length > 0 && onUnderstand !== undefined;
+    if ((!text && !withFiles) || starting || awaitingSignIn) return;
+    if (withFiles && auth.status === "signed-in") {
+      onUnderstand({ cards, text });
+      return;
+    }
+    if (!text) return;
     if (auth.status === "signed-in") {
       sentRef.current = true;
       void start(text);
@@ -188,28 +201,45 @@ export function IdeaScreen({
           <h1 className="text-2xl font-semibold text-foreground">
             {t("idea.heading")}
           </h1>
-          <textarea
-            ref={inputRef}
-            value={idea}
-            onChange={(e) => setIdea(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            rows={4}
+          <MaterialDrop
             disabled={busy}
-            placeholder={t("idea.placeholder")}
-            aria-label={t("idea.inputLabel")}
-            className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-base text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-vetra-primary"
-          />
+            signedIn={auth.status === "signed-in"}
+            onSignInNeeded={() => {
+              const text = idea.trim();
+              if (text) savePendingIdea(text);
+              if (auth.status === "signed-out") auth.signIn();
+            }}
+            onCards={setCards}
+          >
+            <textarea
+              ref={inputRef}
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              rows={4}
+              disabled={busy}
+              placeholder={t("idea.placeholder")}
+              aria-label={t("idea.inputLabel")}
+              className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-base text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-vetra-primary"
+            />
+          </MaterialDrop>
           <button
             type="submit"
-            disabled={busy || !idea.trim()}
+            disabled={
+              busy || (!idea.trim() && !(cards.length > 0 && onUnderstand))
+            }
             className="inline-flex items-center gap-1.5 rounded-lg bg-vetra-primary px-5 py-2 text-sm font-medium text-vetra-primary-fg shadow-sm hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-vetra-primary focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? t("idea.starting") : t("idea.build")}
+            {busy
+              ? t("idea.starting")
+              : cards.length > 0
+                ? t("idea.understand")
+                : t("idea.build")}
           </button>
           <div className="flex flex-wrap justify-center gap-2">
             {IDEA_EXAMPLE_KEYS.map((key) => {

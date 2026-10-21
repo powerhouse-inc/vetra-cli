@@ -82,6 +82,12 @@ vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   usePHToast: () => undefined,
 }));
 
+const uploadMaterial = vi.hoisted(() => vi.fn());
+vi.mock("../hooks/workshop-client.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  uploadMaterial,
+}));
+
 const HOTEL = "Hotel breakfast orders";
 
 function textarea(container: HTMLElement): HTMLTextAreaElement {
@@ -414,3 +420,69 @@ function memoryStudio() {
     deps,
   };
 }
+
+describe("IdeaScreen with material", () => {
+  function dropFile(container: HTMLElement): void {
+    const target = container.querySelector("textarea") as HTMLElement;
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", {
+      value: {
+        files: [new File(["x"], "orders.csv", { type: "text/csv" })],
+        types: ["Files"],
+        items: [],
+      },
+    });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+  }
+
+  beforeEach(() => {
+    uploadMaterial.mockReset();
+    uploadMaterial.mockResolvedValue({
+      id: "m1",
+      name: "orders.csv",
+      kind: "SHEET",
+      sheets: [{ sheet: "s", header: ["a"], rowCount: 7 }],
+    });
+  });
+
+  it("with a file the button asks to show what was understood", async () => {
+    const onUnderstand = vi.fn();
+    const container = render(
+      <IdeaScreen
+        onStart={vi.fn()}
+        onStarted={vi.fn()}
+        onOpenSettings={() => {}}
+        onUnderstand={onUnderstand}
+      />,
+    );
+    expect(button(container, "Build it")).toBeDefined();
+    expect(container.textContent).toContain(
+      "Your files are read by the AI model this Studio uses.",
+    );
+    dropFile(container);
+    await flush();
+    expect(container.textContent).toContain("7 rows");
+    click(button(container, "Show me what you understood"));
+    expect(onUnderstand).toHaveBeenCalledWith({
+      cards: [expect.objectContaining({ id: "m1" })],
+      text: "",
+    });
+    expectNoForbiddenWords(container);
+  });
+
+  it("signed out, a drop asks to sign in and uploads nothing", async () => {
+    hoisted.state.status = "signed-out";
+    const signIn = vi.fn();
+    hoisted.state.signIn = signIn;
+    const { container } = screen();
+    typeIdea(container, HOTEL);
+    dropFile(container);
+    await flush();
+    expect(uploadMaterial).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Sign in to add files");
+    expect(signIn).toHaveBeenCalled();
+    expect(peekPendingIdea()).toBe(HOTEL);
+  });
+});
