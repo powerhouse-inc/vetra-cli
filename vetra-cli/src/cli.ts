@@ -41,6 +41,7 @@ import { studioUrlTrigger } from './triggers/studio-url.js';
 import { studioRedirectTrigger } from './triggers/studio-redirect.js';
 import { productSupervisorTrigger } from './product/supervisor.js';
 import { productRequestsTrigger } from './triggers/product-requests.js';
+import { liveHealthTrigger } from './triggers/live-health.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
@@ -95,6 +96,7 @@ export const cli = defineCli({
     studioRedirectTrigger,
     productSupervisorTrigger,
     productRequestsTrigger,
+    liveHealthTrigger,
   ],
   // @clint:end triggers
 

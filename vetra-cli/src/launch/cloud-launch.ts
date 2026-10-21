@@ -47,6 +47,7 @@ export const REASONS = {
   launchStudioVersion: "the new version didn't start",
   rollbackStudioVersion: "the earlier version couldn't be started again",
   studioDeployment: "the new version didn't start",
+  studioProduct: "your live product couldn't be checked",
   setStudioProductDrive: "your live address couldn't open your product",
 } as const;
 
