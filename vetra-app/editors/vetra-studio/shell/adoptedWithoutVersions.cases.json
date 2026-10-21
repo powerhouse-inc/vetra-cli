@@ -1,0 +1,53 @@
+{
+  "about": "Shared cases for adoptedWithoutVersions: vetra-app editors/vetra-studio/shell/firstVersion.ts and vetra-cli src/product/upgrade-existing.ts each run them (firstVersion.test.ts, vetra-cli tests/product/adopted-without-versions.test.ts). Change both implementations together.",
+  "cases": [
+    {
+      "name": "adopted, no version yet",
+      "state": { "liveVersion": null, "versions": [], "changes": [{ "kind": "BEFORE_VERSIONS" }] },
+      "expected": true
+    },
+    {
+      "name": "adopted, a change under way after the work from before versions",
+      "state": {
+        "liveVersion": null,
+        "versions": [],
+        "changes": [{ "kind": "BEFORE_VERSIONS" }, { "kind": "CHANGE" }]
+      },
+      "expected": true
+    },
+    {
+      "name": "older document without liveVersion",
+      "state": { "versions": [], "changes": [{ "kind": "BEFORE_VERSIONS" }] },
+      "expected": true
+    },
+    {
+      "name": "adopted, Version 1 made",
+      "state": {
+        "liveVersion": 1,
+        "versions": [{ "number": 1 }],
+        "changes": [{ "kind": "BEFORE_VERSIONS" }, { "kind": "CHANGE" }]
+      },
+      "expected": false
+    },
+    {
+      "name": "adopted, a version but none live",
+      "state": { "liveVersion": null, "versions": [{ "number": 1 }], "changes": [{ "kind": "BEFORE_VERSIONS" }] },
+      "expected": false
+    },
+    {
+      "name": "adopted, live without a version entry",
+      "state": { "liveVersion": 1, "versions": [], "changes": [{ "kind": "BEFORE_VERSIONS" }] },
+      "expected": false
+    },
+    {
+      "name": "new product, first change",
+      "state": { "liveVersion": null, "versions": [], "changes": [{ "kind": "FIRST_BUILD" }] },
+      "expected": false
+    },
+    {
+      "name": "new product, no change yet",
+      "state": { "liveVersion": null, "versions": [], "changes": [] },
+      "expected": false
+    }
+  ]
+}
