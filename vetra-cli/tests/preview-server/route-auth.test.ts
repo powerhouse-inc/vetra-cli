@@ -22,6 +22,7 @@ const OWNER_ROUTES: Array<[method: string, path: string]> = [
   ["POST", "/auth/start"],
   ["POST", "/auth/confirm?wait=0"],
   ["POST", "/auth/logout"],
+  ["GET", "/iterate/healthz"],
 ];
 const PUBLIC_ROUTES: Array<[method: string, path: string]> = [
   ["GET", "/healthz"],
