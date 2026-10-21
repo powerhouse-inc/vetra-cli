@@ -1,4 +1,10 @@
 export { normalizeProduct } from "./normalize.js";
+export {
+  SUGGESTION_TEXT_MAX,
+  SUGGESTIONS_MAX,
+  SUGGESTIONS_MIN,
+  currentSuggestions,
+} from "./suggestions.js";
 
 /**
  * A name to show until the agent names the product: the first four words of

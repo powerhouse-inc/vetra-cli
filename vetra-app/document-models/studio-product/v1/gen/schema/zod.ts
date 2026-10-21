@@ -19,6 +19,7 @@ import type {
   CompleteStepInput,
   CountStepInput,
   DiscardChangeInput,
+  DismissSuggestionInput,
   FailLaunchInput,
   FailRequestInput,
   GithubLink,
@@ -60,6 +61,8 @@ import type {
   SetProductDriveInput,
   SetRollbackBlockInput,
   SetStepAttentionInput,
+  SetSuggestionsInput,
+  SetSuggestionsItemInput,
   StartChangeInput,
   StartLaunchInput,
   StartStepInput,
@@ -69,6 +72,7 @@ import type {
   StudioProductState,
   Suggestion,
   SuggestionStatus,
+  UseSuggestionInput,
   Version,
   VersionStatus,
   WaiveLintInput,
@@ -333,6 +337,14 @@ export function DiscardChangeInputSchema(): z.ZodObject<
   return z.object({
     at: z.iso.datetime(),
     changeId: z.string(),
+  });
+}
+
+export function DismissSuggestionInputSchema(): z.ZodObject<
+  Properties<DismissSuggestionInput>
+> {
+  return z.object({
+    id: z.string(),
   });
 }
 
@@ -672,6 +684,24 @@ export function SetStepAttentionInputSchema(): z.ZodObject<
   });
 }
 
+export function SetSuggestionsInputSchema(): z.ZodObject<
+  Properties<SetSuggestionsInput>
+> {
+  return z.object({
+    afterVersion: z.number(),
+    items: z.array(z.lazy(() => SetSuggestionsItemInputSchema())),
+  });
+}
+
+export function SetSuggestionsItemInputSchema(): z.ZodObject<
+  Properties<SetSuggestionsItemInput>
+> {
+  return z.object({
+    id: z.string(),
+    text: z.string(),
+  });
+}
+
 export function StartChangeInputSchema(): z.ZodObject<
   Properties<StartChangeInput>
 > {
@@ -750,6 +780,14 @@ export function SuggestionSchema(): z.ZodObject<Properties<Suggestion>> {
     id: z.string(),
     status: SuggestionStatusSchema,
     text: z.string(),
+  });
+}
+
+export function UseSuggestionInputSchema(): z.ZodObject<
+  Properties<UseSuggestionInput>
+> {
+  return z.object({
+    id: z.string(),
   });
 }
 

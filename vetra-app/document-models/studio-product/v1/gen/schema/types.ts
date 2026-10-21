@@ -115,11 +115,7 @@ export type ChangeStatus =
   | "READY";
 
 export type CheckKind =
-  | "GENERATE"
-  | "LINT"
-  | "REDUCER_TESTS"
-  | "SMOKE"
-  | "TYPECHECK";
+  "GENERATE" | "LINT" | "REDUCER_TESTS" | "SMOKE" | "TYPECHECK";
 
 export type CheckResult = {
   kind: CheckKind;
@@ -184,6 +180,10 @@ export type DiscardChangeInput = {
   changeId: Scalars["OID"]["input"];
 };
 
+export type DismissSuggestionInput = {
+  id: Scalars["OID"]["input"];
+};
+
 export type FailLaunchInput = {
   at: Scalars["DateTime"]["input"];
   number: Scalars["Int"]["input"];
@@ -204,10 +204,7 @@ export type GithubLink = {
 };
 
 export type GithubStatus =
-  | "CONNECTED"
-  | "DISCONNECTED"
-  | "NOT_CONNECTED"
-  | "PUSH_FAILED";
+  "CONNECTED" | "DISCONNECTED" | "NOT_CONNECTED" | "PUSH_FAILED";
 
 export type InitProductInput = {
   createdAt: Scalars["DateTime"]["input"];
@@ -222,11 +219,7 @@ export type LaunchLine = {
 };
 
 export type LaunchLineKind =
-  | "DEPLOY"
-  | "MIRROR"
-  | "PUBLISH"
-  | "SNAPSHOT"
-  | "VERIFY";
+  "DEPLOY" | "MIRROR" | "PUBLISH" | "SNAPSHOT" | "VERIFY";
 
 export type LineStatus = "DONE" | "FAILED" | "RUNNING" | "SKIPPED" | "WAITING";
 
@@ -326,11 +319,7 @@ export type RequestFailure = {
 };
 
 export type RequestKind =
-  | "DISCARD"
-  | "LAUNCH"
-  | "MIRROR"
-  | "RESTART"
-  | "ROLLBACK";
+  "DISCARD" | "LAUNCH" | "MIRROR" | "RESTART" | "ROLLBACK";
 
 export type RequestLaunchInput = {
   changeId: Scalars["OID"]["input"];
@@ -415,6 +404,16 @@ export type SetStepAttentionInput = {
   status: StepStatus;
 };
 
+export type SetSuggestionsInput = {
+  afterVersion: Scalars["Int"]["input"];
+  items: Array<SetSuggestionsItemInput>;
+};
+
+export type SetSuggestionsItemInput = {
+  id: Scalars["OID"]["input"];
+  text: Scalars["String"]["input"];
+};
+
 export type StartChangeInput = {
   chatSessionId?: InputMaybe<Scalars["PHID"]["input"]>;
   id: Scalars["OID"]["input"];
@@ -439,12 +438,7 @@ export type StartStepInput = {
 export type StepKind = "DATA" | "EDITORS" | "LIVE" | "PLAN" | "TESTS";
 
 export type StepStatus =
-  | "DONE"
-  | "LIVE"
-  | "NEEDS_YOU"
-  | "NOT_STARTED"
-  | "STOPPED"
-  | "WORKING";
+  "DONE" | "LIVE" | "NEEDS_YOU" | "NOT_STARTED" | "STOPPED" | "WORKING";
 
 export type Stuck = {
   at: Scalars["DateTime"]["output"];
@@ -484,6 +478,10 @@ export type Suggestion = {
 };
 
 export type SuggestionStatus = "DISMISSED" | "OPEN" | "USED";
+
+export type UseSuggestionInput = {
+  id: Scalars["OID"]["input"];
+};
 
 export type Version = {
   changeId: Maybe<Scalars["OID"]["output"]>;

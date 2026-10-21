@@ -80,6 +80,7 @@ import {
 } from "./product-drive.js";
 import { publishAll, type LiveRelease, type PublishedPackage } from "./publish-all.js";
 import { awaitRollbackSettle } from "../triggers/live-health.js";
+import { askForSuggestions, chatBudgetUsedUp, hasSuggestionsFor } from "./suggestions.js";
 import { checkLive, waitForDeployment } from "./verify.js";
 
 /* ------------------------------------------------------------------------ */
@@ -231,10 +232,10 @@ export interface LaunchDeps {
   changedFiles: typeof changedFiles;
   listProjects: (workdir: string) => Promise<string[]>;
   sleep: (ms: number) => Promise<void>;
-  /** The suggestions step after a launch (Task 3.4); none until then. */
+  /** The short suggestions turn after a launch without suggestions (F11). */
   afterLaunch?: (ctx: OrchestratorContext, number: number) => Promise<void>;
-  /** True when this month's budget is used up: the suggestions step is skipped. */
-  budgetUsedUp?: () => Promise<boolean>;
+  /** True when this month's budget is used up: the suggestions turn is skipped. */
+  budgetUsedUp?: (ctx: OrchestratorContext, number: number) => Promise<boolean>;
   /** The data-compatibility gate (D6): the working tree against the live tag. */
   checkCompat?: typeof checkLaunchCompat;
   /** Writes a message into a change's conversation for the agent. */
@@ -267,6 +268,8 @@ const defaultDeps: LaunchDeps = {
   messageAgent,
   countDriveDocuments,
   refreshRollbackBlocks,
+  afterLaunch: askForSuggestions,
+  budgetUsedUp: chatBudgetUsedUp,
 };
 
 export interface OrchestratorContext extends ProductContext, ProductDriveContext {
@@ -637,10 +640,14 @@ async function runLaunch(
     return { status: "FAILED", number, reason };
   }
 
-  // After the launch: suggestions (Task 3.4), never when the budget is used up.
+  // F11: the agent wrote its suggestions in the Tests step; only when there
+  // are none for this version, one short turn asks — never on a spent budget.
   if (d.afterLaunch) {
     try {
-      if (d.budgetUsedUp && (await d.budgetUsedUp())) {
+      const after = (await getProductDoc(ctx))?.state;
+      if (after && hasSuggestionsFor(after, number)) {
+        ctx.log?.debug?.(`[launch] Version ${number}: suggestions already written`);
+      } else if (d.budgetUsedUp && (await d.budgetUsedUp(ctx, number))) {
         ctx.log?.info?.(`[launch] Version ${number}: budget used up, no suggestions`);
       } else {
         await d.afterLaunch(ctx, number);

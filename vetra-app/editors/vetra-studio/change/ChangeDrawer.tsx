@@ -2,7 +2,8 @@
  * The change drawer (spec §5.6–§5.7), right side, ~40 %: opened from the
  * "Change something" bubble. With no change open it asks "What should
  * change?" — the agent's suggestions as chips that fill the box (editable
- * before sending) — over the past changes grouped by version. Once a change
+ * before sending; the request then marks the suggestion used, and × removes
+ * one for good) — over the past changes grouped by version. Once a change
  * is open the drawer becomes that change's story; after it went live it says
  * "Version <n> is live.".
  */
@@ -12,18 +13,35 @@ import {
   CHANGE_SOMETHING,
   CLOSE,
   DISCARDED,
+  DISMISS_SUGGESTION,
   SEND,
+  SUGGESTIONS_LABEL,
+  SUGGESTION_NOT_DISMISSED,
   WHAT_SHOULD_CHANGE,
   startFailureText,
   versionIsLive,
 } from "./changeCopy.js";
 import { changeHistory, openSuggestions } from "./changeHistory.js";
 
+/** Starts a change from the box; `suggestionId` when it came from a suggestion. */
+export type StartRequest = (
+  request: string,
+  suggestionId?: string,
+) => Promise<unknown>;
+
+/** A suggestion picked outside the drawer (the "Make it better" card). */
+export interface PickedSuggestion {
+  id: string;
+  text: string;
+}
+
 export function ChangeDrawer({
   product,
   story,
   launchedVersion,
   onStart,
+  onDismiss,
+  prefill,
   onClose,
   containerRef,
 }: {
@@ -34,7 +52,11 @@ export function ChangeDrawer({
   /** The version the last change made live, while the drawer says so. */
   launchedVersion: number | null;
   /** Starts the change (`startChange`); rejects when it couldn't. */
-  onStart: (request: string) => Promise<unknown>;
+  onStart: StartRequest;
+  /** Removes a suggestion (`DISMISS_SUGGESTION`); no × without it. */
+  onDismiss?: (id: string) => Promise<unknown>;
+  /** Fills the box when the drawer opens (a suggestion picked on the card). */
+  prefill?: PickedSuggestion | null;
   onClose: () => void;
   containerRef?: RefObject<HTMLElement | null>;
 }) {
@@ -72,7 +94,12 @@ export function ChangeDrawer({
               {versionIsLive(launchedVersion)}
             </p>
           ) : null}
-          <ChangeRequest product={product} onStart={onStart} />
+          <ChangeRequest
+            product={product}
+            onStart={onStart}
+            onDismiss={onDismiss}
+            prefill={prefill ?? null}
+          />
           <PastChanges product={product} />
         </div>
       )}
@@ -84,11 +111,19 @@ export function ChangeDrawer({
 function ChangeRequest({
   product,
   onStart,
+  onDismiss,
+  prefill,
 }: {
   product: StudioProductState;
-  onStart: (request: string) => Promise<unknown>;
+  onStart: StartRequest;
+  onDismiss?: (id: string) => Promise<unknown>;
+  prefill: PickedSuggestion | null;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(prefill?.text ?? "");
+  // The suggestion the box came from, kept through edits until it is sent.
+  const [suggestionId, setSuggestionId] = useState<string | null>(
+    prefill?.id ?? null,
+  );
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -99,10 +134,14 @@ function ChangeRequest({
     if (!request || sending) return;
     setSending(true);
     setError(null);
-    onStart(request).then(
+    const started = suggestionId
+      ? onStart(request, suggestionId)
+      : onStart(request);
+    started.then(
       () => {
         setSending(false);
         setText("");
+        setSuggestionId(null);
       },
       (err: unknown) => {
         setSending(false);
@@ -123,7 +162,11 @@ function ChangeRequest({
         <input
           ref={inputRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            // An emptied box no longer comes from the suggestion.
+            if (!e.target.value.trim()) setSuggestionId(null);
+          }}
           placeholder={WHAT_SHOULD_CHANGE}
           aria-label={WHAT_SHOULD_CHANGE}
           autoFocus
@@ -138,21 +181,43 @@ function ChangeRequest({
         </button>
       </form>
       {suggestions.length > 0 ? (
-        <ul aria-label="Suggestions" className="flex flex-wrap gap-1.5">
+        <ul aria-label={SUGGESTIONS_LABEL} className="flex flex-wrap gap-1.5">
           {suggestions.map((s) => (
-            <li key={s.id}>
+            <li
+              key={s.id}
+              className="inline-flex items-center rounded-full border border-border bg-background text-xs text-foreground"
+            >
               <button
                 type="button"
                 data-suggestion={s.id}
                 onClick={() => {
                   // Fills the box only: the customer can edit it, then send.
                   setText(s.text);
+                  setSuggestionId(s.id);
                   inputRef.current?.focus();
                 }}
-                className="rounded-full border border-border bg-background px-2.5 py-0.5 text-xs text-foreground hover:bg-accent"
+                className="rounded-l-full px-2.5 py-0.5 hover:bg-accent"
               >
                 {s.text}
               </button>
+              {onDismiss ? (
+                <button
+                  type="button"
+                  data-dismiss={s.id}
+                  aria-label={`${DISMISS_SUGGESTION}: ${s.text}`}
+                  title={DISMISS_SUGGESTION}
+                  onClick={() => {
+                    setError(null);
+                    if (suggestionId === s.id) setSuggestionId(null);
+                    onDismiss(s.id).catch(() =>
+                      setError(SUGGESTION_NOT_DISMISSED),
+                    );
+                  }}
+                  className="rounded-r-full px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <span aria-hidden>×</span>
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>

@@ -478,4 +478,108 @@ describe("startChange", () => {
     expect(s.state().changes).toHaveLength(2);
     expect(s.messages.get(x.sessionId)).toEqual(["Add a notes field"]);
   });
+
+  it("a change from a suggestion marks it used in the same dispatch", async () => {
+    const s = studio();
+    goLive(s);
+    s.apply([suggest()]);
+    await startChange(
+      {
+        drive: s.drive,
+        productId: s.productId,
+        request: "Allow allergen notes on orders",
+        kind: "CHANGE",
+        suggestionId: "s1",
+      },
+      s.deps,
+    );
+    expect(s.productDispatches.at(-1)).toEqual([
+      "START_CHANGE",
+      "USE_SUGGESTION",
+    ]);
+    const state = s.state();
+    expect(state.suggestions.map((x) => [x.id, x.status])).toEqual([
+      ["s1", "USED"],
+      ["s2", "OPEN"],
+    ]);
+    expect(state.changes[1].request).toBe("Allow allergen notes on orders");
+  });
+
+  it("a suggestion no longer open never stops the request", async () => {
+    const s = studio();
+    goLive(s);
+    s.apply([suggest(), productActions.dismissSuggestion({ id: "s1" })]);
+    const result = await startChange(
+      {
+        drive: s.drive,
+        productId: s.productId,
+        request: "Allow allergen notes",
+        kind: "CHANGE",
+        suggestionId: "s1",
+      },
+      s.deps,
+    );
+    expect(result.joined).toBe(false);
+    expect(s.state().activeChangeId).toBe(result.changeId);
+    expect(s.messages.get(result.sessionId)).toEqual(["Allow allergen notes"]);
+    expect(s.state().suggestions[0].status).toBe("DISMISSED");
+
+    // Joining the open change: its own dispatch, refusal ignored too.
+    const joined = await startChange(
+      {
+        drive: s.drive,
+        productId: s.productId,
+        request: "and a daily summary",
+        kind: "CHANGE",
+        suggestionId: "s2",
+      },
+      s.deps,
+    );
+    expect(joined.joined).toBe(true);
+    expect(s.productDispatches.at(-1)).toEqual(["USE_SUGGESTION"]);
+    expect(s.state().suggestions[1].status).toBe("USED");
+    await startChange(
+      {
+        drive: s.drive,
+        productId: s.productId,
+        request: "and once more",
+        kind: "CHANGE",
+        suggestionId: "s2",
+      },
+      s.deps,
+    );
+    expect(s.messages.get(result.sessionId)).toEqual([
+      "Allow allergen notes",
+      "and a daily summary",
+      "and once more",
+    ]);
+  });
+
+  it("any other refusal still stops the request", async () => {
+    const s = studio();
+    goLive(s);
+    s.failProductOnce();
+    await expect(
+      startChange(
+        {
+          drive: s.drive,
+          productId: s.productId,
+          request: "Allow allergen notes",
+          kind: "CHANGE",
+          suggestionId: "s1",
+        },
+        s.deps,
+      ),
+    ).rejects.toThrow("dispatch failed");
+  });
 });
+
+function suggest() {
+  return productActions.setSuggestions({
+    afterVersion: 1,
+    items: [
+      { id: "s1", text: "Allow allergen notes" },
+      { id: "s2", text: "Add a daily summary" },
+    ],
+  });
+}

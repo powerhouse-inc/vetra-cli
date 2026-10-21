@@ -15,6 +15,10 @@
  * - "Undo with the agent" (kind UNDO) never joins: while any change is open
  *   it is refused (`UNDO_CHANGE_OPEN_TEXT`, as Go back is, E6); otherwise it
  *   starts its own change from the live code like any other.
+ *
+ * A request that came from a suggestion (§5.8) marks it USED: in the same
+ * dispatch as START_CHANGE, or on its own when joining. A suggestion that is
+ * no longer open (used or dismissed elsewhere) never stops the request.
  */
 import { actions as chatActions } from "@powerhousedao/clint-common/document-models/chat-session";
 import type { FileNode } from "@powerhousedao/shared/document-drive";
@@ -34,6 +38,8 @@ export interface StartChangeInput {
   productId: string;
   request: string;
   kind: StartChangeKind;
+  /** The suggestion the request started from, when it did. */
+  suggestionId?: string | null;
 }
 
 export interface StartChangeResult {
@@ -99,6 +105,32 @@ function hasNoMessages(doc: PHDocument | undefined): boolean {
   return Array.isArray(global?.messages) && global.messages.length === 0;
 }
 
+/** The product refused USE_SUGGESTION (already used, dismissed or gone). */
+function isSuggestionRefusal(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { errorCode?: unknown }).errorCode;
+  return (
+    code === "SuggestionNotOpenError" ||
+    code === "SuggestionNotFoundError" ||
+    /^(Suggestion "[^"]*" is \w+, not OPEN|No suggestion "[^"]*" exists)\.$/.test(
+      err.message,
+    )
+  );
+}
+
+/** Dispatch, letting only a refused USE_SUGGESTION through. */
+async function dispatchUsing(
+  deps: StartChangeDeps,
+  productId: string,
+  actions: Action[],
+): Promise<void> {
+  try {
+    await deps.dispatch(productId, actions);
+  } catch (err) {
+    if (!isSuggestionRefusal(err)) throw err;
+  }
+}
+
 function sessionsIn(drive: StartProductDrive): FileNode[] {
   return drive.state.global.nodes.filter(
     (n): n is FileNode =>
@@ -123,7 +155,7 @@ export function startChange(
 }
 
 async function run(
-  { drive, productId, request, kind }: StartChangeInput,
+  { drive, productId, request, kind, suggestionId }: StartChangeInput,
   deps: StartChangeDeps,
 ): Promise<StartChangeResult> {
   const text = request.trim();
@@ -168,10 +200,17 @@ async function run(
     ).id;
   };
 
+  const useSuggestion: Action[] = suggestionId
+    ? [productActions.useSuggestion({ id: suggestionId })]
+    : [];
+
   const open = changes.find((c) => JOINABLE.has(c.status));
   // An undo is its own change: never folded into the one in progress.
   if (open && kind === "UNDO") throw new Error(UNDO_CHANGE_OPEN_TEXT);
   if (open) {
+    if (useSuggestion.length) {
+      await dispatchUsing(deps, productId, useSuggestion);
+    }
     if (open.status === "PAUSED") {
       await deps.dispatch(productId, [
         productActions.resumeChange({ changeId: open.id, at }),
@@ -205,8 +244,10 @@ async function run(
       chatSessionId: sessionId,
       startedAt: at,
     }),
+    // Last, so a refusal of it leaves START_CHANGE applied.
+    ...useSuggestion,
   ];
-  await deps.dispatch(productId, ops);
+  await dispatchUsing(deps, productId, ops);
   await message(sessionId);
   return { changeId, sessionId, joined: false };
 }

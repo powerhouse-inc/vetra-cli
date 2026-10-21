@@ -20,5 +20,6 @@ export {
 export * from "./product/operations.js";
 export * from "./reducer.js";
 export * from "./schema/index.js";
+export * from "./suggestions/operations.js";
 export * from "./types.js";
 export * from "./utils.js";

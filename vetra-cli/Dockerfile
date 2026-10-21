@@ -214,6 +214,9 @@ RUN printf '%s\n' \
       'exec sh -c "${SERVICE_COMMAND}"' \
     > /usr/local/bin/vetra-run.sh \
  && chmod +x /usr/local/bin/vetra-run.sh
+# The workspace volume's root is owned by root, the agent runs as clint: allow
+# git in exactly that directory so the agent's own git commands work too.
+RUN git config --system --add safe.directory /home/clint/workspace
 USER clint
 
 RUN mkdir -p /home/clint/workspace

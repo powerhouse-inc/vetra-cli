@@ -4,10 +4,11 @@
  * changes thrown away while that version was live, marked discarded (§5.7:
  * nothing is deleted silently). Pure, from the product document only.
  */
-import type {
-  Change,
-  StudioProductState,
-  Suggestion,
+import {
+  currentSuggestions,
+  type Change,
+  type StudioProductState,
+  type Suggestion,
 } from "document-models/studio-product";
 import { changeTitle, versionHeading } from "./changeCopy.js";
 
@@ -66,12 +67,5 @@ export function changeHistory(product: StudioProductState): HistoryGroup[] {
 
 /** The agent's open suggestions for the live version (§5.8), at most three. */
 export function openSuggestions(product: StudioProductState): Suggestion[] {
-  return product.suggestions
-    .filter(
-      (s) =>
-        s.status === "OPEN" &&
-        (product.liveVersion === null ||
-          s.afterVersion === product.liveVersion),
-    )
-    .slice(0, 3);
+  return currentSuggestions(product).slice(0, 3);
 }

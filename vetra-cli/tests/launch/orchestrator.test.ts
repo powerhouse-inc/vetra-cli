@@ -17,6 +17,7 @@ import {
   syncAccess,
   versionTitle,
 } from "../../src/launch/orchestrator.js";
+import { askForSuggestions, chatBudgetUsedUp, suggestMessage } from "../../src/launch/suggestions.js";
 import { DEPLOY_FAILED_REASON } from "../../src/launch/verify.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
 import { AT, TARGET, a, launchHarness, makeReady, readyChange, type LaunchHarness } from "./orchestrator-helpers.js";
@@ -172,6 +173,52 @@ describe("launch orchestrator", () => {
     expect(afterLaunch).toHaveBeenCalledTimes(1);
   });
 
+  it("suggestions written in the Tests step: no extra turn after the launch", async () => {
+    const afterLaunch = jest.fn(async () => {});
+    const budgetUsedUp = jest.fn(async () => false);
+    h = await launchHarness({ afterLaunch, budgetUsedUp });
+    await makeReady(h);
+    await dispatchProduct(h.ctx, [
+      a.setSuggestions({ afterVersion: 1, items: [{ id: "s1", text: "Add due dates" }, { id: "s2", text: "Share a list" }] }),
+    ]);
+    await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
+    expect(afterLaunch).not.toHaveBeenCalled();
+    expect(budgetUsedUp).not.toHaveBeenCalled();
+  });
+
+  it("without suggestions the agent is asked once, in the launched change's conversation", async () => {
+    // The real after-launch step and budget check (the harness fakes messageAgent).
+    h = await launchHarness({ afterLaunch: askForSuggestions, budgetUsedUp: chatBudgetUsedUp });
+    await dispatchProduct(h.ctx, [
+      a.discardChange({ changeId: "change-1", at: AT }),
+      a.startChange({ id: "change-2", kind: "FIRST_BUILD", request: "a todo app", chatSessionId: "chat-1", startedAt: AT }),
+    ]);
+    await makeReady(h, "change-2");
+    const out = await launch(h.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
+    expect(out).toEqual({ status: "LIVE", number: 1 });
+    expect(h.calls.filter((c) => c.startsWith("message"))).toEqual([`message chat-1 ${suggestMessage(1)}`]);
+    expect(h.lines).toContain("[launch] Version 1: asked the agent for suggestions");
+  });
+
+  it("a launched change without a conversation is not asked for suggestions", async () => {
+    h = await launchHarness({ afterLaunch: askForSuggestions, budgetUsedUp: chatBudgetUsedUp });
+    await makeReady(h);
+    await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
+    expect(h.calls.some((c) => c.startsWith("message"))).toBe(false);
+    expect(h.lines).toContain("[launch] Version 1: no conversation to ask for suggestions");
+  });
+
+  it("a failing suggestions turn never fails the launch", async () => {
+    h = await launchHarness({
+      afterLaunch: async () => {
+        throw new Error("chat unreachable");
+      },
+    });
+    await makeReady(h);
+    expect(await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER })).toEqual({ status: "LIVE", number: 1 });
+    expect(h.lines).toContain("[launch] Version 1: suggestions failed: chat unreachable");
+  });
+
   it("waits out a launch secret that is still on its way, then goes on", async () => {
     let pending = 2;
     h = await launchHarness({
@@ -198,6 +245,24 @@ describe("launch orchestrator", () => {
     const out = await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
     expect(out).toEqual({ status: "FAILED", number: 1, reason: "your Studio is still getting ready to publish" });
     expect(h.sleeps).toEqual(SECRET_PENDING_WAITS_MS);
+  });
+
+  it("a git failure records only its plain reason on the product, never git's output", async () => {
+    h = await launchHarness({
+      snapshot: async () => {
+        throw new LaunchError(
+          "GIT_FAILED",
+          "the code couldn't be saved",
+          "git rev-parse failed: fatal: detected dubious ownership in repository at '/home/clint/workspace'",
+        );
+      },
+    });
+    await makeReady(h);
+    const out = await launch(h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
+    expect(out).toEqual({ status: "FAILED", number: 1, reason: "the code couldn't be saved" });
+    const doc = JSON.stringify(await h.state());
+    expect(doc).toContain("the code couldn't be saved");
+    expect(doc).not.toMatch(/dubious|fatal|\/home\/clint|rev-parse/);
   });
 
   it("examples the server refused are told in the story; the launch goes on", async () => {
