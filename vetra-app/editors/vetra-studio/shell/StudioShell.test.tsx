@@ -5,7 +5,9 @@ import type {
 } from "@powerhousedao/shared/document-drive";
 import type { PHDocument } from "document-model";
 import { actions } from "document-models/studio-product";
+import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { chat, reply, user } from "../story/storyFixtures.js";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
 import {
   button,
@@ -27,18 +29,41 @@ import {
   productDoc,
   withLiveVersion,
 } from "../test-utils/studioFixtures.js";
+import { startChange } from "../change/startChange.js";
+import type * as StartChangeModule from "../change/startChange.js";
 import { StudioShell } from "./StudioShell.js";
 
 const hoisted = vi.hoisted(() => ({
   documents: undefined as PHDocument[] | undefined,
   dispatched: [] as { action: unknown; id: string }[],
+  /** The build's conversation as `useDocumentSafe` returns it; loading when unset. */
+  session: undefined as PHDocument | undefined,
+  toasts: [] as { text: string; type?: string }[],
 }));
+const toastFn = (text: string, o?: { type?: string }) => {
+  hoisted.toasts.push({ text, type: o?.type });
+};
 
+vi.mock("../change/startChange.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof StartChangeModule>()),
+  startChange: vi.fn(() =>
+    Promise.resolve({ changeId: "c1", sessionId: "s1", joined: true }),
+  ),
+}));
 vi.mock("../steps/plainModel.js", async (importOriginal) => {
   const actual = await importOriginal<typeof PlainModelModule>();
   return { ...actual, plainModel: vi.fn(actual.plainModel) };
 });
 
+// The conversation fixture is the story's shape, not a full document.
+vi.mock(
+  "@powerhousedao/clint-common/document-models/chat-session",
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    isChatSessionDocument: (doc: PHDocument | undefined) =>
+      doc?.header.documentType === "powerhouse/chat-session",
+  }),
+);
 vi.mock("../hooks/useDriveDocuments.js", () => ({
   useDriveDocuments: () => hoisted.documents,
 }));
@@ -124,8 +149,11 @@ vi.mock("../ideation/DocumentHost.js", () => ({
 }));
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useDocumentSafe: () => ({ status: "loading" }),
-  usePHToast: () => undefined,
+  useDocumentSafe: () =>
+    hoisted.session
+      ? { status: "success", data: hoisted.session }
+      : { status: "loading" },
+  usePHToast: () => toastFn,
   dispatchActions: (action: unknown, id: string) => {
     hoisted.dispatched.push({ action, id });
     return Promise.resolve(undefined);
@@ -185,9 +213,61 @@ function building() {
   );
 }
 
+function pressedModes(container: HTMLElement): string[] {
+  return Array.from(
+    container.querySelectorAll(
+      '[data-mode-switch] button[aria-pressed="true"]',
+    ),
+  ).map((b) => b.textContent.trim());
+}
+
+/** The split's children in order: the story's side shows where it docks. */
+function sideOrder(container: HTMLElement): string[] {
+  const split = container.querySelector('[role="separator"]')?.parentElement;
+  return Array.from(split?.children ?? [])
+    .slice(0, 3)
+    .map((el) => el.tagName);
+}
+
+function chooseDock(container: HTMLElement, label: string): void {
+  const select = container.querySelector<HTMLSelectElement>(
+    'select[aria-label="Chat position"]',
+  );
+  const option = Array.from(select?.options ?? []).find(
+    (o) => o.text === label,
+  );
+  if (!select || !option) throw new Error(`no dock option ${label}`);
+  act(() => {
+    Reflect.set(HTMLSelectElement.prototype, "value", option.value, select);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+/** The build's conversation, ending on the agent's question. */
+function askingSession(): PHDocument {
+  return {
+    header: { id: SESSION_ID, documentType: "powerhouse/chat-session" },
+    state: {
+      global: chat(
+        user("u1", "a task board for my team", at(1)),
+        reply("r1", "Should tasks have due dates?", at(7), at(7)),
+      ),
+    },
+  } as unknown as PHDocument;
+}
+
+function steerInput(container: HTMLElement): HTMLInputElement | null {
+  return container.querySelector<HTMLInputElement>(
+    'input[aria-label="Steer it"]',
+  );
+}
+
 beforeEach(() => {
+  window.localStorage.clear();
+  hoisted.session = undefined;
   hoisted.documents = undefined;
   hoisted.dispatched = [];
+  hoisted.toasts = [];
   vi.mocked(plainModel).mockClear();
 });
 
@@ -219,9 +299,11 @@ describe("StudioShell", () => {
 
   it("no route other than strip steps, Settings and Versions", () => {
     const container = building();
-    expect(
+    // Only the story's layer switch (Task 1.4) is a tablist; it is not a route.
+    const tabs = Array.from(
       container.querySelectorAll('[role="tab"], [role="tablist"]'),
-    ).toHaveLength(0);
+    ).filter((el) => !el.closest('[aria-label="Story detail"]'));
+    expect(tabs).toHaveLength(0);
     const names = Array.from(container.querySelectorAll("button, a")).map(
       (el) =>
         el.getAttribute("data-step") ??
@@ -240,6 +322,18 @@ describe("StudioShell", () => {
       // The steer box's actions (Task 1.6), not routes.
       "Send",
       "Pause",
+      // The story's layer switch (Task 1.4).
+      "Outcome",
+      "Activity",
+      "Raw",
+      // The layout switch (Task 2.3): view controls, not routes.
+      "Build",
+      "Review",
+      "Demo",
+      // Demo's thin bar returns to Review (Task 2.4).
+      "Open chat",
+      // Demo's visible command-bar trigger (Task 2.4).
+      "Ask for a change…",
     ]);
     expect(names.filter((n) => !allowed.has(n))).toEqual([]);
     expect(names).toContain("Settings");
@@ -314,7 +408,7 @@ describe("StudioShell", () => {
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
-  it("a change open on a live product shows the Live | Preview split", () => {
+  it("in Build, a change open on a live product shows the Live | Preview split", () => {
     // The live version is there and a change is being worked on: the strip
     // stays in live mode with the change's progress; the page splits into
     // the live app and the change's preview, the drawer holds its story.
@@ -329,6 +423,8 @@ describe("StudioShell", () => {
         dispatch={() => {}}
       />,
     );
+    // Live defaults to Review; Build keeps today's page.
+    click(button(container, "Build"));
     expect(
       container.querySelector('[data-pane="live"] [data-embed="live"]')
         ?.textContent,
@@ -371,7 +467,13 @@ describe("StudioShell", () => {
         dispatch={() => {}}
       />,
     );
-    expect(container.querySelector("aside")).toBeNull();
+    // Once live the page opens in Review: the live app in the middle, the
+    // story docked on its right.
+    expect(pressedModes(container)).toEqual(["Review"]);
+    expect(sideOrder(container)).toEqual(["MAIN", "DIV", "ASIDE"]);
+    expect(
+      container.querySelector("main [data-review-product] [data-embed='live']"),
+    ).not.toBeNull();
     expect(
       container.querySelector('[data-banner="live"]')?.textContent,
     ).toContain("Your product is live.");
@@ -395,5 +497,193 @@ describe("StudioShell", () => {
     );
     expect(again.textContent).toContain("Went live");
     expect(again.textContent).not.toContain("Your product is live.");
+  });
+  it("one click switches Build → Review → Demo", () => {
+    const container = building();
+    expect(pressedModes(container)).toEqual(["Build"]);
+    // Build: today's page, the story docked left.
+    expect(sideOrder(container)).toEqual(["ASIDE", "DIV", "MAIN"]);
+    expect(button(container, "Show activity")).toBeUndefined();
+
+    click(button(container, "Review"));
+    expect(pressedModes(container)).toEqual(["Review"]);
+    expect(sideOrder(container)).toEqual(["MAIN", "DIV", "ASIDE"]);
+    expect(
+      container.querySelector("main [data-review-product]")?.textContent,
+    ).toContain("Preview pane");
+    expect(
+      container
+        .querySelector("aside [data-story-layer]")
+        ?.getAttribute("data-story-layer"),
+    ).toBe("outcome");
+
+    click(button(container, "Demo"));
+    expect(pressedModes(container)).toEqual(["Demo"]);
+    // The product fills the page under a thin bar; the story is out of view.
+    expect(container.querySelector("aside")).toBeNull();
+    expect(container.querySelector("[data-step]")).toBeNull();
+    expect(container.querySelector("[data-demo-bar]")?.textContent).toContain(
+      "Open chat",
+    );
+    expect(
+      container.querySelector("[data-demo-product]")?.textContent,
+    ).toContain("Preview pane");
+    expect(steerInput(container)).toBeNull();
+    // The chat is the command bar; Open chat returns to Review.
+    pressKey(window, "k");
+    expect(container.querySelector("[data-command-bar]")).toBeNull();
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", ctrlKey: true }),
+      );
+    });
+    expect(
+      container
+        .querySelector("[data-command-bar] input")
+        ?.getAttribute("placeholder"),
+    ).toBe("Ask for a change…");
+    expectNoForbiddenWords(container);
+    click(button(container, "Open chat"));
+    expect(pressedModes(container)).toEqual(["Review"]);
+  });
+
+  it("mode is remembered after remount", () => {
+    const first = building();
+    click(button(first, "Review"));
+    chooseDock(first, "Chat on the bottom");
+    const again = building();
+    expect(pressedModes(again)).toEqual(["Review"]);
+    expect(
+      again.querySelector<HTMLSelectElement>(
+        'select[aria-label="Chat position"]',
+      )?.value,
+    ).toBe("bottom");
+  });
+
+  it("the steer box and a pending question stay visible in Build and Review", () => {
+    hoisted.session = askingSession();
+    const container = building();
+    const question = () =>
+      container.querySelector('aside input[aria-label="Your answer"]');
+    // Build.
+    expect(container.textContent).toContain("Should tasks have due dates?");
+    expect(question()).not.toBeNull();
+    expect(steerInput(container)).not.toBeNull();
+    expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+
+    // A typed, unsent steer survives moving the chat.
+    typeInto(steerInput(container), "make it blue");
+    chooseDock(container, "Chat on the bottom");
+    expect(sideOrder(container)).toEqual(["MAIN", "DIV", "ASIDE"]);
+    expect(steerInput(container)?.value).toBe("make it blue");
+    expect(question()).not.toBeNull();
+    expect(container.querySelector<HTMLElement>("aside")?.style.minHeight).toBe(
+      "240px",
+    );
+
+    // Review, in each dock.
+    click(button(container, "Review"));
+    for (const dock of [
+      "Chat on the bottom",
+      "Chat on the left",
+      "Chat on the right",
+    ]) {
+      chooseDock(container, dock);
+      expect(question()).not.toBeNull();
+      expect(
+        container.querySelector('aside input[aria-label="Steer it"]'),
+      ).not.toBeNull();
+    }
+    typeInto(steerInput(container), "and bigger");
+    chooseDock(container, "Chat on the left");
+    expect(steerInput(container)?.value).toBe("and bigger");
+
+    // Demo keeps the question in view and the badge on its thin bar.
+    click(button(container, "Demo"));
+    expect(
+      container.querySelector("[data-demo-question]")?.textContent,
+    ).toContain("Should tasks have due dates?");
+    expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+  });
+
+  it("a question in Demo shows a badge and one toast", () => {
+    hoisted.session = askingSession();
+    const container = building();
+    // The story is in view in Build: no toast.
+    expect(hoisted.toasts).toEqual([]);
+    click(button(container, "Demo"));
+    expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+    expect(hoisted.toasts).toHaveLength(1);
+    expect(hoisted.toasts[0]).toEqual({
+      text: "Should tasks have due dates? Open chat to answer.",
+      type: "warning",
+    });
+  });
+
+  it("the same item never toasts twice", () => {
+    hoisted.session = askingSession();
+    const container = building();
+    click(button(container, "Demo"));
+    click(button(container, "Build"));
+    click(button(container, "Demo"));
+    click(button(container, "Review"));
+    click(button(container, "Demo"));
+    expect(hoisted.toasts).toHaveLength(1);
+  });
+
+  it("Build with the story visible shows no toast, and the badge opens Review", () => {
+    hoisted.session = askingSession();
+    const container = building();
+    expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+    expect(hoisted.toasts).toEqual([]);
+    click(container.querySelector<HTMLElement>("[data-attention]"));
+    expect(pressedModes(container)).toEqual(["Review"]);
+    expect(hoisted.toasts).toEqual([]);
+  });
+
+  function sendFromDemoBar(container: HTMLElement, text: string) {
+    click(button(container, "Demo"));
+    click(button(container, "Ask for a change…"));
+    const field = container.querySelector<HTMLInputElement>(
+      "[data-command-bar] input",
+    );
+    typeInto(field, text);
+    pressKey(field!, "Enter");
+  }
+
+  it("Enter in the bar sends into the open change", async () => {
+    vi.mocked(startChange).mockClear();
+    const container = building();
+    sendFromDemoBar(container, "make it blue");
+    await act(async () => {});
+    expect(startChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        productId: PRODUCT_ID,
+        request: "make it blue",
+        kind: "CHANGE",
+      }),
+    );
+  });
+
+  it("with no open change Enter starts a change", async () => {
+    vi.mocked(startChange).mockClear();
+    hoisted.documents = [
+      withLiveVersion(productDoc(...buildingOps())),
+      chatDoc(SESSION_ID, 1),
+    ];
+    const container = render(
+      <StudioShell
+        document={driveDoc([PRODUCT, SESSION])}
+        dispatch={() => {}}
+      />,
+    );
+    sendFromDemoBar(container, "add a dark theme");
+    await act(async () => {});
+    expect(startChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: "add a dark theme",
+        kind: "CHANGE",
+      }),
+    );
   });
 });

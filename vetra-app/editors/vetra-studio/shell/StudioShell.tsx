@@ -51,6 +51,7 @@ import { PlanDetail } from "../steps/PlanDetail.js";
 import { planBrief } from "../steps/planBrief.js";
 import { TestsDetail } from "../steps/TestsDetail.js";
 import { StoryPane } from "../story/StoryPane.js";
+import { storyLines, type StoryLine } from "../story/storyModel.js";
 import { useSnapshots } from "../timelapse/useSnapshots.js";
 import { StepStrip } from "../strip/StepStrip.js";
 import { openChange, stripChange, stripModel } from "../strip/stripModel.js";
@@ -58,14 +59,16 @@ import { PHASE_AVERAGES } from "../strip/timeLeft.js";
 import { useVersionsPanel } from "../versions/VersionsPanel.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { showsFirstVersionBar } from "./firstVersion.js";
+import { DemoLayout } from "./DemoLayout.js";
+import { DockSplit } from "./DockSplit.js";
+import { attentionItems, useAttentionToasts } from "./attention.js";
+import { ModeSwitch } from "./ModeSwitch.js";
+import { ReviewLayout, type ReviewStory } from "./ReviewLayout.js";
+import { useLayout } from "./useLayout.js";
 import { useStudioState } from "./useStudioState.js";
 
-const STORY_WIDTH_STORAGE_KEY = "vetra-studio:story-width";
 /** The live page's failure rows never focus the build's steer box. */
 const NO_FOCUS = () => {};
-const STORY_WIDTH_DEFAULT = 38;
-const STORY_WIDTH_MIN = 24;
-const STORY_WIDTH_MAX = 62;
 
 export type StudioShellProps = {
   document: DocumentDriveDocument;
@@ -187,26 +190,6 @@ function useNow(ms: number): Date {
   return now;
 }
 
-function readStoryWidth(): number {
-  try {
-    const raw = window.localStorage.getItem(STORY_WIDTH_STORAGE_KEY);
-    const parsed = raw === null ? NaN : Number(raw);
-    return Number.isFinite(parsed)
-      ? clamp(parsed, STORY_WIDTH_MIN, STORY_WIDTH_MAX)
-      : STORY_WIDTH_DEFAULT;
-  } catch {
-    return STORY_WIDTH_DEFAULT;
-  }
-}
-
-function writeStoryWidth(width: number): void {
-  try {
-    window.localStorage.setItem(STORY_WIDTH_STORAGE_KEY, String(width));
-  } catch {
-    // Blocked storage: the width lasts for this visit only.
-  }
-}
-
 /** Records each change's spend at its start and end, on every budget poll.
  * A side is dispatched once per change (in flight counts); a failed dispatch
  * is released so the next poll retries it. */
@@ -281,6 +264,8 @@ function StudioPage({
     };
   }, [change, right]);
   const [openStep, setOpenStep] = useState<StepKind | null>(null);
+  const studioId = drive.header.id;
+  const layout = useLayout(studioId, product?.liveVersion != null);
 
   const sessionId = change?.chatSessionId ?? fallbackSessionId;
   const sessionState = useDocumentSafe(sessionId ?? null);
@@ -368,7 +353,8 @@ function StudioPage({
       />
     ) : null;
 
-  const story =
+  // Review owns the story's layer (Outcome first); Build lets it keep its own.
+  const storyFor = (view?: ReviewStory) =>
     product && change ? (
       <StoryPane
         product={product}
@@ -376,6 +362,7 @@ function StudioPage({
         chat={chat}
         sessionId={sessionId ?? null}
         productId={productId}
+        studioId={drive.header.id}
         failureContext={{
           budget: failureBudget,
           requestBudget: budget.request,
@@ -386,6 +373,8 @@ function StudioPage({
           allowPublish: permission.allow,
         }}
         onStartChange={productId ? startNextChange : undefined}
+        layer={view?.layer}
+        onLayerChange={view?.onLayerChange}
       />
     ) : sessionId ? (
       /* No readable product yet: the conversation as it is. */
@@ -399,8 +388,29 @@ function StudioPage({
         Getting ready…
       </div>
     );
+  const story = storyFor();
+  const allLines = useMemo(
+    () => (product && change ? storyLines(product, change, chat, now) : []),
+    [product, change, chat, now],
+  );
+  const waiting = useMemo(
+    () => attentionItems(allLines, failure),
+    [allLines, failure],
+  );
+  const question = allLines.find(
+    (l): l is Extract<StoryLine, { kind: "reply" }> =>
+      l.kind === "reply" && l.question,
+  );
 
   const toast = usePHToast();
+  // The story is out of view in Build once live with no change open (Demo is
+  // always out of view); a new waiting item then toasts once.
+  useAttentionToasts(
+    waiting,
+    layout.mode,
+    layout.mode === "build" && liveView && !change,
+    toast,
+  );
   const rename = useCallback(
     (name: string) => {
       if (!productId) return;
@@ -434,80 +444,166 @@ function StudioPage({
     />
   );
 
-  return (
-    <>
-      <StepStrip
-        view={view}
-        selected={openStep}
-        onOpenStep={toggleStep}
-        onOpenSettings={onOpenSettings}
-        onRename={productId ? rename : undefined}
-        versions={
-          product?.liveVersion != null
-            ? { live: product.liveVersion, onOpen: versions.openPanel }
-            : undefined
-        }
-        budget={
-          "budget" in right && (right.budget || budgetLevel === "exhausted") ? (
-            <StripBudget
-              text={right.budget}
-              view={budgetView(budget.snapshot)}
-              onRequest={budget.request}
-            />
-          ) : undefined
+  const detailView = detail ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 justify-end border-b border-border bg-card px-4 py-1.5">
+        <button
+          type="button"
+          onClick={() => setOpenStep(null)}
+          className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+        >
+          Following you · Back to the build
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">{detail}</div>
+    </div>
+  ) : null;
+
+  const liveSurface = liveView ? (
+    <LiveSurface
+      product={product}
+      productId={productId}
+      drive={drive}
+      documents={documents}
+      failure={failure}
+      now={now}
+      story={change ? story : null}
+      preview={previewPane}
+      requestedBy={signIn.name ?? "you"}
+      onOpenAccess={onOpenAccess}
+    />
+  ) : null;
+
+  // Review and Demo (spec G2): the live view once live with no change open,
+  // else the preview with its Ready bar.
+  const productNode =
+    detailView ??
+    (stateTwo ? (
+      liveSurface
+    ) : (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {liveView && change ? (
+          <ReadyBar
+            product={product}
+            productId={productId}
+            change={change}
+            requestedBy={signIn.name ?? "you"}
+            onKeepChanging={NO_FOCUS}
+          />
+        ) : (
+          firstVersionBar
+        )}
+        {previewPane}
+      </div>
+    ));
+
+  // Demo's command bar: the newest agent reply shows as a toast, and a send
+  // goes the story's way (into the open change, else a new change).
+  const lastReply = useMemo(() => {
+    if (!product || !change) return null;
+    const replies = storyLines(product, change, chat, now).filter(
+      (l): l is Extract<StoryLine, { kind: "reply" }> => l.kind === "reply",
+    );
+    return replies.at(-1)?.text ?? null;
+  }, [product, change, chat, now]);
+  const sendFromBar = useCallback(
+    async (text: string) => {
+      await startNextChange(text);
+    },
+    [startNextChange],
+  );
+  const modeSwitch = (
+    <ModeSwitch
+      mode={layout.mode}
+      onMode={layout.setMode}
+      dock={layout.dock}
+      onDock={layout.setDock}
+      attention={waiting.length}
+      onAttention={() => layout.setMode("review")}
+    />
+  );
+
+  let body: React.ReactNode;
+  if (layout.mode === "review") {
+    body = (
+      <ReviewLayout
+        dock={layout.dock}
+        size={layout.size}
+        onResize={layout.setSize}
+        product={productNode}
+        side={product && change ? storyFor : story}
+      />
+    );
+  } else if (layout.mode === "demo") {
+    body = (
+      <DemoLayout
+        product={productNode}
+        name={product?.name?.trim() || "Your product"}
+        live={liveView}
+        onOpenChat={() => layout.setMode("review")}
+        modeSwitch={modeSwitch}
+        onSend={sendFromBar}
+        lastReply={lastReply}
+        question={question?.text ?? null}
+      />
+    );
+  } else if (liveView) {
+    body = detail ? (
+      <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">{detail}</main>
+    ) : (
+      <main className="flex min-h-0 flex-1 flex-col">{liveSurface}</main>
+    );
+  } else {
+    body = (
+      <DockSplit
+        dock={layout.dock}
+        size={layout.size}
+        onResize={layout.setSize}
+        sideLabel="Story"
+        side={story}
+        main={
+          detailView ??
+          (firstVersionBar ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {firstVersionBar}
+              {previewPane}
+            </div>
+          ) : (
+            previewPane
+          ))
         }
       />
-      {liveView ? (
-        detail ? (
-          <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-            {detail}
-          </main>
-        ) : (
-          <main className="flex min-h-0 flex-1 flex-col">
-            <LiveSurface
-              product={product}
-              productId={productId}
-              drive={drive}
-              documents={documents}
-              failure={failure}
-              now={now}
-              story={change ? story : null}
-              preview={previewPane}
-              requestedBy={signIn.name ?? "you"}
-              onOpenAccess={onOpenAccess}
-            />
-          </main>
-        )
-      ) : (
-        <BuildSplit
-          story={story}
-          main={
-            detail ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="flex shrink-0 justify-end border-b border-border bg-card px-4 py-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setOpenStep(null)}
-                    className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent"
-                  >
-                    Following you · Back to the build
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-                  {detail}
-                </div>
-              </div>
-            ) : firstVersionBar ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                {firstVersionBar}
-                {previewPane}
-              </div>
-            ) : (
-              previewPane
-            )
+    );
+  }
+
+  return (
+    <>
+      {layout.mode === "demo" ? null : (
+        <StepStrip
+          view={view}
+          selected={openStep}
+          onOpenStep={toggleStep}
+          onOpenSettings={onOpenSettings}
+          onRename={productId ? rename : undefined}
+          modeSwitch={modeSwitch}
+          versions={
+            product?.liveVersion != null
+              ? { live: product.liveVersion, onOpen: versions.openPanel }
+              : undefined
+          }
+          budget={
+            "budget" in right &&
+            (right.budget || budgetLevel === "exhausted") ? (
+              <StripBudget
+                text={right.budget}
+                view={budgetView(budget.snapshot)}
+                onRequest={budget.request}
+              />
+            ) : undefined
           }
         />
       )}
+      {body}
       {signIn.status === "signed-out" ? (
         /* The session ended: sign in again over the page, which stays. */
         <SignInModal onSignIn={signIn.signIn} />
@@ -549,86 +645,4 @@ function StepDetail({
     case "LIVE":
       return <LiveDetail product={product} now={now} />;
   }
-}
-
-/** Story on the left (resizable, ~38 %), the preview or a step on the right. */
-function BuildSplit({
-  story,
-  main,
-}: {
-  story: React.ReactNode;
-  main: React.ReactNode;
-}) {
-  const [width, setWidth] = useState(readStoryWidth);
-  const [dragging, setDragging] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  /** Removes a drag's window listeners (on mouse up or unmount). */
-  const endDrag = useRef<(() => void) | null>(null);
-
-  useEffect(() => () => endDrag.current?.(), []);
-
-  function onMouseDown(event: React.MouseEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect || rect.width === 0) return;
-    endDrag.current?.();
-    setDragging(true);
-    let latest: number | null = null;
-    function onMove(e: MouseEvent) {
-      if (!rect) return;
-      const percent = ((e.clientX - rect.left) / rect.width) * 100;
-      latest = clamp(percent, STORY_WIDTH_MIN, STORY_WIDTH_MAX);
-      setWidth(latest);
-    }
-    function detach() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      endDrag.current = null;
-    }
-    function onUp() {
-      detach();
-      setDragging(false);
-      // Stored once per drag, when it ends.
-      if (latest !== null) writeStoryWidth(latest);
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    endDrag.current = detach;
-  }
-
-  function resetWidth() {
-    setWidth(STORY_WIDTH_DEFAULT);
-    writeStoryWidth(STORY_WIDTH_DEFAULT);
-  }
-
-  return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
-      <aside
-        aria-label="Story"
-        className="flex shrink-0 flex-col bg-card"
-        style={{ width: `${width}%` }}
-      >
-        {story}
-      </aside>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize"
-        onMouseDown={onMouseDown}
-        onDoubleClick={resetWidth}
-        className="w-1.5 shrink-0 cursor-col-resize border-x border-border bg-card hover:bg-accent"
-      />
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-        {main}
-      </main>
-      {dragging ? (
-        /* Keeps the preview iframe from swallowing the drag. */
-        <div aria-hidden className="fixed inset-0 z-50 cursor-col-resize" />
-      ) : null}
-    </div>
-  );
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }

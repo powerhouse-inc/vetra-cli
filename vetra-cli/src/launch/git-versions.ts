@@ -255,6 +255,52 @@ async function draftChanges(workdir: string): Promise<string[]> {
     .filter((p) => p !== ".gitignore");
 }
 
+/** Non-ignored working-tree changes (workspace-relative paths), as `git status` lists them. */
+export async function workingChanges(workdir: string): Promise<string[]> {
+  return draftChanges(workdir);
+}
+
+/**
+ * Commit exactly `paths` (workspace-relative; additions, edits and deletions)
+ * on `main` with `message`, leaving anything else in the working tree or the
+ * index alone. Paths outside the workspace and the agent runtime directory
+ * (`.ph/`) are refused. Returns HEAD and whether a commit was made (false when
+ * the paths hold no change).
+ */
+export async function commitPaths(
+  workdir: string,
+  paths: string[],
+  message: string,
+  opts: { author?: GitAuthor } = {},
+): Promise<{ sha: string; committed: boolean }> {
+  await ensureWorkspaceRepo(workdir);
+  const rels = [...new Set(paths.map((p) => p.split(path.sep).join("/")))];
+  const root = path.resolve(workdir);
+  for (const rel of rels) {
+    const abs = path.resolve(root, rel);
+    if (path.isAbsolute(rel) || !abs.startsWith(root + path.sep) || /(^|\/)\.ph(\/|$)/.test(rel)) {
+      throw new LaunchError("GIT_FAILED", "the code couldn't be saved", `Refusing to commit ${rel}.`);
+    }
+  }
+  const present: string[] = [];
+  for (const rel of rels) {
+    if (fs.existsSync(path.join(workdir, rel))) present.push(rel);
+    else if (await gitMaybe(workdir, ["ls-files", "--error-unmatch", "--", rel])) present.push(rel);
+  }
+  if (present.length > 0) await git(workdir, ["add", "-A", "--", ...present]);
+  const staged =
+    present.length > 0 ? await git(workdir, ["diff", "--cached", "--name-only", "--", ...present]) : "";
+  if (!staged) {
+    const head = await headSha(workdir);
+    if (!head) throw new LaunchError("GIT_FAILED", "the code couldn't be saved", "Nothing to commit and no HEAD.");
+    return { sha: head, committed: false };
+  }
+  await git(workdir, ["commit", "-q", "--no-verify", "-m", message, "--only", "--", ...present], {
+    author: opts.author ?? DEFAULT_AUTHOR,
+  });
+  return { sha: (await headSha(workdir))!, committed: true };
+}
+
 /** Point `main` at a new commit with `tree` on top of HEAD (no history rewrite). */
 async function commitTree(
   workdir: string,

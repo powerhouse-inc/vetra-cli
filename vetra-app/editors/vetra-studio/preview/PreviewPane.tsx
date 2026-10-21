@@ -13,9 +13,10 @@ import type { Change } from "document-models/studio-product";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
-  type Ref,
+  type RefObject,
 } from "react";
 import { PreviewBody, STARTING } from "../BuildSection.js";
 import { fetchRestart, fetchStart } from "../hooks/preview-server-client.js";
@@ -27,6 +28,8 @@ import {
   useProjectHomeTarget,
   useSessionPreviewTarget,
 } from "../hooks/useSessionPreviewTarget.js";
+import { frameDocument } from "./pointLayer.js";
+import { usePointMode } from "./usePointMode.js";
 import {
   previewScreens,
   previewTabs,
@@ -127,8 +130,8 @@ export function PreviewPane({
   documents: readonly PHDocument[];
   /** The build's conversation, which says what the agent shows and edits. */
   session: ChatSessionDocument | undefined;
-  /** The preview frame, for snapshots of the build. */
-  frameRef?: Ref<HTMLIFrameElement>;
+  /** The preview frame, shared by Point mode and build snapshots. */
+  frameRef?: RefObject<HTMLIFrameElement | null>;
 }) {
   const screens = useMemo(() => previewScreens(documents), [documents]);
   const messages = session?.state.global.messages;
@@ -180,6 +183,16 @@ export function PreviewPane({
     };
   }, [project]);
 
+  // Point mode: offered only while a same-origin frame is showing. The frame
+  // ref may come from the shell (build snapshots) or be this pane's own.
+  const ownFrame = useRef<HTMLIFrameElement | null>(null);
+  const frame = frameRef ?? ownFrame;
+  const [frameLoads, setFrameLoads] = useState(0);
+  const point = usePointMode(frame, `${frameLoads}`);
+  const canPoint =
+    preview.kind === "ready" &&
+    (frame.current === null || frameDocument(frame.current) !== null);
+
   const building = shownTab?.building
     ? `${shownTab.label} — building…`
     : undefined;
@@ -190,6 +203,20 @@ export function PreviewPane({
         <span className="text-xs text-muted-foreground">
           Live preview · updates as it builds
         </span>
+        {canPoint ? (
+          <button
+            type="button"
+            aria-pressed={point.active}
+            onClick={point.toggle}
+            className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+              point.active
+                ? "border-vetra-primary bg-vetra-primary/10 text-foreground"
+                : "border-border text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            Point
+          </button>
+        ) : null}
         {following ? null : (
           <button
             type="button"
@@ -202,6 +229,8 @@ export function PreviewPane({
       </div>
       <PreviewBody
         preview={preview}
+        frameRef={frame}
+        onFrameLoad={() => setFrameLoads((n) => n + 1)}
         reloadKey={reloadKey}
         activity={
           building ??
@@ -211,7 +240,6 @@ export function PreviewPane({
             : undefined)
         }
         note={building}
-        frameRef={frameRef}
       />
       {tabs.length > 0 ? (
         <TabBar tabs={tabs} selected={selected} onSelect={setPicked} />

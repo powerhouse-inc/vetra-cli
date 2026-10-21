@@ -19,6 +19,7 @@
  *   GET  /auth/status             owner: the agent's Renown identity.
  *   POST /auth/start|confirm|logout  owner: change the agent's Renown identity.
  *   /workshop/*                   owner: see workshop-routes.ts.
+ *   *    /iterate/*                owner: iterate-routes.ts.
  *
  * Listens on 127.0.0.1, but the embedded proxy exposes it publicly at
  * `/preview` — so every owner route checks the *request's* credential.
@@ -39,6 +40,9 @@ import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-expor
 import { createWorkshopRoutes } from "./workshop-routes.js";
 import type { UnderstandDeps } from "../workshop/understand.js";
 import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
+import type { ProductContext } from "../product/product-doc.js";
+import type { RunProcess } from "../product/studio-edit.js";
+import { createIterateRoutes } from "./iterate-routes.js";
 import {
   confirmAuth,
   getAuthState,
@@ -75,6 +79,8 @@ interface PreviewServerDeps {
   getProxyPublicUrl?: () => string | undefined;
   /** Model access of the "What I understood" pass; null/undefined = no model connected. */
   understandDeps?: () => UnderstandDeps | null;
+  /** The command context the iterate routes reach the product and run checks through. */
+  product?: ProductContext & { runProcess?: RunProcess };
   /** Owner gate override (tests); default `createRequestAuthorizer`. */
   authorizeRequest?: RequestAuthorizer;
   log?: {
@@ -177,6 +183,17 @@ export async function startPreviewServer(
     workdir,
     requireOwner,
     understandDeps: deps.understandDeps,
+    log,
+  });
+  const iterateRoutes = createIterateRoutes({
+    requireOwner,
+    writeJson,
+    workdir,
+    product: deps.product,
+    previewUrl: (base) =>
+      services
+        .list("reactor-project")
+        .find((i) => i.workdir === base && i.status === "ready")?.endpoints?.["vetra-studio"],
     log,
   });
 
@@ -430,6 +447,7 @@ export async function startPreviewServer(
       }
 
       if (await workshopRoutes.handle(req, res, url, method)) return;
+      if (await iterateRoutes.handle(req, res, url, method)) return;
       writeJson(res, 404, { error: "not found", path });
     } catch (err) {
       log?.error(

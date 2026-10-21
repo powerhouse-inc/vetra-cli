@@ -70,6 +70,8 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         proxyPublicUrl: ctx.commandContext.proxy?.url,
         versions: { vetraCli: VETRA_CLI_VERSION, ph: DEFAULT_PH_VERSION },
         getReactor: () => getEmbeddedDrive(ctx.commandContext),
+        // Studio edits (iterate routes) reach the product and run checks through it.
+        product: ctx.commandContext,
         agentLogging: ctx.context.config.agentLogging,
         cloud: Boolean(ctx.context.config.environmentId?.trim()),
         // Verify owner bearers on the Renown the Studio's Connect logs in on.

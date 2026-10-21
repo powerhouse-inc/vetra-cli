@@ -24,6 +24,7 @@ const OWNER_ROUTES: Array<[method: string, path: string]> = [
   ["POST", "/auth/logout"],
   ["POST", "/workshop/material?name=a.txt&type=text%2Fplain"],
   ["POST", "/workshop/understand"],
+  ["GET", "/iterate/healthz"],
 ];
 const PUBLIC_ROUTES: Array<[method: string, path: string]> = [
   ["GET", "/healthz"],

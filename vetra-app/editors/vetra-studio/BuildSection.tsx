@@ -68,16 +68,19 @@ export function PreviewBody({
   activity,
   note,
   frameRef,
+  onFrameLoad,
 }: {
   preview: ResolvedPreview;
+  /** The preview iframe, for Point mode and build snapshots (same-origin only). */
+  frameRef?: Ref<HTMLIFrameElement>;
+  /** Called when the frame finishes loading. */
+  onFrameLoad?: () => void;
   /** Bumped to reload the frame (Restart preview). */
   reloadKey?: number;
   /** Replaces the skeleton copy (e.g. "Kitchen queue — building…"). */
   activity?: string;
   /** A small line over a showing preview (e.g. "Kitchen queue — building…"). */
   note?: string;
-  /** The frame element, for snapshots of the build. */
-  frameRef?: Ref<HTMLIFrameElement>;
 }) {
   const { theme } = useTheme();
   const url = preview.kind === "ready" ? preview.url : undefined;
@@ -115,7 +118,10 @@ export function PreviewBody({
           ref={frameRef}
           src={frameSrc}
           title="Preview"
-          onLoad={() => setLoadedKey(frameKey)}
+          onLoad={() => {
+            setLoadedKey(frameKey);
+            onFrameLoad?.();
+          }}
           className="block min-h-0 w-full flex-1 border-0"
         />
       ) : null}

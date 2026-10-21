@@ -46,6 +46,10 @@ import {
   continueFailureText,
   sendSteer,
 } from "./SteerBox.js";
+import { AwayCard } from "./AwayCard.js";
+import { LayerSwitch } from "./LayerSwitch.js";
+import { copyAllText } from "./copyAll.js";
+import { DEFAULT_LAYER, layerLines, type StoryLayer } from "./storyLayers.js";
 import {
   agentWorking,
   nextStoryChange,
@@ -100,12 +104,17 @@ export type StoryPaneProps = {
   chat: StoryChat | null;
   sessionId: string | null;
   productId: string | null;
+  /** The Studio's id: keys the "while you were away" visit time. */
+  studioId?: string;
   /** Fixed time (tests); the pane ticks on its own otherwise. */
   now?: Date;
   failureContext?: StoryFailureContext;
   /** Starts a new change; asked for under a closed change (an existing
    *  Studio's work before versions, spec §6.6) instead of steering it. */
   onStartChange?: (request: string) => Promise<unknown>;
+  /** The shown layer (controlled); the pane keeps its own when omitted. */
+  layer?: StoryLayer;
+  onLayerChange?: (layer: StoryLayer) => void;
 };
 
 export function StoryPane({
@@ -114,13 +123,28 @@ export function StoryPane({
   chat,
   sessionId,
   productId,
+  studioId,
   now: fixedNow,
   failureContext = NO_FAILURE_CONTEXT,
   onStartChange,
+  layer: controlledLayer,
+  onLayerChange,
 }: StoryPaneProps) {
+  const [ownLayer, setOwnLayer] = useState<StoryLayer>(DEFAULT_LAYER);
+  const layer = controlledLayer ?? ownLayer;
+  function changeLayer(next: StoryLayer) {
+    setOwnLayer(next);
+    onLayerChange?.(next);
+  }
   const ticking = useNow(5_000);
   const now = fixedNow ?? ticking;
   const lines = storyLines(product, change, chat, now);
+  const openQuestion = lines
+    .filter(
+      (l): l is Extract<StoryLine, { kind: "reply" }> =>
+        l.kind === "reply" && l.question,
+    )
+    .at(-1)?.text;
   const working = agentWorking(chat) && change.status === "BUILDING";
   // When the shown story last changed (G3 counts quiet time from that).
   const changeRef = useRef<StoryChange | null>(null);
@@ -130,7 +154,9 @@ export function StoryPane({
     fixedNow ? fixedNow.getTime() : Date.now(),
   );
   const waiting = staleness(lines, { working }, now, changeRef.current.at);
-  const shown = waiting ? [...lines, waiting] : lines;
+  const layered = layerLines(lines, change, layer);
+  // The waiting line is a transient status below the story, not a story line.
+  const shown = layered;
   const messages = chat?.messages;
   const results = useMemo(() => toolResultsOf(messages ?? []), [messages]);
   const steerRef = useRef<HTMLInputElement | null>(null);
@@ -160,7 +186,7 @@ export function StoryPane({
   // Newest at the bottom; follow it unless the customer scrolled up.
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
-  const newestKey = `${shown.length}:${shown.at(-1)?.id}:${shown.at(-1)?.at}`;
+  const newestKey = `${shown.length}:${shown.at(-1)?.id}:${shown.at(-1)?.at}:${waiting?.id}`;
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && following.current) el.scrollTop = el.scrollHeight;
@@ -173,6 +199,18 @@ export function StoryPane({
     );
   }
 
+  function copyAll() {
+    const clipboard = (
+      navigator as { clipboard?: Navigator["clipboard"] | undefined }
+    ).clipboard;
+    (clipboard
+      ? clipboard.writeText(copyAllText(lines, results))
+      : Promise.reject(new Error("no clipboard"))
+    )
+      .then(() => toast?.("Copied", { type: "success" }))
+      .catch(() => toast?.("Couldn't copy", { type: "error" }));
+  }
+
   function resume() {
     if (!productId) return;
     continueChange(productId, change.id, sessionId).catch((err) =>
@@ -182,6 +220,12 @@ export function StoryPane({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2">
+        <LayerSwitch value={layer} onChange={changeLayer} />
+        {layer === "raw" ? (
+          <ActionButton onClick={copyAll}>Copy all</ActionButton>
+        ) : null}
+      </div>
       <div
         ref={scrollRef}
         onScroll={(e) => {
@@ -191,10 +235,18 @@ export function StoryPane({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
-        <ol className="flex flex-col gap-2">
+        {studioId ? (
+          <AwayCard
+            studioId={studioId}
+            product={product}
+            question={openQuestion}
+          />
+        ) : null}
+        <ol data-story-layer={layer} className="flex flex-col gap-2">
           {shown.map((line) => (
-            <li key={line.id} data-line={line.kind}>
+            <li key={line.id} data-line={line.kind} data-story-line>
               <Line
+                layer={layer}
                 line={line}
                 results={results}
                 onSend={send}
@@ -211,8 +263,19 @@ export function StoryPane({
             </li>
           ) : null}
         </ol>
+        {waiting ? (
+          <p
+            data-line="waiting"
+            className="mt-2 text-xs italic text-muted-foreground"
+          >
+            {waiting.text}
+          </p>
+        ) : null}
       </div>
-      {change.status === "CLOSED" && onStartChange ? (
+      {/* Work that is over (before versions, or launched) takes the next
+          change instead of steering the old one. */}
+      {(change.status === "CLOSED" || change.status === "LAUNCHED") &&
+      onStartChange ? (
         <div className="shrink-0 border-t border-border bg-card px-3 py-2">
           <ChangeRequest
             product={product}
@@ -237,6 +300,7 @@ export function StoryPane({
 
 function Line({
   line,
+  layer,
   results,
   onSend,
   onTellMeHow,
@@ -245,6 +309,7 @@ function Line({
   handlers,
 }: {
   line: StoryLine;
+  layer: StoryLayer;
   results: ReadonlyMap<string, ContentPart>;
   onSend: (text: string) => void;
   onTellMeHow: () => void;
@@ -255,14 +320,22 @@ function Line({
   switch (line.kind) {
     case "idea":
       return (
-        <Expandable detail={line.detail} results={results}>
+        <Expandable
+          detail={line.detail}
+          results={results}
+          open={layer === "raw"}
+        >
           <span className="text-sm italic text-foreground">“{line.text}”</span>
         </Expandable>
       );
     case "milestone":
       return (
         <div>
-          <Expandable detail={line.detail} results={results}>
+          <Expandable
+            detail={line.detail}
+            results={results}
+            open={layer === "raw"}
+          >
             <span className="flex items-baseline gap-2 text-sm text-foreground">
               <span
                 aria-hidden
@@ -285,6 +358,11 @@ function Line({
               </span>
             </span>
           </Expandable>
+          {layer === "activity" && line.summary ? (
+            <p className="ml-5 truncate text-xs text-muted-foreground">
+              {line.summary}
+            </p>
+          ) : null}
           {line.doingNow ? (
             <p className="ml-5 text-xs text-muted-foreground">
               {line.doingNow}
@@ -460,13 +538,17 @@ function Question({
 function Expandable({
   detail,
   results,
+  open: forcedOpen = false,
   children,
 }: {
   detail: Parameters<typeof RawDetail>[0]["messages"];
   results: ReadonlyMap<string, ContentPart>;
+  /** The Raw layer shows every detail unfolded. */
+  open?: boolean;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [toggled, setOpen] = useState(false);
+  const open = forcedOpen || toggled;
   if (detail.length === 0) return <>{children}</>;
   return (
     <div>
