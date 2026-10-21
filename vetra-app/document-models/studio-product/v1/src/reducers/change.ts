@@ -254,6 +254,8 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
       metrics: { steps: 0, firstPreviewAt: null, readyAt: null, liveAt: null },
       lintWaivedAt: null,
       variants: [],
+      questions: [],
+      cost: null,
     });
     state.activeChangeId = id;
   },
@@ -287,6 +289,8 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
       metrics: { steps: 0, firstPreviewAt: null, readyAt: null, liveAt: null },
       lintWaivedAt: null,
       variants: [],
+      questions: [],
+      cost: null,
     });
   },
 

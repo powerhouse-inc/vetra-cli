@@ -59,6 +59,13 @@ export const initialGlobalState: StudioProductGlobalState = {
   },
   publicSource: null,
   sourceNoticeAcceptedAt: null,
+  understood: null,
+  explainersSeen: [],
+  guidedLoop: {
+    status: "NOT_STARTED",
+    at: null,
+  },
+  rowImports: [],
 };
 export const initialLocalState: StudioProductLocalState = {};
 

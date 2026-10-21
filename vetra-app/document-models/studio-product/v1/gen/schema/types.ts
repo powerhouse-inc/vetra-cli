@@ -83,15 +83,35 @@ export type AdoptExistingInput = {
   request: Scalars["String"]["input"];
 };
 
+export type AnswerQuestionInput = {
+  answer: Scalars["String"]["input"];
+  answeredAt: Scalars["DateTime"]["input"];
+  answeredBy: QuestionAnswerBy;
+  changeId: Scalars["OID"]["input"];
+  id: Scalars["OID"]["input"];
+};
+
+export type AskQuestionInput = {
+  askedAt: Scalars["DateTime"]["input"];
+  changeId: Scalars["OID"]["input"];
+  defaultAnswer: Scalars["String"]["input"];
+  id: Scalars["OID"]["input"];
+  language: Scalars["String"]["input"];
+  options: Array<Scalars["String"]["input"]>;
+  text: Scalars["String"]["input"];
+};
+
 export type Change = {
   chatSessionId: Maybe<Scalars["PHID"]["output"]>;
   chatSessionIds: Array<Scalars["PHID"]["output"]>;
   checkRuns: Array<CheckRun>;
+  cost: Maybe<ChangeCost>;
   id: Scalars["OID"]["output"];
   kind: ChangeKind;
   lintWaivedAt: Maybe<Scalars["DateTime"]["output"]>;
   metrics: ChangeMetrics;
   milestones: Array<Milestone>;
+  questions: Array<RoomQuestion>;
   request: Scalars["String"]["output"];
   startedAt: Scalars["DateTime"]["output"];
   status: ChangeStatus;
@@ -99,6 +119,11 @@ export type Change = {
   stuck: Maybe<Stuck>;
   title: Maybe<Scalars["String"]["output"]>;
   variants: Array<Variant>;
+};
+
+export type ChangeCost = {
+  endUsd: Maybe<Scalars["Float"]["output"]>;
+  startUsd: Maybe<Scalars["Float"]["output"]>;
 };
 
 export type ChangeKind = "BEFORE_VERSIONS" | "CHANGE" | "FIRST_BUILD" | "UNDO";
@@ -202,6 +227,14 @@ export type FailRequestInput = {
   reason: Scalars["String"]["input"];
 };
 
+export type FinishRowImportInput = {
+  at: Scalars["DateTime"]["input"];
+  failure?: InputMaybe<Scalars["String"]["input"]>;
+  id: Scalars["OID"]["input"];
+  imported: Scalars["Int"]["input"];
+  status: RowImportStatus;
+};
+
 export type GithubLink = {
   externalChangesSha: Maybe<Scalars["String"]["output"]>;
   lastError: Maybe<Scalars["String"]["output"]>;
@@ -211,6 +244,14 @@ export type GithubLink = {
 
 export type GithubStatus =
   "CONNECTED" | "DISCONNECTED" | "NOT_CONNECTED" | "PUSH_FAILED";
+
+export type GuidedLoop = {
+  at: Maybe<Scalars["DateTime"]["output"]>;
+  status: GuidedLoopStatus;
+};
+
+export type GuidedLoopStatus =
+  "CHANGED" | "DISMISSED" | "DONE" | "NOT_STARTED" | "POINTED" | "WENT_BACK";
 
 export type InitProductInput = {
   createdAt: Scalars["DateTime"]["input"];
@@ -242,11 +283,23 @@ export type LiveBeforeVersions = {
 
 export type LiveHealth = "HEALTHY" | "UNHEALTHY" | "UNKNOWN";
 
+export type MarkExplainersSeenInput = {
+  ids: Array<Scalars["String"]["input"]>;
+};
+
 export type MarkStuckInput = {
   at: Scalars["DateTime"]["input"];
   changeId: Scalars["OID"]["input"];
   reason: Scalars["String"]["input"];
   tried: Array<Scalars["String"]["input"]>;
+};
+
+export type MaterialKind = "PDF" | "PICTURE" | "SHEET" | "TEXT";
+
+export type MaterialRef = {
+  id: Scalars["OID"]["output"];
+  kind: MaterialKind;
+  name: Scalars["String"]["output"];
 };
 
 export type Milestone = {
@@ -327,6 +380,8 @@ export type PublicSource = {
 
 export type PublicSourceKind = "GITHUB" | "PACKAGE";
 
+export type QuestionAnswerBy = "DEFAULT" | "ROOM";
+
 export type RecordChangeMetricsInput = {
   changeId: Scalars["OID"]["input"];
   firstPreviewAt?: InputMaybe<Scalars["DateTime"]["input"]>;
@@ -394,13 +449,50 @@ export type ResumeChangeInput = {
   changeId: Scalars["OID"]["input"];
 };
 
+export type RoomQuestion = {
+  answer: Maybe<Scalars["String"]["output"]>;
+  answeredAt: Maybe<Scalars["DateTime"]["output"]>;
+  answeredBy: Maybe<QuestionAnswerBy>;
+  askedAt: Scalars["DateTime"]["output"];
+  defaultAnswer: Scalars["String"]["output"];
+  id: Scalars["OID"]["output"];
+  language: Scalars["String"]["output"];
+  options: Array<Scalars["String"]["output"]>;
+  text: Scalars["String"]["output"];
+};
+
+export type RowImport = {
+  at: Scalars["DateTime"]["output"];
+  documentType: Scalars["String"]["output"];
+  failure: Maybe<Scalars["String"]["output"]>;
+  id: Scalars["OID"]["output"];
+  imported: Scalars["Int"]["output"];
+  materialId: Scalars["OID"]["output"];
+  rows: Scalars["Int"]["output"];
+  sheet: Scalars["String"]["output"];
+  status: RowImportStatus;
+};
+
+export type RowImportStatus = "CONFIRMED" | "DONE" | "FAILED";
+
 export type SetAccessInput = {
   access: ProductAccess;
+};
+
+export type SetChangeCostInput = {
+  changeId: Scalars["OID"]["input"];
+  endUsd?: InputMaybe<Scalars["Float"]["input"]>;
+  startUsd?: InputMaybe<Scalars["Float"]["input"]>;
 };
 
 export type SetChangeTitleInput = {
   changeId: Scalars["OID"]["input"];
   title: Scalars["String"]["input"];
+};
+
+export type SetGuidedLoopInput = {
+  at: Scalars["DateTime"]["input"];
+  status: GuidedLoopStatus;
 };
 
 export type SetHealthInput = {
@@ -499,6 +591,19 @@ export type SetSuggestionsItemInput = {
   text: Scalars["String"]["input"];
 };
 
+export type SetUnderstoodInput = {
+  at: Scalars["DateTime"]["input"];
+  json: Scalars["String"]["input"];
+  language: Scalars["String"]["input"];
+  materials: Array<SetUnderstoodMaterialInput>;
+};
+
+export type SetUnderstoodMaterialInput = {
+  id: Scalars["OID"]["input"];
+  kind: MaterialKind;
+  name: Scalars["String"]["input"];
+};
+
 export type SetUpstreamVersionInput = {
   checkedAt: Scalars["DateTime"]["input"];
   latestVersion: Scalars["String"]["input"];
@@ -525,6 +630,15 @@ export type StartLaunchInput = {
   at: Scalars["DateTime"]["input"];
   changeId: Scalars["OID"]["input"];
   number: Scalars["Int"]["input"];
+};
+
+export type StartRowImportInput = {
+  at: Scalars["DateTime"]["input"];
+  documentType: Scalars["String"]["input"];
+  id: Scalars["OID"]["input"];
+  materialId: Scalars["OID"]["input"];
+  rows: Scalars["Int"]["input"];
+  sheet: Scalars["String"]["input"];
 };
 
 export type StartStepInput = {
@@ -557,7 +671,9 @@ export type StudioProductState = {
   appId: Maybe<Scalars["String"]["output"]>;
   changes: Array<Change>;
   createdAt: Maybe<Scalars["DateTime"]["output"]>;
+  explainersSeen: Array<Scalars["String"]["output"]>;
   github: GithubLink;
+  guidedLoop: GuidedLoop;
   health: LiveHealth;
   idea: Maybe<Scalars["String"]["output"]>;
   lastRequestFailure: Maybe<RequestFailure>;
@@ -574,9 +690,11 @@ export type StudioProductState = {
   productDriveId: Maybe<Scalars["PHID"]["output"]>;
   productionEnvironmentId: Maybe<Scalars["String"]["output"]>;
   publicSource: Maybe<PublicSource>;
+  rowImports: Array<RowImport>;
   slug: Maybe<Scalars["String"]["output"]>;
   sourceNoticeAcceptedAt: Maybe<Scalars["DateTime"]["output"]>;
   suggestions: Array<Suggestion>;
+  understood: Maybe<Understood>;
   versions: Array<Version>;
 };
 
@@ -592,6 +710,13 @@ export type Suggestion = {
 export type SuggestionKind = "IDEA" | "REVIEW";
 
 export type SuggestionStatus = "DISMISSED" | "OPEN" | "USED";
+
+export type Understood = {
+  at: Scalars["DateTime"]["output"];
+  json: Scalars["String"]["output"];
+  language: Scalars["String"]["output"];
+  materials: Array<MaterialRef>;
+};
 
 export type UseSuggestionInput = {
   id: Scalars["OID"]["input"];

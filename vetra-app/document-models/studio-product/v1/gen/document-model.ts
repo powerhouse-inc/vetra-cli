@@ -17,9 +17,9 @@ export const documentModel: DocumentModelGlobalState = {
       state: {
         global: {
           schema:
-            '# Studio Product: the single read model the Studio page renders from.\n# Natural keys (F54): ProductStep, CheckResult and LaunchLine are keyed by\n# their `kind`, Version by `number`, PackageVersion by `name`; reducers keep\n# them unique within their list.\n\nenum StepKind {\n  PLAN\n  DATA\n  EDITORS\n  TESTS\n  LIVE\n}\n\nenum StepStatus {\n  NOT_STARTED\n  WORKING\n  DONE\n  NEEDS_YOU\n  STOPPED\n  LIVE\n}\n\nenum ChangeKind {\n  FIRST_BUILD\n  CHANGE\n  UNDO\n  BEFORE_VERSIONS\n}\n\nenum ChangeStatus {\n  BUILDING\n  PAUSED\n  READY\n  LAUNCHING\n  LAUNCHED\n  DISCARDED\n  FAILED\n  CLOSED\n}\n\nenum CheckKind {\n  GENERATE\n  TYPECHECK\n  LINT\n  REDUCER_TESTS\n  SMOKE\n}\n\nenum ProductAccess {\n  SIGNED_IN\n  OWNER_ONLY\n}\n\nenum LiveHealth {\n  UNKNOWN\n  HEALTHY\n  UNHEALTHY\n}\n\nenum PermissionState {\n  UNKNOWN\n  GRANTED\n  MISSING\n  EXPIRED\n}\n\nenum RequestKind {\n  LAUNCH\n  ROLLBACK\n  DISCARD\n  RESTART\n  MIRROR\n}\n\nenum VersionStatus {\n  LAUNCHING\n  LIVE\n  PREVIOUS\n  FAILED\n}\n\nenum LaunchLineKind {\n  SNAPSHOT\n  PUBLISH\n  DEPLOY\n  VERIFY\n  MIRROR\n}\n\nenum LineStatus {\n  WAITING\n  RUNNING\n  DONE\n  FAILED\n  SKIPPED\n}\n\nenum SuggestionStatus {\n  OPEN\n  USED\n  DISMISSED\n}\n\nenum SuggestionKind {\n  IDEA\n  REVIEW\n}\n\nenum VariantLabel {\n  A\n  B\n}\n\nenum VariantStatus {\n  BUILDING\n  READY\n  FAILED\n  KEPT\n  DISCARDED\n}\n\nenum OriginMode {\n  REMIX\n  COMPOSE\n}\n\nenum PublicSourceKind {\n  GITHUB\n  PACKAGE\n}\n\nenum GithubStatus {\n  NOT_CONNECTED\n  CONNECTED\n  DISCONNECTED\n  PUSH_FAILED\n}\n\ntype ProductStep {\n  kind: StepKind!\n  status: StepStatus!\n  done: Int\n  total: Int\n  label: String\n  reason: String\n  updatedAt: DateTime\n}\n\ntype Milestone {\n  id: OID!\n  text: String!\n  at: DateTime!\n  recovered: Boolean!\n  # One customer-facing sentence (<= 120 chars) for the Outcome layer.\n  outcome: String\n}\n\ntype CheckResult {\n  kind: CheckKind!\n  passed: Boolean!\n  reason: String\n}\n\ntype CheckRun {\n  id: OID!\n  at: DateTime!\n  results: [CheckResult!]!\n}\n\ntype Stuck {\n  reason: String!\n  tried: [String!]!\n  at: DateTime!\n}\n\ntype ChangeMetrics {\n  steps: Int!\n  firstPreviewAt: DateTime\n  readyAt: DateTime\n  liveAt: DateTime\n}\n\ntype Change {\n  id: OID!\n  kind: ChangeKind!\n  request: String!\n  title: String\n  chatSessionId: PHID\n  chatSessionIds: [PHID!]!\n  status: ChangeStatus!\n  startedAt: DateTime!\n  steps: [ProductStep!]!\n  milestones: [Milestone!]!\n  checkRuns: [CheckRun!]!\n  stuck: Stuck\n  metrics: ChangeMetrics!\n  lintWaivedAt: DateTime\n  variants: [Variant!]!\n}\n\n# One of two ways to build a change ("Show me two ways"), on its own branch.\ntype Variant {\n  label: VariantLabel!\n  branch: String!\n  status: VariantStatus!\n  chatSessionId: PHID\n  summary: String\n}\n\ntype PackageVersion {\n  name: String!\n  version: String!\n}\n\ntype LaunchLine {\n  kind: LaunchLineKind!\n  status: LineStatus!\n  detail: String\n}\n\ntype Version {\n  number: Int!\n  title: String!\n  summary: String\n  changeId: OID\n  gitTag: String!\n  sha: String!\n  packages: [PackageVersion!]!\n  deploymentId: String\n  launchedAt: DateTime\n  launchedBy: String!\n  trigger: String!\n  status: VersionStatus!\n  lines: [LaunchLine!]!\n  changedFiles: [String!]!\n  failure: String\n  rollbackBlockedReason: String\n}\n\ntype PendingRequest {\n  kind: RequestKind!\n  changeId: OID\n  targetVersion: Int\n  requestedAt: DateTime!\n  requestedBy: String!\n}\n\ntype RequestFailure {\n  kind: RequestKind!\n  reason: String!\n  at: DateTime!\n}\n\ntype Suggestion {\n  id: OID!\n  text: String!\n  afterVersion: Int!\n  status: SuggestionStatus!\n  kind: SuggestionKind!\n  # Attachment ref or URL of the screen a review finding is about.\n  screenshot: String\n}\n\ntype GithubLink {\n  status: GithubStatus!\n  repoFullName: String\n  lastError: String\n  externalChangesSha: String\n}\n\n# An environment that already ran this workspace\'s packages before the\n# product had versions (spec 6.6): shown as live until Version 1.\ntype LiveBeforeVersions {\n  environmentId: String!\n  url: URL!\n  at: DateTime!\n}\n\n# A published package this product was remixed from or composes (keyed by\n# packageName).\ntype ProductOrigin {\n  packageName: String!\n  version: String!\n  mode: OriginMode!\n  license: String!\n  sourceUrl: URL\n  sourceRef: String\n  at: DateTime!\n  missing: [String!]!\n  latestVersion: String\n  checkedAt: DateTime\n}\n\n# Notes from people using the live product (opt-in).\ntype NotesSettings {\n  enabled: Boolean!\n  since: DateTime\n}\n\ntype PublicSource {\n  kind: PublicSourceKind!\n  url: URL!\n  version: Int!\n}\n\ntype StudioProductState {\n  name: String\n  idea: String\n  slug: String\n  liveUrl: URL\n  appId: String\n  productionEnvironmentId: String\n  productDriveId: PHID\n  createdAt: DateTime\n  access: ProductAccess!\n  changes: [Change!]!\n  activeChangeId: OID\n  liveVersion: Int\n  liveSince: DateTime\n  liveDeploymentId: String\n  versions: [Version!]!\n  health: LiveHealth!\n  pendingRequest: PendingRequest\n  lastRequestFailure: RequestFailure\n  launchPermission: PermissionState!\n  suggestions: [Suggestion!]!\n  github: GithubLink!\n  liveBeforeVersions: LiveBeforeVersions\n  origins: [ProductOrigin!]!\n  notes: NotesSettings!\n  publicSource: PublicSource\n  sourceNoticeAcceptedAt: DateTime\n}\n',
+            '# Studio Product: the single read model the Studio page renders from.\n# Natural keys (F54): ProductStep, CheckResult and LaunchLine are keyed by\n# their `kind`, Version by `number`, PackageVersion by `name`; reducers keep\n# them unique within their list.\n\nenum StepKind {\n  PLAN\n  DATA\n  EDITORS\n  TESTS\n  LIVE\n}\n\nenum StepStatus {\n  NOT_STARTED\n  WORKING\n  DONE\n  NEEDS_YOU\n  STOPPED\n  LIVE\n}\n\nenum ChangeKind {\n  FIRST_BUILD\n  CHANGE\n  UNDO\n  BEFORE_VERSIONS\n}\n\nenum ChangeStatus {\n  BUILDING\n  PAUSED\n  READY\n  LAUNCHING\n  LAUNCHED\n  DISCARDED\n  FAILED\n  CLOSED\n}\n\nenum CheckKind {\n  GENERATE\n  TYPECHECK\n  LINT\n  REDUCER_TESTS\n  SMOKE\n}\n\nenum ProductAccess {\n  SIGNED_IN\n  OWNER_ONLY\n}\n\nenum LiveHealth {\n  UNKNOWN\n  HEALTHY\n  UNHEALTHY\n}\n\nenum PermissionState {\n  UNKNOWN\n  GRANTED\n  MISSING\n  EXPIRED\n}\n\nenum RequestKind {\n  LAUNCH\n  ROLLBACK\n  DISCARD\n  RESTART\n  MIRROR\n}\n\nenum VersionStatus {\n  LAUNCHING\n  LIVE\n  PREVIOUS\n  FAILED\n}\n\nenum LaunchLineKind {\n  SNAPSHOT\n  PUBLISH\n  DEPLOY\n  VERIFY\n  MIRROR\n}\n\nenum LineStatus {\n  WAITING\n  RUNNING\n  DONE\n  FAILED\n  SKIPPED\n}\n\nenum SuggestionStatus {\n  OPEN\n  USED\n  DISMISSED\n}\n\nenum SuggestionKind {\n  IDEA\n  REVIEW\n}\n\nenum VariantLabel {\n  A\n  B\n}\n\nenum VariantStatus {\n  BUILDING\n  READY\n  FAILED\n  KEPT\n  DISCARDED\n}\n\nenum OriginMode {\n  REMIX\n  COMPOSE\n}\n\nenum PublicSourceKind {\n  GITHUB\n  PACKAGE\n}\n\nenum MaterialKind {\n  PICTURE\n  PDF\n  SHEET\n  TEXT\n}\n\nenum GuidedLoopStatus {\n  NOT_STARTED\n  POINTED\n  CHANGED\n  WENT_BACK\n  DONE\n  DISMISSED\n}\n\nenum RowImportStatus {\n  CONFIRMED\n  DONE\n  FAILED\n}\n\nenum QuestionAnswerBy {\n  ROOM\n  DEFAULT\n}\n\nenum GithubStatus {\n  NOT_CONNECTED\n  CONNECTED\n  DISCONNECTED\n  PUSH_FAILED\n}\n\ntype ProductStep {\n  kind: StepKind!\n  status: StepStatus!\n  done: Int\n  total: Int\n  label: String\n  reason: String\n  updatedAt: DateTime\n}\n\ntype Milestone {\n  id: OID!\n  text: String!\n  at: DateTime!\n  recovered: Boolean!\n  # One customer-facing sentence (<= 120 chars) for the Outcome layer.\n  outcome: String\n}\n\ntype CheckResult {\n  kind: CheckKind!\n  passed: Boolean!\n  reason: String\n}\n\ntype CheckRun {\n  id: OID!\n  at: DateTime!\n  results: [CheckResult!]!\n}\n\ntype Stuck {\n  reason: String!\n  tried: [String!]!\n  at: DateTime!\n}\n\ntype ChangeMetrics {\n  steps: Int!\n  firstPreviewAt: DateTime\n  readyAt: DateTime\n  liveAt: DateTime\n}\n\ntype Change {\n  id: OID!\n  kind: ChangeKind!\n  request: String!\n  title: String\n  chatSessionId: PHID\n  chatSessionIds: [PHID!]!\n  status: ChangeStatus!\n  startedAt: DateTime!\n  steps: [ProductStep!]!\n  milestones: [Milestone!]!\n  checkRuns: [CheckRun!]!\n  stuck: Stuck\n  metrics: ChangeMetrics!\n  lintWaivedAt: DateTime\n  variants: [Variant!]!\n  questions: [RoomQuestion!]!\n  cost: ChangeCost\n}\n\n# One of two ways to build a change ("Show me two ways"), on its own branch.\ntype Variant {\n  label: VariantLabel!\n  branch: String!\n  status: VariantStatus!\n  chatSessionId: PHID\n  summary: String\n}\n\ntype PackageVersion {\n  name: String!\n  version: String!\n}\n\ntype LaunchLine {\n  kind: LaunchLineKind!\n  status: LineStatus!\n  detail: String\n}\n\ntype Version {\n  number: Int!\n  title: String!\n  summary: String\n  changeId: OID\n  gitTag: String!\n  sha: String!\n  packages: [PackageVersion!]!\n  deploymentId: String\n  launchedAt: DateTime\n  launchedBy: String!\n  trigger: String!\n  status: VersionStatus!\n  lines: [LaunchLine!]!\n  changedFiles: [String!]!\n  failure: String\n  rollbackBlockedReason: String\n}\n\ntype PendingRequest {\n  kind: RequestKind!\n  changeId: OID\n  targetVersion: Int\n  requestedAt: DateTime!\n  requestedBy: String!\n}\n\ntype RequestFailure {\n  kind: RequestKind!\n  reason: String!\n  at: DateTime!\n}\n\ntype Suggestion {\n  id: OID!\n  text: String!\n  afterVersion: Int!\n  status: SuggestionStatus!\n  kind: SuggestionKind!\n  # Attachment ref or URL of the screen a review finding is about.\n  screenshot: String\n}\n\ntype GithubLink {\n  status: GithubStatus!\n  repoFullName: String\n  lastError: String\n  externalChangesSha: String\n}\n\n# An environment that already ran this workspace\'s packages before the\n# product had versions (spec 6.6): shown as live until Version 1.\ntype LiveBeforeVersions {\n  environmentId: String!\n  url: URL!\n  at: DateTime!\n}\n\n# A published package this product was remixed from or composes (keyed by\n# packageName).\ntype ProductOrigin {\n  packageName: String!\n  version: String!\n  mode: OriginMode!\n  license: String!\n  sourceUrl: URL\n  sourceRef: String\n  at: DateTime!\n  missing: [String!]!\n  latestVersion: String\n  checkedAt: DateTime\n}\n\n# Notes from people using the live product (opt-in).\ntype NotesSettings {\n  enabled: Boolean!\n  since: DateTime\n}\n\ntype PublicSource {\n  kind: PublicSourceKind!\n  url: URL!\n  version: Int!\n}\n\n# A question the agent asks the room while building a change; answered by\n# the room or, after a while, by its default.\ntype RoomQuestion {\n  id: OID!\n  text: String!\n  options: [String!]!\n  defaultAnswer: String!\n  language: String!\n  askedAt: DateTime!\n  answer: String\n  answeredAt: DateTime\n  answeredBy: QuestionAnswerBy\n}\n\n# What a change cost in model usage, in US dollars: the meter at its start\n# and at its end.\ntype ChangeCost {\n  startUsd: Float\n  endUsd: Float\n}\n\n# A material (picture, PDF, sheet, text) the understanding was built from.\ntype MaterialRef {\n  id: OID!\n  name: String!\n  kind: MaterialKind!\n}\n\n# What the agent understood from the idea and the materials, confirmed with\n# "Build this".\ntype Understood {\n  json: String!\n  language: String!\n  at: DateTime!\n  materials: [MaterialRef!]!\n}\n\n# Progress through the guided first loop (point, change, go back, done).\ntype GuidedLoop {\n  status: GuidedLoopStatus!\n  at: DateTime\n}\n\n# Rows of a sheet imported as documents.\ntype RowImport {\n  id: OID!\n  materialId: OID!\n  sheet: String!\n  documentType: String!\n  rows: Int!\n  imported: Int!\n  status: RowImportStatus!\n  at: DateTime!\n  failure: String\n}\n\ntype StudioProductState {\n  name: String\n  idea: String\n  slug: String\n  liveUrl: URL\n  appId: String\n  productionEnvironmentId: String\n  productDriveId: PHID\n  createdAt: DateTime\n  access: ProductAccess!\n  changes: [Change!]!\n  activeChangeId: OID\n  liveVersion: Int\n  liveSince: DateTime\n  liveDeploymentId: String\n  versions: [Version!]!\n  health: LiveHealth!\n  pendingRequest: PendingRequest\n  lastRequestFailure: RequestFailure\n  launchPermission: PermissionState!\n  suggestions: [Suggestion!]!\n  github: GithubLink!\n  liveBeforeVersions: LiveBeforeVersions\n  origins: [ProductOrigin!]!\n  notes: NotesSettings!\n  publicSource: PublicSource\n  sourceNoticeAcceptedAt: DateTime\n  understood: Understood\n  explainersSeen: [String!]!\n  guidedLoop: GuidedLoop!\n  rowImports: [RowImport!]!\n}\n',
           initialValue:
-            '{\n  "name": null,\n  "idea": null,\n  "slug": null,\n  "liveUrl": null,\n  "appId": null,\n  "productionEnvironmentId": null,\n  "productDriveId": null,\n  "createdAt": null,\n  "access": "SIGNED_IN",\n  "changes": [],\n  "activeChangeId": null,\n  "liveVersion": null,\n  "liveSince": null,\n  "liveDeploymentId": null,\n  "versions": [],\n  "health": "UNKNOWN",\n  "pendingRequest": null,\n  "lastRequestFailure": null,\n  "launchPermission": "UNKNOWN",\n  "suggestions": [],\n  "github": {\n    "status": "NOT_CONNECTED",\n    "repoFullName": null,\n    "lastError": null,\n    "externalChangesSha": null\n  },\n  "liveBeforeVersions": null,\n  "origins": [],\n  "notes": {\n    "enabled": false,\n    "since": null\n  },\n  "publicSource": null,\n  "sourceNoticeAcceptedAt": null\n}',
+            '{\n  "name": null,\n  "idea": null,\n  "slug": null,\n  "liveUrl": null,\n  "appId": null,\n  "productionEnvironmentId": null,\n  "productDriveId": null,\n  "createdAt": null,\n  "access": "SIGNED_IN",\n  "changes": [],\n  "activeChangeId": null,\n  "liveVersion": null,\n  "liveSince": null,\n  "liveDeploymentId": null,\n  "versions": [],\n  "health": "UNKNOWN",\n  "pendingRequest": null,\n  "lastRequestFailure": null,\n  "launchPermission": "UNKNOWN",\n  "suggestions": [],\n  "github": {\n    "status": "NOT_CONNECTED",\n    "repoFullName": null,\n    "lastError": null,\n    "externalChangesSha": null\n  },\n  "liveBeforeVersions": null,\n  "origins": [],\n  "notes": {\n    "enabled": false,\n    "since": null\n  },\n  "publicSource": null,\n  "sourceNoticeAcceptedAt": null,\n  "understood": null,\n  "explainersSeen": [],\n  "guidedLoop": {\n    "status": "NOT_STARTED",\n    "at": null\n  },\n  "rowImports": []\n}',
           examples: [],
         },
         local: {
@@ -1170,6 +1170,220 @@ export const documentModel: DocumentModelGlobalState = {
                   name: "InvalidPublicSourceError",
                   code: "INVALID_PUBLIC_SOURCE",
                   description: "A public source version is 1 or more.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+          ],
+        },
+        {
+          id: "mod-workshop",
+          name: "workshop",
+          description:
+            "The workshop flow: the understanding, explainers, the guided loop, room questions, change cost and row imports.",
+          operations: [
+            {
+              id: "op-set-understood",
+              name: "SET_UNDERSTOOD",
+              description:
+                "Store what the agent understood from the idea and the materials (replaces the previous understanding).",
+              schema:
+                "input SetUnderstoodMaterialInput {\n  id: OID!\n  name: String!\n  kind: MaterialKind!\n}\n\ninput SetUnderstoodInput {\n  json: String!\n  language: String!\n  at: DateTime!\n  materials: [SetUnderstoodMaterialInput!]!\n}",
+              template:
+                "Store what the agent understood from the idea and the materials (replaces the previous understanding).",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-invalid-understood",
+                  name: "InvalidUnderstoodError",
+                  code: "INVALID_UNDERSTOOD",
+                  description:
+                    "The understanding is not a JSON object or is longer than 200 000 characters.",
+                  template: "",
+                },
+                {
+                  id: "err-invalid-language",
+                  name: "InvalidLanguageError",
+                  code: "INVALID_LANGUAGE",
+                  description: 'The language is not "de" or "en".',
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-mark-explainers-seen",
+              name: "MARK_EXPLAINERS_SEEN",
+              description:
+                "Remember explainers the owner has seen; unseen ids are added in order, known ones ignored.",
+              schema: "input MarkExplainersSeenInput {\n  ids: [String!]!\n}",
+              template:
+                "Remember explainers the owner has seen; unseen ids are added in order, known ones ignored.",
+              reducer: "",
+              errors: [],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-guided-loop",
+              name: "SET_GUIDED_LOOP",
+              description:
+                "Move the guided first loop forward (NOT_STARTED, POINTED, CHANGED, WENT_BACK, DONE; skipping ahead is allowed) or dismiss it while it is not done.",
+              schema:
+                "input SetGuidedLoopInput {\n  status: GuidedLoopStatus!\n  at: DateTime!\n}",
+              template:
+                "Move the guided first loop forward (NOT_STARTED, POINTED, CHANGED, WENT_BACK, DONE; skipping ahead is allowed) or dismiss it while it is not done.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-invalid-guided-loop-transition",
+                  name: "InvalidGuidedLoopTransitionError",
+                  code: "INVALID_GUIDED_LOOP_TRANSITION",
+                  description:
+                    "The guided loop only moves forward, and can be dismissed only while it is not done or dismissed.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-ask-question",
+              name: "ASK_QUESTION",
+              description:
+                "The agent asks the room a question about a change, with up to 4 options and a default answer.",
+              schema:
+                "input AskQuestionInput {\n  changeId: OID!\n  id: OID!\n  text: String!\n  options: [String!]!\n  defaultAnswer: String!\n  language: String!\n  askedAt: DateTime!\n}",
+              template:
+                "The agent asks the room a question about a change, with up to 4 options and a default answer.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-question-change-not-found",
+                  name: "QuestionChangeNotFoundError",
+                  code: "QUESTION_CHANGE_NOT_FOUND",
+                  description: "No change with this id exists.",
+                  template: "",
+                },
+                {
+                  id: "err-duplicate-question-id",
+                  name: "DuplicateQuestionIdError",
+                  code: "DUPLICATE_QUESTION_ID",
+                  description:
+                    "The change already has a question with this id.",
+                  template: "",
+                },
+                {
+                  id: "err-invalid-question",
+                  name: "InvalidQuestionError",
+                  code: "INVALID_QUESTION",
+                  description:
+                    'The question text is empty or longer than 200 characters, it has more than 4 options, its default answer is empty, or its language is not "de" or "en".',
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-answer-question",
+              name: "ANSWER_QUESTION",
+              description:
+                "Record the answer to a question, given by the room or by its default.",
+              schema:
+                "input AnswerQuestionInput {\n  changeId: OID!\n  id: OID!\n  answer: String!\n  answeredBy: QuestionAnswerBy!\n  answeredAt: DateTime!\n}",
+              template:
+                "Record the answer to a question, given by the room or by its default.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-question-not-found",
+                  name: "QuestionNotFoundError",
+                  code: "QUESTION_NOT_FOUND",
+                  description: "No question with this id exists on the change.",
+                  template: "",
+                },
+                {
+                  id: "err-question-already-answered",
+                  name: "QuestionAlreadyAnsweredError",
+                  code: "QUESTION_ALREADY_ANSWERED",
+                  description: "The question was already answered.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-set-change-cost",
+              name: "SET_CHANGE_COST",
+              description:
+                "Record the model-usage meter (US dollars) at a change's start and/or end; only the given side(s) are set.",
+              schema:
+                "input SetChangeCostInput {\n  changeId: OID!\n  startUsd: Float\n  endUsd: Float\n}",
+              template:
+                "Record the model-usage meter (US dollars) at a change's start and/or end; only the given side(s) are set.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-cost-change-not-found",
+                  name: "CostChangeNotFoundError",
+                  code: "COST_CHANGE_NOT_FOUND",
+                  description: "No change with this id exists.",
+                  template: "",
+                },
+                {
+                  id: "err-invalid-cost",
+                  name: "InvalidCostError",
+                  code: "INVALID_COST",
+                  description: "A cost is negative.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-start-row-import",
+              name: "START_ROW_IMPORT",
+              description:
+                "The owner confirmed importing the rows of a sheet as documents of a type.",
+              schema:
+                "input StartRowImportInput {\n  id: OID!\n  materialId: OID!\n  sheet: String!\n  documentType: String!\n  rows: Int!\n  at: DateTime!\n}",
+              template:
+                "The owner confirmed importing the rows of a sheet as documents of a type.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-duplicate-row-import",
+                  name: "DuplicateRowImportError",
+                  code: "DUPLICATE_ROW_IMPORT",
+                  description: "A row import with this id already exists.",
+                  template: "",
+                },
+              ],
+              examples: [],
+              scope: "global",
+            },
+            {
+              id: "op-finish-row-import",
+              name: "FINISH_ROW_IMPORT",
+              description:
+                "A row import finished: how many rows were imported and whether it is done or failed.",
+              schema:
+                "input FinishRowImportInput {\n  id: OID!\n  imported: Int!\n  status: RowImportStatus!\n  failure: String\n  at: DateTime!\n}",
+              template:
+                "A row import finished: how many rows were imported and whether it is done or failed.",
+              reducer: "",
+              errors: [
+                {
+                  id: "err-row-import-not-found",
+                  name: "RowImportNotFoundError",
+                  code: "ROW_IMPORT_NOT_FOUND",
+                  description: "No row import with this id exists.",
                   template: "",
                 },
               ],

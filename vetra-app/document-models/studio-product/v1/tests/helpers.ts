@@ -172,6 +172,8 @@ export function craftedChange(
     },
     lintWaivedAt: null,
     variants: [],
+    questions: [],
+    cost: null,
     ...extra,
   };
 }

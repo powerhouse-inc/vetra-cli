@@ -24,3 +24,4 @@ export * from "./schema/index.js";
 export * from "./suggestions/operations.js";
 export * from "./types.js";
 export * from "./utils.js";
+export * from "./workshop/operations.js";

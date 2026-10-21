@@ -1,16 +1,21 @@
 import type {
   Change,
+  ChangeCost,
   ChangeMetrics,
   CheckResult,
   CheckRun,
   GithubLink,
+  GuidedLoop,
   LaunchLine,
   Milestone,
   NotesSettings,
   ProductOrigin,
   ProductStep,
+  RoomQuestion,
+  RowImport,
   StudioProductState,
   Suggestion,
+  Understood,
   Variant,
   Version,
 } from "../gen/schema/types.js";
@@ -55,7 +60,48 @@ export function normalizeProduct(
   s.notes = normalizeNotes(s.notes);
   s.publicSource ??= null;
   s.sourceNoticeAcceptedAt ??= null;
+  s.understood = normalizeUnderstood(s.understood);
+  s.explainersSeen ??= [];
+  s.guidedLoop = normalizeGuidedLoop(s.guidedLoop);
+  s.rowImports ??= [];
+  s.rowImports.forEach((rowImport: RowImport) => {
+    const r: Partial<RowImport> = rowImport;
+    r.imported ??= 0;
+    r.failure ??= null;
+  });
   return state;
+}
+
+function normalizeUnderstood(
+  understood: Understood | null | undefined,
+): Understood | null {
+  if (!understood) return null;
+  const u: Partial<Understood> = understood;
+  u.materials ??= [];
+  return understood;
+}
+
+function normalizeGuidedLoop(loop: GuidedLoop | undefined): GuidedLoop {
+  if (!loop) return { status: "NOT_STARTED", at: null };
+  const l: Partial<GuidedLoop> = loop;
+  l.status ??= "NOT_STARTED";
+  l.at ??= null;
+  return loop;
+}
+
+function normalizeCost(cost: ChangeCost | null | undefined): ChangeCost | null {
+  if (!cost) return null;
+  const c: Partial<ChangeCost> = cost;
+  c.startUsd ??= null;
+  c.endUsd ??= null;
+  return cost;
+}
+
+function normalizeQuestion(question: RoomQuestion): void {
+  const q: Partial<RoomQuestion> = question;
+  q.answer ??= null;
+  q.answeredAt ??= null;
+  q.answeredBy ??= null;
 }
 
 function normalizeSuggestion(suggestion: Suggestion): void {
@@ -133,6 +179,9 @@ function normalizeChange(change: Change): void {
     v.chatSessionId ??= null;
     v.summary ??= null;
   });
+  c.questions ??= [];
+  c.questions.forEach(normalizeQuestion);
+  c.cost = normalizeCost(c.cost);
 }
 
 function normalizeStep(step: ProductStep): void {

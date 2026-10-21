@@ -12,3 +12,5 @@ export * from "./product/creators.js";
 export * as studioProductProductActions from "./product/creators.js";
 export * from "./suggestions/creators.js";
 export * as studioProductSuggestionsActions from "./suggestions/creators.js";
+export * from "./workshop/creators.js";
+export * as studioProductWorkshopActions from "./workshop/creators.js";

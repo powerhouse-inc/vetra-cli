@@ -9,11 +9,14 @@ import { studioProductIterateOperations } from "../src/reducers/iterate.js";
 import { studioProductLaunchOperations } from "../src/reducers/launch.js";
 import { studioProductProductOperations } from "../src/reducers/product.js";
 import { studioProductSuggestionsOperations } from "../src/reducers/suggestions.js";
+import { studioProductWorkshopOperations } from "../src/reducers/workshop.js";
 
 import {
   AcceptSourceNoticeInputSchema,
   AddMilestoneInputSchema,
   AdoptExistingInputSchema,
+  AnswerQuestionInputSchema,
+  AskQuestionInputSchema,
   ClearRequestInputSchema,
   ClearStuckInputSchema,
   CompleteLaunchInputSchema,
@@ -23,8 +26,10 @@ import {
   DismissSuggestionInputSchema,
   FailLaunchInputSchema,
   FailRequestInputSchema,
+  FinishRowImportInputSchema,
   InitProductInputSchema,
   KeepVariantInputSchema,
+  MarkExplainersSeenInputSchema,
   MarkStuckInputSchema,
   PauseChangeInputSchema,
   PlanStepsInputSchema,
@@ -39,7 +44,9 @@ import {
   RequestRollbackInputSchema,
   ResumeChangeInputSchema,
   SetAccessInputSchema,
+  SetChangeCostInputSchema,
   SetChangeTitleInputSchema,
+  SetGuidedLoopInputSchema,
   SetHealthInputSchema,
   SetLaunchLineInputSchema,
   SetLaunchPermissionInputSchema,
@@ -54,10 +61,12 @@ import {
   SetRollbackBlockInputSchema,
   SetStepAttentionInputSchema,
   SetSuggestionsInputSchema,
+  SetUnderstoodInputSchema,
   SetUpstreamVersionInputSchema,
   SetVariantStatusInputSchema,
   StartChangeInputSchema,
   StartLaunchInputSchema,
+  StartRowImportInputSchema,
   StartStepInputSchema,
   StartVariantsInputSchema,
   UseSuggestionInputSchema,
@@ -688,6 +697,102 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       memoizedSchema(SetPublicSourceInputSchema).parse(action.input);
 
       studioProductIterateOperations.setPublicSourceOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_UNDERSTOOD": {
+      memoizedSchema(SetUnderstoodInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.setUnderstoodOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "MARK_EXPLAINERS_SEEN": {
+      memoizedSchema(MarkExplainersSeenInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.markExplainersSeenOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_GUIDED_LOOP": {
+      memoizedSchema(SetGuidedLoopInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.setGuidedLoopOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "ASK_QUESTION": {
+      memoizedSchema(AskQuestionInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.askQuestionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "ANSWER_QUESTION": {
+      memoizedSchema(AnswerQuestionInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.answerQuestionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_CHANGE_COST": {
+      memoizedSchema(SetChangeCostInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.setChangeCostOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "START_ROW_IMPORT": {
+      memoizedSchema(StartRowImportInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.startRowImportOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "FINISH_ROW_IMPORT": {
+      memoizedSchema(FinishRowImportInputSchema).parse(action.input);
+
+      studioProductWorkshopOperations.finishRowImportOperation(
         (state as any)[action.scope],
         action as any,
         dispatch,
