@@ -22,12 +22,13 @@ import {
   startPreviewServer,
   type PreviewServerHandle,
 } from "../preview-server/index.js";
-import { setRequireAdminIdentity } from "../auth/renown.js";
+import { getBearerToken, setRequireAdminIdentity } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
 import { resolveStudioRenownUrl } from "../lifecycle/connect-drive-url.js";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
 import { createMemberAuthorizer } from "../preview-server/request-auth.js";
 import { createTeamRoutes } from "../preview-server/team-routes.js";
+import { createSwitchboardDriveAccess, syncDriveAccess } from "../team/drive-access.js";
 import { createMembership, type Membership } from "../team/membership.js";
 import { fetchOrgMembership } from "../team/renown-orgs.js";
 import { createDelegationCheck } from "../team/delegation-check.js";
@@ -40,6 +41,11 @@ import { VETRA_CLI_VERSION } from "../version-banner.js";
 
 interface TriggerState {
   handle: PreviewServerHandle | undefined;
+  /** Task 1.10: members seen at the gate, and the 60 s drive-access sync. */
+  knownMembers?: Map<string, Member>;
+  accessTimer?: NodeJS.Timeout;
+  accessDebounce?: NodeJS.Timeout;
+  accessRunning?: boolean;
 }
 
 export const previewServerTrigger = defineTrigger<TriggerState>({
@@ -97,7 +103,10 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
       orgId,
       ledger,
       readDocument: () => readTeamDocument(teamCtx),
-      onAcceptedChange: () => team.membership?.invalidate(),
+      onAcceptedChange: () => {
+        team.membership?.invalidate();
+        scheduleAccessSync(0);
+      },
     });
     const membership = createMembership({
       orgId,
@@ -153,11 +162,72 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
       },
     });
 
+    // Task 1.10: the Studio drive's grants follow the members the gate has
+    // seen. Renown cannot list an org's members to the pod (organizationMembers
+    // needs a wallet-signed OrgAuthInput), so unlisted members' rows are kept
+    // (revokeUnknown: false) and granted when they first authenticate.
+    const knownMembers = new Map<string, Member>();
+    ctx.state.knownMembers = knownMembers;
+    async function syncAccess(): Promise<void> {
+      if (ctx.state.accessRunning) return;
+      const drive = await getEmbeddedDrive(ctx.commandContext);
+      const reactor = await ctx.commandContext.reactor?.();
+      const switchboardUrl = reactor?.switchboardUrl;
+      if (!drive || !switchboardUrl || !gateRenownUrl) {
+        ctx.context.log?.warn?.(
+          "[preview-server] drive access sync skipped: no Studio switchboard/Renown in this process",
+        );
+        return;
+      }
+      ctx.state.accessRunning = true;
+      try {
+        const transport = createSwitchboardDriveAccess({
+          url: switchboardUrl,
+          token: () => getBearerToken(workdir, gateRenownUrl),
+        });
+        const result = await syncDriveAccess(
+          { transport, documentId: drive.driveId },
+          [...knownMembers.values()],
+          { revokeUnknown: false },
+        );
+        if (result.granted.length || result.revoked.length) {
+          ctx.context.log?.info?.(
+            `[preview-server] drive access: granted ${result.granted.length}, revoked ${result.revoked.length}`,
+          );
+        }
+      } catch (err) {
+        // The member gate still protects the preview API; the drive falls back
+        // to its previous grants until the next sync.
+        ctx.context.log?.warn?.(
+          `[preview-server] drive access sync failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        ctx.state.accessRunning = false;
+      }
+    }
+    function scheduleAccessSync(delayMs = 2_000): void {
+      if (ctx.state.accessDebounce) clearTimeout(ctx.state.accessDebounce);
+      ctx.state.accessDebounce = setTimeout(() => {
+        ctx.state.accessDebounce = undefined;
+        void syncAccess();
+      }, delayMs);
+      ctx.state.accessDebounce.unref?.();
+    }
+    ctx.state.accessTimer = setInterval(() => void syncAccess(), 60_000);
+    ctx.state.accessTimer.unref?.();
+
     const authorizeMember = createMemberAuthorizer({
       renownUrl: gateRenownUrl,
       cloud,
       audience: () => ctx.commandContext.proxy?.url,
       membership,
+      onMember: (member) => {
+        knownMembers.set(member.address.toLowerCase(), member);
+        scheduleAccessSync();
+      },
+      onRefused: (address) => {
+        if (knownMembers.delete(address.toLowerCase())) scheduleAccessSync();
+      },
     });
 
     try {
@@ -193,6 +263,10 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
   },
 
   async teardown(ctx) {
+    if (ctx.state.accessDebounce) clearTimeout(ctx.state.accessDebounce);
+    if (ctx.state.accessTimer) clearInterval(ctx.state.accessTimer);
+    ctx.state.accessDebounce = undefined;
+    ctx.state.accessTimer = undefined;
     await ctx.state.handle?.stop();
     ctx.state.handle = undefined;
   },
