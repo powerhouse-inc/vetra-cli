@@ -1,17 +1,20 @@
 /**
- * Settings (spec §5.6): name, live address, GitHub, budget and Advanced.
- * Advanced hosts the older deploy views for power users and existing
- * deployments (spec §6.6); it is the only place their technical words show.
+ * Settings (spec §5.6): name, live address, who can use it, GitHub, budget
+ * and Advanced. Advanced hosts the older deploy views for power users and
+ * existing deployments (spec §6.6); it is the only place their technical
+ * words show.
  */
 import { dispatchActions } from "@powerhousedao/reactor-browser";
 import {
   actions as productActions,
+  type ProductAccess,
   type StudioProductState,
 } from "document-models/studio-product";
 import { useEffect, useRef, useState } from "react";
 import { AgentAuthButton } from "../AgentAuthButton.js";
 import { StudioBudgetMeter } from "../budget/BudgetMeter.js";
 import { DeploySection } from "../DeploySection.js";
+import { ANYONE_WITH_THE_LINK } from "../live/liveCopy.js";
 import { githubText } from "../strip/stripModel.js";
 import { VersionBadge } from "../VersionBadge.js";
 import { WorkspaceExportButton } from "../WorkspaceExportButton.js";
@@ -25,13 +28,24 @@ function otherModalOpen(own: HTMLElement | null): boolean {
   ).some((el) => el !== own);
 }
 
+/** Who may open the live product (spec §6.7). */
+const ACCESS_CHOICES: { access: ProductAccess; label: string }[] = [
+  { access: "SIGNED_IN", label: ANYONE_WITH_THE_LINK },
+  { access: "OWNER_ONLY", label: "Only me" },
+];
+
+/** Which part of Settings the page wants open ("Change who can use it"). */
+export type SettingsSection = "access";
+
 export function SettingsDialog({
   product,
   productId,
+  initialSection,
   onClose,
 }: {
   product: StudioProductState | null;
   productId: string | null;
+  initialSection?: SettingsSection;
   onClose: () => void;
 }) {
   const currentName = product?.name ?? "";
@@ -39,8 +53,14 @@ export function SettingsDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const accessRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (initialSection === "access") accessRef.current?.focus();
+  }, [initialSection]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -52,6 +72,21 @@ export function SettingsDialog({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  async function chooseAccess(access: ProductAccess) {
+    if (!productId || access === product?.access) return;
+    setAccessError(null);
+    const failed = () => setAccessError("Couldn't change it. Try again.");
+    try {
+      await dispatchActions(
+        productActions.setAccess({ access }),
+        productId,
+        failed,
+      );
+    } catch {
+      failed();
+    }
+  }
 
   async function saveName() {
     const next = name.trim();
@@ -137,6 +172,36 @@ export function SettingsDialog({
             <p className="text-muted-foreground">
               {product?.liveUrl ?? "Not live yet"}
             </p>
+          </section>
+          <section
+            ref={accessRef}
+            tabIndex={-1}
+            aria-label="Who can use it"
+            className="flex flex-col gap-1.5 focus:outline-none"
+          >
+            <h3 className="font-medium text-foreground">Who can use it</h3>
+            {ACCESS_CHOICES.map((choice) => (
+              <label
+                key={choice.access}
+                className="flex items-center gap-2 text-muted-foreground"
+              >
+                <input
+                  type="radio"
+                  name="studio-product-access"
+                  value={choice.access}
+                  checked={(product?.access ?? "SIGNED_IN") === choice.access}
+                  disabled={!productId}
+                  onChange={() => void chooseAccess(choice.access)}
+                  className="accent-vetra-primary"
+                />
+                {choice.label}
+              </label>
+            ))}
+            {accessError ? (
+              <span role="alert" className="text-xs text-destructive">
+                {accessError}
+              </span>
+            ) : null}
           </section>
           <section className="flex flex-col gap-1">
             <h3 className="font-medium text-foreground">GitHub</h3>

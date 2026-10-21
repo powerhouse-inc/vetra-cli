@@ -10,9 +10,11 @@ import { dispatchActions } from "@powerhousedao/reactor-browser";
 import {
   actions as productActions,
   type StepKind,
+  type StudioProductState,
 } from "document-models/studio-product";
 import { useMemo, useState, type ReactNode } from "react";
 import { RequestBudgetControl } from "../budget/BudgetMeter.js";
+import { askAgentMessage } from "../live/liveCopy.js";
 import { sendSteer } from "../story/SteerBox.js";
 import {
   CONTINUE_MESSAGE,
@@ -23,6 +25,9 @@ import {
 } from "./failureStates.js";
 
 const ACTION_FAILED = "Couldn't do that. Try again.";
+
+/** No permission hook bound (the build surface's own row). */
+const NO_ALLOW = () => Promise.resolve(false);
 
 /** Dispatches `action(s)` and rejects with `message` when it doesn't apply. */
 function dispatchOrFail(
@@ -55,12 +60,21 @@ function sendOrFail(sessionId: string | null, text: string, message: string) {
 export function useFailureHandlers({
   sessionId,
   productId,
+  product = null,
+  requestedBy = "you",
+  allowPublish = NO_ALLOW,
   focusSteer,
   requestBudget,
   restartPreview,
 }: {
   sessionId: string | null;
   productId: string | null;
+  /** The product document, for the live rows (failed change, its session). */
+  product?: StudioProductState | null;
+  /** Who asks the agent (the signed-in person), recorded on the request. */
+  requestedBy?: string;
+  /** `usePublishPermission().allow` (Task 2.8). */
+  allowPublish?: () => void | Promise<boolean>;
   focusSteer: () => void;
   requestBudget: () => void;
   /** The preview pane's `restartPreview()`. */
@@ -109,8 +123,57 @@ export function useFailureHandlers({
       },
       requestBudget,
       restartPreview,
+      allowPublish,
+      requestLaunch: (changeId: string) =>
+        dispatchOrFail(
+          productActions.requestLaunch({
+            changeId,
+            requestedAt: new Date().toISOString(),
+            requestedBy,
+          }),
+          productId,
+          "Couldn't try again. Try again.",
+        ),
+      requestRestart: () =>
+        dispatchOrFail(
+          productActions.requestRestart({
+            requestedAt: new Date().toISOString(),
+            requestedBy,
+          }),
+          productId,
+          "Couldn't restart it. Try again.",
+        ),
+      requestRollback: (versionNumber: number) =>
+        dispatchOrFail(
+          productActions.requestRollback({
+            requestedAt: new Date().toISOString(),
+            requestedBy,
+            versionNumber,
+          }),
+          productId,
+          "Couldn't go back. Try again.",
+        ),
+      askAgentToFix: (changeId: string, reason: string) => {
+        // F15: the failure goes into the failed change's own conversation,
+        // never a new change.
+        const change = product?.changes.find((c) => c.id === changeId);
+        return sendOrFail(
+          change?.chatSessionId ?? null,
+          askAgentMessage(reason),
+          "Couldn't send it. Try again.",
+        );
+      },
     }),
-    [sessionId, productId, focusSteer, requestBudget, restartPreview],
+    [
+      sessionId,
+      productId,
+      product,
+      requestedBy,
+      allowPublish,
+      focusSteer,
+      requestBudget,
+      restartPreview,
+    ],
   );
 }
 

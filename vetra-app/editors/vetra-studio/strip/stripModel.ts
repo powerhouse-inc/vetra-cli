@@ -82,7 +82,17 @@ export interface StripInputs {
   prevTimeLeft?: string | null;
 }
 
-const OPEN_STATUSES = new Set(["BUILDING", "PAUSED", "READY", "LAUNCHING"]);
+/** Change statuses that mean "someone is still working on this change". */
+const OPEN_STATUS: Record<Change["status"], boolean> = {
+  BUILDING: true,
+  PAUSED: true,
+  READY: true,
+  LAUNCHING: true,
+  LAUNCHED: false,
+  DISCARDED: false,
+  FAILED: false,
+  CLOSED: false,
+};
 
 function liveVersionOf(product: StudioProductState): Version | null {
   if (product.liveVersion === null) return null;
@@ -90,12 +100,23 @@ function liveVersionOf(product: StudioProductState): Version | null {
 }
 
 /**
+ * The change being worked on, if any. While one is open the page keeps the
+ * build surface even when a version is live (Task 2.9; the Live | Preview
+ * split arrives with Task 3.5).
+ */
+export function openChange(product: StudioProductState): Change | null {
+  const active = product.changes.find((c) => c.id === product.activeChangeId);
+  return active && OPEN_STATUS[active.status] ? active : null;
+}
+
+/**
  * The change the strip follows: the open change while one is in progress,
  * else the change behind the live version, else the newest change.
  */
 export function stripChange(product: StudioProductState): Change | null {
+  const open = openChange(product);
+  if (open) return open;
   const active = product.changes.find((c) => c.id === product.activeChangeId);
-  if (active && OPEN_STATUSES.has(active.status)) return active;
   const live = liveVersionOf(product);
   const launched = live?.changeId
     ? product.changes.find((c) => c.id === live.changeId)
@@ -146,21 +167,27 @@ export function budgetText(budget: StripInputs["budget"]): string {
   return `${usd(budget.spentUsd, false)} of ${usd(budget.limitUsd, true)}`;
 }
 
-/** "Deployed 2 min ago" (just now / min / h / days). */
-export function deployedAgo(launchedAt: string | null, now: Date): string {
-  if (!launchedAt) return "Deployed";
-  const minutes = Math.floor((now.getTime() - Date.parse(launchedAt)) / 60000);
-  if (!(minutes >= 1)) return "Deployed just now";
-  if (minutes < 60) return `Deployed ${minutes} min ago`;
+/** "<prefix> 2 min ago" (just now / min / h / days). */
+export function agoText(prefix: string, at: string | null, now: Date): string {
+  if (!at) return prefix;
+  const minutes = Math.floor((now.getTime() - Date.parse(at)) / 60000);
+  if (!(minutes >= 1)) return `${prefix} just now`;
+  if (minutes < 60) return `${prefix} ${minutes} min ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Deployed ${hours} h ago`;
+  if (hours < 24) return `${prefix} ${hours} h ago`;
   const days = Math.floor(hours / 24);
-  return `Deployed ${days} ${days === 1 ? "day" : "days"} ago`;
+  return `${prefix} ${days} ${days === 1 ? "day" : "days"} ago`;
+}
+
+/** "Deployed 2 min ago" (the product's `liveSince`, Task 2.9). */
+export function deployedAgo(launchedAt: string | null, now: Date): string {
+  return agoText("Deployed", launchedAt, now);
 }
 
 const GITHUB_TEXT: Record<GithubStatus, string> = {
   CONNECTED: "GitHub ✓",
-  NOT_CONNECTED: "Code saved in your Studio",
+  // M4 adds the Connect GitHub button; until then the line names it.
+  NOT_CONNECTED: "Code saved in your Studio · Connect GitHub",
   DISCONNECTED: "GitHub disconnected",
   PUSH_FAILED: "Couldn't save to GitHub",
 };
@@ -180,20 +207,28 @@ export function stripModel(
 ): StripView {
   const name = product?.name?.trim() || "Your product";
   const change = product ? stripChange(product) : null;
-  const liveVersion = product ? liveVersionOf(product) : null;
   const live = product?.liveVersion != null;
-  const steps = STEP_ORDER.map((kind) =>
-    stripStep(
+  // Unhealthy: `● Live` turns amber (§5.9); the banner says why.
+  const unhealthy = live && product.health === "UNHEALTHY";
+  const steps = STEP_ORDER.map((kind): StripStep => {
+    const step = stripStep(
       kind,
       change?.steps.find((s) => s.kind === kind),
       live,
-    ),
-  );
+    );
+    return unhealthy && kind === "LIVE"
+      ? { ...step, icon: "!", stateText: "not responding" }
+      : step;
+  });
   const right: StripRight =
     live && product.liveUrl
       ? {
           liveUrl: product.liveUrl,
-          deployedAgo: deployedAgo(liveVersion?.launchedAt ?? null, inputs.now),
+          // "Deployed 2 min ago" reads liveSince, not the launch record.
+          deployedAgo: deployedAgo(
+            product.liveSince ?? liveVersionOf(product)?.launchedAt ?? null,
+            inputs.now,
+          ),
           github: githubText(product.github.status),
         }
       : withTimeLeft(

@@ -17,10 +17,22 @@ import type {
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import type {
   Change,
+  PermissionState,
   StepKind,
   StudioProductState,
+  Version,
 } from "document-models/studio-product";
 import type { BudgetLevel, BudgetRequestState } from "../budget/budgetStore.js";
+import {
+  ALLOW,
+  ASK_AGENT_TO_FIX,
+  LIVE_UNHEALTHY,
+  PERMISSION_NEEDED,
+  RESTART,
+  TRY_AGAIN,
+  goBackLabel,
+  launchFailedText,
+} from "../live/liveCopy.js";
 import { checkList, type CheckLine } from "../steps/checkList.js";
 import {
   agentWorking,
@@ -28,7 +40,7 @@ import {
   type StoryChat,
 } from "../story/storyModel.js";
 import {
-  stripChange,
+  openChange,
   type StepIcon,
   type StripView,
 } from "../strip/stripModel.js";
@@ -85,7 +97,11 @@ export type FailureSituation =
   | "checks-failing"
   | "not-delivered"
   | "budget-warning"
-  | "retried";
+  | "retried"
+  | "permission"
+  | "launch-failed"
+  | "live-unhealthy"
+  | "request-failed";
 
 export type FailureAction = {
   label: string;
@@ -127,6 +143,16 @@ export type FailureHandlers = {
   requestBudget: () => void;
   /** Rejects with "Couldn't restart the preview." */
   restartPreview: () => Promise<void>;
+  /** The owner's OK to publish (`usePublishPermission().allow`). */
+  allowPublish: () => void | Promise<boolean>;
+  /** REQUEST_LAUNCH on a change that is READY after a failed launch (F10). */
+  requestLaunch: (changeId: string) => void | Promise<void>;
+  /** REQUEST_RESTART: the agent re-deploys the live version (F15). */
+  requestRestart: () => void | Promise<void>;
+  /** REQUEST_ROLLBACK to a version that was live before. */
+  requestRollback: (versionNumber: number) => void | Promise<void>;
+  /** The failure, as a message into the failed change's own conversation. */
+  askAgentToFix: (changeId: string, reason: string) => void | Promise<void>;
 };
 
 export const NO_HANDLERS: FailureHandlers = {
@@ -137,6 +163,11 @@ export const NO_HANDLERS: FailureHandlers = {
   waiveLint: () => {},
   requestBudget: () => {},
   restartPreview: () => Promise.resolve(),
+  allowPublish: () => {},
+  requestLaunch: () => {},
+  requestRestart: () => {},
+  requestRollback: () => {},
+  askAgentToFix: () => {},
 };
 
 /** The budget as the failures read it. */
@@ -149,6 +180,9 @@ export type FailureBudget = {
 export type FailurePreview = {
   /** The Studio was up and stopped answering (upgrade, out of memory). */
   studioRestarting: boolean;
+  /** The owner's publishing permission, as `usePublishPermission` reads it
+   *  (Task 2.8); null while the product document isn't loaded. */
+  publish?: { state: PermissionState } | null;
 };
 
 /* ---------- helpers ---------- */
@@ -263,6 +297,124 @@ export function notDeliveredFailure(
   };
 }
 
+/* ---------- the live product (state 2, spec §5.6–§5.9) ---------- */
+
+/** The newest version whose launch failed and that no later version replaced. */
+function failedVersion(product: StudioProductState): Version | null {
+  const live = product.liveVersion;
+  const failed = product.versions.filter(
+    (v) =>
+      v.status === "FAILED" &&
+      v.failure !== null &&
+      (live === undefined || live === null || v.number > live),
+  );
+  return failed.sort((a, b) => b.number - a.number)[0] ?? null;
+}
+
+/** A launch that failed: try it again, or hand the reason to the agent (F15). */
+function launchFailure(
+  product: StudioProductState,
+  handlers: FailureHandlers,
+): Failure | null {
+  const failed = failedVersion(product);
+  // A retry is on its way: the version is LAUNCHING and the lines show it.
+  if (!failed || product.versions.some((v) => v.status === "LAUNCHING")) {
+    return null;
+  }
+  const reason = failed.failure ?? "";
+  const changeId = failed.changeId;
+  const actions: FailureAction[] = [];
+  if (changeId) {
+    // F10: FAIL_LAUNCH puts the change back to READY, so a launch applies.
+    actions.push({
+      label: TRY_AGAIN,
+      run: () => handlers.requestLaunch(changeId),
+    });
+    actions.push({
+      label: ASK_AGENT_TO_FIX,
+      run: () => handlers.askAgentToFix(changeId, reason),
+    });
+  }
+  return {
+    situation: "launch-failed",
+    stripStep: "LIVE",
+    stripIcon: "✕",
+    text: launchFailedText(reason, product.liveVersion ?? null),
+    actions,
+  };
+}
+
+/** The owner's OK ran out while a launch waits for it (Task 2.8, D7). */
+function permissionFailure(
+  product: StudioProductState,
+  preview: FailurePreview,
+  handlers: FailureHandlers,
+): Failure | null {
+  const state = preview.publish?.state;
+  if (state !== "MISSING" && state !== "EXPIRED") return null;
+  const launching = product.versions.some((v) => v.status === "LAUNCHING");
+  const change = openChange(product);
+  const waiting =
+    launching || change?.status === "READY" || change?.status === "LAUNCHING";
+  if (!waiting) return null;
+  return {
+    situation: "permission",
+    stripStep: "LIVE",
+    stripIcon: "!",
+    text: PERMISSION_NEEDED,
+    actions: [
+      {
+        label: ALLOW,
+        run: () => {
+          void handlers.allowPublish();
+        },
+      },
+    ],
+  };
+}
+
+/** The live app stopped answering (Task 2.10's `health`): restart it, or go
+ *  back to the version before it. */
+function unhealthyLive(
+  product: StudioProductState,
+  handlers: FailureHandlers,
+): Failure | null {
+  const live = product.liveVersion;
+  if (live === undefined || live === null) return null;
+  if (product.health !== "UNHEALTHY") return null;
+  const actions: FailureAction[] = [
+    { label: RESTART, run: () => handlers.requestRestart() },
+  ];
+  if (live > 1) {
+    actions.push({
+      label: goBackLabel(live - 1),
+      run: () => handlers.requestRollback(live - 1),
+    });
+  }
+  return { situation: "live-unhealthy", text: LIVE_UNHEALTHY, actions };
+}
+
+/** A Go back / Restart / Discard the agent couldn't carry out (X28): the
+ *  plain reason stays visible until the live version moves on. */
+function requestFailure(product: StudioProductState): Failure | null {
+  const failed = product.lastRequestFailure;
+  if (!failed) return null;
+  if (time(failed.at) <= time(product.liveSince)) return null;
+  return { situation: "request-failed", text: failed.reason, actions: [] };
+}
+
+/** What is wrong with the live product now, the most pressing first. */
+function liveFailure(
+  product: StudioProductState,
+  handlers: FailureHandlers,
+): Failure | null {
+  return (
+    launchFailure(product, handlers) ??
+    unhealthyLive(product, handlers) ??
+    requestFailure(product)
+  );
+}
+
 /* ---------- the failure ---------- */
 
 export type FailureOptions = {
@@ -284,9 +436,14 @@ export function failureFor(
   if (preview.studioRestarting) {
     return { situation: "restarting", text: RESTARTING_TEXT, actions: [] };
   }
-  const change = product ? stripChange(product) : null;
+  const permission = product
+    ? permissionFailure(product, preview, handlers)
+    : null;
+  if (permission) return permission;
+  const change = product ? openChange(product) : null;
+  if (!product) return null;
   if (!change || (change.status !== "BUILDING" && change.status !== "PAUSED")) {
-    return null;
+    return liveFailure(product, handlers);
   }
   const step = activeStep(change) ?? undefined;
   const failed = turnFailure(change, chat);
@@ -483,7 +640,7 @@ export function withFailure(
   return {
     ...view,
     steps: view.steps.map((step) =>
-      step.kind === stripStep && step.status !== "LIVE"
+      step.kind === stripStep
         ? {
             ...step,
             icon: stripIcon,

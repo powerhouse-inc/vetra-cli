@@ -210,19 +210,23 @@ export function StepStrip({
       </ol>
       <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
         {"liveUrl" in right ? (
-          <>
-            <a
-              href={right.liveUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-vetra-primary hover:underline"
-            >
-              {right.liveUrl.replace(/^https?:\/\//, "")} ↗
-            </a>
+          /* Live: "· <slug>.vetra.io ↗" over "Deployed 2 min ago · GitHub ✓". */
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden>·</span>
+              <a
+                href={right.liveUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-vetra-primary hover:underline"
+              >
+                {right.liveUrl.replace(/^https?:\/\//, "")} ↗
+              </a>
+            </span>
             <span>
               {right.deployedAgo} · {right.github}
             </span>
-          </>
+          </div>
         ) : (
           <span className="tabular-nums">
             {budget ?? right.budget}

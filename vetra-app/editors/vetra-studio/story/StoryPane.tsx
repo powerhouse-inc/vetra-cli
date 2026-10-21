@@ -9,6 +9,7 @@ import type { ContentPart } from "@powerhousedao/clint-common/document-models/ch
 import { usePHToast } from "@powerhousedao/reactor-browser";
 import type {
   Change,
+  PermissionState,
   StudioProductState,
 } from "document-models/studio-product";
 import {
@@ -73,6 +74,12 @@ export type StoryFailureContext = {
   studioRestarting: boolean;
   /** The preview pane's `restartPreview()`. */
   restartPreview: () => Promise<void>;
+  /** The owner's publishing permission (`usePublishPermission`, Task 2.8). */
+  publish?: { state: PermissionState } | null;
+  /** Who asks the agent, recorded on a launch request. */
+  requestedBy?: string;
+  /** The OK to publish, for the permission row's Allow (Task 2.8). */
+  allowPublish?: () => void | Promise<boolean>;
 };
 
 const NO_FAILURE_CONTEXT: StoryFailureContext = {
@@ -118,6 +125,9 @@ export function StoryPane({
   const handlers = useFailureHandlers({
     sessionId,
     productId,
+    product,
+    requestedBy: failureContext.requestedBy,
+    allowPublish: failureContext.allowPublish,
     focusSteer,
     requestBudget: failureContext.requestBudget,
     restartPreview: failureContext.restartPreview,
@@ -126,7 +136,10 @@ export function StoryPane({
     product,
     chat,
     failureContext.budget,
-    { studioRestarting: failureContext.studioRestarting },
+    {
+      studioRestarting: failureContext.studioRestarting,
+      publish: failureContext.publish ?? null,
+    },
     { now, handlers },
   );
 
