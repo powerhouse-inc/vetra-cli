@@ -6,7 +6,8 @@ import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
 import { button, click, render, typeInto } from "../test-utils/render.js";
 import { PRODUCT_ID, SESSION_ID, at } from "../test-utils/studioFixtures.js";
 import { SteerBox, STEER_PLACEHOLDER } from "./SteerBox.js";
-import { atSec, user } from "./storyFixtures.js";
+import { StoryPane } from "./StoryPane.js";
+import { atSec, buildingProduct, chat, user } from "./storyFixtures.js";
 
 type Dispatched = {
   action: { type: string; input: Record<string, unknown> };
@@ -28,14 +29,17 @@ beforeEach(() => {
   hoisted.dispatched = [];
 });
 
-/** Lets a test change the conversation the box sees. */
-const setMessages: { current: (m: Message[]) => void } = {
-  current: () => {},
-};
+/** Lets a test change the conversation and the clock the box sees. */
+const set: {
+  messages: (m: Message[]) => void;
+  now: (d: Date) => void;
+} = { messages: () => {}, now: () => {} };
 
 function Harness({ paused = false }: { paused?: boolean }) {
-  const [messages, set] = useState<Message[]>([]);
-  setMessages.current = set;
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [now, setNow] = useState(() => new Date(atSec(5, 10)));
+  set.messages = setMessages;
+  set.now = setNow;
   return (
     <SteerBox
       sessionId={SESSION_ID}
@@ -43,8 +47,34 @@ function Harness({ paused = false }: { paused?: boolean }) {
       changeId="c1"
       paused={paused}
       messages={messages}
-      now={new Date(atSec(5, 10))}
+      now={now}
     />
+  );
+}
+
+/** The steer box inside the story, as the shell shows it. */
+function StoryHarness() {
+  const [messages, setMessages] = useState<Message[]>([
+    user("u0", "a task board for my team", at(1), at(1)),
+  ]);
+  set.messages = setMessages;
+  const product = buildingProduct();
+  const change = product.changes[0];
+  return (
+    <StoryPane
+      product={product}
+      change={change}
+      chat={chat(...messages)}
+      sessionId={SESSION_ID}
+      productId={PRODUCT_ID}
+      now={new Date(atSec(7, 10))}
+    />
+  );
+}
+
+function deliveries(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll("[data-delivery]")).map(
+    (el) => el.textContent,
   );
 }
 
@@ -60,8 +90,10 @@ async function submit(container: HTMLElement, text: string) {
 
 describe("SteerBox", () => {
   it("steer message shows sent then seen by the agent", async () => {
-    const container = render(<Harness />);
-    const input = container.querySelector("input");
+    const container = render(<StoryHarness />);
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Steer it"]',
+    );
     expect(input?.getAttribute("placeholder")).toBe(STEER_PLACEHOLDER);
     expect(input?.disabled).toBe(false);
 
@@ -74,24 +106,36 @@ describe("SteerBox", () => {
       { type: "TEXT", text: "add a Ready column" },
     ]);
     expect(input?.value).toBe("");
-    expect(container.querySelector("[data-delivery]")?.textContent).toBe(
-      "Sent",
-    );
+    // Not in the conversation yet: the box says it's sent.
+    expect(deliveries(container)).toEqual(["Sent"]);
 
+    // In the conversation: the story line carries the state, once.
     const sentId = action.input.id as string;
-    act(() => setMessages.current([user(sentId, "add a Ready column", at(5))]));
-    expect(container.querySelector("[data-delivery]")?.textContent).toBe(
-      "Sent",
-    );
+    const idea = user("u0", "a task board for my team", at(1), at(1));
+    act(() => set.messages([idea, user(sentId, "add a Ready column", at(7))]));
+    expect(deliveries(container)).toEqual(["Sent"]);
+    expect(
+      container.querySelector('[data-line="steer"]')?.textContent,
+    ).toContain("Sent");
 
     act(() =>
-      setMessages.current([
-        user(sentId, "add a Ready column", at(5), atSec(5, 4)),
+      set.messages([
+        idea,
+        user(sentId, "add a Ready column", at(7), atSec(7, 4)),
       ]),
     );
-    expect(container.querySelector("[data-delivery]")?.textContent).toBe(
-      "Seen by the agent",
-    );
+    expect(deliveries(container)).toEqual(["Seen by the agent"]);
+    expectNoForbiddenWords(container);
+  });
+
+  it("a steer that never reaches the conversation is not delivered after 60 s", async () => {
+    const container = render(<Harness />);
+    await submit(container, "add a Ready column");
+    expect(deliveries(container)).toEqual(["Sent"]);
+    act(() => set.now(new Date(atSec(6, 5))));
+    expect(deliveries(container)).toEqual(["Sent"]);
+    act(() => set.now(new Date(atSec(6, 11))));
+    expect(deliveries(container)).toEqual(["Not delivered yet"]);
     expectNoForbiddenWords(container);
   });
 

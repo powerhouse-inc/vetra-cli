@@ -51,3 +51,13 @@ export function firstStringValue(
 export function isWriteVerb(toolName: string): boolean {
   return /-(create|update|delete|generate|extract)$/.test(toolName);
 }
+
+/** A raw tool arg/result string, parsed as JSON when it is JSON. */
+export function parseToolValue(raw: string | null | undefined): unknown {
+  if (raw === null || raw === undefined) return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
+  }
+}

@@ -151,6 +151,140 @@ describe("storyLines", () => {
   });
 });
 
+describe("check lines (Tests step)", () => {
+  it("one line per check run; failures counted, fixing while building", () => {
+    const product = readProduct(
+      productDoc(
+        ...buildingOps(),
+        actions.startStep({ changeId: "c1", kind: "TESTS", at: at(2) }),
+        actions.recordCheckRun({
+          changeId: "c1",
+          id: "r1",
+          at: at(3),
+          results: [
+            { kind: "LINT", passed: true },
+            { kind: "TYPECHECK", passed: true },
+            {
+              kind: "REDUCER_TESTS",
+              passed: false,
+              reason: "A task without a title is accepted.",
+            },
+            {
+              kind: "SMOKE",
+              passed: false,
+              reason: "The board shows an error when it opens.",
+            },
+          ],
+        }),
+        actions.recordCheckRun({
+          changeId: "c1",
+          id: "r2",
+          at: at(5),
+          results: [
+            { kind: "TYPECHECK", passed: true },
+            { kind: "LINT", passed: true },
+            { kind: "REDUCER_TESTS", passed: false, reason: "Still failing." },
+          ],
+        }),
+      ).state.global,
+    );
+    const lines = storyLines(product, changeOf(product), null, new Date(at(6)));
+    const checks = lines.filter((l) => l.kind === "checks");
+    expect(checks).toEqual([
+      {
+        kind: "checks",
+        id: "checks:r1",
+        at: at(3),
+        text: "Type check ✓ · Lint ✓ · Reducer tests ✕ · Preview renders ✕",
+        failed: "2 checks failed",
+        reasons: [
+          "A task without a title is accepted.",
+          "The board shows an error when it opens.",
+        ],
+      },
+      {
+        kind: "checks",
+        id: "checks:r2",
+        at: at(5),
+        text: "Type check ✓ · Lint ✓ · Reducer tests ✕",
+        failed: "1 check failed — fixing",
+        reasons: ["Still failing."],
+      },
+    ]);
+    for (const line of checks) {
+      expect(
+        forbiddenWordsIn([line.text, line.failed, ...line.reasons].join("\n")),
+      ).toEqual([]);
+    }
+  });
+
+  it("all passing has no failure line", () => {
+    const product = readProduct(
+      productDoc(
+        ...buildingOps(),
+        actions.recordCheckRun({
+          changeId: "c1",
+          id: "r1",
+          at: at(3),
+          results: [
+            { kind: "GENERATE", passed: true },
+            { kind: "TYPECHECK", passed: true },
+          ],
+        }),
+      ).state.global,
+    );
+    const line = storyLines(
+      product,
+      changeOf(product),
+      null,
+      new Date(at(4)),
+    ).find((l) => l.kind === "checks");
+    expect(line).toMatchObject({
+      text: "Code generated ✓ · Type check ✓",
+      failed: null,
+      reasons: [],
+    });
+  });
+});
+
+describe("auto-continue", () => {
+  it("the supervisor's continue after a capped turn is not a steer", () => {
+    const product = buildingProduct();
+    const capped = {
+      ...reply("a1", "Working.", at(2), at(3)),
+      finishReason: "tool-calls",
+    };
+    const lines = storyLines(
+      product,
+      changeOf(product),
+      chat(
+        user("u0", "a task board", at(1), at(1)),
+        capped,
+        user("u1", "continue", atSec(3, 1), atSec(3, 2)),
+      ),
+      new Date(at(4)),
+    );
+    expect(lines.filter((l) => l.kind === "steer")).toEqual([]);
+  });
+
+  it("the customer's own continue still shows", () => {
+    const product = buildingProduct();
+    const lines = storyLines(
+      product,
+      changeOf(product),
+      chat(
+        user("u0", "a task board", at(1), at(1)),
+        { ...reply("a1", "Done.", at(2), at(3)), finishReason: "stop" },
+        user("u1", "continue", atSec(3, 1)),
+      ),
+      new Date(atSec(3, 5)),
+    );
+    expect(lines.filter((l) => l.kind === "steer")).toMatchObject([
+      { text: "continue" },
+    ]);
+  });
+});
+
 describe("staleness", () => {
   const product = buildingProduct();
   const change = changeOf(product);

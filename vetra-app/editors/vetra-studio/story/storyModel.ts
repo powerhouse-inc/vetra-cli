@@ -16,9 +16,11 @@ import type {
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import type {
   Change,
+  CheckKind,
   StepKind,
   StudioProductState,
 } from "document-models/studio-product";
+import { parseToolValue } from "../tool-renderers/shared/util.js";
 import { doingNow, type ToolCallView } from "./doingNow.js";
 
 /** A steer message's delivery (Foundation): sent → seen by the agent. */
@@ -59,6 +61,17 @@ export type StoryLine =
   | { kind: "stuck"; id: string; at: string; reason: string; tried: string[] }
   | { kind: "attention"; id: string; at: string; step: StepKind; text: string }
   | { kind: "paused"; id: string; at: string }
+  | {
+      kind: "checks";
+      id: string;
+      at: string;
+      /** "Type check ✓ · Lint ✓ · Reducer tests ✕" */
+      text: string;
+      /** "2 checks failed — fixing"; null when all passed. */
+      failed: string | null;
+      /** The failures' plain one-line reasons. */
+      reasons: string[];
+    }
   | { kind: "waiting"; id: string; at: string; text: string };
 
 /** A message not seen by the agent after this long shows "Not delivered yet". */
@@ -74,6 +87,27 @@ const WORKING_TEXT: Record<StepKind, string> = {
   TESTS: "Running the checks",
   LIVE: "Going live",
 };
+
+/** The supervisor's auto-continue after a step-capped turn (vetra-cli
+ *  `CONTINUE_TEXT`); not the customer's words. */
+export const AUTO_CONTINUE_TEXT = "continue";
+const CAP_FINISH_REASONS = new Set(["tool-calls", "tool_calls"]);
+
+/** Check names in the story's compact check lines (spec §5.4 Tests step). */
+const CHECK_TEXT: Record<CheckKind, string> = {
+  GENERATE: "Code generated",
+  TYPECHECK: "Type check",
+  LINT: "Lint",
+  REDUCER_TESTS: "Reducer tests",
+  SMOKE: "Preview renders",
+};
+const CHECK_ORDER: readonly CheckKind[] = [
+  "GENERATE",
+  "TYPECHECK",
+  "LINT",
+  "REDUCER_TESTS",
+  "SMOKE",
+];
 
 /** The text of a message (its TEXT parts). */
 export function messageText(message: Message): string {
@@ -163,20 +197,52 @@ export function lastToolCall(chat: StoryChat | null): ToolCallView | null {
       if (part.type !== "TOOL_CALL") continue;
       return {
         toolName: part.toolName || "unknown",
-        args: parseArgs(part.args),
+        args: parseToolValue(part.args),
       };
     }
   }
   return null;
 }
 
-function parseArgs(raw: string | null | undefined): unknown {
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return raw;
+/** The supervisor's "continue" right after a turn that hit the step cap. */
+function isAutoContinue(messages: readonly Message[], index: number): boolean {
+  if (messageText(messages[index]) !== AUTO_CONTINUE_TEXT) return false;
+  for (let i = index - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "USER") return false;
+    if (m.role === "ASSISTANT") {
+      return CAP_FINISH_REASONS.has(m.finishReason ?? "");
+    }
   }
+  return false;
+}
+
+/** One line per check run: "Type check ✓ · Lint ✓ · …", failures counted
+ *  ("2 checks failed — fixing" while the agent still builds). */
+function checkLines(change: Change): StoryLine[] {
+  const runs = [...change.checkRuns].sort((a, b) => time(a.at) - time(b.at));
+  return runs.map((run, i) => {
+    const results = [...run.results].sort(
+      (a, b) => CHECK_ORDER.indexOf(a.kind) - CHECK_ORDER.indexOf(b.kind),
+    );
+    const failures = results.filter((r) => !r.passed);
+    const count = failures.length;
+    // Only the newest run is being fixed; older failures are history.
+    const fixing = change.status === "BUILDING" && i === runs.length - 1;
+    return {
+      kind: "checks",
+      id: `checks:${run.id}`,
+      at: run.at,
+      text: results
+        .map((r) => `${CHECK_TEXT[r.kind]} ${r.passed ? "✓" : "✕"}`)
+        .join(" · "),
+      failed:
+        count === 0
+          ? null
+          : `${count} ${count === 1 ? "check" : "checks"} failed${fixing ? " — fixing" : ""}`,
+      reasons: failures.flatMap((r) => (r.reason ? [r.reason] : [])),
+    };
+  });
 }
 
 function ideaText(product: StudioProductState, change: Change): string {
@@ -262,7 +328,7 @@ export function storyLines(
     active.at = latest(active.at, newest?.createdAt, newest?.finishedAt);
   }
 
-  const lines: StoryLine[] = [...milestoneLines];
+  const lines: StoryLine[] = [...milestoneLines, ...checkLines(change)];
 
   const lastAssistant = messages.findLastIndex(
     (m) => m.role === "ASSISTANT" && messageText(m) !== "",
@@ -270,7 +336,7 @@ export function storyLines(
   for (const [index, message] of messages.entries()) {
     if (message.role === "USER" && index !== firstUser) {
       const text = messageText(message);
-      if (!text) continue;
+      if (!text || isAutoContinue(messages, index)) continue;
       lines.push({
         kind: "steer",
         id: message.id,

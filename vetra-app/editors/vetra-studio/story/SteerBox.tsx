@@ -2,7 +2,8 @@
  * The steer box (spec §5.4, D10): the customer's message box at the bottom
  * of the story, always enabled while the agent builds. A steer is a normal
  * chat message — the agent picks it up at its next step — shown with its
- * delivery state (sent → seen by the agent). Pause sits next to it: it stops
+ * delivery state (sent → seen by the agent): the box shows "Sent" until the
+ * message reaches the conversation, then the story line carries it. Pause sits next to it: it stops
  * after the current step, and turns into Continue.
  */
 import {
@@ -13,7 +14,7 @@ import { dispatchActions, usePHToast } from "@powerhousedao/reactor-browser";
 import { generateId } from "document-model";
 import { actions as productActions } from "document-models/studio-product";
 import { useEffect, useState, type RefObject } from "react";
-import { deliveryOf, type Delivery } from "./storyModel.js";
+import { NOT_DELIVERED_AFTER_MS, type Delivery } from "./storyModel.js";
 
 export const STEER_PLACEHOLDER = 'Steer it: "make slides 16:9"…';
 
@@ -62,7 +63,7 @@ export function SteerBox({
 }: SteerBoxProps) {
   const toast = usePHToast();
   const [text, setText] = useState("");
-  const [sentId, setSentId] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ id: string; at: Date } | null>(null);
   // Pause/Continue show at once; the product document confirms them.
   const [requested, setRequested] = useState<"pause" | "resume" | null>(null);
 
@@ -71,19 +72,22 @@ export function SteerBox({
   const showPaused =
     requested === "pause" ? true : requested === "resume" ? false : paused;
 
-  const sentIndex = sentId ? messages.findIndex((m) => m.id === sentId) : -1;
-  const delivery: Delivery | null = sentId
-    ? sentIndex === -1
-      ? "sent"
-      : deliveryOf(messages, sentIndex, now)
-    : null;
+  // Until the message reaches the conversation (then the story shows its
+  // delivery): sent, or not delivered after a minute.
+  const delivery: Delivery | null =
+    !sent || messages.some((m) => m.id === sent.id)
+      ? null
+      : now.getTime() - sent.at.getTime() > NOT_DELIVERED_AFTER_MS
+        ? "not-delivered"
+        : "sent";
 
   function send() {
     const message = text.trim();
     if (!message || !sessionId) return;
     setText("");
+    const at = now;
     sendSteer(sessionId, message)
-      .then(setSentId)
+      .then((id) => setSent({ id, at }))
       .catch(() => {
         setText(message);
         toast?.("Couldn't send it. Try again.", { type: "error" });

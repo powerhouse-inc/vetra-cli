@@ -106,6 +106,46 @@ describe("StoryPane", () => {
     expectNoForbiddenWords(container);
   });
 
+  it("shows the Tests step's checks as they run", () => {
+    const product = readProduct(
+      productDoc(
+        ...buildingOps(),
+        actions.startStep({ changeId: "c1", kind: "TESTS", at: at(2) }),
+        actions.recordCheckRun({
+          changeId: "c1",
+          id: "r1",
+          at: at(3),
+          results: [
+            { kind: "TYPECHECK", passed: true },
+            { kind: "LINT", passed: true },
+            {
+              kind: "REDUCER_TESTS",
+              passed: false,
+              reason: "2 of 14 task rules failed.",
+            },
+          ],
+        }),
+      ).state.global,
+    );
+    const container = render(
+      <StoryPane
+        product={product}
+        change={changeOf(product)}
+        chat={null}
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        now={new Date(atSec(3, 10))}
+      />,
+    );
+    const line = container.querySelector('[data-line="checks"]');
+    expect(line?.textContent).toContain(
+      "Type check ✓ · Lint ✓ · Reducer tests ✕",
+    );
+    expect(line?.textContent).toContain("1 check failed — fixing");
+    expect(line?.textContent).toContain("2 of 14 task rules failed.");
+    expectNoForbiddenWords(container);
+  });
+
   it("stuck offers ways forward; paused offers Continue", () => {
     const product = readProduct(
       productDoc(

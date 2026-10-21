@@ -259,6 +259,24 @@ function Line({
           <ActionButton onClick={onContinue}>Continue</ActionButton>
         </div>
       );
+    case "checks":
+      return (
+        <div className="text-sm">
+          <p className="text-foreground">{line.text}</p>
+          {line.failed ? (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              {line.failed}
+            </p>
+          ) : null}
+          {line.reasons.length > 0 ? (
+            <ul className="mt-0.5 list-disc pl-5 text-xs text-muted-foreground">
+              {line.reasons.map((reason, i) => (
+                <li key={i}>{reason}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      );
     case "waiting":
       return (
         <p className="text-xs italic text-muted-foreground">{line.text}</p>

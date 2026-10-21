@@ -35,6 +35,7 @@ import { useStudioBudget } from "./budget/useStudioBudget.js";
 import { vetraToolRenderers } from "./tool-renderers/index.js";
 import { CommandTool } from "./tool-renderers/shared/CommandTool.js";
 import type { ToolRenderProps } from "./tool-renderers/types.js";
+import { parseToolValue } from "./tool-renderers/shared/util.js";
 import { Wrench } from "lucide-react";
 
 const ChatSession = lazy(() =>
@@ -578,15 +579,6 @@ function SessionLoading() {
       <VetraMitosis size={48} active={true} />
     </div>
   );
-}
-
-function parseToolValue(raw: string | null | undefined): unknown {
-  if (raw === null || raw === undefined) return undefined;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return raw;
-  }
 }
 
 /** Tools without a Vetra renderer: name, arguments and result. */
