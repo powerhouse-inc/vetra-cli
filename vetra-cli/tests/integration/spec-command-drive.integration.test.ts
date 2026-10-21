@@ -64,8 +64,9 @@ describe("spec-* commands → embedded drive", () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "spec-cmd-drive-it-"));
-    // resolveReactorProjectPath only checks for this file's existence.
+    // A project: resolveReactorProjectPath checks this file, spec-create an install.
     await fs.writeFile(path.join(tmpDir, "powerhouse.config.json"), "{}");
+    await fs.mkdir(path.join(tmpDir, "node_modules"));
 
     const builder = new ReactorBuilder().withDocumentModelSources([
       driveDocumentModelModule,

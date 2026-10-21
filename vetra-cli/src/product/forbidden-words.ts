@@ -1,7 +1,8 @@
 /**
  * Words that must not reach the customer-facing story (Ruling F40b). The
  * progress tool refuses milestone, title, name and stuck text containing any
- * of them (case-insensitive) and asks the agent to rephrase.
+ * of them (case-insensitive) and asks the agent to rephrase, naming every
+ * offending word at once.
  */
 export const FORBIDDEN_WORDS = [
   "environment",
@@ -15,8 +16,8 @@ export const FORBIDDEN_WORDS = [
   "switchboard",
 ] as const;
 
-/** The first forbidden word `text` contains, or null when it has none. */
-export function findForbiddenWord(text: string): string | null {
+/** Every forbidden word `text` contains, in list order (empty when none). */
+export function findForbiddenWords(text: string): string[] {
   const lower = text.toLowerCase();
-  return FORBIDDEN_WORDS.find((word) => lower.includes(word.toLowerCase())) ?? null;
+  return FORBIDDEN_WORDS.filter((word) => lower.includes(word.toLowerCase()));
 }

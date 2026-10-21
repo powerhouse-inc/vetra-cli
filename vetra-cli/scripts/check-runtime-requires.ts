@@ -1,6 +1,6 @@
-// Guard: every runtime `__require("<x>")` tsdown leaves in dist/*.js must
-// resolve in a global install, which has nothing but dist (vetra ships zero
-// runtime deps). Allowed: Node builtins, vendored deps (vendor-list.ts),
+// Guard: every runtime `__require("<x>")` or unbundled `import("<x>")` tsdown
+// leaves in dist/*.js must resolve in a global install, which has nothing but
+// dist (vetra ships zero runtime deps). Allowed: Node builtins, vendored deps (vendor-list.ts),
 // tsdown externals (vendored or absent by design), and OPTIONAL — requires that
 // sit behind a try/catch or a feature probe, or in chunks no boot path loads.
 // Anything else crashes at runtime with `Cannot find module`, so fail the build.
@@ -9,6 +9,7 @@ import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import tsdownConfig from "../tsdown.config.ts";
 import { VENDOR } from "./vendor-list.ts";
+import { findBareDynamicImports } from "./dynamic-imports.ts";
 
 type Matcher = string | RegExp;
 
@@ -32,6 +33,10 @@ const OPTIONAL: Matcher[] = [
   "svelte/compiler",
   // postcss-import: `try { sugarss = __require("sugarss") } catch {}`.
   "sugarss",
+  // @mastra/core channels (`await import(mod)` with mod = "chat"); unused.
+  "chat",
+  // @mastra/core's ast-grep search: probed with require.resolve in try/catch.
+  "@ast-grep/napi",
 ];
 
 const distDir = resolve(import.meta.dirname, "..", "dist");
@@ -68,7 +73,9 @@ for (const name of readdirSync(distDir)) {
   if (!name.endsWith(".js")) continue;
   const file = join(distDir, name);
   scanned++;
-  for (const [, spec] of readFileSync(file, "utf8").matchAll(REQUIRE)) {
+  const code = readFileSync(file, "utf8");
+  const specs = [...[...code.matchAll(REQUIRE)].map((m) => m[1]), ...findBareDynamicImports(code)];
+  for (const spec of specs) {
     if (allowed(spec, file)) continue;
     const files = offenders.get(spec) ?? new Set<string>();
     files.add(name);

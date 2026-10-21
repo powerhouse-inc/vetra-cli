@@ -52,8 +52,18 @@ export const PROJECT_MCP = 'reactor-project-mcp__*';
 const ATTACHMENTS = ['attachment-preprocess', 'attachment-upload'];
 
 export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
-  // Product specs at the workspace root (and naming the product).
-  PLAN: [...SPEC_BUILD, 'spec-delete', 'spec-extract'],
+  // Bootstrap first, then product specs at the workspace root (and naming
+  // the product). The project installs while the specs are written; without
+  // init/start here the agent read "go straight to init" as "no init tool".
+  PLAN: [
+    ...SPEC_BUILD,
+    'spec-delete',
+    'spec-extract',
+    'reactor-project-init',
+    'reactor-project-start',
+    'reactor-project-stop',
+    'reactor-project-restart',
+  ],
   // Bootstrap + Model: project, spec-driven model, hand-written reducers.
   DATA: [
     ...SPEC_BUILD,
@@ -239,4 +249,53 @@ export class PhaseToolsProcessor implements Processor<'phase-tools'> {
     const visible = args.activeTools ?? Object.keys(tools);
     return { activeTools: selectTools(visible, phases) };
   }
+}
+
+/**
+ * The tool patterns a move from `before` to `after` adds (ALWAYS_ON aside),
+ * for the `product-progress` reply: the agent re-reads its tools instead of
+ * trusting what an earlier step lacked. Moving to NONE adds every tool.
+ */
+export function toolsGained(before: StepKind[] | null, after: StepKind[] | null): string[] {
+  if (!before) return [];
+  if (!after) return ['every tool'];
+  const had = new Set(phasePatterns(before));
+  return [...new Set(after.flatMap((p) => PHASE_TOOLS[p]))].filter((p) => !had.has(p));
+}
+
+/** Concrete (non-glob) tool names visible in `phases`; NONE → every named tool. */
+export function namedVisibleTools(phases: StepKind[] | null): string[] {
+  const patterns = phases
+    ? phasePatterns(phases)
+    : [...ALWAYS_ON, ...Object.values(PHASE_TOOLS).flat(), ...ADVANCED_ONLY];
+  return [...new Set(patterns.filter((p) => !p.includes('*')))];
+}
+
+/** Ways a reason refers to a tool: its name, without `reactor-`/`mastra_workspace_`, spaced. */
+function toolAliases(name: string): string[] {
+  const short = name.replace(/^reactor-/, '').replace(/^mastra_workspace_/, '');
+  return [...new Set([name, short, short.replace(/_/g, ' ')])].filter((a) => a.length > 4);
+}
+
+/** Phrases that put a tool name inside a "missing" claim, before or after it. */
+const MISSING_BEFORE =
+  "(?:\\bno|\\bmissing|\\bwithout|\\black(?:s|ing)?|(?:don'?t|do not|doesn'?t|does not|can'?t|cannot) (?:have|see|find|get|call)|not (?:available|exposed|listed|offered|given))\\s+(?:an?\\s+|the\\s+|any\\s+)?";
+const MISSING_AFTER =
+  "(?:\\s+tools?)?\\s+(?:is\\s+|are\\s+)?(?:missing|unavailable|absent|not (?:available|exposed|listed|offered|present|there|in)|isn'?t (?:there|available|listed|exposed)|(?:doesn'?t|does not) exist)";
+
+/**
+ * Tools visible in `phases` that `reason` claims are missing (the dev.9
+ * staging agent marked itself stuck on "no project-init tool is exposed"
+ * while reactor-project-init was in its tool list). The tool must sit inside
+ * the claim ("no reactor-project-init tool", "reactor-project-init is
+ * missing"), so a real failure that names a tool ("spec-generate keeps
+ * failing: missing type X") is not caught.
+ */
+export function claimedMissingTools(reason: string, phases: StepKind[] | null): string[] {
+  return namedVisibleTools(phases).filter((name) =>
+    toolAliases(name).some((alias) => {
+      const tool = `(?<![\\w-])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`;
+      return new RegExp(`${MISSING_BEFORE}${tool}|${tool}${MISSING_AFTER}`, 'i').test(reason);
+    }),
+  );
 }

@@ -82,6 +82,7 @@
     "eslint": "9.39.4",
     "eslint-config-prettier": "catalog:",
     "eslint-plugin-jest": "^29.15.2",
+    "execa": "9.6.1",
     "fflate": "^0.8.2",
     "fsevents": "^2.3.3",
     "graphql": "catalog:",
