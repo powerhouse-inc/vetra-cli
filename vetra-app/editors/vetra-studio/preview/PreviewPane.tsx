@@ -208,6 +208,8 @@ export function PreviewPane({
   const selectedElement = point.selected;
   const editingElement = point.editing;
   const toast = usePHToast();
+  /** Delays the click's popover so a double-click can start an inline edit. */
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** The element described with its rect moved into the pane's coordinates. */
   const targetInPane = useCallback(
@@ -230,18 +232,24 @@ export function PreviewPane({
 
   useEffect(() => {
     if (!selectedElement) return;
-    setPointed({ target: targetInPane(selectedElement), shot: null });
     let live = true;
-    const frame = frameRef.current;
-    if (frame) {
-      void pointShot(frame, selectedElement).then((shot) => {
-        if (live) {
-          setPointed((current) => (current ? { ...current, shot } : current));
-        }
-      });
-    }
+    // A double-click also fires two clicks: wait past the dblclick before
+    // opening the popover, so the edit starts instead.
+    clickTimer.current = setTimeout(() => {
+      if (!live) return;
+      setPointed({ target: targetInPane(selectedElement), shot: null });
+      const frame = frameRef.current;
+      if (frame) {
+        void pointShot(frame, selectedElement).then((shot) => {
+          if (live) {
+            setPointed((current) => (current ? { ...current, shot } : current));
+          }
+        });
+      }
+    }, 250);
     return () => {
       live = false;
+      if (clickTimer.current) clearTimeout(clickTimer.current);
     };
   }, [selectedElement, targetInPane]);
 
@@ -249,6 +257,8 @@ export function PreviewPane({
   // ambiguous goes to the agent with the words prefilled.
   useEffect(() => {
     if (!editingElement) return;
+    clearTimeout(clickTimer.current ?? undefined);
+    setPointed(null);
     // The element lives in the frame's document (another realm, so
     // `instanceof HTMLElement` would be false here); it is an element node.
     const editing = editingElement as HTMLElement;
