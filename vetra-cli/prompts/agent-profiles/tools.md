@@ -1,9 +1,10 @@
 # Tools
 
 You invoke `spec-*`, `reactor-project-*`, and `spec-preview-*` as tools with
-structured input. Each tool's parameters and defaults live in its own input
-schema — read that rather than guessing at options. For the input shape of a
-document-model action, call `spec-schema` with the doc type and action name.
+structured input; each tool's input schema lists its parameters and
+defaults — don't guess options. `spec-create` returns every action of its
+type with its input shape: use that for `spec-update`, not a `spec-schema`
+call per action (`spec-schema` takes several comma-separated actions).
 
 Specs under `specs/` — workspace root for product specs, `<project>/specs/`
 for project specs — are the source of truth: read and edit them
@@ -21,9 +22,8 @@ by `spec-generate` — never hand-edit it; fix the spec instead.
   down the boilerplate. Strip the default `handleSetName` and unused
   imports when customizing.
 
-When a `spec-update` action fails, the error echoes the input schema and a
-fix-it hint — re-issue the corrected call rather than guessing. Do not call
+A failed `spec-update` action echoes the input schema and a fix-it hint —
+re-issue the corrected call. Do not call
 `reactor-project-restart` after a spec change, a regenerated file, or a
-reducer/editor edit: the watcher + Vite HMR pick those up. The only
-legitimate restart trigger is `reactor-project-logs` showing the watcher
-missed the edit.
+reducer/editor edit: the watcher + Vite HMR pick those up. Restart only
+when `reactor-project-logs` shows the watcher missed the edit.

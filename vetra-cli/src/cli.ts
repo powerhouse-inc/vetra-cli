@@ -35,6 +35,7 @@ import { genGuard } from './lifecycle/gen-guard.js';
 import { shellGuard } from './lifecycle/shell-guard.js';
 import { tsCheck } from './lifecycle/ts-check.js';
 import { serializableToolErrors } from './lifecycle/tool-errors.js';
+import { agentRequiredInputs } from './lifecycle/agent-required-inputs.js';
 import { checkRecorder } from './lifecycle/check-recorder.js';
 import { ensurePh } from './lifecycle/ensure-ph.js';
 import { studioUrlTrigger } from './triggers/studio-url.js';
@@ -260,6 +261,8 @@ export const cli = defineCli({
     // The shell is for installs: checks, builds and git go through recorded tools.
     shellGuard(),
     tsCheck(),
+    // The agent's tool schemas mark the spec inputs it can't leave out.
+    agentRequiredInputs(),
     connectDriveUrlOnSwitchboardReady({
       vetraAppDir: CONNECT_ASSETS_ROOT,
     }),

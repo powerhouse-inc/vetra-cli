@@ -144,6 +144,55 @@ describe("preview-server resolver", () => {
     });
   });
 
+  it("home: the preview drive's root once the project is up", async () => {
+    const services = makeServices([
+      {
+        workdir: projectPath,
+        status: "ready",
+        endpoints: { "vetra-studio": "http://localhost:3001/" },
+      },
+    ]);
+    const driveId = getPreviewDriveId(projectPath);
+    const result = await resolvePreview({
+      services,
+      workdir,
+      project: PROJECT,
+      doc: "",
+      home: true,
+    });
+    expect(result).toEqual({
+      kind: "ready",
+      project: PROJECT,
+      projectPath,
+      driveId,
+      documentId: driveId,
+      url: `http://localhost:3001/d/${driveId}?embed=1`,
+      proxiedUrl: `${REACTOR_PROJECT_CONNECT_PROXY_PATH}/d/${driveId}?embed=1`,
+    });
+  });
+
+  it("home: starting / project-stopped while the project isn't up", async () => {
+    const driveId = getPreviewDriveId(projectPath);
+    expect(
+      await resolvePreview({
+        services: makeServices([{ workdir: projectPath, status: "starting" }]),
+        workdir,
+        project: PROJECT,
+        doc: "",
+        home: true,
+      }),
+    ).toEqual({ kind: "starting", project: PROJECT, projectPath, driveId });
+    expect(
+      await resolvePreview({
+        services: makeServices([]),
+        workdir,
+        project: PROJECT,
+        doc: "",
+        home: true,
+      }),
+    ).toEqual({ kind: "project-stopped", project: PROJECT, projectPath });
+  });
+
   it("strips a trailing slash from the Connect endpoint and encodes the doc segment", async () => {
     const services = makeServices([
       {

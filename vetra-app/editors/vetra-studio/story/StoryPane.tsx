@@ -48,9 +48,11 @@ import {
 } from "./SteerBox.js";
 import {
   agentWorking,
+  nextStoryChange,
   staleness,
   storyLines,
   toolResultsOf,
+  type StoryChange,
   type StoryChat,
   type StoryLine,
 } from "./storyModel.js";
@@ -120,7 +122,14 @@ export function StoryPane({
   const now = fixedNow ?? ticking;
   const lines = storyLines(product, change, chat, now);
   const working = agentWorking(chat) && change.status === "BUILDING";
-  const waiting = staleness(lines, { working }, now);
+  // When the shown story last changed (G3 counts quiet time from that).
+  const changeRef = useRef<StoryChange | null>(null);
+  changeRef.current = nextStoryChange(
+    changeRef.current,
+    lines,
+    fixedNow ? fixedNow.getTime() : Date.now(),
+  );
+  const waiting = staleness(lines, { working }, now, changeRef.current.at);
   const shown = waiting ? [...lines, waiting] : lines;
   const messages = chat?.messages;
   const results = useMemo(() => toolResultsOf(messages ?? []), [messages]);

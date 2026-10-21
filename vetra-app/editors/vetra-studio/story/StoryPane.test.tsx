@@ -3,7 +3,13 @@ import { actions } from "document-models/studio-product";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readProduct } from "../shell/useStudioState.js";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
-import { button, click, render, typeInto } from "../test-utils/render.js";
+import {
+  button,
+  click,
+  render,
+  rerender,
+  typeInto,
+} from "../test-utils/render.js";
 import {
   PRODUCT_ID,
   SESSION_ID,
@@ -127,7 +133,38 @@ describe("StoryPane", () => {
     ).toContain("spec-create");
   });
 
-  it("shows a waiting line when there is no news for 30 s", () => {
+  it("shows a waiting line when tool calls keep coming but the story reads the same", () => {
+    const product = buildingProduct();
+    const pane = (calls: ReturnType<typeof toolCall>[], now: string) => (
+      <StoryPane
+        product={product}
+        change={changeOf(product)}
+        chat={chat(user("u0", "a task board", at(1), at(1)), ...calls)}
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        now={new Date(now)}
+      />
+    );
+    const first = toolCall("a1", "spec-update", { name: "Brief" }, atSec(7, 0));
+    const container = render(pane([first], atSec(7, 0)));
+    const waitingLine = () => container.querySelector('[data-line="waiting"]');
+    expect(waitingLine()).toBeNull();
+    // A second spec call 15 s later: same "working on the design…" line.
+    const second = toolCall(
+      "a2",
+      "spec-update",
+      { name: "Brief" },
+      atSec(7, 15),
+    );
+    rerender(container, pane([first, second], atSec(7, 15)));
+    expect(waitingLine()).toBeNull();
+    rerender(container, pane([first, second], atSec(7, 25)));
+    expect(waitingLine()?.textContent).toContain(
+      "Still working on it — last update 25 s ago.",
+    );
+  });
+
+  it("shows a waiting line when there is no news for 20 s", () => {
     const product = buildingProduct();
     const container = render(
       <StoryPane

@@ -1,20 +1,23 @@
 // Header control that downloads a zip of the workspace files. The daemon gates
-// /export, so an unauthorized caller is pointed at the Renown authorize flow.
+// /export on the caller's Renown sign-in (the Studio owner), so a signed-out
+// caller is pointed at Renown sign-in.
+import { useRenownAuth } from "@powerhousedao/reactor-browser";
 import { useEffect, useState } from "react";
 import {
   fetchExportStatus,
-  resolveWorkspaceExportUrl,
+  fetchWorkspaceExport,
 } from "./hooks/preview-server-client.js";
-import { useAgentAuth } from "./hooks/useAgentAuth.js";
 
 export function WorkspaceExportButton() {
-  const { authenticated, pending, busy: authBusy, authorize } = useAgentAuth();
+  const auth = useRenownAuth();
+  const authenticated = auth.status === "authorized";
+  const authBusy = auth.status === "loading" || auth.status === "checking";
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [statusFailed, setStatusFailed] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Re-check the export gate whenever auth flips (authorizing enables it).
+  // Re-check the export gate whenever the sign-in changes.
   useEffect(() => {
     let ignore = false;
     const controller = new AbortController();
@@ -34,17 +37,16 @@ export function WorkspaceExportButton() {
       ignore = true;
       controller.abort();
     };
-  }, [authenticated]);
+  }, [authenticated, auth.address]);
 
   async function download() {
     if (downloading) return;
     setDownloading(true);
     setError(null);
     try {
-      const url = await resolveWorkspaceExportUrl();
-      // Fetch (not a native anchor nav): lets us check status so a 401/409
-      // shows a message instead of navigating the page to the error JSON.
-      const res = await fetch(url);
+      // Fetch (not a native anchor nav): carries the bearer, and lets us check
+      // status so a 401/409 shows a message instead of navigating to the JSON.
+      const res = await fetchWorkspaceExport();
       if (!res.ok) {
         setError(
           res.status === 409
@@ -76,29 +78,25 @@ export function WorkspaceExportButton() {
   if (authorized === false && authenticated) {
     return (
       <span
-        title="Workspace download is restricted to the pod owner (an ADMINS wallet)."
+        title="Workspace download is restricted to the Studio owner's wallet."
         className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground opacity-40"
-        aria-label="Workspace download restricted to the pod owner"
+        aria-label="Workspace download restricted to the Studio owner"
       >
         <DownloadIcon />
       </span>
     );
   }
 
-  // Not authorized: pulse to draw attention; the native hover tooltip explains,
-  // and a click starts the Renown authorize flow that unlocks the download.
+  // Signed out: pulse to draw attention; the native hover tooltip explains,
+  // and a click starts the Renown sign-in that unlocks the download.
   if (authorized === false && !authenticated) {
     return (
       <button
         type="button"
-        onClick={() => void authorize()}
+        onClick={() => auth.login()}
         disabled={authBusy}
-        title={
-          pending
-            ? "Authorizing… approve in the Renown tab to unlock the download"
-            : "Authorization required — click to authorize the agent (Renown) and download the workspace"
-        }
-        aria-label="Authorize to download the workspace"
+        title="Sign in with the Studio owner's wallet (Renown) to download the workspace"
+        aria-label="Sign in to download the workspace"
         className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground opacity-70 hover:bg-accent hover:opacity-100 disabled:opacity-40 motion-safe:animate-pulse"
       >
         <DownloadIcon />

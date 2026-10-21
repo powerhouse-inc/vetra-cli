@@ -43,6 +43,13 @@ describe("fetchRestart", () => {
     expect(urls.some((u) => u.includes("/start"))).toBe(false);
   });
 
+  it("an unauthenticated restart (401) is refused the same way", async () => {
+    respond(401, { error: "unauthorized" });
+    await expect(fetchRestart({ project: "hotel" })).rejects.toThrow(
+      "Couldn't restart the preview.",
+    );
+  });
+
   it("an unknown project is a result, not a missing route", async () => {
     respond(404, { kind: "unknown-project", project: "x", error: "nope" });
     expect(await fetchRestart({ project: "x" })).toMatchObject({

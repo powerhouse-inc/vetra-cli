@@ -9,14 +9,22 @@ export const projectInputSchema = z
   .string()
   .optional()
   .describe(
-    "Project sub-directory under workdir to scope this command to. Omit to act on workdir itself.",
+    "Project sub-directory under workdir to scope this command to. Omit to act on workdir itself, or — when workdir isn't a project and holds exactly one — on that one project.",
   );
 
 /**
  * Resolve which directory a command should act on. Errors if the resolved
  * directory isn't a Reactor package (no powerhouse.config.json).
  *   - `subdir` set  → `<workdir>/<subdir>`
- *   - `subdir` unset → `workdir` itself
+ *   - `subdir` unset → `workdir` itself, or — when `workdir` isn't a Reactor
+ *     package and holds exactly one — that one project. A Studio has a single
+ *     project, and the agent dropping `project` cost a failed call (and a
+ *     retry step) per spec/preview command on staging.
+ *
+ * `soleProjectDefault: false` turns the one-project default off: publishing
+ * and starting are explicit, so an empty project there never picks one (it
+ * means the workdir itself, which fails in a Studio — its root isn't a
+ * package).
  *
  * The successful path is one stat (the config file). The expensive
  * `listReactorProjects` walk happens only when we're about to throw — so the
@@ -25,7 +33,16 @@ export const projectInputSchema = z
 export async function resolveReactorProjectPath(
   workdir: string,
   subdir: string | undefined,
+  { soleProjectDefault = true }: { soleProjectDefault?: boolean } = {},
 ): Promise<string> {
+  if (
+    soleProjectDefault &&
+    !subdir &&
+    !(await pathExists(path.join(workdir, "powerhouse.config.json")))
+  ) {
+    const sole = await soleReactorProject(workdir);
+    if (sole) return sole;
+  }
   const base = subdir ? path.join(workdir, subdir) : workdir;
   if (subdir && !(await pathExists(base))) {
     throw new Error(
@@ -46,6 +63,12 @@ export async function resolveReactorProjectPath(
     );
   }
   return base;
+}
+
+/** The workspace's project when it holds exactly one; null otherwise. */
+export async function soleReactorProject(workdir: string): Promise<string | null> {
+  const projects = await listReactorProjects(workdir);
+  return projects.length === 1 ? path.join(workdir, projects[0]) : null;
 }
 
 /**

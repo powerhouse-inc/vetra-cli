@@ -26,12 +26,11 @@ export type ResolvedPreview =
   | { kind: "no-target" }
   | { kind: "loading" }
   | { kind: "unknown-project"; project: string; error: string }
-  | { kind: "project-stopped"; project: string; projectPath: string }
-  | { kind: "starting"; project: string; projectPath: string; driveId: string }
+  | { kind: "project-stopped"; project: string }
+  | { kind: "starting"; project: string; driveId: string }
   | {
       kind: "ready";
       project: string;
-      projectPath: string;
       driveId: string;
       documentId: string;
       url: string;
@@ -40,6 +39,8 @@ export type ResolvedPreview =
 
 export function useResolvedPreview(
   target: PreviewTarget | undefined,
+  /** False: never POST /start (a home view only shows a project that is up). */
+  { autoStart = true }: { autoStart?: boolean } = {},
 ): ResolvedPreview {
   const [state, setState] = useState<ResolvedPreview>(
     target ? { kind: "loading" } : { kind: "no-target" },
@@ -66,6 +67,7 @@ export function useResolvedPreview(
           project: target.project,
           doc: target.doc ?? "",
           drive: target.drive,
+          home: target.home,
           signal: ac.signal,
         });
         if (cancelled) return;
@@ -92,7 +94,7 @@ export function useResolvedPreview(
       ac.abort();
       unsubscribe();
     };
-  }, [target?.project, target?.doc, target?.drive]);
+  }, [target?.project, target?.doc, target?.drive, target?.home]);
 
   /* Auto-start: when we land on `project-stopped` for a target we haven't
    * started yet, fire POST /start. The server is idempotent and the SSE
@@ -109,6 +111,7 @@ export function useResolvedPreview(
       return;
     }
     if (state.kind !== "project-stopped") return;
+    if (!autoStart) return;
     if (autoStartedFor.current === target.project) return;
 
     autoStartedFor.current = target.project;
@@ -119,7 +122,7 @@ export function useResolvedPreview(
       },
     );
     return () => ac.abort();
-  }, [state.kind, target?.project]);
+  }, [state.kind, target?.project, autoStart]);
 
   return state;
 }

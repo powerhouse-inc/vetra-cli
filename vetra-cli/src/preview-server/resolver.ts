@@ -3,6 +3,10 @@
  * extracted from its chat history, return the live preview URL or a state
  * code the editor can render.
  *
+ * `home` (no doc, no drive) asks for the project's preview drive root — the
+ * Connect drive view the Studio shows from the moment the project's preview
+ * is up until the agent first shares a screen.
+ *
  * Read-only. Never mutates ServiceManager state. The `/start` handler is the
  * sole mutator.
  */
@@ -23,10 +27,12 @@ export async function resolvePreview(args: {
   project: string;
   doc: string;
   drive?: string;
+  /** No doc or drive: the preview drive's root (see the module comment). */
+  home?: boolean;
   proxyPublicUrl?: string;
 }): Promise<ResolveResult> {
   if (!args.project) return { kind: "no-target" };
-  if (!args.drive && !args.doc) return { kind: "no-target" };
+  if (!args.drive && !args.doc && !args.home) return { kind: "no-target" };
 
   let projectPath: string;
   try {
@@ -87,13 +93,16 @@ export async function resolvePreview(args: {
     };
   }
 
-  const docPath = buildPreviewDocPath(defaultDriveId, args.doc);
+  // The preview drive is Connect's own drive: no remote URL to register.
+  const docPath = args.doc
+    ? buildPreviewDocPath(defaultDriveId, args.doc)
+    : buildPreviewDriveRootPath(defaultDriveId);
   return {
     kind: "ready",
     project: args.project,
     projectPath,
     driveId: defaultDriveId,
-    documentId: args.doc,
+    documentId: args.doc || defaultDriveId,
     url: `${base}${docPath}`,
     proxiedUrl: `${REACTOR_PROJECT_CONNECT_PROXY_PATH}${docPath}`,
   };

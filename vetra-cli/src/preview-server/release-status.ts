@@ -49,7 +49,9 @@ export async function checkReleaseStatus(opts: {
 
   let projectPath: string;
   try {
-    projectPath = await resolveReactorProjectPath(workdir, project);
+    projectPath = await resolveReactorProjectPath(workdir, project, {
+      soleProjectDefault: false,
+    });
   } catch (err) {
     return { kind: "unknown-project", project, error: message(err) };
   }

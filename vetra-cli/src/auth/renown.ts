@@ -57,10 +57,37 @@ function entryFor(workdir: string, renownUrl: string): CloudAuthEntry {
   return entry;
 }
 
+let requireAdminOverride: boolean | undefined;
+
+/** Whether the agent's identity must be an ADMINS wallet: in a cloud Studio
+ * (VETRA_ENVIRONMENT_ID / `config.environmentId`), unless set explicitly. */
+export function requireAdminIdentity(): boolean {
+  return requireAdminOverride ?? Boolean(process.env.VETRA_ENVIRONMENT_ID?.trim());
+}
+
+/** Set by the daemon from `config.environmentId` (undefined: env fallback). */
+export function setRequireAdminIdentity(required: boolean | undefined): void {
+  requireAdminOverride = required;
+}
+
+/** The entry's Renown, with the owner rule applied on every read: in a cloud
+ * Studio a stored credential for a non-ADMINS wallet (e.g. one stored before
+ * the rule existed) is cleared, so the agent reads as signed out. */
+async function ownedRenown(entry: CloudAuthEntry): Promise<IRenown> {
+  const renown = await entry.renown;
+  const user = renown.user;
+  if (user && requireAdminIdentity() && !isAdminAddress(user.address, process.env.ADMINS)) {
+    entry.pending = undefined;
+    await renown.logout();
+  }
+  return renown;
+}
+
 /** The workdir's Renown instance (builds + caches on first use). The CLI's DID
- * is stable across calls. */
+ * is stable across calls. In a cloud Studio a non-owner credential is cleared
+ * first (see `ownedRenown`). */
 export function getRenown(workdir: string, renownUrl: string): Promise<IRenown> {
-  return entryFor(workdir, renownUrl).renown;
+  return ownedRenown(entryFor(workdir, renownUrl));
 }
 
 /** Snapshot of the workdir's Renown auth, including any in-flight login the
@@ -70,6 +97,8 @@ export interface AuthState {
   address?: string;
   /** Set while a console login is awaiting browser approval. */
   pending?: { loginUrl: string };
+  /** Why the last login was refused (e.g. `not-owner`). */
+  error?: string;
 }
 
 /** Begin a console login: build the approval URL, open the browser on the host
@@ -81,7 +110,7 @@ export async function startAuth(
   renownUrl: string,
 ): Promise<AuthState> {
   const entry = entryFor(workdir, renownUrl);
-  const renown = await entry.renown;
+  const renown = await ownedRenown(entry);
   if (renown.user) {
     return { authenticated: true, address: renown.user.address };
   }
@@ -96,7 +125,7 @@ export async function getAuthState(
   renownUrl: string,
 ): Promise<AuthState> {
   const entry = entryFor(workdir, renownUrl);
-  const renown = await entry.renown;
+  const renown = await ownedRenown(entry);
   if (renown.user) {
     return { authenticated: true, address: renown.user.address };
   }
@@ -106,7 +135,8 @@ export async function getAuthState(
   };
 }
 
-// Is `address` in the ADMINS allowlist? Case-insensitive; empty/unset
+// Is `address` in the ADMINS allowlist (the Studio owner gate,
+// preview-server/request-auth.ts)? Case-insensitive; empty/unset
 // allowlist matches nothing (comma- or whitespace-separated wallet addresses).
 export function isAdminAddress(
   address: string | undefined,
@@ -118,16 +148,6 @@ export function isAdminAddress(
     .map((a) => a.trim().toLowerCase())
     .filter(Boolean);
   return admins.includes(address.toLowerCase());
-}
-
-/** Owner gate for the export endpoints: the daemon must be authorized as a
- * Renown identity whose wallet is in the pod's `ADMINS` allowlist. */
-export async function isAuthorizedAdmin(
-  workdir: string,
-  renownUrl: string,
-): Promise<boolean> {
-  const state = await getAuthState(workdir, renownUrl);
-  return state.authenticated && isAdminAddress(state.address, process.env.ADMINS);
 }
 
 // Re-read after an await: TS keeps the earlier `!renown.user` narrowing.
@@ -142,12 +162,23 @@ export async function confirmAuth(
   workdir: string,
   renownUrl: string,
   timeoutMs: number,
+  opts: { requireAdmin?: boolean } = {},
 ): Promise<AuthState> {
   const entry = entryFor(workdir, renownUrl);
-  const renown = await entry.renown;
-  if (renown.user) {
-    return { authenticated: true, address: renown.user.address };
-  }
+  const renown = await ownedRenown(entry);
+  // Cloud Studio: the agent may only hold the owner's (ADMINS) delegation. A
+  // login approved with any other wallet is logged out at once, so an
+  // attacker-approved console login can't become the agent's identity.
+  const settle = async (address: string): Promise<AuthState> => {
+    const requireAdmin = opts.requireAdmin ?? requireAdminIdentity();
+    if (requireAdmin && !isAdminAddress(address, process.env.ADMINS)) {
+      entry.pending = undefined;
+      await renown.logout();
+      return { authenticated: false, error: "not-owner" };
+    }
+    return { authenticated: true, address };
+  };
+  if (renown.user) return settle(renown.user.address);
   const pending = entry.pending;
   if (!pending) {
     return { authenticated: false };
@@ -155,14 +186,12 @@ export async function confirmAuth(
   const result = await pollLogin(renown, pending.sessionId, timeoutMs);
   if (result.status === "ready") {
     if (entry.pending === pending) entry.pending = undefined;
-    return { authenticated: true, address: result.user.address };
+    return settle(result.user.address);
   }
   // Concurrent confirms (several studio hooks poll at once): another call may
   // have completed this login, and cleared `entry.pending`, while we polled.
   const user = currentUser(renown);
-  if (user) {
-    return { authenticated: true, address: user.address };
-  }
+  if (user) return settle(user.address);
   const current = entry.pending ?? pending;
   return { authenticated: false, pending: { loginUrl: current.loginUrl } };
 }
@@ -174,7 +203,7 @@ export async function logoutAuth(
   renownUrl: string,
 ): Promise<AuthState> {
   const entry = entryFor(workdir, renownUrl);
-  const renown = await entry.renown;
+  const renown = await ownedRenown(entry);
   entry.pending = undefined;
   if (renown.user) await renown.logout();
   return { authenticated: false };

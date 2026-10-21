@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
-import { projectInputSchema, resolveSpecBasePath } from "../../helpers/project.js";
+import { projectInputSchema } from "../../helpers/project.js";
 import {
   actionInputSchema,
   enrichActionValidationError,
   loadByName,
   normalizeSpecActions,
   resolveActionsInput,
+  resolveNamedSpecBase,
 } from "./_helpers.js";
 import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
 import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
@@ -48,7 +49,7 @@ export const specUpdate = defineCommand({
   execute: async (input, context) => {
     const { workdir } = context;
     // Workspace-root product specs are reachable without a reactor project.
-    const { base } = await resolveSpecBasePath(workdir, input.project, true);
+    const base = await resolveNamedSpecBase(workdir, input.project, input.name);
     const doc = await loadByName(base, input.name);
     const { actions, minted } = normalizeSpecActions(
       doc,

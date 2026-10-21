@@ -22,6 +22,9 @@ export interface PreviewTarget {
   project: string;
   doc?: string;
   drive?: string;
+  /** The project's preview drive root (Connect's drive view): shown once
+   *  the project is up, until the agent shares a screen. */
+  home?: true;
   /** toolCallId of the spec-preview-show that produced this target — lets
    * consumers tell a NEW show apart from the same one re-rendered, even when
    * project/doc are unchanged. */
@@ -30,6 +33,8 @@ export interface PreviewTarget {
 
 interface ShowToolResultData {
   data?: {
+    /** The project label (newer CLIs; the call may leave `project` out). */
+    project?: string;
     projectPath?: string;
     driveId?: string;
     documentId?: string | null;
@@ -77,7 +82,7 @@ export function extractPreviewTarget(
 
       if (data?.data?.kind === "drive" && data?.data?.driveId) {
         const call = findToolCall(messages, part.toolCallId);
-        const project = call?.project;
+        const project = call?.project || data.data.project;
         if (!project) continue;
         return { project, drive: data.data.driveId, callId: part.toolCallId };
       }
@@ -86,7 +91,7 @@ export function extractPreviewTarget(
       if (!doc) continue;
 
       const call = findToolCall(messages, part.toolCallId);
-      const project = call?.project;
+      const project = call?.project || data?.data?.project;
       if (!project) continue;
 
       return { project, doc, callId: part.toolCallId };
@@ -95,17 +100,74 @@ export function extractPreviewTarget(
   return undefined;
 }
 
+const START_TOOL_NAME = "reactor-project-start";
+
+interface StartToolResult {
+  text?: string;
+  /** Newer CLIs: the project label, also when the call left `workdir` out. */
+  data?: { project?: string };
+}
+
+/**
+ * The project the agent started (the latest `reactor-project-start` that
+ * didn't fail), as a `home` target: the pane shows the project's Connect
+ * drive view as soon as its preview is up, instead of waiting for the first
+ * `spec-preview-show`. Undefined when no start succeeded or its project is
+ * unknown.
+ */
+export function extractProjectHomeTarget(
+  session: ChatSessionDocument | undefined,
+): PreviewTarget | undefined {
+  if (!session) return undefined;
+  const messages = session.state.global.messages;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    for (let j = msg.content.length - 1; j >= 0; j--) {
+      const part = msg.content[j];
+      if (part.type !== "TOOL_RESULT") continue;
+      if (part.toolName !== START_TOOL_NAME) continue;
+      if (part.isError || !part.toolCallId || !part.result) continue;
+      const result = safeParse<StartToolResult>(part.result);
+      // The start command reports a failed start as text, not as an error.
+      const text = result ? result.text : part.result;
+      if (text?.trimStart().startsWith("✗")) continue;
+      const args = findToolCallArgs<{ workdir?: string }>(
+        messages,
+        part.toolCallId,
+      );
+      const project = result?.data?.project || args?.workdir;
+      if (!project) continue;
+      return { project, home: true, callId: part.toolCallId };
+    }
+  }
+  return undefined;
+}
+
+/** The pane's home target, memoised on the session state. */
+export function useProjectHomeTarget(
+  session: ChatSessionDocument | undefined,
+): PreviewTarget | undefined {
+  return useMemo(() => extractProjectHomeTarget(session), [session?.state]);
+}
+
 function findToolCall(
   messages: ChatSessionDocument["state"]["global"]["messages"],
   toolCallId: string,
 ): ShowToolCallArgs | undefined {
+  return findToolCallArgs<ShowToolCallArgs>(messages, toolCallId);
+}
+
+function findToolCallArgs<T>(
+  messages: ChatSessionDocument["state"]["global"]["messages"],
+  toolCallId: string,
+): T | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     for (const part of msg.content) {
       if (part.type !== "TOOL_CALL") continue;
       if (part.toolCallId !== toolCallId) continue;
       if (!part.args) return undefined;
-      return safeParse<ShowToolCallArgs>(part.args);
+      return safeParse<T>(part.args);
     }
   }
   return undefined;

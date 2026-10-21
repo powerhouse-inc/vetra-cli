@@ -86,7 +86,10 @@ requires auth and the agent isn't authorized, the result is reported as
 "unknown" rather than guessed.`,
   inputSchema,
   execute: async ({ name, version, registry }, { workdir, config }) => {
-    const projectPath = await resolveReactorProjectPath(workdir, name);
+    // Publishing names its project: no one-project default.
+    const projectPath = await resolveReactorProjectPath(workdir, name, {
+      soleProjectDefault: false,
+    });
     const packageJsonPath = path.join(projectPath, 'package.json');
     if (!fs.existsSync(packageJsonPath)) {
       return {

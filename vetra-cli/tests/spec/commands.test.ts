@@ -9,7 +9,12 @@ import { specDelete } from "../../src/commands/spec/delete.js";
 import { specGenerate } from "../../src/commands/spec/generate.js";
 import { specGet } from "../../src/commands/spec/get.js";
 import { specList } from "../../src/commands/spec/list.js";
-import { enumValues, specSchema } from "../../src/commands/spec/schema.js";
+import {
+  ACTION_REFERENCE_MAX_CHARS,
+  actionReference,
+  enumValues,
+  specSchema,
+} from "../../src/commands/spec/schema.js";
 import { specSchemaList } from "../../src/commands/spec/schema-list.js";
 import { specUpdate } from "../../src/commands/spec/update.js";
 import { makeCtx, makeWorkdir } from "./_fixtures.js";
@@ -141,6 +146,53 @@ describe("spec-create", () => {
     expect(result.text).toContain(workdir);
     const list = await specList.execute({}, makeCtx(workdir));
     expect(list.text).toMatch(/Persisted/);
+  });
+
+  it("lists the type's action shapes so spec-update needs no spec-schema call", async () => {
+    const result = await specCreate.execute(
+      { type: "powerhouse/document-editor", name: "Board Editor", dryRun: false },
+      makeCtx(workdir),
+    );
+    expect(result.text).toContain(
+      "Actions of powerhouse/document-editor (spec-update input shapes",
+    );
+    expect(result.text).toContain(
+      "  ADD_DOCUMENT_TYPE: input AddDocumentTypeInput { id: OID! documentType: String! }",
+    );
+    expect(result.text).toMatch(/Enum values:\n {2}StatusType: /);
+    // The created path stays on the second line.
+    expect(result.text.split("\n")[1]).toMatch(/board-editor\.editor\.phd$/);
+  });
+
+  it("product specs come without the action listing (Plan's token budget)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vetra-noreactor-"));
+    try {
+      const result = await specCreate.execute(
+        { type: PRODUCT_TYPE, name: "Lean Feature", dryRun: true },
+        makeCtx(dir),
+      );
+      expect(result.text).toMatch(/^Created powerhouse\/feature "Lean Feature"/);
+      expect(result.text).not.toContain("Actions of");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    const model = await specCreate.execute(
+      { type: DOC_TYPE, name: "Model", dryRun: true },
+      makeCtx(workdir),
+    );
+    expect(model.text).toContain("Actions of powerhouse/document-model");
+    expect(model.text.length).toBeLessThan(ACTION_REFERENCE_MAX_CHARS + 600);
+  });
+
+  it("caps the action listing, naming the actions left out", () => {
+    const full = actionReference(DOC_TYPE);
+    expect(full).not.toContain(" more: ");
+    const capped = actionReference(DOC_TYPE, { maxChars: 400 });
+    const [, ...lines] = capped.split("\n");
+    const listed = lines.filter((l) => /^ {2}[A-Z_]+: /.test(l));
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.join("\n").length).toBeLessThanOrEqual(400);
+    expect(capped).toMatch(/ {2}… \d+ more: [A-Z_, ]+ — spec-schema --type powerhouse\/document-model --action [A-Z_,]+/);
   });
 
   it("does not persist when --dryRun is set", async () => {
@@ -621,6 +673,53 @@ describe("spec-schema", () => {
     );
   });
 
+  it("--action implies --type when only one type has the action", async () => {
+    const result = await specSchema.execute(
+      { type: "", action: "SET_EDITOR_STATUS", state: false, full: false },
+      makeCtx(workdir),
+    );
+    expect(result.text).toMatch(/^input SetEditorStatusInput/);
+    expect(result.text).toMatch(/Enum values:\n {2}StatusType: /);
+    // Types that disagree on the input: every variant, in one answer.
+    const shared = await specSchema.execute(
+      { type: "", action: "ADD_DOCUMENT_TYPE", state: false, full: false },
+      makeCtx(workdir),
+    );
+    expect(shared.text).toContain("the input differs by type");
+    expect(shared.text).toMatch(
+      /powerhouse\/document-editor, powerhouse\/processor:\n {2}ADD_DOCUMENT_TYPE: input AddDocumentTypeInput \{ id: OID! documentType: String! \}/,
+    );
+    expect(shared.text).toMatch(
+      /powerhouse\/app:\n {2}ADD_DOCUMENT_TYPE: input AddDocumentTypeInput \{ documentType: String! \}/,
+    );
+    // Without an action the type is still needed, and the error lists the
+    // valid ones inline (no extra spec-schema-list call).
+    await expect(
+      specSchema.execute({ type: "", state: false, full: false }, makeCtx(workdir)),
+    ).rejects.toThrow(/Missing required option --type\.\nValid types: .*powerhouse\/document-editor/);
+  });
+
+  it("--action takes several comma-separated actions in one call", async () => {
+    const result = await specSchema.execute(
+      {
+        type: "powerhouse/document-editor",
+        action: "SET_EDITOR_NAME, SET_EDITOR_STATUS",
+        state: false,
+        full: false,
+      },
+      makeCtx(workdir),
+    );
+    expect(result.text).toContain("input SetEditorNameInput");
+    expect(result.text).toContain("input SetEditorStatusInput");
+    expect(result.text).toMatch(/Enum values:\n {2}StatusType: /);
+    await expect(
+      specSchema.execute(
+        { type: "powerhouse/document-editor", action: "SET_EDITOR_NAME,NOPE", state: false, full: false },
+        makeCtx(workdir),
+      ),
+    ).rejects.toThrow(/Unknown action "NOPE"/);
+  });
+
   it("--state returns the GraphQL state schema", async () => {
     const result = await specSchema.execute(
       { type: DOC_TYPE, state: true },
@@ -679,6 +778,42 @@ describe("workspace-level product specs (non-reactor workdir)", () => {
     dir = mkdtempSync(join(tmpdir(), "vetra-noreactor-"));
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("a project spec named without its project resolves in the only project", async () => {
+    const project = join(dir, "todo-list");
+    mkdirSync(join(project, "node_modules"), { recursive: true });
+    writeFileSync(join(project, "powerhouse.config.json"), "{}\n");
+    // No `project`: the editor spec goes to the only project …
+    const created = await specCreate.execute(
+      { type: "powerhouse/document-editor", name: "Todo Editor", dryRun: false },
+      makeCtx(dir),
+    );
+    expect(created.text).toContain(join(project, "specs"));
+    // … and get/update find it there without naming the project either.
+    const updated = await specUpdate.execute(
+      {
+        name: "Todo Editor",
+        actions: [{ type: "SET_EDITOR_NAME", input: { name: "Todo Board" } }],
+      },
+      makeCtx(dir),
+    );
+    expect(updated.text).not.toMatch(/Unknown spec/);
+    const got = await specGet.execute(
+      { name: "Todo Editor", full: false, latest: false },
+      makeCtx(dir),
+    );
+    expect(got.text).toMatch(/powerhouse\/document-editor "Todo Editor"/);
+    // A root product spec of the same workspace still resolves at the root.
+    await specCreate.execute(
+      { type: PRODUCT_TYPE, name: "RootFeature", dryRun: false },
+      makeCtx(dir),
+    );
+    const root = await specGet.execute(
+      { name: "RootFeature", full: false, latest: false },
+      makeCtx(dir),
+    );
+    expect(root.text).toMatch(/RootFeature/);
+  });
 
   it("spec-get and spec-delete reach a root product spec", async () => {
     await specCreate.execute(

@@ -1,8 +1,13 @@
 import { z } from "zod";
 import { defineCommand } from "../../framework.js";
-import { projectInputSchema, resolveSpecBasePath } from "../../helpers/project.js";
+import { projectInputSchema } from "../../helpers/project.js";
 import { DOCUMENT_MODEL_TYPE } from "./document-model.js";
-import { formatSchema, loadByName, renderProjected } from "./_helpers.js";
+import {
+  formatSchema,
+  loadByName,
+  renderProjected,
+  resolveNamedSpecBase,
+} from "./_helpers.js";
 
 /* Narrow a doc's state down to its latest specification entry. Only doc-model
  * specs have a versioned `specifications` array on state.global; for other doc
@@ -87,7 +92,7 @@ export const specGet = defineCommand({
   }),
   execute: async (input, { workdir }) => {
     // Workspace-root product specs are reachable without a reactor project.
-    const { base } = await resolveSpecBasePath(workdir, input.project, true);
+    const base = await resolveNamedSpecBase(workdir, input.project, input.name);
     const doc = await loadByName(base, input.name);
 
     if (!input.full && !input.filter && !input.latest) {

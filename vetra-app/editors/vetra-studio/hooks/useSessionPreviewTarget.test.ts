@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
-import { extractPreviewTarget } from "./useSessionPreviewTarget.js";
+import {
+  extractPreviewTarget,
+  extractProjectHomeTarget,
+} from "./useSessionPreviewTarget.js";
 
 type Message = ChatSessionDocument["state"]["global"]["messages"][number];
 type ContentPart = Message["content"][number];
@@ -241,5 +244,108 @@ describe("extractPreviewTarget", () => {
       ]),
     ]);
     expect(extractPreviewTarget(session)).toBeUndefined();
+  });
+});
+
+describe("extractPreviewTarget without the call's project", () => {
+  it("takes the project from the result (the workspace's only project)", () => {
+    const session = makeSession([
+      msg("ASSISTANT", [showCall("c1", { name: "Bench Day" })]),
+      msg("TOOL", [
+        showResult("c1", {
+          project: "workout-tracker",
+          projectPath: "/abs/workout-tracker",
+          documentId: "doc-7",
+          documentSlug: "bench-day",
+        }),
+      ]),
+    ]);
+    expect(extractPreviewTarget(session)).toEqual({
+      project: "workout-tracker",
+      doc: "bench-day",
+      callId: "c1",
+    });
+  });
+});
+
+function startCall(
+  toolCallId: string,
+  args: Record<string, unknown>,
+): ContentPart {
+  return part({
+    id: `call-${toolCallId}`,
+    type: "TOOL_CALL",
+    toolCallId,
+    toolName: "reactor-project-start",
+    args: JSON.stringify(args),
+  });
+}
+
+function startResult(
+  toolCallId: string,
+  result: Record<string, unknown> | string,
+  opts?: { isError?: boolean },
+): ContentPart {
+  return part({
+    id: `res-${toolCallId}`,
+    type: "TOOL_RESULT",
+    toolCallId,
+    toolName: "reactor-project-start",
+    result: typeof result === "string" ? result : JSON.stringify(result),
+    isError: opts?.isError ?? false,
+  });
+}
+
+describe("extractProjectHomeTarget", () => {
+  it("is undefined before the project is started", () => {
+    expect(extractProjectHomeTarget(undefined)).toBeUndefined();
+    expect(extractProjectHomeTarget(makeSession([]))).toBeUndefined();
+  });
+
+  it("is the started project's home, from the result or the call's workdir", () => {
+    const fromResult = makeSession([
+      msg("ASSISTANT", [startCall("s1", {})]),
+      msg("TOOL", [
+        startResult("s1", {
+          text: "reactor-project ready",
+          data: { project: "todo-list" },
+        }),
+      ]),
+    ]);
+    expect(extractProjectHomeTarget(fromResult)).toEqual({
+      project: "todo-list",
+      home: true,
+      callId: "s1",
+    });
+    const fromArgs = makeSession([
+      msg("ASSISTANT", [startCall("s2", { workdir: "todo-list" })]),
+      msg("TOOL", [startResult("s2", { text: "reactor-project starting" })]),
+    ]);
+    expect(extractProjectHomeTarget(fromArgs)?.project).toBe("todo-list");
+  });
+
+  it("skips failed starts and falls back to an earlier good one", () => {
+    const session = makeSession([
+      msg("ASSISTANT", [startCall("s1", { workdir: "todo-list" })]),
+      msg("TOOL", [startResult("s1", { text: "ready" })]),
+      msg("ASSISTANT", [startCall("s2", { workdir: "other" })]),
+      msg("TOOL", [
+        startResult("s2", { text: "✗ reactor-project: port in use" }),
+      ]),
+      msg("ASSISTANT", [startCall("s3", { workdir: "third" })]),
+      msg("TOOL", [startResult("s3", "boom", { isError: true })]),
+    ]);
+    expect(extractProjectHomeTarget(session)).toMatchObject({
+      project: "todo-list",
+      callId: "s1",
+    });
+  });
+
+  it("is undefined when the project can't be told", () => {
+    const session = makeSession([
+      msg("ASSISTANT", [startCall("s1", {})]),
+      msg("TOOL", [startResult("s1", { text: "ready" })]),
+    ]);
+    expect(extractProjectHomeTarget(session)).toBeUndefined();
   });
 });

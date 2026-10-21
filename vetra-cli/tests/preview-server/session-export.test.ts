@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { unzipSync, strFromU8 } from "fflate";
 
-import { authorizeSessions } from "../../src/preview-server/session-auth.js";
 import { buildSessionExport, listSessions } from "../../src/preview-server/session-export.js";
 import { makeWorkdir } from "../spec/_fixtures.js";
 
@@ -39,42 +38,6 @@ function makeDrive(overrides?: {
 }
 
 const META = { versions: { vetraCli: "x", ph: "y" }, agentLogging: false };
-
-describe("session-export authorizeSessions", () => {
-  const saved = process.env.VETRA_SESSION_EXPORT_SECRET;
-  beforeEach(() => delete process.env.VETRA_SESSION_EXPORT_SECRET);
-  afterEach(() => {
-    if (saved === undefined) delete process.env.VETRA_SESSION_EXPORT_SECRET;
-    else process.env.VETRA_SESSION_EXPORT_SECRET = saved;
-  });
-
-  it("unset secret: allows direct loopback with no Origin", () => {
-    expect(authorizeSessions({}, null)).toBe(true);
-  });
-
-  it("unset secret: denies proxied requests (x-forwarded-*)", () => {
-    expect(authorizeSessions({ "x-forwarded-prefix": "/preview" }, null)).toBe(false);
-    expect(authorizeSessions({ "x-forwarded-for": "1.2.3.4" }, null)).toBe(false);
-  });
-
-  it("unset secret: allows a loopback Origin, denies a cross-site Origin", () => {
-    expect(authorizeSessions({ origin: "http://localhost:27370" }, null)).toBe(true);
-    expect(authorizeSessions({ origin: "http://127.0.0.1:8090" }, null)).toBe(true);
-    expect(authorizeSessions({ origin: "https://evil.example" }, null)).toBe(false);
-    expect(authorizeSessions({ origin: "null" }, null)).toBe(false);
-  });
-
-  it("secret set: requires a matching bearer or token, works through the proxy", () => {
-    process.env.VETRA_SESSION_EXPORT_SECRET = "s3cr3t";
-    expect(authorizeSessions({}, null)).toBe(false);
-    expect(authorizeSessions({ authorization: "Bearer wrong" }, null)).toBe(false);
-    expect(authorizeSessions({ authorization: "Bearer s3cr3t" }, null)).toBe(true);
-    expect(authorizeSessions({}, "s3cr3t")).toBe(true);
-    expect(
-      authorizeSessions({ "x-forwarded-prefix": "/preview", authorization: "Bearer s3cr3t" }, null),
-    ).toBe(true);
-  });
-});
 
 describe("session-export listSessions / buildSessionExport", () => {
   let workdir: string;

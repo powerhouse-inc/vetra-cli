@@ -6,7 +6,7 @@ import {
   formatSchema,
   renderProjected,
 } from "./_helpers.js";
-import { getSpecSchema } from "./registry.js";
+import { getSpecSchema, listSpecTypes } from "./registry.js";
 
 /* `--action` and `--state` always read from `specifications.at(-1)` (the
  * version the reducer is currently against). `--filter` is applied to the
@@ -67,9 +67,134 @@ type LatestSpec = {
   state?: { global?: { schema?: string | null }; local?: { schema?: string | null } };
   modules?: ReadonlyArray<{
     name?: string | null;
-    operations?: ReadonlyArray<{ name?: string | null }>;
+    operations?: ReadonlyArray<{ name?: string | null; schema?: string | null }>;
   }>;
 };
+
+function latestOf(type: string): LatestSpec | undefined {
+  return (getSpecSchema(type).specifications as LatestSpec[]).at(-1);
+}
+
+function actionNames(latest: LatestSpec | undefined): string[] {
+  return (latest?.modules ?? []).flatMap((m) =>
+    (m.operations ?? [])
+      .map((o) => o.name)
+      .filter((n): n is string => typeof n === "string"),
+  );
+}
+
+/** The `--action` value as names: one, or several comma-separated. */
+export function splitActions(action: string | undefined): string[] {
+  return (action ?? "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter(Boolean);
+}
+
+/** Every spec type whose latest spec defines all of `actions`, with their inputs. */
+function actionOwners(
+  actions: readonly string[],
+): { type: string; inputs: string[] }[] {
+  return listSpecTypes().flatMap((type) => {
+    const ops = (latestOf(type)?.modules ?? []).flatMap((m) => m.operations ?? []);
+    const inputs: string[] = [];
+    for (const action of actions) {
+      const op = ops.find((o) => o.name === action);
+      if (!op) return [];
+      inputs.push(compactSdl(op.schema ?? ""));
+    }
+    return [{ type, inputs }];
+  });
+}
+
+/**
+ * `--action` without `--type` (staging: the agent left it out and re-ran the
+ * call). One type has the action(s), or all that do take the same inputs →
+ * that type. Types disagree (the editor's ADD_DOCUMENT_TYPE takes an id, the
+ * app's doesn't) → every variant with its types, so one call still answers.
+ * No type has them → null.
+ */
+export function resolveActionType(
+  actions: readonly string[],
+): { type: string } | { variants: string } | null {
+  const owners = actionOwners(actions);
+  if (owners.length === 0) return null;
+  const key = (o: { inputs: string[] }) => JSON.stringify(o.inputs);
+  if (owners.every((o) => key(o) === key(owners[0]))) {
+    return { type: owners[0].type };
+  }
+  const groups = new Map<string, { types: string[]; inputs: string[] }>();
+  for (const o of owners) {
+    const group = groups.get(key(o)) ?? { types: [], inputs: o.inputs };
+    group.types.push(o.type);
+    groups.set(key(o), group);
+  }
+  const lines = [
+    `${actions.join(", ")}: the input differs by type — pass --type for one.`,
+  ];
+  for (const { types, inputs } of groups.values()) {
+    lines.push(`${types.join(", ")}:`);
+    inputs.forEach((input, i) => lines.push(`  ${actions[i]}: ${input}`));
+  }
+  return { variants: lines.join("\n") };
+}
+
+/** Cap on the spec-create action reference (~1k tokens): the full
+ * document-model listing (~3.8k chars) fits. */
+export const ACTION_REFERENCE_MAX_CHARS = 4_000;
+
+/** An action's input SDL on one line, descriptions and comments dropped. */
+function compactSdl(sdl: string): string {
+  return sdl
+    .replace(/"""[^]*?"""/g, " ")
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, " ")
+    .replace(/#[^\n]*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Every action of `type` with its input shape, one per line, plus the state
+ * enums they use — appended to `spec-create` so the agent has the shapes for
+ * its `spec-update` calls without a `spec-schema` call per action.
+ */
+export function actionReference(
+  type: string,
+  { maxChars = ACTION_REFERENCE_MAX_CHARS }: { maxChars?: number } = {},
+): string {
+  const latest = latestOf(type);
+  const entries: { name: string; sdl: string }[] = [];
+  for (const mod of latest?.modules ?? []) {
+    for (const op of mod.operations ?? []) {
+      if (op.name) entries.push({ name: op.name, sdl: compactSdl(op.schema ?? "") });
+    }
+  }
+  if (entries.length === 0) return "";
+  const head = `Actions of ${type} (spec-update input shapes — no spec-schema call needed):`;
+  // Keep whole lines within the cap; name the rest so they can be looked up
+  // in one batched spec-schema call.
+  const lines: string[] = [];
+  const shown: string[] = [];
+  let size = head.length;
+  let cut = entries.length;
+  for (const [i, { name, sdl }] of entries.entries()) {
+    const line = `  ${name}: ${sdl || "(no input)"}`;
+    if (size + line.length + 1 > maxChars) {
+      cut = i;
+      break;
+    }
+    lines.push(line);
+    shown.push(sdl);
+    size += line.length + 1;
+  }
+  const rest = entries.slice(cut).map((e) => e.name);
+  if (rest.length > 0) {
+    lines.push(
+      `  … ${rest.length} more: ${rest.join(", ")} — spec-schema --type ${type} --action ${rest.slice(0, 3).join(",")}`,
+    );
+  }
+  return [head, ...lines].join("\n") + referencedEnums(shown.join("\n"), latest);
+}
 
 function buildSummary(type: string, schema: { specifications: LatestSpec[] }) {
   const specs = schema.specifications;
@@ -128,7 +253,7 @@ export const specSchema = defineCommand({
       .string()
       .optional()
       .describe(
-        'Shortcut: return only the GraphQL input type for the named operation (e.g. "SET_MODEL_NAME"), followed by the values of every enum it uses. Mutually exclusive with --filter / --state.',
+        'Shortcut: return only the GraphQL input type for the named operation (e.g. "SET_MODEL_NAME"), followed by the values of every enum it uses. Several comma-separated names ("ADD_MODULE,ADD_OPERATION") return them all in one call. Implies --type when only one type has the action(s). Mutually exclusive with --filter / --state.',
       ),
     state: z
       .boolean()
@@ -150,42 +275,47 @@ export const specSchema = defineCommand({
       );
     }
 
-    requireOption(input.type, "type", "Run `spec-schema-list` to see valid types.");
-    assertKnownDocumentType(input.type);
-    const schema = getSpecSchema(input.type);
+    const actions = splitActions(input.action);
+    let type = input.type;
+    if (!type && actions.length > 0) {
+      const resolved = resolveActionType(actions);
+      if (resolved && "variants" in resolved) return { text: resolved.variants };
+      type = resolved?.type ?? "";
+    }
+    requireOption(type, "type", `Valid types: ${listSpecTypes().join(", ")}`);
+    assertKnownDocumentType(type);
+    const schema = getSpecSchema(type);
     const latest = schema.specifications.at(-1);
-    const summary = buildSummary(input.type, schema);
+    const summary = buildSummary(type, schema);
 
     const sliced = input.filter || input.action || input.state;
     if (!input.full && !sliced) {
       const sample = pickSampleNames(latest);
       return {
-        text: `${summary}\n\n${buildNextSteps(input.type, sample)}`,
+        text: `${summary}\n\n${buildNextSteps(type, sample)}`,
       };
     }
 
     let filter = input.filter;
-    if (input.action) {
-      const validNames = (latest?.modules ?? []).flatMap((m) =>
-        (m.operations ?? [])
-          .map((o) => o.name)
-          .filter((n): n is string => typeof n === "string"),
-      );
-      if (!validNames.includes(input.action)) {
+    if (actions.length > 0) {
+      const validNames = actionNames(latest);
+      const unknown = actions.find((a) => !validNames.includes(a));
+      if (unknown) {
         /* Schemas can have dozens of actions; dumping them all drowns out the
          * "Did you mean" line. Above the inline cap, point at the discovery
          * command instead. */
         throw unknownValueError({
           subject: "action",
-          value: input.action,
-          context: `for ${input.type}`,
+          value: unknown,
+          context: `for ${type}`,
           candidates: validNames,
           knownLabel: "Valid action types",
           inlineLimit: 12,
-          overflowHint: `Run \`spec-schema --type ${input.type}\` to explore the schema.`,
+          overflowHint: `Run \`spec-schema --type ${type}\` to explore the schema.`,
         });
       }
-      filter = `$.specifications[(@.length-1)].modules[*].operations[?(@.name=='${input.action}')].schema`;
+      const match = actions.map((a) => `@.name=='${a}'`).join(" || ");
+      filter = `$.specifications[(@.length-1)].modules[*].operations[?(${match})].schema`;
     } else if (input.state) {
       filter = "$.specifications[(@.length-1)].state.global.schema";
     }
