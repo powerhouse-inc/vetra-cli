@@ -2,11 +2,12 @@
  * Whether the visitor may start a build now (spec §5.3). A Studio running in
  * the cloud (its config names its own Studio id) needs a Renown sign-in
  * before Build it; a Studio running on the customer's own machine has no
- * sign-in step, so it counts as signed in.
+ * sign-in step, so it counts as signed in. When the config can't be read,
+ * a page served from a cloud Studio host still needs sign-in (fails closed).
  */
 import { useRenownAuth } from "@powerhousedao/reactor-browser";
 import { useEffect, useState } from "react";
-import { resolveStudioEnvironmentId } from "../hooks/preview-server-client.js";
+import { resolveStudioConfigLoad } from "../hooks/preview-server-client.js";
 
 export type StudioSignInStatus = "checking" | "signed-in" | "signed-out";
 
@@ -21,6 +22,24 @@ export type StudioSignIn = {
 };
 
 type AuthStatus = ReturnType<typeof useRenownAuth>["status"];
+
+/** Hosts the cloud serves Studios from (every stack). */
+export function isCloudStudioHost(hostname: string): boolean {
+  return hostname.toLowerCase().endsWith(".vetra.io");
+}
+
+/** Whether Build it needs a sign-in first on this page. */
+export async function resolveSignInRequired(
+  hostname: string = window.location.hostname,
+): Promise<boolean> {
+  try {
+    const config = await resolveStudioConfigLoad();
+    if (config.loaded) return config.environmentId !== null;
+  } catch {
+    // Unknown config: decided by the host below.
+  }
+  return isCloudStudioHost(hostname);
+}
 
 /** The pure decision, kept apart from the hooks for tests. */
 export function signInStatus(
@@ -40,14 +59,9 @@ export function useStudioSignIn(): StudioSignIn {
 
   useEffect(() => {
     let live = true;
-    resolveStudioEnvironmentId().then(
-      (id) => {
-        if (live) setRequired(id !== null);
-      },
-      () => {
-        if (live) setRequired(false);
-      },
-    );
+    void resolveSignInRequired().then((value) => {
+      if (live) setRequired(value);
+    });
     return () => {
       live = false;
     };

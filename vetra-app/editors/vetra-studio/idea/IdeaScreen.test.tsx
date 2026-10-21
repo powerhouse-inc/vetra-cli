@@ -6,7 +6,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
 import { button, click, render } from "../test-utils/render.js";
-import { IdeaScreen, spendText } from "./IdeaScreen.js";
+import {
+  IdeaScreen,
+  SIGN_IN_CHECK_TIMEOUT_MS,
+  spendText,
+} from "./IdeaScreen.js";
 import {
   PENDING_IDEA_MAX_AGE_MS,
   PENDING_IDEA_STORAGE_KEY,
@@ -236,6 +240,48 @@ describe("IdeaScreen", () => {
     expect(signIn).toHaveBeenCalledOnce();
     expect(onStart).not.toHaveBeenCalled();
     expect(peekPendingIdea()).toBe(HOTEL);
+  });
+
+  it("keeps the idea until the start succeeds", async () => {
+    savePendingIdea(HOTEL);
+    hoisted.state.status = "checking";
+    const onStart = vi
+      .fn((_idea: string): Promise<string | undefined> =>
+        Promise.resolve("session-1"),
+      )
+      .mockRejectedValueOnce(new Error("offline"));
+    const { container } = screen(onStart);
+    act(() => hoisted.setStatus("signed-in"));
+    await flush();
+
+    // The start failed: the idea is still kept and still in the box.
+    expect(onStart).toHaveBeenCalledExactlyOnceWith(HOTEL);
+    expect(peekPendingIdea()).toBe(HOTEL);
+    expect(textarea(container).value).toBe(HOTEL);
+
+    // Build it again succeeds: the product exists, the idea is cleared.
+    click(button(container, "Build it"));
+    await flush();
+    expect(onStart).toHaveBeenCalledTimes(2);
+    expect(peekPendingIdea()).toBeNull();
+  });
+
+  it("gives the button back when sign-in never settles", () => {
+    vi.useFakeTimers();
+    try {
+      hoisted.state.status = "checking";
+      const { container } = screen();
+      typeIdea(container, HOTEL);
+      click(button(container, "Build it"));
+      expect(button(container, "Starting…")).toBeDefined();
+      act(() => {
+        vi.advanceTimersByTime(SIGN_IN_CHECK_TIMEOUT_MS);
+      });
+      expect(button(container, "Build it")?.disabled).toBe(false);
+      expect(peekPendingIdea()).toBe(HOTEL);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("first story line appears immediately", async () => {

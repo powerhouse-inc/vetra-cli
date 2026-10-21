@@ -5,7 +5,8 @@
  *
  * Signed out, Build it keeps the idea in this browser (pendingIdea) and opens
  * sign-in; when the visitor is back signed in — in place or after the
- * redirect — the kept idea is sent once. The start itself (product, first
+ * redirect — the kept idea is sent once, and stays kept until the start
+ * succeeds. The start itself (product, first
  * conversation, first message, the story's first line) is `onStart`, which
  * the shell wires to `startProduct`.
  */
@@ -18,13 +19,15 @@ import {
   clearPendingIdea,
   peekPendingIdea,
   savePendingIdea,
-  takePendingIdea,
 } from "./pendingIdea.js";
 import { useStudioSignIn } from "./useStudioSignIn.js";
 
 export const IDEA_HEADING = "What do you want to build?";
 export const IDEA_PLACEHOLDER =
   "Describe your product in a sentence or two — who it's for and what they do with it.";
+/** How long Build it waits for an unsettled sign-in state. */
+export const SIGN_IN_CHECK_TIMEOUT_MS = 15_000;
+
 export const IDEA_EXAMPLES: readonly string[] = [
   "Hotel breakfast orders",
   "Maintenance requests",
@@ -70,26 +73,46 @@ export function IdeaScreen({
     if (kept) setIdea((current) => current || kept);
   }, []);
 
-  // Signed in with a kept idea: send it, once.
+  // Latest start/signIn for the effects below (both are new each render).
+  const startRef = useRef(start);
+  const signInRef = useRef(auth.signIn);
+  useEffect(() => {
+    startRef.current = start;
+    signInRef.current = auth.signIn;
+  });
+
+  // Signed in with a kept idea: send it, once. It stays kept until the
+  // start succeeds (the product exists), so a failed start loses nothing.
   useEffect(() => {
     if (auth.status === "signed-in") {
-      if (sentRef.current) return;
-      const kept = takePendingIdea();
       setAwaitingSignIn(false);
+      if (sentRef.current) return;
+      const kept = peekPendingIdea();
       if (!kept) return;
       sentRef.current = true;
       setIdea(kept);
-      void start(kept);
+      void startRef.current(kept);
     } else if (auth.status === "signed-out" && awaitingSignIn) {
       setAwaitingSignIn(false);
-      auth.signIn();
+      signInRef.current();
     }
-  }, [auth.status, awaitingSignIn]);
+  }, [auth.status, awaitingSignIn, startRef, signInRef]);
+
+  // Sign-in state that never settles: give the button back after a while.
+  useEffect(() => {
+    if (!awaitingSignIn) return;
+    const timer = setTimeout(
+      () => setAwaitingSignIn(false),
+      SIGN_IN_CHECK_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [awaitingSignIn]);
 
   async function start(text: string) {
     setStarting(true);
     try {
       const sessionId = await onStart(text);
+      clearPendingIdea();
       if (sessionId) onStarted(sessionId);
     } catch (err) {
       console.error("Failed to start the product", err);
@@ -116,7 +139,6 @@ export function IdeaScreen({
     if (!text || starting || awaitingSignIn) return;
     if (auth.status === "signed-in") {
       sentRef.current = true;
-      clearPendingIdea();
       void start(text);
       return;
     }
