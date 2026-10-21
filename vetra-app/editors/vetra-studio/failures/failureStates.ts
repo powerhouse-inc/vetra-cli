@@ -21,7 +21,7 @@ import type {
   StudioProductState,
 } from "document-models/studio-product";
 import type { BudgetLevel, BudgetRequestState } from "../budget/budgetStore.js";
-import { checkList } from "../steps/checkList.js";
+import { checkList, type CheckLine } from "../steps/checkList.js";
 import {
   agentWorking,
   deliveryOf,
@@ -46,12 +46,16 @@ export const PREVIEW_SLOW_TEXT = "The preview is taking longer than usual.";
 export const RESTARTING_TEXT = "Your Studio is restarting — back in a moment.";
 export const RESTART_FAILED_TEXT = "Couldn't restart the preview.";
 
-/** The supervisor's step reasons (vetra-cli `supervisor-rules.ts`):
- *  `BREATHER_REASON` and `PREVIEW_SLOW_REASON`. */
+/** Copies of the supervisor's step reasons and continue message
+ *  (vetra-cli `src/product/supervisor-rules.ts`: `BREATHER_REASON`,
+ *  `PREVIEW_SLOW_REASON`, `CONTINUE_TEXT`); vetra-app can't import vetra-cli.
+ *  Keep them equal — vetra-cli `tests/product/supervisor-rules.test.ts`
+ *  checks this file for the same strings. */
 export const SUPERVISOR_BREATHER_REASON = "Taking a breather";
-export const SUPERVISOR_PREVIEW_SLOW_REASON = PREVIEW_SLOW_TEXT;
+export const SUPERVISOR_PREVIEW_SLOW_REASON =
+  "The preview is taking longer than usual.";
 
-/** The supervisor's continue message (vetra-cli `CONTINUE_TEXT`). */
+/** The supervisor's continue message (see above). */
 export const CONTINUE_MESSAGE = "continue";
 export const TRY_AGAIN_MESSAGE =
   "Some checks still fail. Please try again to make them pass.";
@@ -62,6 +66,10 @@ export const SKIP_MESSAGE = "Skip this part for now.";
 
 /** A turn failure code that means the budget ran out (chat bridge). */
 const BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED";
+/** A turn stopped by Pause (Task 1.2's PauseProcessor aborts with reason
+ *  `paused`; the bridge writes it as the code or the finish reason). */
+const PAUSED_CODE = "PAUSED";
+const PAUSED_FINISH_REASON = "paused";
 /** Partial assistant messages a retried turn moved past (chat bridge). */
 const RETRY_FINISH_REASON = "retry";
 
@@ -189,7 +197,10 @@ function turnFailure(
   if (!last || last.role !== "ASSISTANT" || !last.failure) return null;
   if (chat?.retryRequestedFor) return null;
   if (change.status === "PAUSED") return null;
-  if (/paus/i.test(last.failure.message) || last.finishReason === "paused") {
+  if (
+    last.failure.code === PAUSED_CODE ||
+    last.finishReason === PAUSED_FINISH_REASON
+  ) {
     return null;
   }
   return last.failure;
@@ -397,6 +408,21 @@ export function failureFor(
   return null;
 }
 
+/** Waiving lint would let the TESTS gate pass: lint is the only failure,
+ *  every other check passed, and the type check and preview check are not
+ *  older than the latest code generation (the reducer's gate). */
+function lintOnlyBlocksTests(checks: readonly CheckLine[]): boolean {
+  const generatedAt = time(checks.find((c) => c.kind === "GENERATE")?.at);
+  return checks.every((c) => {
+    if (c.kind === "LINT") return c.status === "failed";
+    if (c.status !== "passed") return false;
+    if (c.kind === "TYPECHECK" || c.kind === "SMOKE") {
+      return time(c.at) >= generatedAt;
+    }
+    return true;
+  });
+}
+
 /** Checks keep failing and the agent gave up (its turn ended, the Tests
  *  step isn't done): "2 checks still fail: …". "Go live anyway" only when
  *  every failing check is the lint check (F14) — never type or test failures. */
@@ -409,7 +435,8 @@ function checksFailing(
   if (change.status !== "BUILDING") return null;
   const tests = change.steps.find((s) => s.kind === "TESTS");
   if (tests?.status === "DONE") return null;
-  const failing = checkList(change).filter((c) => c.status === "failed");
+  const checks = checkList(change);
+  const failing = checks.filter((c) => c.status === "failed");
   if (failing.length === 0) return null;
   // Still on it (or about to be): the agent is working, or was just asked.
   if (agentWorking(chat)) return null;
@@ -425,7 +452,7 @@ function checksFailing(
       run: () => handlers.send(TRY_AGAIN_MESSAGE),
     },
   ];
-  if (failing.every((c) => c.kind === "LINT")) {
+  if (lintOnlyBlocksTests(checks)) {
     actions.push({
       label: "Go live anyway",
       run: () => {

@@ -31,6 +31,8 @@ import {
   failureFor,
   notDeliveredFailure,
   shownInline,
+  SIMPLER_MESSAGE,
+  SKIP_MESSAGE,
   stuckText,
   type Failure,
   type FailureBudget,
@@ -303,10 +305,10 @@ function Line({
             </ul>
           ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
-            <ActionButton onClick={() => onSend("Try a simpler version.")}>
+            <ActionButton onClick={() => onSend(SIMPLER_MESSAGE)}>
               Try a simpler version
             </ActionButton>
-            <ActionButton onClick={() => onSend("Skip this part for now.")}>
+            <ActionButton onClick={() => onSend(SKIP_MESSAGE)}>
               Skip this part
             </ActionButton>
             <ActionButton onClick={onTellMeHow}>Tell me how</ActionButton>

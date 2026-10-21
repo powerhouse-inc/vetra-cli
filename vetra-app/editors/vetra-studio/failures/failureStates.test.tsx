@@ -212,25 +212,28 @@ describe("build failure states (spec §5.9, G4)", () => {
         { now: new Date(at(4)) },
       ),
     ).toBeNull();
-    const byPause = chat(
+    const none = { studioRestarting: false };
+    const now = { now: new Date(at(4)) };
+    const byCode = chat(
       idea(),
-      failed(
-        "a1",
-        "u0",
-        at(3),
-        "The response was interrupted: paused",
-        "INTERRUPTED",
-      ),
+      failed("a1", "u0", at(3), "Stopped.", "PAUSED"),
+    );
+    expect(failureFor(product(...working), byCode, null, none, now)).toBeNull();
+    const byReason = chat(idea(), {
+      ...failed("a1", "u0", at(3)),
+      finishReason: "paused",
+    });
+    expect(
+      failureFor(product(...working), byReason, null, none, now),
+    ).toBeNull();
+    // The word alone in a real failure's message is not a pause.
+    const worded = chat(
+      idea(),
+      failed("a1", "u0", at(3), "The provider paused the stream: 503"),
     );
     expect(
-      failureFor(
-        product(...working),
-        byPause,
-        null,
-        { studioRestarting: false },
-        { now: new Date(at(4)) },
-      ),
-    ).toBeNull();
+      failureFor(product(...working), worded, null, none, now)?.situation,
+    ).toBe("turn-failed");
   });
 
   it("stuck: one stuck line saying what it tried; its actions steer the agent", async () => {
@@ -465,6 +468,58 @@ describe("build failure states (spec §5.9, G4)", () => {
     expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
       [SESSION_ID, "ADD_USER_MESSAGE"],
     ]);
+  });
+
+  it("Go live anyway is absent when the Tests gate would still fail after the waiver", () => {
+    const lintOnly = (
+      results: {
+        kind: "GENERATE" | "TYPECHECK" | "LINT" | "REDUCER_TESTS" | "SMOKE";
+        at: string;
+      }[],
+    ) =>
+      results.map(({ kind, at: runAt }, i) =>
+        actions.recordCheckRun({
+          changeId: "c1",
+          id: `r${i}`,
+          at: runAt,
+          results: [
+            kind === "LINT"
+              ? { kind, passed: false, reason: "2 unused variables" }
+              : { kind, passed: true },
+          ],
+        }),
+      );
+    const c = chat(idea(), reply("a1", "Only lint is left.", at(8), at(9)));
+    const none = { studioRestarting: false };
+    const now = { now: new Date(at(10)) };
+    // The type check predates the latest code generation.
+    const stale = product(
+      ...working,
+      ...lintOnly([
+        { kind: "TYPECHECK", at: at(5) },
+        { kind: "SMOKE", at: at(7) },
+        { kind: "REDUCER_TESTS", at: at(7) },
+        { kind: "GENERATE", at: at(6) },
+        { kind: "LINT", at: at(7) },
+      ]),
+    );
+    const staleFailure = failureFor(stale, c, null, none, now);
+    expect(staleFailure?.situation).toBe("checks-failing");
+    expect(staleFailure?.actions.map((a) => a.label)).toEqual([
+      "Let the agent try again",
+    ]);
+    // A check that never ran.
+    const missing = product(
+      ...working,
+      ...lintOnly([
+        { kind: "GENERATE", at: at(5) },
+        { kind: "TYPECHECK", at: at(6) },
+        { kind: "LINT", at: at(7) },
+      ]),
+    );
+    expect(
+      failureFor(missing, c, null, none, now)?.actions.map((a) => a.label),
+    ).toEqual(["Let the agent try again"]);
   });
 
   it("Go live anyway is absent when a type check fails", () => {

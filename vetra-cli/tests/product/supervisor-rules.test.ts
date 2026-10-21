@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Action } from "document-model";
 import { withSignaturePolicy } from "document-model";
 import { ReactorBuilder, ReactorClientBuilder, type ReactorClientModule } from "@powerhousedao/reactor";
@@ -478,5 +481,26 @@ describe("supervise", () => {
     expect(warnings.some((w) => w.includes("markStuck failed"))).toBe(true);
     // No reactor at all: nothing happens, nothing throws.
     expect(await supervise({ ctx: { folders: {}, reactor: async () => undefined }, done: new Set() })).toEqual([]);
+  });
+});
+
+describe("the Studio's copies of the supervisor's words", () => {
+  // vetra-app can't import vetra-cli: its failure lines keep copies of these.
+  const failureStates = readFileSync(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../vetra-app/editors/vetra-studio/failures/failureStates.ts",
+    ),
+    "utf8",
+  );
+  function copied(name: string): string | undefined {
+    const match = new RegExp(`export const ${name} =\\s*("(?:[^"\\\\]|\\\\.)*")`).exec(failureStates);
+    return match ? (JSON.parse(match[1]) as string) : undefined;
+  }
+
+  it("match BREATHER_REASON, PREVIEW_SLOW_REASON and CONTINUE_TEXT", () => {
+    expect(copied("SUPERVISOR_BREATHER_REASON")).toBe(BREATHER_REASON);
+    expect(copied("SUPERVISOR_PREVIEW_SLOW_REASON")).toBe(PREVIEW_SLOW_REASON);
+    expect(copied("CONTINUE_MESSAGE")).toBe(CONTINUE_TEXT);
   });
 });

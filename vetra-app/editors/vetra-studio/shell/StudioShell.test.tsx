@@ -72,6 +72,19 @@ vi.mock("../budget/useStudioBudget.js", () => ({
     markExhausted: () => {},
   }),
 }));
+// No daemon polls or sign-in lookups in shell tests.
+vi.mock("../failures/useStudioRestarting.js", () => ({
+  useStudioRestarting: () => false,
+}));
+vi.mock("../idea/useStudioSignIn.js", () => ({
+  useStudioSignIn: () => ({
+    status: "signed-in",
+    name: undefined,
+    hasUser: true,
+    signIn: () => {},
+    signOut: () => {},
+  }),
+}));
 vi.mock("../budget/BudgetMeter.js", () => ({
   StudioBudgetMeter: () => <span>$0.31 of $10</span>,
   StripBudget: ({ text }: { text: string }) => <span>{text}</span>,
