@@ -5,7 +5,8 @@
  * Every few seconds, one pass:
  * 1. on the first pass after a start, any LAUNCHING version is resumed (F22);
  * 2. a waiting request is served — LAUNCH (Make it live / Try again),
- *    ROLLBACK (Go back, after the data check), RESTART, DISCARD, MIRROR (GitHub arrives in M4);
+ *    ROLLBACK (Go back, after the data check), RESTART, DISCARD, MIRROR
+ *    (Connect GitHub / Retry now: the whole history to GitHub, mirror.ts);
  * 3. otherwise, while nothing is live, a READY change that was never launched
  *    goes live by itself (D3, F6, F10).
  * The access switch (F35) runs in its own lane, so it never waits behind a
@@ -24,6 +25,7 @@ import {
   autoLaunchCandidate,
   discardChange,
   launch,
+  mirrorRequest,
   recordRequestFailure,
   restartLive,
   resumeLaunch,
@@ -32,7 +34,7 @@ import {
 } from "../launch/orchestrator.js";
 import { REASONS } from "../launch/cloud-launch.js";
 import { goBack } from "../launch/rollback.js";
-import { dispatchProduct, getProductDoc, productActions as a } from "../product/product-doc.js";
+import { getProductDoc } from "../product/product-doc.js";
 
 const TAG = "[product-requests]";
 /** How often a pass starts (a request should be picked up within seconds). */
@@ -118,8 +120,7 @@ export async function requestsPass(
           await discardChange(ctx, request.changeId ?? null);
           return "discard";
         case "MIRROR":
-          ctx.log?.info?.(`${TAG} GitHub isn't connected in this Studio yet; nothing to save there`);
-          await dispatchProduct(ctx, [a.clearRequest({})]);
+          await mirrorRequest(ctx);
           return "mirror";
       }
     }

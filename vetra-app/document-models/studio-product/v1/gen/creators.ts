@@ -4,6 +4,8 @@
  */
 export * from "./change/creators.js";
 export * as studioProductChangeActions from "./change/creators.js";
+export * from "./github/creators.js";
+export * as studioProductGithubActions from "./github/creators.js";
 export * from "./launch/creators.js";
 export * as studioProductLaunchActions from "./launch/creators.js";
 export * from "./product/creators.js";

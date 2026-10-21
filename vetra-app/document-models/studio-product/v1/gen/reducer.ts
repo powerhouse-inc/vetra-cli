@@ -5,6 +5,7 @@ import { createReducer, isDocumentAction } from "document-model";
 import type { StudioProductPHState } from "document-models/studio-product/v1";
 
 import { studioProductChangeOperations } from "../src/reducers/change.js";
+import { studioProductGithubOperations } from "../src/reducers/github.js";
 import { studioProductLaunchOperations } from "../src/reducers/launch.js";
 import { studioProductProductOperations } from "../src/reducers/product.js";
 import { studioProductSuggestionsOperations } from "../src/reducers/suggestions.js";
@@ -37,6 +38,8 @@ import {
   ResumeChangeInputSchema,
   SetAccessInputSchema,
   SetChangeTitleInputSchema,
+  SetExternalChangesInputSchema,
+  SetGithubInputSchema,
   SetHealthInputSchema,
   SetLaunchLineInputSchema,
   SetLaunchPermissionInputSchema,
@@ -570,6 +573,30 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       memoizedSchema(DismissSuggestionInputSchema).parse(action.input);
 
       studioProductSuggestionsOperations.dismissSuggestionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_GITHUB": {
+      memoizedSchema(SetGithubInputSchema).parse(action.input);
+
+      studioProductGithubOperations.setGithubOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_EXTERNAL_CHANGES": {
+      memoizedSchema(SetExternalChangesInputSchema).parse(action.input);
+
+      studioProductGithubOperations.setExternalChangesOperation(
         (state as any)[action.scope],
         action as any,
         dispatch,

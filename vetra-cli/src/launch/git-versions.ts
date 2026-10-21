@@ -57,27 +57,58 @@ function authorConfig(author: GitAuthor): string[] {
   return ["-c", `user.name=${author.name}`, "-c", `user.email=${author.email}`];
 }
 
-async function git(
+export interface WorkspaceGitOptions {
+  env?: Record<string, string>;
+  author?: GitAuthor;
+  /** The plain reason of the `LaunchError` on failure (default: the code couldn't be saved). */
+  reason?: string;
+  /** Kill git after this long (network calls). */
+  timeoutMs?: number;
+  /** Extra `-c` args placed before the command (never secrets: argv is visible). */
+  config?: string[];
+}
+
+function gitArgv(workdir: string, args: string[], opts: WorkspaceGitOptions): string[] {
+  return [
+    ...BASE_CONFIG,
+    ...workspaceSafeDirectory(workdir),
+    ...(opts.author ? authorConfig(opts.author) : []),
+    ...(opts.config ?? []),
+    ...args,
+  ];
+}
+
+/**
+ * Run git in the Studio workspace with the launch's settings: never signing
+ * or prompting, and `safe.directory` scoped to the workspace (a volume root
+ * owned by another user). Throws `LaunchError("GIT_FAILED")` with git's own
+ * error as the detail. Every launch, mirror and bring-in git call goes
+ * through here.
+ */
+export async function workspaceGit(
   workdir: string,
   args: string[],
-  opts: { env?: Record<string, string>; author?: GitAuthor } = {},
+  opts: WorkspaceGitOptions = {},
 ): Promise<string> {
   try {
-    const { stdout } = await execFileAsync(
-      "git",
-      [...BASE_CONFIG, ...workspaceSafeDirectory(workdir), ...(opts.author ? authorConfig(opts.author) : []), ...args],
-      { cwd: workdir, env: gitEnv(opts.env), maxBuffer: 64 * 1024 * 1024 },
-    );
+    const { stdout } = await execFileAsync("git", gitArgv(workdir, args, opts), {
+      cwd: workdir,
+      env: gitEnv(opts.env),
+      maxBuffer: 64 * 1024 * 1024,
+      ...(opts.timeoutMs ? { timeout: opts.timeoutMs, killSignal: "SIGKILL" as const } : {}),
+    });
     return stdout.trim();
   } catch (err) {
     const e = err as { stderr?: string; message?: string };
     throw new LaunchError(
       "GIT_FAILED",
-      "the code couldn't be saved",
+      opts.reason ?? "the code couldn't be saved",
       `git ${args[0]} failed: ${(e.stderr || e.message || "").trim()}`,
     );
   }
 }
+
+const git = workspaceGit;
 
 /** `git` that reports failure as null instead of throwing (probes). */
 async function gitMaybe(workdir: string, args: string[]): Promise<string | null> {
@@ -458,6 +489,9 @@ export async function discardDraft(
       `Tag ${liveTag} not found.`,
     );
   }
+  // A merge started by Bring them in is forgotten with the change: the next
+  // version must not claim GitHub's commits it doesn't contain.
+  await quitMerge(workdir);
   const head = await headSha(workdir);
   const dirs = await projectDirs(workdir, liveTag);
   if (head) for (const d of await projectDirs(workdir, "HEAD")) if (!dirs.includes(d)) dirs.push(d);
@@ -537,4 +571,15 @@ export function changedFiles(
     maxBuffer: 64 * 1024 * 1024,
   });
   return out.split("\n").filter(Boolean);
+}
+
+/** Whether a merge (Bring them in) is waiting to be completed by the next version. */
+export async function mergeInProgress(workdir: string): Promise<boolean> {
+  if (!fs.existsSync(path.join(workdir, ".git"))) return false;
+  return (await gitMaybe(workdir, ["rev-parse", "-q", "--verify", "MERGE_HEAD"])) !== null;
+}
+
+/** Forget a merge in progress, leaving the files as they are. */
+export async function quitMerge(workdir: string): Promise<void> {
+  if (await mergeInProgress(workdir)) await git(workdir, ["merge", "--quit"]);
 }

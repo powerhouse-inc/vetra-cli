@@ -10,6 +10,8 @@
  *   backing off, or the product couldn't be read), the change is marked
  *   `refs/vetra/change-unbased/<id>`: the agent's edits from then on stand and
  *   are never reverted; the change simply starts from the code that was there.
+ * - A Bring them in change (changes.ts) also gets GitHub's `main` merged in;
+ *   the note on what came in is added as a system message for the turn.
  * - Failures are logged once and retried no sooner than
  *   `CHANGE_BASE_RETRY_MS` (reads and git alike).
  */
@@ -24,6 +26,8 @@ export const CHANGE_BASE_RETRY_MS = 60_000;
 
 const PROCESSOR_ID = 'change-base';
 const TAG = '[change-base]';
+/** System-message tag of the Bring them in note (kept for the turn's steps). */
+export const BRING_IN_TAG = 'bring-in';
 
 export interface ChangeBaseProcessorOptions {
   readProduct?: typeof getProductDoc;
@@ -100,7 +104,10 @@ export class ChangeBaseProcessor implements Processor<'change-base'> {
       return undefined;
     }
     try {
-      await this.prepare(this.ctx, change, { state });
+      // Bring them in: what came from GitHub is told to the model for this turn.
+      const notes: string[] = [];
+      await this.prepare(this.ctx, change, { state, note: (text) => notes.push(text) });
+      for (const text of notes) args.messageList?.addSystem(text, BRING_IN_TAG);
       this.failedAt.delete(change.id);
     } catch (err) {
       if (failed === undefined) {
