@@ -14,7 +14,12 @@
  *   its latest deployment). A READY production deployment newer than the
  *   document's `liveVersion` means the launch finished while the Studio was
  *   down: `COMPLETE_LAUNCH` when the document still has the version as
- *   LAUNCHING/FAILED, `SET_LIVE_VERSION` when it is an earlier live version.
+ *   LAUNCHING/FAILED, `SET_LIVE_VERSION` when it is an earlier live version
+ *   (older or newer than the document's), and the code follows it
+ *   (`restoreVersion`, left as it is while the Studio has unsaved changes).
+ *   A Go back whose deployment hadn't settled when the agent stopped waiting
+ *   (`awaitRollbackSettle`) is reconciled on every pass until it settles: READY
+ *   makes it live, FAILED puts the code back on the live version.
  *   Nothing is ever deleted or rewritten.
  *
  * Slow tick: every 10 minutes the handlers registered with `onSlowTick` run
@@ -29,6 +34,7 @@ import type { StudioProductState } from "vetra-app/document-models/studio-produc
 import { defineTrigger } from "../framework.js";
 import { studioGql, type CloudContext } from "../launch/cloud-launch.js";
 import type { OrchestratorContext } from "../launch/orchestrator.js";
+import { restoreVersion } from "../launch/git-versions.js";
 import { checkLive } from "../launch/verify.js";
 import {
   dispatchProduct,
@@ -90,6 +96,8 @@ export interface CloudStudioProduct {
 export interface LiveHealthDeps {
   now: () => Date;
   checkLive: typeof checkLive;
+  /** Put the Studio's code on Version n (the orchestrator's seam by default). */
+  restoreCode: (ctx: OrchestratorContext, n: number) => Promise<unknown>;
   /** The cloud's record for this Studio's product, on the agent's path. */
   readProduct: (
     ctx: CloudContext,
@@ -132,6 +140,7 @@ export async function readCloudProduct(
 
 const defaultDeps: LiveHealthDeps = {
   now: () => new Date(),
+  restoreCode: (ctx, n) => (ctx.deps?.restoreVersion ?? restoreVersion)(ctx.workdir, n),
   checkLive,
   readProduct: readCloudProduct,
 };
@@ -153,6 +162,42 @@ export function newHealthMemory(): HealthMemory {
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** A Go back whose deployment hadn't settled when the agent stopped waiting. */
+export interface RollbackSettle {
+  /** The version being made live again. */
+  number: number;
+  /** The version the document still has live (the code goes back to it on a failure). */
+  previous: number | null;
+}
+
+let pendingSettle: RollbackSettle | null = null;
+
+/** Ask the reconcile to settle a Go back from the cloud's record (every pass until it does). */
+export function awaitRollbackSettle(settle: RollbackSettle | null): void {
+  pendingSettle = settle;
+}
+
+/** The Go back the reconcile still has to settle, if any. */
+export function rollbackSettlePending(): RollbackSettle | null {
+  return pendingSettle;
+}
+
+/** The code follows what is live; unsaved changes are never overwritten. */
+async function followCode(
+  ctx: OrchestratorContext,
+  n: number,
+  deps: LiveHealthDeps,
+): Promise<void> {
+  try {
+    await deps.restoreCode(ctx, n);
+  } catch (err) {
+    const draft = (err as { code?: unknown }).code === "DRAFT_OPEN";
+    ctx.log?.warn?.(
+      `${TAG} the code stays as it is${draft ? " (unsaved changes)" : ""}, not moved to Version ${String(n)}: ${message(err)}`,
+    );
+  }
 }
 
 /** `refs/tags/v2` → `v2`; anything else falls back to the version's tag name. */
@@ -206,10 +251,11 @@ async function applyDeployment(
     ctx.log?.info?.(`${TAG} Version ${number} finished going live while the Studio was down`);
     return "reconciled";
   }
-  // An earlier live version: the cloud wins, nothing else is touched.
+  // An earlier live version: the cloud wins, and the code follows it.
   await dispatchProduct(ctx, [
     a.setLiveVersion({ number, at, deploymentId: d.id }),
   ]);
+  await followCode(ctx, number, deps);
   ctx.log?.info?.(`${TAG} the cloud has Version ${number} live; the product now says so`);
   return "reconciled-live-version";
 }
@@ -222,7 +268,8 @@ async function reconcileOnce(
   deps: LiveHealthDeps,
 ): Promise<string | null> {
   const live = state.liveVersion;
-  if (memory.reconciled || live == null) return null;
+  const settle = pendingSettle;
+  if ((memory.reconciled && !settle) || live == null) return null;
   if (state.versions.some((v) => v.status === "LAUNCHING")) return null;
   const studioEnvironmentId = ctx.config?.environmentId;
   if (!studioEnvironmentId) return null;
@@ -230,8 +277,21 @@ async function reconcileOnce(
     const product = await deps.readProduct(ctx, studioEnvironmentId);
     memory.reconciled = true;
     const d = product?.latestDeployment;
+    if (settle && d?.kind === "PRODUCTION" && d.versionNumber === settle.number) {
+      if (d.status === "FAILED" || d.status === "SUPERSEDED") {
+        // The Go back definitely failed: the code goes back to what is live.
+        pendingSettle = null;
+        if (settle.previous !== null) await followCode(ctx, settle.previous, deps);
+        ctx.log?.error?.(`${TAG} going back to Version ${String(settle.number)} didn't start; the code is back on what is live`);
+        return "rollback-failed";
+      }
+      if (d.status === "READY") pendingSettle = null;
+    }
     if (!d || d.status !== "READY" || d.kind !== "PRODUCTION") return null;
-    if (d.versionNumber == null || d.versionNumber <= live) return null;
+    if (d.versionNumber == null || d.versionNumber === live) return null;
+    if (d.versionNumber < live && !state.versions.some((v) => v.number === d.versionNumber && v.status === "PREVIOUS")) {
+      return null;
+    }
     return await applyDeployment(ctx, state, d, deps);
   } catch (err) {
     // Unreadable cloud (offline, refused, secret pending): try again next pass.

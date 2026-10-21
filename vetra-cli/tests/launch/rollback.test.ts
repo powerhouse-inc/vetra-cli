@@ -4,11 +4,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { rollbackBlockedReason, rollbackUncheckedReason } from "../../src/launch/compat-rollback.js";
 import { restoreVersion, snapshot } from "../../src/launch/git-versions.js";
-import { LAUNCH_TRIGGER, launch } from "../../src/launch/orchestrator.js";
+import { LAUNCH_TRIGGER, ROLLBACK_SLOW_REASON, launch, rollbackTo } from "../../src/launch/orchestrator.js";
 import type { ProductDriveClient } from "../../src/launch/product-drive.js";
 import { goBack } from "../../src/launch/rollback.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
-import { onSlowTick, slowTickPass } from "../../src/triggers/live-health.js";
+import {
+  awaitRollbackSettle,
+  healthPass,
+  newHealthMemory,
+  onSlowTick,
+  rollbackSettlePending,
+  slowTickPass,
+  type CloudStudioProduct,
+} from "../../src/triggers/live-health.js";
 import { newRequestsMemory, requestsPass } from "../../src/triggers/product-requests.js";
 import { AT, a, launchHarness, makeReady, readyChange, type LaunchHarness } from "./orchestrator-helpers.js";
 
@@ -235,7 +243,6 @@ describe("go back (D6)", () => {
     expect((await h.state()).versions.every((v) => v.rollbackBlockedReason === null)).toBe(true);
 
     live.docs[0].ops.push("ARCHIVE_ITEM"); // e.g. used while Version 3 was live
-    await dispatchProduct(h.ctx, [a.setRollbackBlock({ number: 1, reason: "stale" })]);
     await requestRollback(h, 3);
     expect(await goBack(h.octx, 3)).toEqual({ status: "DONE" });
     const s = await h.state();
@@ -277,5 +284,140 @@ describe("go back (D6)", () => {
     }
     expect(ran).toEqual(["first", "second"]);
     expect(h.lines.some((l) => l.includes("slow tick failed: boom"))).toBe(true);
+  });
+});
+
+describe("go back when the cloud is slow or the record fails (I1)", () => {
+  let h: LaunchHarness | undefined;
+  afterEach(async () => {
+    awaitRollbackSettle(null);
+    jest.restoreAllMocks();
+    await h?.cleanup();
+    h = undefined;
+  });
+
+  /** Versions 1 and 2 launched with the harness fakes; Version 2 is live. */
+  async function twoVersions(harness: LaunchHarness): Promise<void> {
+    await makeReady(harness);
+    await launch(harness.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER });
+    await readyChange(harness, "change-2");
+    await launch(harness.octx, { changeId: "change-2", trigger: LAUNCH_TRIGGER });
+    await dispatchProduct(harness.ctx, [a.requestRollback({ versionNumber: 1, requestedAt: AT, requestedBy: BY })]);
+    harness.calls.length = 0;
+  }
+
+  /** The cloud's record: the Go back's deployment of Version 1 with `status`. */
+  function cloudSays(status: string): { checkLive: () => Promise<boolean>; readProduct: () => Promise<CloudStudioProduct> } {
+    return {
+      checkLive: async () => true,
+      readProduct: async () => ({
+        id: "app-1",
+        latestDeployment: {
+          id: "dep-1-again",
+          status,
+          kind: "PRODUCTION",
+          trigger: "studio-rollback",
+          versionNumber: 1,
+          sha: "sha-1",
+          gitRef: "refs/tags/v1",
+          onBehalfOf: BY,
+          packages: [],
+          createdAt: AT,
+          updatedAt: AT,
+        },
+      }),
+    };
+  }
+
+  const slowWait = async (_ctx: unknown, id: string) =>
+    id.endsWith("-again") ? { failed: "x", detail: "did not settle", timedOut: true as const } : ("READY" as const);
+
+  it("a wait that times out leaves the code on the target; the reconcile makes it live once READY", async () => {
+    h = await launchHarness({ waitForDeployment: slowWait });
+    await twoVersions(h);
+
+    expect(await rollbackTo(h.octx, 1)).toEqual({ status: "FAILED", reason: ROLLBACK_SLOW_REASON });
+
+    // Not a definite failure: the code stays on Version 1.
+    expect(h.calls).toEqual(["restore 1", "rollback dep-1"]);
+    expect(rollbackSettlePending()).toEqual({ number: 1, previous: 2 });
+    let s = await h.state();
+    expect(s.liveVersion).toBe(2);
+    expect(s.pendingRequest).toBeNull();
+    expect(s.lastRequestFailure?.reason).toBe(ROLLBACK_SLOW_REASON);
+
+    // Still starting: nothing changes, the reconcile keeps watching.
+    const memory = newHealthMemory();
+    await healthPass(h.octx, memory, cloudSays("DEPLOYING"));
+    expect((await h.state()).liveVersion).toBe(2);
+    expect(rollbackSettlePending()).not.toBeNull();
+
+    await healthPass(h.octx, memory, cloudSays("READY"));
+    s = await h.state();
+    expect(s.liveVersion).toBe(1);
+    expect(s.liveDeploymentId).toBe("dep-1-again");
+    expect(h.calls.at(-1)).toBe("restore 1");
+    expect(rollbackSettlePending()).toBeNull();
+  });
+
+  it("a deployment that then fails puts the code back on the live version", async () => {
+    h = await launchHarness({ waitForDeployment: slowWait });
+    await twoVersions(h);
+    await rollbackTo(h.octx, 1);
+
+    await healthPass(h.octx, newHealthMemory(), cloudSays("FAILED"));
+
+    expect(h.calls).toEqual(["restore 1", "rollback dep-1", "restore 2"]);
+    expect((await h.state()).liveVersion).toBe(2);
+    expect(rollbackSettlePending()).toBeNull();
+  });
+
+  it("a failed SET_LIVE_VERSION is tried again on its own", async () => {
+    h = await launchHarness();
+    await twoVersions(h);
+    const client = h.module.client as unknown as { execute: (...args: unknown[]) => Promise<unknown> };
+    const real = client.execute.bind(client);
+    let refused = 0;
+    jest.spyOn(client, "execute").mockImplementation(async (...args: unknown[]) => {
+      const actions = (args[2] as { type: string }[] | undefined) ?? [];
+      if (refused < 1 && actions.some((x) => x.type === "SET_LIVE_VERSION")) {
+        refused += 1;
+        throw new Error("reactor busy");
+      }
+      return real(...args);
+    });
+
+    expect(await rollbackTo(h.octx, 1)).toEqual({ status: "DONE" });
+
+    // One cloud re-deploy only; the code stays on Version 1.
+    expect(h.calls).toEqual(["restore 1", "rollback dep-1", "wait dep-1-again"]);
+    expect(h.sleeps).toEqual([2_000]);
+    const s = await h.state();
+    expect(s.liveVersion).toBe(1);
+    expect(s.pendingRequest).toBeNull();
+  });
+
+  it("a record that keeps failing is left to the reconcile, and the request is cleared", async () => {
+    h = await launchHarness();
+    await twoVersions(h);
+    const client = h.module.client as unknown as { execute: (...args: unknown[]) => Promise<unknown> };
+    const real = client.execute.bind(client);
+    const spy = jest.spyOn(client, "execute").mockImplementation(async (...args: unknown[]) => {
+      const actions = (args[2] as { type: string }[] | undefined) ?? [];
+      if (actions.some((x) => x.type === "SET_LIVE_VERSION")) throw new Error("reactor busy");
+      return real(...args);
+    });
+
+    expect(await rollbackTo(h.octx, 1)).toEqual({ status: "DONE" });
+
+    expect(h.calls).toEqual(["restore 1", "rollback dep-1", "wait dep-1-again"]);
+    expect(rollbackSettlePending()).toEqual({ number: 1, previous: 2 });
+    expect((await h.state()).pendingRequest).toBeNull();
+    expect(h.lines.some((l) => l.includes("the reconcile will record it"))).toBe(true);
+
+    spy.mockRestore();
+    await healthPass(h.octx, newHealthMemory(), cloudSays("READY"));
+    expect((await h.state()).liveVersion).toBe(1);
+    expect(rollbackSettlePending()).toBeNull();
   });
 });

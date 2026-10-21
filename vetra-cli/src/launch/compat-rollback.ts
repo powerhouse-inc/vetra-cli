@@ -43,7 +43,7 @@ export function rollbackBlockedReason(k: number | null): string {
 
 /** Plain reason when the check couldn't run (Go back fails closed; trying again runs it again). */
 export function rollbackUncheckedReason(m: number): string {
-  return `we couldn't check that your users' data can go back to Version ${m}`;
+  return `we couldn't check that your users' data can go back to Version ${m} — try again in a moment`;
 }
 
 /** The read stops (and the check fails closed) past this many documents… */
@@ -237,27 +237,30 @@ export async function checkVersion(
   };
   const target = state.versions.find((v) => v.number === m);
   if (!target?.gitTag) throw new Error(`Version ${m} has no saved code.`);
-  const later = await Promise.all(
-    launched(state)
-      .filter((v) => v.number > m && v.gitTag)
-      .map(async (v) => ({ number: v.number, specs: await read(v.gitTag) })),
-  );
+  const after = launched(state).filter((v) => v.number > m);
+  // A later version without saved code could have added anything: fail closed.
+  const unsaved = after.find((v) => !v.gitTag);
+  if (unsaved) throw new Error(`Version ${unsaved.number} has no saved code.`);
+  const later = await Promise.all(after.map(async (v) => ({ number: v.number, specs: await read(v.gitTag) })));
   return canGoBack(await read(target.gitTag), used, later);
 }
 
 /**
  * F26: write ahead of time which earlier versions the data can't go back to,
  * so a blocked one never shows a plain Go back. For every version that was
- * live before (not the live one) runs the check and records `SET_ROLLBACK_BLOCK`
- * only when the stored reason changes (null when going back is allowed).
- * When the drive can't be read nothing is changed. Never throws; returns how
- * many versions changed.
+ * live before (not the live one) and isn't blocked yet, runs the check and
+ * records `SET_ROLLBACK_BLOCK` when it is now blocked. A block never lifts by
+ * itself (the data that caused it stays), and when every such version is
+ * already blocked the drive isn't read. When the drive can't be read nothing
+ * is changed. Never throws; returns how many versions changed.
  */
 export async function refreshRollbackBlocks(ctx: CompatRollbackContext): Promise<number> {
   try {
     const state = (await getProductDoc(ctx))?.state;
     if (!state || state.liveVersion == null) return 0;
-    const candidates = state.versions.filter((v) => v.status === "PREVIOUS" && v.deploymentId);
+    const candidates = state.versions.filter(
+      (v) => v.status === "PREVIOUS" && v.deploymentId && !v.rollbackBlockedReason,
+    );
     if (candidates.length === 0) return 0;
     let used: UsedData;
     try {
@@ -269,17 +272,13 @@ export async function refreshRollbackBlocks(ctx: CompatRollbackContext): Promise
     const cache = new Map<string, Promise<ModelSpec[]>>();
     const actions = [];
     for (const v of candidates) {
-      let reason: string | null;
       try {
         const check = await checkVersion(ctx, state, v.number, used, cache);
-        reason = check.ok ? null : check.reason;
-        if (!check.ok) ctx.log?.info?.(`[go back] Version ${v.number} blocked: ${check.what.join("; ")}`);
+        if (check.ok) continue;
+        ctx.log?.info?.(`[go back] Version ${v.number} blocked: ${check.what.join("; ")}`);
+        actions.push(a.setRollbackBlock({ number: v.number, reason: check.reason }));
       } catch (err) {
         ctx.log?.warn?.(`[go back] Version ${v.number} not checked: ${message(err)}`);
-        continue;
-      }
-      if ((v.rollbackBlockedReason ?? null) !== reason) {
-        actions.push(a.setRollbackBlock({ number: v.number, reason }));
       }
     }
     if (actions.length) await dispatchProduct(ctx, actions);

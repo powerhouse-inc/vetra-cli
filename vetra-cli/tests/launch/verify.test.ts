@@ -56,7 +56,7 @@ describe("waitForDeployment", () => {
   it("gives up after the timeout", async () => {
     const { ctx } = cloud([dep("DEPLOYING")]);
     const out = await waitForDeployment(ctx, "dep-1", { timeoutMs: 60_000, intervalMs: 5_000, ...clock() });
-    expect(out).toMatchObject({ failed: DEPLOY_FAILED_REASON });
+    expect(out).toMatchObject({ failed: DEPLOY_FAILED_REASON, timedOut: true });
   });
 
   it("stops at once when the cloud refuses the agent", async () => {

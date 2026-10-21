@@ -2,10 +2,13 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { ISigner } from "document-model";
+import type { StudioProductState } from "vetra-app/document-models/studio-product";
 import type { ModelSpec } from "../../src/launch/compat-launch.js";
 import {
   USED_MAX_DOCUMENTS,
   canGoBack,
+  checkVersion,
+  rollbackUncheckedReason,
   refreshRollbackBlocks,
   rollbackBlockedReason,
   usedInDrive,
@@ -243,7 +246,7 @@ describe("refreshRollbackBlocks (F26)", () => {
     return h;
   }
 
-  it("records the blocked versions once, and clears them when the data allows going back", async () => {
+  it("records the blocked versions once; a block never lifts and blocked versions aren't read again", async () => {
     const writes: string[] = [];
     const docs = [{ id: "d1", documentType: "acme/todo", ops: ["ADD_ITEM", "ARCHIVE_ITEM"] }];
     const harness = await threeVersions(docs, writes);
@@ -255,14 +258,20 @@ describe("refreshRollbackBlocks (F26)", () => {
       [2, blocked],
       [3, null],
     ]);
-    // Nothing changed: nothing written again.
+    // Every earlier version is blocked: the drive isn't read at all.
+    let reads = 0;
+    harness.octx.driveClient = async () => {
+      reads += 1;
+      return fakeDriveClient(docs, writes);
+    };
     expect(await refreshRollbackBlocks(harness.octx)).toBe(0);
+    expect(reads).toBe(0);
 
-    // The ARCHIVE_ITEM document's history no longer counts (e.g. a different drive state): cleared.
+    // Blocks never lift by themselves, even when the read would allow it.
     docs[0].ops = ["ADD_ITEM"];
-    expect(await refreshRollbackBlocks(harness.octx)).toBe(2);
+    expect(await refreshRollbackBlocks(harness.octx)).toBe(0);
     s = await harness.state();
-    expect(s.versions.every((v) => v.rollbackBlockedReason === null)).toBe(true);
+    expect(s.versions.map((v) => v.rollbackBlockedReason)).toEqual([blocked, blocked, null]);
     expect(writes).toEqual([]);
   });
 
@@ -296,5 +305,27 @@ describe("refreshRollbackBlocks (F26)", () => {
     const s = await harness.state();
     expect(s.versions.map((v) => v.rollbackBlockedReason)).toEqual([null, rollbackBlockedReason(3), null]);
     expect(harness.lines.some((l) => l.includes("Version 1 not checked: tag missing"))).toBe(true);
+  });
+});
+
+describe("checkVersion", () => {
+  it("fails closed when a later version has no saved code", async () => {
+    const state = {
+      versions: [
+        { number: 1, status: "PREVIOUS", gitTag: "v1" },
+        { number: 2, status: "LIVE", gitTag: "" },
+      ],
+    } as unknown as StudioProductState;
+    const ctx = {
+      workdir: "/tmp",
+      config: { cloudSwitchboardUrl: "https://cloud.example.test" },
+      compatDeps: { readModelSpecs: async () => v1 },
+    } as unknown as Parameters<typeof checkVersion>[0];
+    await expect(checkVersion(ctx, state, 1, used({ "acme/todo": ["ADD_ITEM"] }))).rejects.toThrow(
+      "Version 2 has no saved code.",
+    );
+    expect(rollbackUncheckedReason(2)).toBe(
+      "we couldn't check that your users' data can go back to Version 2 — try again in a moment",
+    );
   });
 });
