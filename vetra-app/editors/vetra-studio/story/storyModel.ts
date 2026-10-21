@@ -89,7 +89,7 @@ const WORKING_TEXT: Record<StepKind, string> = {
 };
 
 /** The supervisor's auto-continue after a step-capped turn (vetra-cli
- *  `CONTINUE_TEXT`); not the customer's words. */
+ *  `CONTINUE_TEXT`), or Continue's after a pause; not the customer's words. */
 export const AUTO_CONTINUE_TEXT = "continue";
 const CAP_FINISH_REASONS = new Set(["tool-calls", "tool_calls"]);
 
@@ -204,14 +204,19 @@ export function lastToolCall(chat: StoryChat | null): ToolCallView | null {
   return null;
 }
 
-/** The supervisor's "continue" right after a turn that hit the step cap. */
+/**
+ * The "continue" right after a turn that hit the step cap (the supervisor's)
+ * or that a pause stopped (Continue's): the agent's pause ends the turn with
+ * its last message closed without a finish reason.
+ */
 function isAutoContinue(messages: readonly Message[], index: number): boolean {
   if (messageText(messages[index]) !== AUTO_CONTINUE_TEXT) return false;
   for (let i = index - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role === "USER") return false;
     if (m.role === "ASSISTANT") {
-      return CAP_FINISH_REASONS.has(m.finishReason ?? "");
+      const paused = !!m.finishedAt && !m.finishReason && !m.failure;
+      return paused || CAP_FINISH_REASONS.has(m.finishReason ?? "");
     }
   }
   return false;

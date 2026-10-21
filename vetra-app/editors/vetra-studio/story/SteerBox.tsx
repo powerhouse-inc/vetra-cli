@@ -14,7 +14,11 @@ import { dispatchActions, usePHToast } from "@powerhousedao/reactor-browser";
 import { generateId } from "document-model";
 import { actions as productActions } from "document-models/studio-product";
 import { useEffect, useState, type RefObject } from "react";
-import { NOT_DELIVERED_AFTER_MS, type Delivery } from "./storyModel.js";
+import {
+  AUTO_CONTINUE_TEXT,
+  NOT_DELIVERED_AFTER_MS,
+  type Delivery,
+} from "./storyModel.js";
 
 export const STEER_PLACEHOLDER = 'Steer it: "make slides 16:9"…';
 
@@ -36,6 +40,27 @@ export async function sendSteer(sessionId: string, text: string) {
     sessionId,
   );
   return id;
+}
+
+/**
+ * Continue a paused change: RESUME_CHANGE, then `continue` in the
+ * conversation. The agent stopped the paused turn, so the message starts the
+ * next one on the same change (the story doesn't show it as the customer's
+ * words). Rejects when the change could not be resumed.
+ */
+export async function continueChange(
+  productId: string,
+  changeId: string,
+  sessionId: string | null,
+) {
+  const refused: Error[] = [];
+  await dispatchActions(
+    productActions.resumeChange({ changeId, at: new Date().toISOString() }),
+    productId,
+    (errors) => refused.push(...errors),
+  );
+  if (refused.length > 0) throw new Error("The change could not be resumed.");
+  if (sessionId) await sendSteer(sessionId, AUTO_CONTINUE_TEXT);
 }
 
 export type SteerBoxProps = {
@@ -97,11 +122,6 @@ export function SteerBox({
   function togglePause() {
     if (!productId) return;
     const next = showPaused ? "resume" : "pause";
-    const at = new Date().toISOString();
-    const action =
-      next === "pause"
-        ? productActions.pauseChange({ changeId, at })
-        : productActions.resumeChange({ changeId, at });
     setRequested(next);
     const failed = () => {
       setRequested(null);
@@ -112,7 +132,15 @@ export function SteerBox({
         { type: "error" },
       );
     };
-    dispatchActions(action, productId, failed).catch(failed);
+    if (next === "resume") {
+      continueChange(productId, changeId, sessionId).catch(failed);
+      return;
+    }
+    dispatchActions(
+      productActions.pauseChange({ changeId, at: new Date().toISOString() }),
+      productId,
+      failed,
+    ).catch(failed);
   }
 
   return (

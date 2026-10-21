@@ -156,6 +156,21 @@ describe("SteerBox", () => {
     expectNoForbiddenWords(container);
   });
 
+  it("Continue resumes the change, then sends continue", async () => {
+    const container = render(<Harness paused />);
+    await act(async () => {
+      click(button(container, "Continue"));
+      await Promise.resolve();
+    });
+    expect(hoisted.dispatched.map((d) => [d.action.type, d.id])).toEqual([
+      ["RESUME_CHANGE", PRODUCT_ID],
+      ["ADD_USER_MESSAGE", SESSION_ID],
+    ]);
+    expect(hoisted.dispatched[1].action.input).toMatchObject({
+      content: [{ type: "TEXT", text: "continue" }],
+    });
+  });
+
   it("a paused change shows Continue", () => {
     const container = render(<Harness paused />);
     expect(button(container, "Continue")).toBeDefined();

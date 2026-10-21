@@ -267,6 +267,23 @@ describe("auto-continue", () => {
     expect(lines.filter((l) => l.kind === "steer")).toEqual([]);
   });
 
+  it("Continue's message after a paused turn is not a steer", () => {
+    const product = buildingProduct();
+    // A pause stops the turn: its last message closes without a finish reason.
+    const paused = reply("a1", "Working.", at(2), at(3));
+    const lines = storyLines(
+      product,
+      changeOf(product),
+      chat(
+        user("u0", "a task board", at(1), at(1)),
+        paused,
+        user("u1", "continue", atSec(3, 1), atSec(3, 2)),
+      ),
+      new Date(at(4)),
+    );
+    expect(lines.filter((l) => l.kind === "steer")).toEqual([]);
+  });
+
   it("the customer's own continue still shows", () => {
     const product = buildingProduct();
     const lines = storyLines(
