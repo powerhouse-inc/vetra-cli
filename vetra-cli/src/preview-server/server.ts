@@ -18,6 +18,7 @@
  *   GET  /export?workspace=1      owner: zip of selected workspace parts.
  *   GET  /auth/status             owner: the agent's Renown identity.
  *   POST /auth/start|confirm|logout  owner: change the agent's Renown identity.
+ *   /workshop/*                   owner: see workshop-routes.ts.
  *
  * Listens on 127.0.0.1, but the embedded proxy exposes it publicly at
  * `/preview` — so every owner route checks the *request's* credential.
@@ -35,6 +36,7 @@ import { restartPreview, startPreview } from "./starter.js";
 import { createRequestAuthorizer, type RequestAuthorizer } from "./request-auth.js";
 import { buildSessionExport, listSessions } from "./session-export.js";
 import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-export.js";
+import { createWorkshopRoutes } from "./workshop-routes.js";
 import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
 import {
   confirmAuth,
@@ -167,6 +169,8 @@ export async function startPreviewServer(
     writeJson(res, check.status, { error: check.error });
     return false;
   }
+
+  const workshopRoutes = createWorkshopRoutes({ workdir, requireOwner, log });
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void handleRequest(req, res);
@@ -417,6 +421,7 @@ export async function startPreviewServer(
         return;
       }
 
+      if (await workshopRoutes.handle(req, res, url, method)) return;
       writeJson(res, 404, { error: "not found", path });
     } catch (err) {
       log?.error(
