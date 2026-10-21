@@ -190,6 +190,22 @@ function resultOf(marker: Marker): ProductDriveResult {
   };
 }
 
+/** The drive's access as this Studio last applied or read it; null without a local record. */
+export interface ProductDriveRecord {
+  /** The live server's GraphQL endpoint. */
+  switchboardUrl: string;
+  driveId: string;
+  access: ProductAccess | null;
+  accessApplied: boolean;
+}
+
+export function readProductDriveRecord(workdir: string): ProductDriveRecord | null {
+  const m = readMarker(workdir);
+  return m
+    ? { switchboardUrl: m.switchboardUrl, driveId: m.driveId, access: m.access, accessApplied: m.accessApplied }
+    : null;
+}
+
 /** `https://x.vetra.io` or `…/graphql` → the GraphQL endpoint. */
 export function switchboardGraphqlEndpoint(url: string): string {
   const trimmed = url.trim().replace(/\/+$/, "");

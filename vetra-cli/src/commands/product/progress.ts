@@ -12,6 +12,7 @@ import { StudioProductV1 } from "vetra-app/document-models";
 import type { placeholderName as PlaceholderName } from "vetra-app/document-models/studio-product";
 import { defineCommand } from "../../framework.js";
 import { activePhases, claimedMissingTools, toolsGained } from "../../agents/phase-tools.js";
+import { requestLiveTarget, type OrchestratorContext } from "../../launch/orchestrator.js";
 import { findForbiddenWords } from "../../product/forbidden-words.js";
 import {
   ProductRefusedError,
@@ -187,8 +188,25 @@ function buildActions(
   }
 }
 
+type ProgressContext = ProductContext & Partial<OrchestratorContext>;
+
+type ProductState = NonNullable<Awaited<ReturnType<typeof getProductDoc>>>["state"];
+
+/**
+ * D8: once the plan is done, the App and its production environment are
+ * requested in the background (`SET_LIVE_TARGET`), so the live app is up by
+ * the time the tests pass. A failure is logged at error and tried again at
+ * the next step change. Only in a Studio (an environment id is configured).
+ */
+function prepareLiveTarget(ctx: ProgressContext, state: ProductState): void {
+  if (state.appId || !ctx.workdir || !ctx.config?.environmentId) return;
+  const planDone = state.changes.some((c) => c.steps.some((s) => s.kind === "PLAN" && s.status === "DONE"));
+  if (!planDone) return;
+  void requestLiveTarget({ ...ctx, workdir: ctx.workdir, config: ctx.config });
+}
+
 /** Runs one progress action; returns the text the agent sees. */
-export async function runProgress(ctx: ProductContext, input: Input): Promise<string> {
+export async function runProgress(ctx: ProgressContext, input: Input): Promise<string> {
   if (input.action === "suggest") return "suggest is not available yet.";
   const product = await getProductDoc(ctx);
   if (!product) return "There is no product in this Studio yet; nothing was recorded.";
@@ -208,6 +226,7 @@ export async function runProgress(ctx: ProductContext, input: Input): Promise<st
   if (!MOVES_STEP.has(input.action)) return built.ok;
   const after = await getProductDoc(ctx);
   if (!after) return built.ok;
+  prepareLiveTarget(ctx, after.state);
   return built.ok + gainedLine(toolsGained(activePhases(product.state), activePhases(after.state)));
 }
 

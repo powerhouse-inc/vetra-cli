@@ -9,7 +9,7 @@
  */
 export type LaunchErrorCode =
   | "PERMISSION"
-  | "NO_LAUNCH_SECRET"
+  | "STUDIO_SECRET_PENDING"
   | "NO_STUDIO"
   | "NOTHING_TO_PUBLISH"
   | "PUBLISH_FAILED"
