@@ -284,14 +284,24 @@ sign-in. It passes when the request carries:
    `studio.config.json`). The gate requires that exact `aud` — a token with
    no `aud` (e.g. one minted for the switchboard, which refuses `aud`
    tokens) or another Studio's `aud` fails, so a token a malicious Studio
-   captures can't be replayed here. Then `verifyAuthBearerToken` (signature +
+   captures can't be replayed here. The binding is to the **origin**
+   (scheme + host + port), not the path: each Studio must be served from
+   its own origin (true for cloud Studios, one subdomain each); two Studios
+   under one origin with different base paths would accept each other's
+   tokens. The client reuses one token until shortly before its 10-minute
+   expiry rather than minting per call. Then `verifyAuthBearerToken` (signature +
    expiry), the claimed wallet must be in the pod's `ADMINS`, and
    `verifyAuthCredential` confirms on Renown that the wallet delegated to the
    token's app key (a self-signed token claiming the owner's address fails
    here). Bearers are verified on the Renown the Studio's Connect logs in on
-   (`resolveStudioRenownUrl`). Delegation verdicts are cached per token
-   (5 min ok / 30 s refused), lookups are capped at 30/min, and a non-owner
-   wallet never costs a lookup; or
+   (`resolveStudioRenownUrl`). Delegation verdicts are cached per
+   (app key, wallet) — what the lookup proves — for 5 min ok / 30 s refused,
+   with concurrent checks sharing one lookup. A key verified in the last 24 h
+   re-verifies without any cap, so the owner's polling never hits one and a
+   flood of fresh attacker keys can't lock the owner's key out; keys not yet
+   verified are capped at 3 lookups/min each and 30/min overall. A non-owner
+   wallet never costs a lookup. Residual: a flood of fresh keys can delay an
+   owner's *first* verification on a new device by up to a minute; or
 3. local mode only — no studio environment id (`VETRA_ENVIRONMENT_ID`), no
    `ADMINS`, no secret: a request from a loopback socket whose every
    `x-forwarded-for` hop is loopback (the proxy appends the real client
@@ -310,16 +320,22 @@ hasn't loaded (the `127.0.0.1` fallback).
 `POST /auth/confirm` in a cloud Studio keeps a completed agent login only when
 its wallet is in `ADMINS`; any other wallet is logged straight back out
 (`error: "not-owner"`), so the agent can't be switched to another identity.
+The same rule applies whenever the agent's identity is read (`auth/renown.ts`
+`getRenown`/`getAuthState`/`getBearerToken`/`getSigner`, …): a stored
+non-owner credential (e.g. from before the rule) is cleared and the agent
+reads as signed out.
 
 Residual risks: (a) the owner's Renown session lives in Connect's origin; if
 the owner signs into Renown on an attacker's page (a malicious Studio or
 app), that page gets its own delegated app key for the owner's wallet and can
 mint `aud`-bound tokens for any Studio — `aud` binding stops replay of
 captured tokens, not a delegation the owner granted. Revoking the delegation
-on Renown is the remedy. (b) Local mode through the proxy can't see the
-browser's real `Host` (the proxy rewrites it; an existing `x-forwarded-host`
-is kept), so a DNS-rebinding page that sets its own `X-Forwarded-Host:
-localhost` header is not caught by the Host check. Sub-agent threads (resource `cli-user-<agentName>`) are not bundled in
+on Renown is the remedy. (b) Local mode through the proxy relies on `x-forwarded-host` for the
+browser's real `Host` (the proxy rewrites `Host`). http-proxy keeps a
+client-sent `x-forwarded-host`, so a DNS-rebinding page could set
+`X-Forwarded-Host: localhost` itself; ph-clint's proxy drops client-sent
+values (branch `fix/proxy-forwarded-host`), which closes this once vetra-cli
+is on a ph-clint release with that fix. Sub-agent threads (resource `cli-user-<agentName>`) are not bundled in
 session exports — their per-delegation threadIds don't link back to a
 session.
 

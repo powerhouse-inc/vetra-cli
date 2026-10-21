@@ -10,7 +10,12 @@ let approver = OWNER;
 const logout = jest.fn(async () => {
   fakeRenown.user = undefined;
 });
-const fakeRenown: { user?: { address: string }; logout: typeof logout } = { logout };
+const fakeRenown: {
+  user?: { address: string };
+  logout: typeof logout;
+  getBearerToken: () => Promise<string>;
+  signer: object;
+} = { logout, getBearerToken: async () => "agent-token", signer: {} };
 
 jest.unstable_mockModule("@renown/sdk/node", () => ({
   RenownBuilder: class {
@@ -30,7 +35,8 @@ jest.unstable_mockModule("../../src/auth/login-flow.js", () => ({
   }),
 }));
 
-const { startAuth, confirmAuth } = await import("../../src/auth/renown.js");
+const { startAuth, confirmAuth, getAuthState, getBearerToken, setRequireAdminIdentity } =
+  await import("../../src/auth/renown.js");
 
 describe("confirmAuth — owner-only agent identity", () => {
   const saved = process.env.ADMINS;
@@ -77,5 +83,44 @@ describe("confirmAuth — owner-only agent identity", () => {
     await startAuth(workdir, "https://renown.example");
     const state = await confirmAuth(workdir, "https://renown.example", 0);
     expect(state).toEqual({ authenticated: true, address: ATTACKER });
+  });
+
+  describe("a credential stored before the rule (cloud)", () => {
+    const savedEnv = process.env.VETRA_ENVIRONMENT_ID;
+    afterEach(() => {
+      setRequireAdminIdentity(undefined);
+      if (savedEnv === undefined) delete process.env.VETRA_ENVIRONMENT_ID;
+      else process.env.VETRA_ENVIRONMENT_ID = savedEnv;
+    });
+
+    it("a non-owner stored identity reads as signed out and is cleared", async () => {
+      process.env.VETRA_ENVIRONMENT_ID = "env-1";
+      fakeRenown.user = { address: ATTACKER };
+      expect(await getAuthState(workdir, "https://renown.example")).toEqual({
+        authenticated: false,
+      });
+      expect(logout).toHaveBeenCalledTimes(1);
+      fakeRenown.user = { address: ATTACKER };
+      expect(await getBearerToken(workdir, "https://renown.example")).toBeNull();
+    });
+
+    it("the owner's stored identity is kept", async () => {
+      setRequireAdminIdentity(true);
+      fakeRenown.user = { address: OWNER };
+      expect(await getAuthState(workdir, "https://renown.example")).toEqual({
+        authenticated: true,
+        address: OWNER,
+      });
+      expect(await getBearerToken(workdir, "https://renown.example")).toBe("agent-token");
+      expect(logout).not.toHaveBeenCalled();
+    });
+
+    it("local: a stored identity is left alone", async () => {
+      delete process.env.VETRA_ENVIRONMENT_ID;
+      fakeRenown.user = { address: ATTACKER };
+      expect(await getAuthState(workdir, "https://renown.example")).toMatchObject({
+        authenticated: true,
+      });
+    });
   });
 });

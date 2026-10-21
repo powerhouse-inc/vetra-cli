@@ -20,6 +20,7 @@ import {
   startPreviewServer,
   type PreviewServerHandle,
 } from "../preview-server/index.js";
+import { setRequireAdminIdentity } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
 import { resolveStudioRenownUrl } from "../lifecycle/connect-drive-url.js";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
@@ -53,6 +54,8 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
     }
 
     const { renownUrl } = resolveCloudConfig(ctx.context.config);
+    // Cloud Studio: the agent's Renown identity must be an ADMINS wallet.
+    setRequireAdminIdentity(Boolean(ctx.context.config.environmentId?.trim()));
 
     try {
       ctx.state.handle = await startPreviewServer({

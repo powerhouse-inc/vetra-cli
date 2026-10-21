@@ -150,6 +150,86 @@ describe("bearer is bound to this Studio (aud)", () => {
   });
 });
 
+describe("Renown lookups: cached per (app key, wallet), capped only for unknown keys", () => {
+  const saved = process.env.ADMINS;
+  let errorSpy: ReturnType<typeof jest.spyOn>;
+  beforeEach(() => {
+    process.env.ADMINS = OWNER;
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errorSpy.mockRestore();
+    if (saved === undefined) delete process.env.ADMINS;
+    else process.env.ADMINS = saved;
+  });
+
+  async function keyFor(address: string) {
+    const crypto = await new RenownCryptoBuilder()
+      .withKeyPairStorage(new MemoryKeyStorage())
+      .build();
+    return { did: crypto.did, mint: () => crypto.getBearerToken(address, { expiresIn: 600, aud: STUDIO }) };
+  }
+
+  it("owner polling at 100 req/min, a fresh token each time, stays authorized with one lookup", async () => {
+    let t = 1_000_000;
+    const owner = await keyFor(OWNER);
+    const delegation = jest.fn(async () => true);
+    const authorize = authorizer(delegation, { now: () => t });
+    for (let i = 0; i < 100; i++) {
+      const tok = await owner.mint();
+      expect((await authorize(req({ authorization: `Bearer ${tok}` }), null)).ok).toBe(true);
+      t += 600;
+    }
+    expect(delegation).toHaveBeenCalledTimes(1);
+  });
+
+  it("a flood of fresh attacker keys claiming the owner can't lock out the owner's verified key", async () => {
+    let t = 1_000_000;
+    const owner = await keyFor(OWNER);
+    const ownerTokens = new Set<string>();
+    const delegation = jest.fn(async (jwt: string) => ownerTokens.has(jwt));
+    const authorize = authorizer(delegation, { now: () => t });
+    const first = await owner.mint();
+    ownerTokens.add(first);
+    expect((await authorize(req({ authorization: `Bearer ${first}` }), null)).ok).toBe(true);
+
+    // 40 self-signed keys, each claiming the owner's wallet with the right aud.
+    for (let i = 0; i < 40; i++) {
+      const forged = await (await keyFor(OWNER)).mint();
+      expect((await authorize(req({ authorization: `Bearer ${forged}` }), null)).ok).toBe(false);
+    }
+    // The global cap for unknown keys is spent...
+    const lateForger = await (await keyFor(OWNER)).mint();
+    const before = delegation.mock.calls.length;
+    expect((await authorize(req({ authorization: `Bearer ${lateForger}` }), null)).ok).toBe(false);
+    expect(delegation.mock.calls.length).toBe(before);
+
+    // ...yet the owner's key passes, from cache and after its verdict expires.
+    const again = await owner.mint();
+    ownerTokens.add(again);
+    expect((await authorize(req({ authorization: `Bearer ${again}` }), null)).ok).toBe(true);
+    t += 6 * 60_000; // owner's verdict expired; attackers spend the new window's cap first
+    for (let i = 0; i < 40; i++) {
+      await authorize(req({ authorization: `Bearer ${await (await keyFor(OWNER)).mint()}` }), null);
+    }
+    const later = await owner.mint();
+    ownerTokens.add(later);
+    expect((await authorize(req({ authorization: `Bearer ${later}` }), null)).ok).toBe(true);
+  });
+
+  it("one unknown key gets at most 3 lookups a minute", async () => {
+    const t = 1_000_000;
+    const attacker = await keyFor(OWNER);
+    const delegation = jest.fn(async () => false);
+    const authorize = authorizer(delegation, { now: () => t });
+    // Failures are cached 30 s per key anyway; the per-key cap is the backstop.
+    for (let i = 0; i < 10; i++) {
+      await authorize(req({ authorization: `Bearer ${await attacker.mint()}` }), null);
+    }
+    expect(delegation.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+});
+
 describe("isLocalRequest", () => {
   it("direct loopback, no origin", () => {
     expect(isLocalRequest(req({}))).toBe(true);

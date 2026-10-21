@@ -46,8 +46,11 @@ export interface RequestAuthOptions {
   verifyBearer?: (jwt: string, audience: string) => Promise<BearerClaims | false>;
   /** Network check that the wallet delegated to the token's app key. */
   verifyDelegation?: (jwt: string, audience: string) => Promise<boolean>;
-  /** Max Renown delegation lookups per minute (default 30). */
+  /** Max Renown lookups per minute for not-yet-verified app keys, overall
+   *  (default 30). Recently verified keys are never capped. */
   lookupsPerMinute?: number;
+  /** Max lookups per minute for one not-yet-verified app key (default 3). */
+  lookupsPerKeyPerMinute?: number;
   now?: () => number;
 }
 
@@ -160,7 +163,21 @@ async function defaultVerifyBearer(
 
 const OK_TTL_MS = 5 * 60_000;
 const FAIL_TTL_MS = 30_000;
+/** A key verified within this long re-verifies without the lookup caps. */
+const TRUSTED_MS = 24 * 60 * 60_000;
+const WINDOW_MS = 60_000;
 const CACHE_MAX = 500;
+
+/** Insert into a bounded map, dropping the oldest entries when full. */
+function boundedSet<V>(map: Map<string, V>, key: string, value: V): void {
+  map.delete(key);
+  while (map.size >= CACHE_MAX) {
+    const first = map.keys().next().value;
+    if (first === undefined) break;
+    map.delete(first);
+  }
+  map.set(key, value);
+}
 
 export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthorizer {
   const now = opts.now ?? Date.now;
@@ -171,40 +188,71 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
       (await verifyAuthCredential(jwt, { audience, renownUrl: opts.renownUrl })) !==
       undefined);
   const lookupsPerMinute = opts.lookupsPerMinute ?? 30;
-  // Delegation verdicts per token (the network round-trip), bounded.
-  const delegationCache = new Map<string, { ok: boolean; until: number }>();
+  const lookupsPerKeyPerMinute = opts.lookupsPerKeyPerMinute ?? 3;
+  // What a lookup proves is "this wallet delegated to this app key", so
+  // verdicts are per (app key, wallet) — every token that key signs for that
+  // wallet shares one verdict, however often the client mints.
+  const verdicts = new Map<string, { ok: boolean; until: number }>();
+  const inFlight = new Map<string, Promise<boolean>>();
+  // Keys that verified recently: their re-checks skip the caps, so a flood of
+  // fresh attacker keys can't lock out the owner's already-verified key.
+  const trusted = new Map<string, number>();
+  // Caps on lookups for keys not yet trusted: per key, and overall.
+  const perKey = new Map<string, { start: number; count: number }>();
   let windowStart = 0;
-  let lookupsInWindow = 0;
+  let unknownLookups = 0;
 
-  async function delegated(jwt: string, audience: string): Promise<boolean> {
-    const key = createHash("sha256").update(jwt).digest("hex");
-    const t = now();
-    const hit = delegationCache.get(key);
-    if (hit && hit.until > t) return hit.ok;
-    // Fixed-window cap on Renown round-trips: a flood of fresh tokens is
-    // refused (not cached) rather than amplified into Renown traffic.
-    if (t - windowStart >= 60_000) {
+  function allowUnknownLookup(key: string, t: number): boolean {
+    if (t - windowStart >= WINDOW_MS) {
       windowStart = t;
-      lookupsInWindow = 0;
+      unknownLookups = 0;
     }
-    if (lookupsInWindow >= lookupsPerMinute) return false;
-    lookupsInWindow++;
-    let ok = false;
-    try {
-      ok = await verifyDelegation(jwt, audience);
-    } catch {
-      ok = false;
+    let k = perKey.get(key);
+    if (!k || t - k.start >= WINDOW_MS) {
+      k = { start: t, count: 0 };
+      boundedSet(perKey, key, k);
     }
-    if (delegationCache.size >= CACHE_MAX) {
-      for (const [k, v] of delegationCache) if (v.until <= t) delegationCache.delete(k);
-      while (delegationCache.size >= CACHE_MAX) {
-        const first = delegationCache.keys().next().value;
-        if (first === undefined) break;
-        delegationCache.delete(first);
+    if (k.count >= lookupsPerKeyPerMinute || unknownLookups >= lookupsPerMinute) {
+      return false;
+    }
+    k.count++;
+    unknownLookups++;
+    return true;
+  }
+
+  async function delegated(
+    jwt: string,
+    audience: string,
+    claims: BearerClaims,
+  ): Promise<boolean> {
+    const key = `${claims.appDid}|${claims.address.toLowerCase()}`;
+    const t = now();
+    const hit = verdicts.get(key);
+    if (hit && hit.until > t) return hit.ok;
+    const running = inFlight.get(key);
+    if (running) return running;
+    const lastOk = trusted.get(key);
+    const isTrusted = lastOk !== undefined && t - lastOk < TRUSTED_MS;
+    // Over the cap: refused, not cached — retried once the window rolls.
+    if (!isTrusted && !allowUnknownLookup(key, t)) return false;
+    const lookup = (async () => {
+      let ok = false;
+      try {
+        ok = await verifyDelegation(jwt, audience);
+      } catch {
+        ok = false;
       }
+      const done = now();
+      boundedSet(verdicts, key, { ok, until: done + (ok ? OK_TTL_MS : FAIL_TTL_MS) });
+      if (ok) boundedSet(trusted, key, done);
+      return ok;
+    })();
+    inFlight.set(key, lookup);
+    try {
+      return await lookup;
+    } finally {
+      inFlight.delete(key);
     }
-    delegationCache.set(key, { ok, until: t + (ok ? OK_TTL_MS : FAIL_TTL_MS) });
-    return ok;
   }
 
   return async (req, queryToken) => {
@@ -239,7 +287,7 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     if (!claims) return refused;
     // Address check before the network one: a non-owner never costs a lookup.
     if (!isAdminAddress(claims.address, admins)) return refused;
-    if (!(await delegated(bearer, audience))) return refused;
+    if (!(await delegated(bearer, audience, claims))) return refused;
     return { ok: true, via: "owner", address: claims.address };
   };
 }
