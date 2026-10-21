@@ -84,6 +84,22 @@ describe("MaterialDrop", () => {
     expect(onCards).toHaveBeenLastCalledWith([SHEET]);
   });
 
+  it("one row is one row, in English and German", async () => {
+    const one: MaterialCard = {
+      ...SHEET,
+      sheets: [{ sheet: "orders", header: ["a"], rowCount: 1 }],
+    };
+    upload.mockResolvedValue(one);
+    const { container } = mount();
+    drop(container, [file("orders.csv")]);
+    await flush();
+    expect(container.textContent).toContain("1 row");
+    expect(container.textContent).not.toContain("1 rows");
+    act(() => setLanguage("de"));
+    expect(container.textContent).toContain("1 Zeile");
+    expect(container.textContent).not.toContain("1 Zeilen");
+  });
+
   it("a too-large file shows its own error and keeps the others", async () => {
     upload.mockImplementation((f: File) =>
       f.name === "big.pdf"

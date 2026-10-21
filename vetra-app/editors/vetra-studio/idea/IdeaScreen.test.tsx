@@ -5,10 +5,24 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
-import { button, click, render } from "../test-utils/render.js";
+import {
+  WorkshopClientError,
+  type UnderstandResult,
+} from "../hooks/workshop-client.js";
+import type { UnderstoodDraft } from "../../../shared/understood-draft.js";
+import { setLanguage } from "../i18n/useT.js";
+import {
+  button,
+  click,
+  pressKey,
+  render,
+  typeInto,
+} from "../test-utils/render.js";
+import { defectDraft } from "../test-utils/understoodFixtures.js";
 import {
   IdeaScreen,
   SIGN_IN_CHECK_TIMEOUT_MS,
+  SLOW_READING_MS,
   spendText,
 } from "./IdeaScreen.js";
 import {
@@ -77,15 +91,18 @@ vi.mock("../budget/useStudioBudget.js", () => ({
     markExhausted: () => {},
   }),
 }));
+const toast = vi.hoisted(() => vi.fn());
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  usePHToast: () => undefined,
+  usePHToast: () => toast,
 }));
 
 const uploadMaterial = vi.hoisted(() => vi.fn());
+const requestUnderstanding = vi.hoisted(() => vi.fn());
 vi.mock("../hooks/workshop-client.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   uploadMaterial,
+  requestUnderstanding,
 }));
 
 const HOTEL = "Hotel breakfast orders";
@@ -437,8 +454,30 @@ describe("IdeaScreen with material", () => {
     });
   }
 
+  function withMaterial(props: Partial<Parameters<typeof IdeaScreen>[0]> = {}) {
+    const onStart = vi.fn((_idea: string) =>
+      Promise.resolve<string | undefined>("session-1"),
+    );
+    const onStarted = vi.fn();
+    const container = render(
+      <IdeaScreen
+        onStart={onStart}
+        onStarted={onStarted}
+        onOpenSettings={() => {}}
+        {...props}
+      />,
+    );
+    return { container, onStart, onStarted };
+  }
+
+  function result(): UnderstandResult {
+    return { draft: defectDraft(), notes: [], costUsd: 0.01, ms: 900 };
+  }
+
   beforeEach(() => {
     uploadMaterial.mockReset();
+    requestUnderstanding.mockReset();
+    toast.mockReset();
     uploadMaterial.mockResolvedValue({
       id: "m1",
       name: "orders.csv",
@@ -447,16 +486,13 @@ describe("IdeaScreen with material", () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    setLanguage(null);
+  });
+
   it("with a file the button asks to show what was understood", async () => {
-    const onUnderstand = vi.fn();
-    const container = render(
-      <IdeaScreen
-        onStart={vi.fn()}
-        onStarted={vi.fn()}
-        onOpenSettings={() => {}}
-        onUnderstand={onUnderstand}
-      />,
-    );
+    const { container } = withMaterial();
     expect(button(container, "Build it")).toBeDefined();
     expect(container.textContent).toContain(
       "Your files are read by the AI model this Studio uses.",
@@ -464,12 +500,131 @@ describe("IdeaScreen with material", () => {
     dropFile(container);
     await flush();
     expect(container.textContent).toContain("7 rows");
-    click(button(container, "Show me what you understood"));
-    expect(onUnderstand).toHaveBeenCalledWith({
-      cards: [expect.objectContaining({ id: "m1" })],
-      text: "",
-    });
+    expect(button(container, "Show me what you understood")).toBeDefined();
+    expect(button(container, "Build it")).toBeUndefined();
     expectNoForbiddenWords(container);
+  });
+
+  it("the button speaks German when the language is German", async () => {
+    setLanguage("de");
+    const { container } = withMaterial();
+    dropFile(container);
+    await flush();
+    expect(container.textContent).toContain("7 Zeilen");
+    expect(button(container, "Zeig mir, was du verstanden hast")).toBeDefined();
+    expectNoForbiddenWords(container);
+  });
+
+  it("reads the files, waits with them, and says big diagrams take longer", async () => {
+    requestUnderstanding.mockReturnValue(new Promise(() => {}));
+    const { container } = withMaterial();
+    typeIdea(container, "Defects on site");
+    dropFile(container);
+    await flush();
+    vi.useFakeTimers();
+    click(button(container, "Show me what you understood"));
+    expect(requestUnderstanding).toHaveBeenCalledWith(
+      { materialIds: ["m1"], text: "Defects on site", language: "en" },
+      expect.any(AbortSignal),
+    );
+    const waiting = container.querySelector('[role="status"]');
+    expect(waiting?.textContent).toContain("Reading your material…");
+    expect(waiting?.textContent).toContain("orders.csv");
+    expect(container.textContent).not.toContain("Almost there");
+    act(() => {
+      vi.advanceTimersByTime(SLOW_READING_MS);
+    });
+    expect(container.textContent).toContain(
+      "Almost there — big diagrams take up to a minute.",
+    );
+    expectNoForbiddenWords(container);
+  });
+
+  it("shows what was understood; Back keeps the draft; Build this starts", async () => {
+    requestUnderstanding.mockResolvedValue(result());
+    const { container, onStart, onStarted } = withMaterial();
+    typeIdea(container, "Defects on site");
+    dropFile(container);
+    await flush();
+    click(button(container, "Show me what you understood"));
+    await flush();
+    expect(container.querySelector("h1")?.textContent).toBe(
+      "What I understood",
+    );
+    click(button(container, "Mangel"));
+    const input = container.querySelector('input[aria-label="Mangel"]');
+    typeInto(input, "Baumangel");
+    pressKey(input as Element, "Enter");
+    click(button(container, "Back"));
+    expect(textarea(container).closest("[hidden]")).toBeNull();
+    expect(container.textContent).toContain("orders.csv");
+    click(button(container, "Show me what you understood"));
+    await flush();
+    expect(requestUnderstanding).toHaveBeenCalledTimes(1);
+    expect(button(container, "Baumangel")).toBeDefined();
+    click(button(container, "Build this"));
+    await flush();
+    // Until the build takes the draft (Task 1.7), the idea text starts it.
+    expect(onStart).toHaveBeenCalledWith("Defects on site");
+    expect(onStarted).toHaveBeenCalledWith("session-1");
+  });
+
+  it("hands the corrected draft to onBuildDraft when it is given", async () => {
+    requestUnderstanding.mockResolvedValue(result());
+    const onBuildDraft = vi.fn(
+      (_input: {
+        idea: string;
+        draft: UnderstoodDraft;
+        language: "en" | "de";
+      }) => Promise.resolve<string | undefined>("session-2"),
+    );
+    const { container, onStart, onStarted } = withMaterial({ onBuildDraft });
+    dropFile(container);
+    await flush();
+    click(button(container, "Show me what you understood"));
+    await flush();
+    click(button(container, "Build this"));
+    await flush();
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onBuildDraft).toHaveBeenCalledTimes(1);
+    const [handed] = onBuildDraft.mock.calls[0];
+    expect(handed.idea).toBe("");
+    expect(handed.language).toBe("en");
+    expect(handed.draft.summary).toBe(defectDraft().summary);
+    expect(onStarted).toHaveBeenCalledWith("session-2");
+  });
+
+  it("files that can't be read show their notes and keep the idea box", async () => {
+    requestUnderstanding.mockRejectedValue(
+      new WorkshopClientError("unreadable", [
+        { materialId: "m1", text: "This sheet is empty." },
+      ]),
+    );
+    const { container } = withMaterial();
+    typeIdea(container, "Defects on site");
+    dropFile(container);
+    await flush();
+    click(button(container, "Show me what you understood"));
+    await flush();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "This sheet is empty.",
+    );
+    expect(textarea(container).closest("[hidden]")).toBeNull();
+    expect(textarea(container).value).toBe("Defects on site");
+  });
+
+  it("a used-up budget is said in the user's language", async () => {
+    setLanguage("de");
+    requestUnderstanding.mockRejectedValue(new WorkshopClientError("budget"));
+    const { container } = withMaterial();
+    dropFile(container);
+    await flush();
+    click(button(container, "Zeig mir, was du verstanden hast"));
+    await flush();
+    expect(toast).toHaveBeenCalledWith("Dein Budget ist aufgebraucht.", {
+      type: "error",
+    });
+    expect(container.querySelector("textarea")?.closest("[hidden]")).toBeNull();
   });
 
   it("signed out, a drop asks to sign in and uploads nothing", async () => {

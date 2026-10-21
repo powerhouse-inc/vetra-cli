@@ -47,7 +47,7 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   owner: "material.owner",
 };
 
-const KIND_ICON: Record<MaterialKind, typeof FileText> = {
+export const MATERIAL_ICON: Record<MaterialKind, typeof FileText> = {
   PICTURE: PictureIcon,
   PDF: FileText,
   SHEET: FileSpreadsheet,
@@ -64,7 +64,8 @@ export type MaterialDropProps = {
   signedIn?: boolean;
   /** Called when a signed-out visitor tries to add files. */
   onSignInNeeded?: () => void;
-  /** The files that are read and ready, whenever they change. */
+  /** The files that are read and ready, whenever they change. Pass a
+   *  stable function (a state setter): it is an effect dependency. */
   onCards: (cards: MaterialCard[]) => void;
   /** The idea box (or whatever else should accept drops and pastes). */
   children?: ReactNode;
@@ -85,7 +86,7 @@ export function MaterialDrop({
 
   useEffect(() => {
     onCards(readyCards(items));
-  }, [items]);
+  }, [items, onCards]);
 
   function add(files: File[]) {
     if (disabled || files.length === 0) return;
@@ -143,7 +144,7 @@ export function MaterialDrop({
       ) : (
         <ul className="flex flex-wrap justify-center gap-2">
           {items.map((item) => {
-            const Icon = item.card ? KIND_ICON[item.card.kind] : FileText;
+            const Icon = item.card ? MATERIAL_ICON[item.card.kind] : FileText;
             const failed = item.status === "failed";
             return (
               <li
@@ -158,7 +159,9 @@ export function MaterialDrop({
                 <span className="max-w-48 truncate">{item.name}</span>
                 {item.card?.kind === "SHEET" ? (
                   <span className="text-muted-foreground">
-                    {t("material.rows", { rows: rowsOf(item.card) })}
+                    {rowsOf(item.card) === 1
+                      ? t("material.rows.one")
+                      : t("material.rows", { rows: rowsOf(item.card) })}
                   </span>
                 ) : null}
                 {failed ? (
