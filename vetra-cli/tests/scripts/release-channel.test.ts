@@ -48,4 +48,15 @@ describe('resolveReleaseChannel', () => {
       resolveReleaseChannel({ branch: 'feat/x', prereleaseTag: '', version: '0.0.9' }),
     ).toThrow('release runs from main or production only (got feat/x)');
   });
+
+  it('prerelease tag refuses also-tag', () => {
+    expect(() =>
+      resolveReleaseChannel({
+        branch: 'feat/iterate-design',
+        prereleaseTag: 'p4',
+        version: '0.0.9-p4.1',
+        alsoTag: 'latest',
+      }),
+    ).toThrow('also-tag is not allowed with a prerelease tag');
+  });
 });

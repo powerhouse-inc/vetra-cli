@@ -10,8 +10,9 @@ import { pathToFileURL } from 'node:url';
 const DEV_REGISTRY = 'https://registry.dev.vetra.io';
 const MAIN_REGISTRY = 'https://registry.vetra.io';
 
-export function resolveReleaseChannel({ branch, prereleaseTag, version }) {
+export function resolveReleaseChannel({ branch, prereleaseTag, version, alsoTag = '' }) {
   if (prereleaseTag) {
+    if (alsoTag) throw new Error('also-tag is not allowed with a prerelease tag');
     if (prereleaseTag === 'dev' || prereleaseTag === 'latest' || !/^[a-z][a-z0-9]*$/.test(prereleaseTag)) {
       throw new Error(`prerelease tag ${prereleaseTag} is not allowed`);
     }
@@ -33,6 +34,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       branch: process.env.GITHUB_REF_NAME ?? '',
       prereleaseTag: process.env.INPUT_PRERELEASE_TAG ?? '',
       version: process.env.VERSION ?? '',
+      alsoTag: process.env.INPUT_ALSO_TAG ?? '',
     });
     console.log(`dist_tag=${distTag}`);
     console.log(`registries=${registries.join(' ')}`);
