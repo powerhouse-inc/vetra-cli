@@ -28,6 +28,19 @@ function project(dir: string, version: string): string {
   return pkg;
 }
 
+/** A powerhouse.manifest.json whose name differs from the product name (as spec-generate leaves it). */
+function manifest(dir: string): string {
+  const m = `{\n    "name": "todo-list",\n    "apps": [{ "id": "todo-app" }]\n}`;
+  fs.writeFileSync(path.join(workdir, dir, "powerhouse.manifest.json"), m);
+  return m;
+}
+
+function rewriteManifest(projectPath: string, name: string | undefined): void {
+  const file = path.join(projectPath, "powerhouse.manifest.json");
+  if (!fs.existsSync(file)) return;
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf8")), name }));
+}
+
 type PublishFn = PublishDeps["publish"];
 type PublishOpts = Parameters<PublishFn>[0];
 
@@ -38,6 +51,7 @@ function fakeDeps(packuments: Record<string, PackumentResult>) {
       path.join(opts.projectPath, "package.json"),
       JSON.stringify({ name: opts.packageName, version: opts.version }),
     );
+    rewriteManifest(opts.projectPath, opts.packageName);
     return { kind: "ok", packageName: opts.packageName!, version: opts.version!, registry: REGISTRY };
   });
   const deps: PublishDeps = {
@@ -191,6 +205,34 @@ describe("publishAll", () => {
     });
     await expect(publishAll(ctx, workdir, { slug: "team-todo" }, deps)).rejects.toThrow("ENOENT");
     expect(fs.readFileSync(path.join(workdir, "todo/package.json"), "utf8")).toBe(pkg);
+  });
+
+  it("restores powerhouse.manifest.json after a successful publish", async () => {
+    project("todo", "1.0.0");
+    const original = manifest("todo");
+    const { deps } = fakeDeps({});
+    await publishAll(ctx, workdir, { slug: "tack" }, deps);
+    expect(fs.readFileSync(path.join(workdir, "todo/powerhouse.manifest.json"), "utf8")).toBe(original);
+  });
+
+  it("restores powerhouse.manifest.json after a failed build and after a throw", async () => {
+    project("todo", "1.0.0");
+    const original = manifest("todo");
+    const { deps, publish } = fakeDeps({});
+    publish.mockImplementationOnce(async (opts: PublishOpts) => {
+      rewriteManifest(opts.projectPath, opts.packageName);
+      return { kind: "failed", error: "Build failed" };
+    });
+    await expect(publishAll(ctx, workdir, { slug: "tack" }, deps)).rejects.toMatchObject({
+      code: "PUBLISH_FAILED",
+    });
+    expect(fs.readFileSync(path.join(workdir, "todo/powerhouse.manifest.json"), "utf8")).toBe(original);
+    publish.mockImplementationOnce(async (opts: PublishOpts) => {
+      rewriteManifest(opts.projectPath, opts.packageName);
+      throw new Error("spawn npm ENOENT");
+    });
+    await expect(publishAll(ctx, workdir, { slug: "tack" }, deps)).rejects.toThrow("ENOENT");
+    expect(fs.readFileSync(path.join(workdir, "todo/powerhouse.manifest.json"), "utf8")).toBe(original);
   });
 
   it("keeps the first project's name when a second project is added", async () => {
