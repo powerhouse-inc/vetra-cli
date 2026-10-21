@@ -1,12 +1,3 @@
-/**
- * This is a scaffold file meant for customization:
- * - change it by adding new tests or modifying the existing ones
- */
-/**
- * This is a scaffold file meant for customization:
- * - change it by adding new tests or modifying the existing ones
- */
-
 import {
   assertIsStudioTeamDocument,
   assertIsStudioTeamState,
@@ -35,87 +26,38 @@ describe("StudioTeam Document Model", () => {
     expect(isStudioTeamDocument(document)).toBe(true);
     expect(isStudioTeamState(document.state)).toBe(true);
   });
+
   it("should reject a document that is not a StudioTeam document", () => {
-    const wrongDocumentType = utils.createDocument();
-    wrongDocumentType.header.documentType = "the-wrong-thing-1234";
-    try {
-      expect(assertIsStudioTeamDocument(wrongDocumentType)).toThrow();
-      expect(isStudioTeamDocument(wrongDocumentType)).toBe(false);
-    } catch (error) {
-      expect(error).toBeInstanceOf(ZodError);
-    }
+    const wrong = utils.createDocument();
+    wrong.header.documentType = "the-wrong-thing-1234";
+    expect(isStudioTeamDocument(wrong)).toBe(false);
+    expect(() => assertIsStudioTeamDocument(wrong)).toThrow(ZodError);
   });
-  const wrongState = utils.createDocument();
-  // @ts-expect-error - we are testing the error case
-  wrongState.state.global = {
-    ...{ notWhat: "you want" },
-  };
-  try {
-    expect(isStudioTeamState(wrongState.state)).toBe(false);
-    expect(assertIsStudioTeamState(wrongState.state)).toThrow();
-    expect(isStudioTeamDocument(wrongState)).toBe(false);
-    expect(assertIsStudioTeamDocument(wrongState)).toThrow();
-  } catch (error) {
-    expect(error).toBeInstanceOf(ZodError);
-  }
 
-  const wrongInitialState = utils.createDocument();
-  // @ts-expect-error - we are testing the error case
-  wrongInitialState.initialState.global = {
-    ...{ notWhat: "you want" },
-  };
-  try {
-    expect(isStudioTeamState(wrongInitialState.state)).toBe(false);
-    expect(assertIsStudioTeamState(wrongInitialState.state)).toThrow();
-    expect(isStudioTeamDocument(wrongInitialState)).toBe(false);
-    expect(assertIsStudioTeamDocument(wrongInitialState)).toThrow();
-  } catch (error) {
-    expect(error).toBeInstanceOf(ZodError);
-  }
+  it("should reject a wrong global state", () => {
+    const wrong = utils.createDocument();
+    // @ts-expect-error - we are testing the error case
+    wrong.state.global = { notWhat: "you want" };
+    expect(isStudioTeamState(wrong.state)).toBe(false);
+    expect(() => assertIsStudioTeamState(wrong.state)).toThrow(ZodError);
+    expect(isStudioTeamDocument(wrong)).toBe(false);
+  });
 
-  const missingIdInHeader = utils.createDocument();
-  // @ts-expect-error - we are testing the error case
-  delete missingIdInHeader.header.id;
-  try {
-    expect(isStudioTeamDocument(missingIdInHeader)).toBe(false);
-    expect(assertIsStudioTeamDocument(missingIdInHeader)).toThrow();
-  } catch (error) {
-    expect(error).toBeInstanceOf(ZodError);
-  }
+  it("should reject a wrong initial state", () => {
+    const wrong = utils.createDocument();
+    // @ts-expect-error - we are testing the error case
+    wrong.initialState.global = { notWhat: "you want" };
+    expect(isStudioTeamDocument(wrong)).toBe(false);
+    expect(() => assertIsStudioTeamDocument(wrong)).toThrow(ZodError);
+  });
 
-  const missingNameInHeader = utils.createDocument();
-  // @ts-expect-error - we are testing the error case
-  delete missingNameInHeader.header.name;
-  try {
-    expect(isStudioTeamDocument(missingNameInHeader)).toBe(false);
-    expect(assertIsStudioTeamDocument(missingNameInHeader)).toThrow();
-  } catch (error) {
-    expect(error).toBeInstanceOf(ZodError);
-  }
-
-  const missingCreatedAtUtcIsoInHeader = utils.createDocument();
-  // @ts-expect-error - we are testing the error case
-  delete missingCreatedAtUtcIsoInHeader.header.createdAtUtcIso;
-  try {
-    expect(isStudioTeamDocument(missingCreatedAtUtcIsoInHeader)).toBe(false);
-    expect(
-      assertIsStudioTeamDocument(missingCreatedAtUtcIsoInHeader),
-    ).toThrow();
-  } catch (error) {
-    expect(error).toBeInstanceOf(ZodError);
-  }
-
-  const missingLastModifiedAtUtcIsoInHeader = utils.createDocument();
-  // @ts-expect-error - we are testing the error case
-  delete missingLastModifiedAtUtcIsoInHeader.header.lastModifiedAtUtcIso;
-  try {
-    expect(isStudioTeamDocument(missingLastModifiedAtUtcIsoInHeader)).toBe(
-      false,
-    );
-    expect(
-      assertIsStudioTeamDocument(missingLastModifiedAtUtcIsoInHeader),
-    ).toThrow();
-  } catch (error) {
-    expect(error).toBeInstanceOf(ZodError);
-  }
+  it.each(["id", "name", "createdAtUtcIso", "lastModifiedAtUtcIso"] as const)(
+    "should reject a document missing header.%s",
+    (field) => {
+      const wrong = utils.createDocument();
+      delete wrong.header[field];
+      expect(isStudioTeamDocument(wrong)).toBe(false);
+      expect(() => assertIsStudioTeamDocument(wrong)).toThrow(ZodError);
+    },
+  );
 });

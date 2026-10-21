@@ -17,9 +17,9 @@ export const documentModel: DocumentModelGlobalState = {
       state: {
         global: {
           schema:
-            "# Studio Team: who may do what in one Studio. One document per Studio.\n# Authority never comes from this document (it is browser-writable); it holds\n# the team's preferences and the guest list the agent enforces.\nenum StudioRole {\n  OWNER\n  MAKER\n  VIEWER\n}\n\nenum GuestRights {\n  COMMENT\n  COMMENT_STEER\n}\n\ntype TeamPerson {\n  address: EthereumAddress!\n  name: String\n  addedAt: DateTime!\n}\n\ntype RoleOverride {\n  address: EthereumAddress!\n  role: StudioRole!\n  at: DateTime!\n}\n\ntype Guest {\n  id: OID!\n  address: EthereumAddress!\n  name: String\n  changeId: OID!\n  rights: GuestRights!\n  expiresAt: DateTime!\n  invitedAt: DateTime!\n  revokedAt: DateTime\n}\n\ntype MemberLimit {\n  address: EthereumAddress!\n  monthlyUsd: Float!\n  at: DateTime!\n}\n\ntype StudioTeamState {\n  orgId: String\n  reviewRequired: Boolean!\n  reviewers: [TeamPerson!]!\n  roleOverrides: [RoleOverride!]!\n  guests: [Guest!]!\n  memberLimits: [MemberLimit!]!\n}\n",
+            "# Studio Team: who may do what in one Studio. One document per Studio.\n# Authority never comes from this document (it is browser-writable); it holds\n# the team's preferences and the guest list the agent enforces.\nenum StudioRole {\n  OWNER\n  MAKER\n  VIEWER\n}\n\nenum GuestRights {\n  COMMENT\n  COMMENT_STEER\n}\n\ntype TeamPerson {\n  address: EthereumAddress!\n  name: String\n  addedAt: DateTime!\n}\n\ntype RoleOverride {\n  address: EthereumAddress!\n  role: StudioRole!\n  at: DateTime!\n}\n\ntype Guest {\n  id: OID!\n  address: EthereumAddress!\n  name: String\n  changeId: OID!\n  rights: GuestRights!\n  expiresAt: DateTime!\n  invitedAt: DateTime!\n  revokedAt: DateTime\n}\n\ntype MemberLimit {\n  address: EthereumAddress!\n  monthlyUsd: Float!\n  at: DateTime!\n}\n\ntype StudioTeamState {\n  initialized: Boolean!\n  orgId: String\n  reviewRequired: Boolean!\n  reviewers: [TeamPerson!]!\n  roleOverrides: [RoleOverride!]!\n  guests: [Guest!]!\n  memberLimits: [MemberLimit!]!\n}\n",
           initialValue:
-            '{\n  "orgId": null,\n  "reviewRequired": false,\n  "reviewers": [],\n  "roleOverrides": [],\n  "guests": [],\n  "memberLimits": []\n}',
+            '{\n  "initialized": false,\n  "orgId": null,\n  "reviewRequired": false,\n  "reviewers": [],\n  "roleOverrides": [],\n  "guests": [],\n  "memberLimits": []\n}',
           examples: [],
         },
         local: {
@@ -40,7 +40,7 @@ export const documentModel: DocumentModelGlobalState = {
               description:
                 "Initialise the team with its org, whether review is required and the time.",
               schema:
-                "input InitTeamInput {\n  orgId: String!\n  reviewRequired: Boolean!\n  at: DateTime!\n}",
+                "input InitTeamInput {\n  orgId: String\n  reviewRequired: Boolean!\n  at: DateTime!\n}",
               template:
                 "Initialise the team with its org, whether review is required and the time.",
               reducer: "",

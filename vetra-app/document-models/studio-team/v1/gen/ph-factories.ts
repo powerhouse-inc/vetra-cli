@@ -15,6 +15,7 @@ import { utils } from "./utils.js";
 
 export function defaultGlobalState(): StudioTeamGlobalState {
   return {
+    initialized: false,
     orgId: null,
     reviewRequired: false,
     reviewers: [],

@@ -89,7 +89,7 @@ export function GuestSchema(): z.ZodObject<Properties<Guest>> {
 export function InitTeamInputSchema(): z.ZodObject<Properties<InitTeamInput>> {
   return z.object({
     at: z.iso.datetime(),
-    orgId: z.string(),
+    orgId: z.string().nullish(),
     reviewRequired: z.boolean(),
   });
 }
@@ -190,6 +190,7 @@ export function StudioTeamStateSchema(): z.ZodObject<
   return z.object({
     __typename: z.literal("StudioTeamState").optional(),
     guests: z.array(z.lazy(() => GuestSchema())),
+    initialized: z.boolean(),
     memberLimits: z.array(z.lazy(() => MemberLimitSchema())),
     orgId: z.string().nullish(),
     reviewRequired: z.boolean(),

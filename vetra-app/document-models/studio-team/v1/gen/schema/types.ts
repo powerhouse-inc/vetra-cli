@@ -91,7 +91,7 @@ export type GuestRights = "COMMENT" | "COMMENT_STEER";
 
 export type InitTeamInput = {
   at: Scalars["DateTime"]["input"];
-  orgId: Scalars["String"]["input"];
+  orgId?: InputMaybe<Scalars["String"]["input"]>;
   reviewRequired: Scalars["Boolean"]["input"];
 };
 
@@ -147,6 +147,7 @@ export type StudioRole = "MAKER" | "OWNER" | "VIEWER";
 
 export type StudioTeamState = {
   guests: Array<Guest>;
+  initialized: Scalars["Boolean"]["output"];
   memberLimits: Array<MemberLimit>;
   orgId: Maybe<Scalars["String"]["output"]>;
   reviewRequired: Scalars["Boolean"]["output"];

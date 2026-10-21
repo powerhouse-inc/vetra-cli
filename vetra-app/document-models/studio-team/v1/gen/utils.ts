@@ -25,6 +25,7 @@ import type {
 } from "./types.js";
 
 export const initialGlobalState: StudioTeamGlobalState = {
+  initialized: false,
   orgId: null,
   reviewRequired: false,
   reviewers: [],

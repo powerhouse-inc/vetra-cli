@@ -2,9 +2,13 @@ import {
   inviteGuest,
   revokeGuest,
   utils,
+  reducer,
+  isStudioTeamDocument,
+  InviteGuestInputSchema,
+  RevokeGuestInputSchema,
 } from "document-models/studio-team/v1";
 import { describe, expect, it } from "vitest";
-import { ALICE, apply, at, DAY_MS, errorAt, plusDays } from "./helpers.js";
+import { ALICE, apply, at, errorAt, plusDays } from "./helpers.js";
 
 function invite(
   id: string,
@@ -105,9 +109,5 @@ describe("guests module", () => {
       revokeGuest({ id: "nope", at: at(0) }),
     );
     expect(errorAt(doc, 0)).toBe("No guest with this id.");
-  });
-
-  it("DAY_MS is one day", () => {
-    expect(DAY_MS).toBe(86_400_000);
   });
 });

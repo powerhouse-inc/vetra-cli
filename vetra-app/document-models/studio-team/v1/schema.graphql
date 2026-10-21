@@ -63,6 +63,7 @@ type MemberLimit {
 }
 
 type StudioTeamState {
+  initialized: Boolean!
   orgId: String
   reviewRequired: Boolean!
   reviewers: [TeamPerson!]!
@@ -75,7 +76,7 @@ type StudioTeamState {
 # team
 
 input InitTeamInput {
-  orgId: String!
+  orgId: String
   reviewRequired: Boolean!
   at: DateTime!
 }

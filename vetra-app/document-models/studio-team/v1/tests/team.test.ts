@@ -13,6 +13,7 @@ import { ALICE, apply, at, BOB, errorAt } from "./helpers.js";
 describe("team module", () => {
   it("starts empty with the documented defaults", () => {
     expect(utils.createDocument().state.global).toMatchObject({
+      initialized: false,
       orgId: null,
       reviewRequired: false,
       reviewers: [],
@@ -41,6 +42,20 @@ describe("team module", () => {
     expect(errorAt(doc, 1)).toBe("The team was already initialised.");
     expect(doc.state.global.orgId).toBe("acme-bau");
     expect(doc.state.global.reviewRequired).toBe(true);
+  });
+
+  it("INIT_TEAM with a null org initialises a personal team; a second init errors", () => {
+    const doc = apply(
+      utils.createDocument(),
+      initTeam({ orgId: null, reviewRequired: false, at: at(0) }),
+      initTeam({ orgId: "acme-bau", reviewRequired: true, at: at(1) }),
+    );
+    expect(errorAt(doc, 0)).toBeNull();
+    expect(doc.state.global.initialized).toBe(true);
+    expect(doc.state.global.orgId).toBeNull();
+    expect(errorAt(doc, 1)).toBe("The team was already initialised.");
+    expect(doc.state.global.orgId).toBeNull();
+    expect(doc.state.global.reviewRequired).toBe(false);
   });
 
   it("SET_REVIEW_REQUIRED toggles the flag", () => {

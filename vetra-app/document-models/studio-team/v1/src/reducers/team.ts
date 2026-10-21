@@ -10,12 +10,13 @@ import { normalizeTeam } from "../normalize.js";
 export const studioTeamTeamOperations: StudioTeamTeamOperations = {
   initTeamOperation(state, action) {
     normalizeTeam(state);
-    if (state.orgId !== null) {
+    if (state.initialized) {
       throw new TeamAlreadyInitializedError(
         "The team was already initialised.",
       );
     }
-    state.orgId = action.input.orgId;
+    state.initialized = true;
+    state.orgId = action.input.orgId ?? null;
     state.reviewRequired = action.input.reviewRequired;
   },
   setReviewRequiredOperation(state, action) {

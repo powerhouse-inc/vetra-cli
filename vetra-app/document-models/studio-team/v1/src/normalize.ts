@@ -8,6 +8,7 @@ import type { Guest, StudioTeamState } from "../gen/schema/types.js";
  */
 export function normalizeTeam(state: StudioTeamState): StudioTeamState {
   const s: Partial<StudioTeamState> = state;
+  s.initialized ??= false;
   s.orgId ??= null;
   s.reviewRequired ??= false;
   s.reviewers ??= [];

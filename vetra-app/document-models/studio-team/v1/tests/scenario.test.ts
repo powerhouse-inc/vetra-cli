@@ -30,6 +30,7 @@ describe("team scenario", () => {
     );
     for (let i = 0; i < 6; i++) expect(errorAt(doc, i)).toBeNull();
     expect(doc.state.global).toEqual({
+      initialized: true,
       orgId: "acme-bau",
       reviewRequired: true,
       reviewers: [
