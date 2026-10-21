@@ -122,6 +122,8 @@ jobs:
             local reg="$1" token who
             token=$(cd vetra-cli && node scripts/publish/mint-renown-token.mjs "$reg")
             echo "::add-mask::$token"
+            touch ~/.npmrc
+            sed -i "\#^//${reg#https://}/:_authToken=#d" ~/.npmrc
             echo "//${reg#https://}/:_authToken=$token" >> ~/.npmrc
             # Pre-flight: the token must resolve to an owner DID. Fail loud here
             # rather than as an opaque 403 mid-publish if the credential is
@@ -146,11 +148,14 @@ jobs:
           }
 
           for reg in $REGISTRIES; do
+            # A fresh token per package: a slow upload must not outlive it.
             mint_token "$reg"
             # the app first so the CLI never references an unpublished dep.
             publish_one "$VETRA_APP_TGZ" "$APP_NAME" "$reg"
+            mint_token "$reg"
             publish_one "$VETRA_CLI_TGZ" "$CLI_NAME" "$reg"
             if [ -n "$ALSO_TAG" ]; then
+              mint_token "$reg"
               for name in "$APP_NAME" "$CLI_NAME"; do
                 echo "pointing $name@$VERSION at dist-tag '$ALSO_TAG' on $reg"
                 npm dist-tag add "$name@$VERSION" "$ALSO_TAG" --registry "$reg"
