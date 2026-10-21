@@ -24,7 +24,6 @@ import {
   GITHUB_NOT_CONNECTED_CODE,
   cloudClearExternalChanges,
   cloudExternalChanges,
-  cloudPushToken,
   cloudRecordMirror,
   isUnsupported,
   redact,
@@ -32,6 +31,7 @@ import {
   type PushToken,
 } from "./cloud-launch.js";
 import { LaunchError } from "./errors.js";
+import { productPushToken } from "../helpers/github.js";
 import { MAIN_BRANCH, workspaceGit, type WorkspaceGitOptions } from "./git-versions.js";
 import { dispatchProduct, getProductDoc, productActions as a, type ProductContext } from "../product/product-doc.js";
 
@@ -72,7 +72,8 @@ export interface MirrorDeps {
 }
 
 const defaultDeps: MirrorDeps = {
-  pushToken: cloudPushToken,
+  // The product's GitHub connection, else the Studio's earlier one (Task 4.3).
+  pushToken: (ctx, appId) => productPushToken(ctx, appId),
   recordMirror: cloudRecordMirror,
   clearExternalChanges: cloudClearExternalChanges,
   externalChanges: cloudExternalChanges,
@@ -298,12 +299,44 @@ export async function mirror(ctx: MirrorContext, opts: { tags: string[] }): Prom
     ctx.log?.warn?.(`${TAG} ${mirrorFailureText(reason)}`);
     const input = failedInput(state, repo, reason);
     if (input) await recordGithub(ctx, input);
+    if (reason === MIRROR_REASONS.diverged) await flagGithubMain(ctx, state, token);
     return { failed: reason };
   }
   ctx.log?.info?.(`${TAG} saved to GitHub${repo ? ` (${repo})` : ""}: ${MAIN_BRANCH} ${sha.slice(0, 12)}${tags.length ? ` + ${tags.join(" ")}` : ""}`);
   await recordGithub(ctx, { status: "CONNECTED", repoFullName: repo, lastError: null });
   await clearIfBroughtIn(ctx, state, appId, sha);
   return { sha };
+}
+
+/** A full commit sha as `git ls-remote` prints it. */
+const FULL_SHA = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+
+/**
+ * `main` on GitHub has commits the Studio doesn't (a repository carried over
+ * from the Studio's earlier connection may not even share its history): its
+ * head is recorded as changes made on GitHub, so the page offers Bring them
+ * in. Nothing is forced. Never throws.
+ */
+async function flagGithubMain(
+  ctx: MirrorContext,
+  state: StudioProductState,
+  token: PushToken,
+): Promise<void> {
+  let head: string | undefined;
+  try {
+    const out = await gitWithToken(ctx, ["ls-remote", "--heads", token.remoteUrl, `refs/heads/${MAIN_BRANCH}`], token);
+    head = out.split("\n").map((l) => l.split(/\s+/)).find((p) => p[1] === `refs/heads/${MAIN_BRANCH}`)?.[0]?.toLowerCase();
+  } catch (err) {
+    ctx.log?.warn?.(`${TAG} GitHub's ${MAIN_BRANCH} couldn't be read: ${message(err)}`);
+    return;
+  }
+  if (!head || !FULL_SHA.test(head) || head === state.github.externalChangesSha) return;
+  try {
+    await dispatchProduct(ctx, [a.setExternalChanges({ sha: head })]);
+    ctx.log?.info?.(`${TAG} there are changes on GitHub that aren't in the Studio (${head.slice(0, 12)})`);
+  } catch (err) {
+    ctx.log?.warn?.(`${TAG} the changes on GitHub couldn't be recorded: ${message(err)}`);
+  }
 }
 
 /** PUSH_FAILED needs a repository name; without one the failure is only logged. */
@@ -377,7 +410,7 @@ export function resetExternalChangesSupport(): void {
 export async function syncExternalChanges(
   ctx: MirrorContext,
   state: StudioProductState,
-): Promise<"set" | "cleared" | null> {
+): Promise<"set" | null> {
   if (!externalChangesSupported) return null;
   if (state.github.status !== "CONNECTED" && state.github.status !== "PUSH_FAILED") return null;
   const studioEnvironmentId = ctx.config?.environmentId?.trim();
@@ -391,9 +424,28 @@ export async function syncExternalChanges(
     }
     const next = sha?.toLowerCase() ?? null;
     if (next === state.github.externalChangesSha) return null;
+    // A flag the cloud never saw (found by a refused push, e.g. history from
+    // before the repository was carried over) stays until a mirror push
+    // contains it (`clearIfBroughtIn` clears both sides).
+    if (next === null) return null;
+    // Already in the Studio's main (e.g. the head of a repository carried over
+    // with the Studio's own history): nothing came from outside.
+    let inStudio = true;
+    try {
+      await mirrorDepsOf(ctx).git(ctx.workdir, ["merge-base", "--is-ancestor", next, `refs/heads/${MAIN_BRANCH}`]);
+    } catch {
+      inStudio = false; // not in the Studio (or unknown to it): changes made on GitHub
+    }
+    if (inStudio) {
+      ctx.log?.debug?.(`${TAG} GitHub's ${next.slice(0, 12)} is already in the Studio`);
+      if (!(await mirrorDepsOf(ctx).clearExternalChanges(ctx, state.appId))) {
+        ctx.log?.debug?.(`${TAG} the cloud doesn't clear changes made on GitHub yet`);
+      }
+      return null;
+    }
     await dispatchProduct(ctx, [a.setExternalChanges({ sha: next })]);
-    if (next) ctx.log?.info?.(`${TAG} there are changes on GitHub that aren't in the Studio (${next.slice(0, 12)})`);
-    return next ? "set" : "cleared";
+    ctx.log?.info?.(`${TAG} there are changes on GitHub that aren't in the Studio (${next.slice(0, 12)})`);
+    return "set";
   } catch (err) {
     ctx.log?.warn?.(`${TAG} changes made on GitHub not checked: ${message(err)}`);
     return null;

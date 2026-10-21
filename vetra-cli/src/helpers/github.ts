@@ -1,5 +1,14 @@
 import { getBearerToken } from '../auth/renown.js';
 import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from '../cloud/config.js';
+import {
+  GITHUB_NOT_CONNECTED_CODE,
+  cloudPushToken,
+  isUnsupported,
+  redact,
+  type CloudContext,
+  type PushToken as PushTokenWithRemote,
+} from '../launch/cloud-launch.js';
+import { LaunchError } from '../launch/errors.js';
 
 const NOT_AUTHORIZED =
   "Not authorized — the agent can't act as the user until they connect their " +
@@ -180,4 +189,136 @@ export async function resolveRepoRemote(ctx: {
   );
   const cleanUrl = `https://github.com/${repoFullName}.git`;
   return { token, repoFullName, cleanUrl };
+}
+
+/* ------------------------------------------------------------------------ */
+/* Push token for the product's repository (Task 4.3)                        */
+/* ------------------------------------------------------------------------ */
+
+/** `owner/name`, as GitHub names a repository. */
+const REPO_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+/** vetra-github-auth codes meaning the Studio has no usable earlier connection. */
+const NO_EARLIER_CONNECTION = new Set(['NOT_CONNECTED', 'APP_NOT_INSTALLED', 'REINSTALL_REQUIRED']);
+const EARLIER_TIMEOUT_MS = 30_000;
+
+/** One vetra-github-auth call through the context's seams; errors are LaunchErrors without secrets. */
+async function earlierGql<T>(
+  ctx: CloudContext,
+  bearer: string,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<{ data?: T; code?: string }> {
+  const secrets: string[] = [bearer];
+  const doFetch = ctx.fetch ?? fetch;
+  let res: Response;
+  try {
+    res = await doFetch(resolveCloudGraphqlEndpoint(ctx.config), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` },
+      body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(EARLIER_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const detail = redact(err instanceof Error ? err.message : String(err), secrets);
+    throw new LaunchError('CLOUD_UNAVAILABLE', "Vetra didn't answer", `getPushToken: ${detail}`);
+  }
+  let body: GqlResponse<T> | null = null;
+  try {
+    body = (await res.json()) as GqlResponse<T>;
+  } catch {
+    body = null;
+  }
+  const first = body?.errors?.[0];
+  if (first) return { code: first.extensions?.code ?? 'GRAPHQL_ERROR', data: undefined };
+  if (!res.ok || !body?.data) {
+    throw new LaunchError('CLOUD_UNAVAILABLE', "Vetra didn't answer", `getPushToken: HTTP ${res.status}`);
+  }
+  return { data: body.data };
+}
+
+/**
+ * A push token from the GitHub connection the Studio made before GitHub moved
+ * to the product's settings (`vetra-github-auth` `getPushToken`), for Studios
+ * whose product hasn't carried that repository over yet. Null when there is
+ * none (no Studio id, no sign-in, no connection, the old app is no longer on
+ * the repository, or a cloud without it). The token is never logged.
+ */
+export async function legacyPushToken(ctx: CloudContext): Promise<PushTokenWithRemote | null> {
+  const environmentId = ctx.config.environmentId?.trim();
+  if (!environmentId) return null;
+  const bearer = await (ctx.bearerToken
+    ? ctx.bearerToken()
+    : getBearerToken(ctx.workdir, resolveCloudConfig(ctx.config).renownUrl));
+  if (!bearer) return null;
+  const status = await earlierGql<{ VetraGithubAuth: { myGithubConnection: ConnectionStatus } }>(
+    ctx,
+    bearer,
+    `query ($environmentId: String!) {
+      VetraGithubAuth { myGithubConnection(environmentId: $environmentId) { connected connection { repoFullName } } }
+    }`,
+    { environmentId },
+  );
+  if (status.code) {
+    ctx.log?.debug?.(`[github] no earlier GitHub connection (${status.code})`);
+    return null;
+  }
+  const repo = status.data?.VetraGithubAuth.myGithubConnection;
+  const repoFullName = repo?.connected ? repo.connection?.repoFullName : undefined;
+  if (!repoFullName || !REPO_NAME.test(repoFullName) || repoFullName.includes('..')) return null;
+  const minted = await earlierGql<{ VetraGithubAuth: { getPushToken: PushToken } }>(
+    ctx,
+    bearer,
+    `query ($environmentId: String!) {
+      VetraGithubAuth { getPushToken(environmentId: $environmentId) { token expiresAt } }
+    }`,
+    { environmentId },
+  );
+  if (minted.code) {
+    if (NO_EARLIER_CONNECTION.has(minted.code)) {
+      ctx.log?.debug?.(`[github] the earlier GitHub connection has no token (${minted.code})`);
+      return null;
+    }
+    throw new LaunchError('GITHUB_TOKEN', "GitHub didn't let Vetra in", `getPushToken: ${minted.code}`);
+  }
+  const token = minted.data?.VetraGithubAuth.getPushToken;
+  if (!token?.token) {
+    throw new LaunchError('GITHUB_TOKEN', "GitHub didn't let Vetra in", 'getPushToken: no token');
+  }
+  return {
+    token: token.token,
+    expiresAt: token.expiresAt,
+    remoteUrl: `https://github.com/${repoFullName}.git`,
+  };
+}
+
+export interface PushTokenSources {
+  studio: (ctx: CloudContext, appId: string) => Promise<PushTokenWithRemote>;
+  legacy: (ctx: CloudContext) => Promise<PushTokenWithRemote | null>;
+}
+
+/**
+ * The token every mirror push and fetch uses (`MirrorDeps.pushToken`): the
+ * product's own GitHub connection (`studioPushToken`, which also carries an
+ * earlier Studio repository over cloud-side). When the product has no
+ * repository (or the cloud doesn't know the call yet), the Studio's earlier
+ * connection, so Studios not moved yet keep pushing with no customer action.
+ * Any other refusal stands. Throws the product's refusal when neither exists.
+ */
+export async function productPushToken(
+  ctx: CloudContext,
+  appId: string,
+  sources: Partial<PushTokenSources> = {},
+): Promise<PushTokenWithRemote> {
+  const { studio, legacy } = { studio: cloudPushToken, legacy: legacyPushToken, ...sources };
+  try {
+    return await studio(ctx, appId);
+  } catch (err) {
+    const noRepository =
+      err instanceof LaunchError && (err.code === GITHUB_NOT_CONNECTED_CODE || isUnsupported(err));
+    if (!noRepository) throw err;
+    const earlier = await legacy(ctx);
+    if (!earlier) throw err;
+    ctx.log?.debug?.("[github] pushing with the Studio's earlier GitHub connection");
+    return earlier;
+  }
 }

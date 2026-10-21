@@ -619,11 +619,17 @@ export async function mergeInProgress(workdir: string): Promise<boolean> {
 
 /**
  * The paths a merge in progress changes: what MERGE_HEAD changed since the
- * merge base, plus any path still unmerged. Empty without a merge.
+ * merge base (all of its paths when there is none), plus any path still unmerged. Empty without a merge.
  */
 export async function mergeTouched(workdir: string): Promise<string[]> {
   if (!(await mergeInProgress(workdir))) return [];
-  const changed = await git(workdir, ["diff", "--name-only", "HEAD...MERGE_HEAD"]);
+  // Unrelated histories (a repository carried over with its own history):
+  // every path MERGE_HEAD has came in.
+  const related = (await gitMaybe(workdir, ["merge-base", "HEAD", "MERGE_HEAD"])) !== null;
+  const changed = await git(
+    workdir,
+    related ? ["diff", "--name-only", "HEAD...MERGE_HEAD"] : ["ls-tree", "-r", "--name-only", "MERGE_HEAD"],
+  );
   const unmerged = await git(workdir, ["diff", "--name-only", "--diff-filter=U"]);
   return [...new Set([...changed.split("\n"), ...unmerged.split("\n")].filter(Boolean))].sort();
 }

@@ -420,6 +420,10 @@ describe("GitHub mirror", () => {
     expect(git(m.h.workdir, "rev-parse", GITHUB_MAIN_REF)).toBe(theirs);
     expect(fs.readFileSync(path.join(m.h.workdir, "todo/src/extra.ts"), "utf8")).toContain("fromGithub");
     expect(git(m.h.workdir, "rev-parse", "MERGE_HEAD")).toBe(theirs);
+    // Shared history: merged as it is, never as unrelated.
+    expect(m.gitCalls.filter((c) => c.args[0] === "merge").flatMap((c) => c.args)).not.toContain(
+      "--allow-unrelated-histories",
+    );
     expect(notes).toHaveLength(1);
     expect(notes[0]).toContain(theirs.slice(0, 12));
     expect(notes[0]).toContain("merged into this change");
@@ -441,6 +445,53 @@ describe("GitHub mirror", () => {
     expect(remoteRefs(m.gh.bare)["refs/heads/main"]).toBe(v2.sha);
     expect(s.github.externalChangesSha).toBeNull();
     expect(m.cleared).toEqual(["app-1"]);
+    expectTokenNowhere(m, [JSON.stringify(s), ...notes]);
+  });
+
+  it("a repository the Studio carried over with its own history shows as changes on GitHub and is never forced", async () => {
+    m = await studio();
+    // The Studio's earlier repository: its history isn't the Studio's.
+    const theirs = pushOnGithub(m.gh.bare, "README.md", "pushed before the move\n");
+    await makeReady(m.h, "change-1");
+    const out = await launch(m.h.octx, { changeId: "change-1", trigger: LAUNCH_TRIGGER, launchedBy: BY });
+    expect(out.status).toBe("LIVE");
+
+    let s = await m.h.state();
+    expect(s.versions[0].lines.find((l) => l.kind === "MIRROR")).toMatchObject({
+      status: "FAILED",
+      detail: MIRROR_REASONS.diverged,
+    });
+    // The customer sees "There are changes on GitHub…" with Bring them in.
+    expect(s.github).toEqual({
+      status: "PUSH_FAILED",
+      repoFullName: "acme/team-todo",
+      lastError: MIRROR_REASONS.diverged,
+      externalChangesSha: theirs,
+    });
+    // Nothing forced: GitHub's main is untouched.
+    expect(remoteRefs(m.gh.bare)["refs/heads/main"]).toBe(theirs);
+    expect(m.gitCalls.some((c) => c.args.includes("--force") || c.args.some((x) => x.startsWith("+refs/heads/main:refs/heads")))).toBe(false);
+
+    // The cloud never saw that push (it predates the move): its "none" doesn't hide it.
+    m.external.sha = null;
+    expect(await syncExternalChanges(m.h.octx, s)).toBeNull();
+    expect((await m.h.state()).github.externalChangesSha).toBe(theirs);
+
+    // Bring them in joins the two histories.
+    const notes = await bringInNow(m);
+    expect(notes[0]).toContain("merged into this change");
+    expect(mergeHead(m.h.workdir)).toBe(theirs);
+    const merge = m.gitCalls.find((c) => c.args[0] === "merge" && c.args.includes(GITHUB_MAIN_REF))!;
+    expect(merge.args).toContain("--allow-unrelated-histories");
+    expect(fs.readFileSync(path.join(m.h.workdir, "README.md"), "utf8")).toContain("pushed before the move");
+
+    await makeReady(m.h, "bring-1");
+    await launchReady(m, "bring-1");
+    s = await m.h.state();
+    const v2 = s.versions.find((v) => v.number === 2)!;
+    expect(remoteRefs(m.gh.bare)["refs/heads/main"]).toBe(v2.sha);
+    expect(git(m.h.workdir, "merge-base", "--is-ancestor", theirs, v2.sha)).toBe("");
+    expect(s.github).toMatchObject({ status: "CONNECTED", externalChangesSha: null });
     expectTokenNowhere(m, [JSON.stringify(s), ...notes]);
   });
 
@@ -643,6 +694,18 @@ describe("GitHub mirror", () => {
     });
     expect(out).toBe("unchanged");
     expect(notes[0]).toContain("couldn't be fetched");
+  });
+
+  it("a repository carried over with the Studio's own history isn't taken for changes made on GitHub", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    const s = await m.h.state();
+    // The cloud recorded GitHub's main when it carried the repository over: the Studio's own commit.
+    m.external.sha = s.versions[0].sha;
+    expect(await syncExternalChanges(m.h.octx, s)).toBeNull();
+    expect((await m.h.state()).github.externalChangesSha).toBeNull();
+    expect(m.cleared).toEqual(["app-1"]);
   });
 
   it("a cloud that doesn't report changes on GitHub yet is left alone", async () => {
