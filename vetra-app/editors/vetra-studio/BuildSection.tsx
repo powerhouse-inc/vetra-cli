@@ -1,5 +1,5 @@
 import { useTheme } from "@powerhousedao/reactor-browser";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type Ref } from "react";
 import { Breadcrumb, type Crumb } from "./Breadcrumb.js";
 import { PreviewStatusChip } from "./PreviewStatusChip.js";
 import type { ResolvedPreview } from "./hooks/useResolvedPreview.js";
@@ -67,6 +67,7 @@ export function PreviewBody({
   reloadKey = 0,
   activity,
   note,
+  frameRef,
 }: {
   preview: ResolvedPreview;
   /** Bumped to reload the frame (Restart preview). */
@@ -75,6 +76,8 @@ export function PreviewBody({
   activity?: string;
   /** A small line over a showing preview (e.g. "Kitchen queue — building…"). */
   note?: string;
+  /** The frame element, for snapshots of the build. */
+  frameRef?: Ref<HTMLIFrameElement>;
 }) {
   const { theme } = useTheme();
   const url = preview.kind === "ready" ? preview.url : undefined;
@@ -109,6 +112,7 @@ export function PreviewBody({
       {frameSrc ? (
         <iframe
           key={frameKey}
+          ref={frameRef}
           src={frameSrc}
           title="Preview"
           onLoad={() => setLoadedKey(frameKey)}

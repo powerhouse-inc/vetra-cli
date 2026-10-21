@@ -51,6 +51,7 @@ import { PlanDetail } from "../steps/PlanDetail.js";
 import { planBrief } from "../steps/planBrief.js";
 import { TestsDetail } from "../steps/TestsDetail.js";
 import { StoryPane } from "../story/StoryPane.js";
+import { useSnapshots } from "../timelapse/useSnapshots.js";
 import { StepStrip } from "../strip/StepStrip.js";
 import { openChange, stripChange, stripModel } from "../strip/stripModel.js";
 import { PHASE_AVERAGES } from "../strip/timeLeft.js";
@@ -252,6 +253,8 @@ function StudioPage({
   const usage = budget.snapshot.usage;
   useChangeCostRecorder(product, productId, usage ? usage.usageUsd : null);
   const change = product ? stripChange(product) : null;
+  const previewFrame = useRef<HTMLIFrameElement | null>(null);
+  useSnapshots(previewFrame, change);
   // The time left shown before for this change: it never goes back up.
   const shownTimeLeft = useRef<{ changeId: string; text: string | null }>(null);
   const plainView = stripModel(product, {
@@ -333,6 +336,7 @@ function StudioPage({
   const stateTwo = liveView && openChange(product) === null;
   const previewPane = (
     <PreviewPane
+      frameRef={previewFrame}
       change={change}
       documents={documents}
       session={sessionDocument}
