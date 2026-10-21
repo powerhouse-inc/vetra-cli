@@ -13,6 +13,7 @@ import {
   type StudioProductState,
 } from "document-models/studio-product";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -21,6 +22,20 @@ import {
   type ReactNode,
 } from "react";
 import { RawDetail } from "../ChatPane.js";
+import {
+  FailureActions,
+  FailureLine,
+  useFailureHandlers,
+} from "../failures/FailureLine.js";
+import {
+  failureFor,
+  notDeliveredFailure,
+  shownInline,
+  stuckText,
+  type Failure,
+  type FailureBudget,
+  type FailureHandlers,
+} from "../failures/failureStates.js";
 import { DELIVERY_TEXT, SteerBox, sendSteer } from "./SteerBox.js";
 import {
   agentWorking,
@@ -44,6 +59,22 @@ function useNow(ms: number): Date {
   return now;
 }
 
+/** What the failure lines need beyond the documents (spec §5.9). */
+export type StoryFailureContext = {
+  budget: FailureBudget;
+  requestBudget: () => void;
+  studioRestarting: boolean;
+  /** The preview pane's `restartPreview()`. */
+  restartPreview: () => Promise<void>;
+};
+
+const NO_FAILURE_CONTEXT: StoryFailureContext = {
+  budget: null,
+  requestBudget: () => {},
+  studioRestarting: false,
+  restartPreview: () => Promise.resolve(),
+};
+
 export type StoryPaneProps = {
   /** Normalised product state (`readProduct`). */
   product: StudioProductState;
@@ -54,6 +85,7 @@ export type StoryPaneProps = {
   productId: string | null;
   /** Fixed time (tests); the pane ticks on its own otherwise. */
   now?: Date;
+  failureContext?: StoryFailureContext;
 };
 
 export function StoryPane({
@@ -63,6 +95,7 @@ export function StoryPane({
   sessionId,
   productId,
   now: fixedNow,
+  failureContext = NO_FAILURE_CONTEXT,
 }: StoryPaneProps) {
   const ticking = useNow(5_000);
   const now = fixedNow ?? ticking;
@@ -74,6 +107,21 @@ export function StoryPane({
   const results = useMemo(() => toolResultsOf(messages ?? []), [messages]);
   const steerRef = useRef<HTMLInputElement | null>(null);
   const toast = usePHToast();
+  const focusSteer = useCallback(() => steerRef.current?.focus(), []);
+  const handlers = useFailureHandlers({
+    sessionId,
+    productId,
+    focusSteer,
+    requestBudget: failureContext.requestBudget,
+    restartPreview: failureContext.restartPreview,
+  });
+  const failure = failureFor(
+    product,
+    chat,
+    failureContext.budget,
+    { studioRestarting: failureContext.studioRestarting },
+    { now, handlers },
+  );
 
   // Newest at the bottom; follow it unless the customer scrolled up.
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -123,11 +171,18 @@ export function StoryPane({
                 line={line}
                 results={results}
                 onSend={send}
-                onTellMeHow={() => steerRef.current?.focus()}
+                onTellMeHow={focusSteer}
                 onContinue={resume}
+                failure={failure}
+                handlers={handlers}
               />
             </li>
           ))}
+          {failure && !shownInline(failure) ? (
+            <li key="failure" data-line="failure">
+              <FailureLine failure={failure} />
+            </li>
+          ) : null}
         </ol>
       </div>
       <SteerBox
@@ -149,12 +204,16 @@ function Line({
   onSend,
   onTellMeHow,
   onContinue,
+  failure,
+  handlers,
 }: {
   line: StoryLine;
   results: ReadonlyMap<string, ContentPart>;
   onSend: (text: string) => void;
   onTellMeHow: () => void;
   onContinue: () => void;
+  failure: Failure | null;
+  handlers: FailureHandlers;
 }) {
   switch (line.kind) {
     case "idea":
@@ -221,12 +280,21 @@ function Line({
           >
             {DELIVERY_TEXT[line.delivery]}
           </span>
+          {line.delivery === "not-delivered" ? (
+            <span className="mt-1">
+              <FailureActions
+                actions={notDeliveredFailure(line.id, handlers).actions}
+              />
+            </span>
+          ) : null}
         </div>
       );
     case "stuck":
       return (
         <div className="rounded-lg border border-amber-500/50 bg-amber-500/5 px-3 py-2 text-sm">
-          <p className="text-foreground">{line.reason}</p>
+          <p className="text-foreground">
+            {stuckText(line.reason, line.tried)}
+          </p>
           {line.tried.length > 0 ? (
             <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground">
               {line.tried.map((tried, i) => (
@@ -246,6 +314,14 @@ function Line({
         </div>
       );
     case "attention":
+      if (
+        failure &&
+        (failure.situation === "breather" ||
+          failure.situation === "preview-slow") &&
+        failure.stripStep === line.step
+      ) {
+        return <FailureLine failure={failure} />;
+      }
       return (
         <p className="flex items-baseline gap-2 text-sm text-amber-700 dark:text-amber-400">
           <span aria-hidden>!</span>

@@ -1,0 +1,588 @@
+// @vitest-environment happy-dom
+import type { Message } from "@powerhousedao/clint-common/document-models/chat-session";
+import {
+  actions,
+  reducer,
+  type StudioProductAction,
+} from "document-models/studio-product";
+import { act } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readProduct } from "../shell/useStudioState.js";
+import { StoryPane, type StoryFailureContext } from "../story/StoryPane.js";
+import { atSec, chat, reply, user } from "../story/storyFixtures.js";
+import type { StoryChat } from "../story/storyModel.js";
+import { stripModel } from "../strip/stripModel.js";
+import { PHASE_AVERAGES } from "../strip/timeLeft.js";
+import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
+import { button, click, render } from "../test-utils/render.js";
+import {
+  PRODUCT_ID,
+  SESSION_ID,
+  at,
+  buildingOps,
+  productDoc,
+} from "../test-utils/studioFixtures.js";
+import { SignInModal, SIGNED_OUT_TITLE } from "./FailureLine.js";
+import {
+  INITIAL_WATCH,
+  isRestarting,
+  nextWatch,
+} from "./useStudioRestarting.js";
+import {
+  BREATHER_TEXT,
+  BUDGET_USED_UP_TEXT,
+  BUDGET_WARNING_TEXT,
+  NOT_DELIVERED_TEXT,
+  PREVIEW_SLOW_TEXT,
+  RESTARTING_TEXT,
+  RESTART_FAILED_TEXT,
+  RETRIED_TEXT,
+  TURN_FAILED_TEXT,
+  failureFor,
+  withFailure,
+  type FailureBudget,
+} from "./failureStates.js";
+
+type Dispatched = {
+  action: { type: string; input: Record<string, unknown> };
+  id: string;
+};
+
+const hoisted = vi.hoisted(() => ({ dispatched: [] as Dispatched[] }));
+
+vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  usePHToast: () => undefined,
+  dispatchActions: (
+    action: Dispatched["action"] | Dispatched["action"][],
+    id: string,
+  ) => {
+    for (const a of Array.isArray(action) ? action : [action]) {
+      hoisted.dispatched.push({ action: a, id });
+    }
+    return Promise.resolve();
+  },
+}));
+
+beforeEach(() => {
+  hoisted.dispatched = [];
+});
+
+/** Lets the actions' promises settle. */
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+function product(...ops: StudioProductAction[]) {
+  return readProduct(productDoc(...buildingOps(), ...ops).state.global);
+}
+
+function changeOf(p: ReturnType<typeof product>) {
+  const change = p.changes.find((c) => c.id === "c1");
+  if (!change) throw new Error("no change");
+  return change;
+}
+
+const working = [
+  actions.startStep({ changeId: "c1", kind: "DATA", at: at(2) }),
+] satisfies StudioProductAction[];
+
+function failed(
+  id: string,
+  userMessageId: string,
+  createdAt: string,
+  message = "The model provider returned an error: 503",
+  code = "PROVIDER_ERROR",
+): Message {
+  return {
+    ...reply(id, "", createdAt, createdAt),
+    content: [],
+    finishReason: "error",
+    failure: {
+      code,
+      failedAt: createdAt,
+      message,
+      retryable: true,
+      userMessageId,
+    },
+  };
+}
+
+function idea(): Message {
+  return user("u0", "a task board for my team", at(1), at(1));
+}
+
+function renderStory(
+  p: ReturnType<typeof product>,
+  c: StoryChat,
+  context: Partial<StoryFailureContext> = {},
+  now = new Date(at(10)),
+) {
+  return render(
+    <StoryPane
+      product={p}
+      change={changeOf(p)}
+      chat={c}
+      sessionId={SESSION_ID}
+      productId={PRODUCT_ID}
+      now={now}
+      failureContext={{
+        budget: null,
+        requestBudget: () => {},
+        studioRestarting: false,
+        restartPreview: () => Promise.resolve(),
+        ...context,
+      }}
+    />,
+  );
+}
+
+function failureLine(container: HTMLElement): HTMLElement | null {
+  return container.querySelector("[data-failure]");
+}
+
+function stripIcon(
+  p: ReturnType<typeof product>,
+  c: StoryChat,
+  budget: FailureBudget = null,
+  studioRestarting = false,
+) {
+  const view = withFailure(
+    stripModel(p, {
+      budget: null,
+      averages: PHASE_AVERAGES,
+      now: new Date(at(10)),
+    }),
+    failureFor(p, c, budget, { studioRestarting }, { now: new Date(at(10)) }),
+  );
+  return Object.fromEntries(view.steps.map((s) => [s.kind, s.icon]));
+}
+
+describe("build failure states (spec §5.9, G4)", () => {
+  it("a retried turn shows a small ⟲ line and nothing else", () => {
+    const p = product(...working);
+    const c = chat(
+      idea(),
+      {
+        ...reply("a1", "", at(2), at(2)),
+        finishReason: "retry",
+      },
+      reply("a2", "Planning the data.", at(3)),
+    );
+    const container = renderStory(p, c);
+    expect(failureLine(container)?.textContent).toBe(RETRIED_TEXT);
+    expect(failureLine(container)?.querySelector("button")).toBeNull();
+    expect(stripIcon(p, c).DATA).toBe("◐");
+    expectNoForbiddenWords(container);
+  });
+
+  it("a failed turn says the AI service didn't respond; Retry re-runs it, Continue opens the box", async () => {
+    const p = product(...working);
+    const c = chat(idea(), failed("a1", "u0", at(3)));
+    const container = renderStory(p, c);
+    expect(failureLine(container)?.textContent).toContain(TURN_FAILED_TEXT);
+    expect(stripIcon(p, c).DATA).toBe("✕");
+    expectNoForbiddenWords(container);
+
+    click(button(container, "Retry"));
+    await settle();
+    expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
+      [SESSION_ID, "RETRY_TURN"],
+    ]);
+    expect(hoisted.dispatched[0].action.input.userMessageId).toBe("u0");
+
+    click(button(container, "Continue"));
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Steer it");
+  });
+
+  it("a turn stopped by Pause is not a failure (F16)", () => {
+    const paused = product(
+      ...working,
+      actions.pauseChange({ changeId: "c1", at: at(3) }),
+    );
+    const stopped = chat(idea(), failed("a1", "u0", at(3)));
+    expect(
+      failureFor(
+        paused,
+        stopped,
+        null,
+        { studioRestarting: false },
+        { now: new Date(at(4)) },
+      ),
+    ).toBeNull();
+    const byPause = chat(
+      idea(),
+      failed(
+        "a1",
+        "u0",
+        at(3),
+        "The response was interrupted: paused",
+        "INTERRUPTED",
+      ),
+    );
+    expect(
+      failureFor(
+        product(...working),
+        byPause,
+        null,
+        { studioRestarting: false },
+        { now: new Date(at(4)) },
+      ),
+    ).toBeNull();
+  });
+
+  it("stuck: one stuck line saying what it tried; its actions steer the agent", async () => {
+    const p = product(
+      ...working,
+      actions.markStuck({
+        changeId: "c1",
+        reason: "the kitchen-queue drag-and-drop",
+        tried: ["Try 1: a drag handle", "Try 2: a library", "Try 3: buttons"],
+        at: at(8),
+      }),
+    );
+    const c = chat(idea(), reply("a1", "Working.", at(2), at(7)));
+    const container = renderStory(p, c);
+    const text = container.textContent;
+    expect(text).toContain(
+      "I'm stuck on the kitchen-queue drag-and-drop. I tried 3 ways.",
+    );
+    expect(text.split("I'm stuck").length - 1).toBe(1);
+    expect(failureLine(container)).toBeNull();
+    expect(stripIcon(p, c).DATA).toBe("!");
+    expectNoForbiddenWords(container);
+
+    click(button(container, "Try a simpler version"));
+    click(button(container, "Skip this part"));
+    await settle();
+    expect(
+      hoisted.dispatched.map((d) => [
+        d.id,
+        d.action.type,
+        d.action.input.content,
+      ]),
+    ).toEqual([
+      [
+        SESSION_ID,
+        "ADD_USER_MESSAGE",
+        [expect.objectContaining({ text: "Try a simpler version." })],
+      ],
+      [
+        SESSION_ID,
+        "ADD_USER_MESSAGE",
+        [expect.objectContaining({ text: "Skip this part for now." })],
+      ],
+    ]);
+    click(button(container, "Tell me how"));
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Steer it");
+  });
+
+  it("the second step-cap hit asks: Taking a breather · Continue puts the step back to work", async () => {
+    const p = product(
+      ...working,
+      actions.setStepAttention({
+        changeId: "c1",
+        kind: "DATA",
+        status: "NEEDS_YOU",
+        reason: "Taking a breather",
+        at: at(9),
+      }),
+    );
+    const c = chat(idea(), {
+      ...reply("a1", "", at(8), at(9)),
+      finishReason: "tool-calls",
+    });
+    const container = renderStory(p, c);
+    const line = failureLine(container);
+    expect(line?.dataset.failure).toBe("breather");
+    expect(line?.textContent).toContain(BREATHER_TEXT);
+    // The step's "!" line is replaced, not repeated.
+    expect(container.querySelectorAll("[data-line=attention]").length).toBe(1);
+    expect(container.textContent.split(BREATHER_TEXT).length - 1).toBe(1);
+    expectNoForbiddenWords(container);
+
+    click(button(line ?? container, "Continue"));
+    await settle();
+    expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
+      [PRODUCT_ID, "SET_STEP_ATTENTION"],
+      [SESSION_ID, "ADD_USER_MESSAGE"],
+    ]);
+    expect(hoisted.dispatched[0].action.input).toMatchObject({
+      changeId: "c1",
+      kind: "DATA",
+      status: "WORKING",
+    });
+    expect(hoisted.dispatched[1].action.input.content).toEqual([
+      expect.objectContaining({ text: "continue" }),
+    ]);
+  });
+
+  it("budget at 80 % says so, with no action", () => {
+    const p = product(...working);
+    const c = chat(idea(), reply("a1", "Working.", at(2)));
+    const container = renderStory(p, c, {
+      budget: { level: "warning", request: { kind: "idle" } },
+    });
+    expect(failureLine(container)?.textContent).toBe(BUDGET_WARNING_TEXT);
+    expect(failureLine(container)?.querySelector("button")).toBeNull();
+    expectNoForbiddenWords(container);
+  });
+
+  it("budget used up: work is saved, Request more budget asks for more", () => {
+    const requestBudget = vi.fn();
+    const p = product(...working);
+    const c = chat(
+      idea(),
+      failed(
+        "a1",
+        "u0",
+        at(3),
+        "Not enough credits to continue.",
+        "BUDGET_EXHAUSTED",
+      ),
+    );
+    const container = renderStory(p, c, { requestBudget });
+    const line = failureLine(container);
+    expect(line?.textContent).toContain(BUDGET_USED_UP_TEXT);
+    expect(line?.textContent).not.toContain(TURN_FAILED_TEXT);
+    expect(stripIcon(p, c).DATA).toBe("!");
+    expectNoForbiddenWords(container);
+    click(button(container, "Request more budget"));
+    expect(requestBudget).toHaveBeenCalledTimes(1);
+  });
+
+  it("a message not picked up in 60 s says Not delivered yet; Retry asks again", async () => {
+    const p = product(...working);
+    const c = chat(
+      idea(),
+      reply("a1", "Working.", at(2), at(3)),
+      user("u1", "add a priority field", at(5)),
+    );
+    const container = renderStory(p, c, {}, new Date(atSec(6, 30)));
+    const steer = container.querySelector("[data-line=steer]");
+    expect(steer?.textContent).toContain(NOT_DELIVERED_TEXT);
+    expect(failureLine(container)).toBeNull();
+    expectNoForbiddenWords(container);
+
+    click(button(steer as HTMLElement, "Retry"));
+    await settle();
+    expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
+      [SESSION_ID, "RETRY_TURN"],
+    ]);
+    expect(hoisted.dispatched[0].action.input.userMessageId).toBe("u1");
+  });
+
+  it("an idea not picked up in 60 s gets its own Not delivered yet line", async () => {
+    const p = product();
+    const c = chat(user("u0", "a task board for my team", at(1)));
+    const container = renderStory(p, c, {}, new Date(atSec(2, 30)));
+    const line = failureLine(container);
+    expect(line?.textContent).toContain(NOT_DELIVERED_TEXT);
+    click(button(line ?? container, "Retry"));
+    await settle();
+    expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
+      [SESSION_ID, "RETRY_TURN"],
+    ]);
+    expect(hoisted.dispatched[0].action.input.userMessageId).toBe("u0");
+  });
+
+  it("preview slow: Restart preview restarts it, and says so when it can't", async () => {
+    const restartPreview = vi
+      .fn<() => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("preview-server /restart: 500"));
+    const p = product(
+      ...working,
+      actions.setStepAttention({
+        changeId: "c1",
+        kind: "EDITORS",
+        status: "NEEDS_YOU",
+        reason: PREVIEW_SLOW_TEXT,
+        at: at(9),
+      }),
+    );
+    const c = chat(idea(), reply("a1", "Starting the preview.", at(8)));
+    const container = renderStory(p, c, { restartPreview });
+    const line = failureLine(container);
+    expect(line?.textContent).toContain(PREVIEW_SLOW_TEXT);
+    expect(stripIcon(p, c).EDITORS).toBe("!");
+    expect(container.querySelectorAll("button").length).toBeGreaterThan(0);
+    expect(
+      Array.from(container.querySelectorAll("button")).filter((b) =>
+        b.textContent.includes("Restart preview"),
+      ).length,
+    ).toBe(1);
+    expectNoForbiddenWords(container);
+
+    click(button(container, "Restart preview"));
+    await settle();
+    expect(restartPreview).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("[role=alert]")).toBeNull();
+
+    click(button(container, "Restart preview"));
+    await settle();
+    expect(container.querySelector("[role=alert]")?.textContent).toBe(
+      RESTART_FAILED_TEXT,
+    );
+  });
+
+  it("checks keep failing: says which, Let the agent try again sends it back", async () => {
+    const p = product(
+      ...working,
+      actions.recordCheckRun({
+        changeId: "c1",
+        id: "r1",
+        at: at(8),
+        results: [
+          { kind: "GENERATE", passed: true },
+          {
+            kind: "TYPECHECK",
+            passed: false,
+            reason: "A field's type doesn't match",
+          },
+          { kind: "LINT", passed: false, reason: "2 unused variables" },
+          { kind: "REDUCER_TESTS", passed: true },
+          { kind: "SMOKE", passed: true },
+        ],
+      }),
+    );
+    const c = chat(
+      idea(),
+      reply("a1", "I couldn't fix the checks.", at(8), at(9)),
+    );
+    const container = renderStory(p, c);
+    const line = failureLine(container);
+    expect(line?.textContent).toContain(
+      "2 checks still fail: A field's type doesn't match; 2 unused variables",
+    );
+    expect(stripIcon(p, c).TESTS).toBe("✕");
+    expectNoForbiddenWords(container);
+
+    click(button(line ?? container, "Let the agent try again"));
+    await settle();
+    expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
+      [SESSION_ID, "ADD_USER_MESSAGE"],
+    ]);
+  });
+
+  it("Go live anyway is absent when a type check fails", () => {
+    const p = product(
+      ...working,
+      actions.recordCheckRun({
+        changeId: "c1",
+        id: "r1",
+        at: at(8),
+        results: [
+          {
+            kind: "TYPECHECK",
+            passed: false,
+            reason: "A field's type doesn't match",
+          },
+          { kind: "LINT", passed: false, reason: "2 unused variables" },
+        ],
+      }),
+    );
+    const c = chat(idea(), reply("a1", "Done trying.", at(8), at(9)));
+    const container = renderStory(p, c);
+    expect(failureLine(container)?.textContent).toContain(
+      "2 checks still fail",
+    );
+    expect(button(container, "Go live anyway")).toBeUndefined();
+  });
+
+  it("Go live anyway waives lint and the TESTS gate then passes", async () => {
+    const ops: StudioProductAction[] = [
+      ...working,
+      actions.recordCheckRun({
+        changeId: "c1",
+        id: "r1",
+        at: at(8),
+        results: [
+          { kind: "GENERATE", passed: true },
+          { kind: "TYPECHECK", passed: true },
+          { kind: "LINT", passed: false, reason: "2 unused variables" },
+          { kind: "REDUCER_TESTS", passed: true },
+          { kind: "SMOKE", passed: true },
+        ],
+      }),
+    ];
+    const p = product(...ops);
+    const c = chat(idea(), reply("a1", "Only lint is left.", at(8), at(9)));
+    // The browser's clock runs behind the agent's: the waiver still covers
+    // the lint run.
+    const container = renderStory(p, c, {}, new Date(at(7)));
+    expect(failureLine(container)?.textContent).toContain(
+      "1 check still fails: 2 unused variables",
+    );
+    expectNoForbiddenWords(container);
+
+    click(button(container, "Go live anyway"));
+    await settle();
+    const types = hoisted.dispatched.map((d) => [d.id, d.action.type]);
+    expect(types).toEqual([
+      [PRODUCT_ID, "WAIVE_LINT"],
+      [PRODUCT_ID, "COMPLETE_STEP"],
+      [SESSION_ID, "ADD_USER_MESSAGE"],
+    ]);
+    const waive = hoisted.dispatched[0].action.input;
+    expect(waive.changeId).toBe("c1");
+    expect(Date.parse(String(waive.at))).toBeGreaterThanOrEqual(
+      Date.parse(at(8)),
+    );
+
+    const productActions = hoisted.dispatched
+      .filter((d) => d.id === PRODUCT_ID)
+      .map((d) => d.action as unknown as StudioProductAction);
+    const before = productDoc(...buildingOps(), ...ops);
+    const after = productActions.reduce((d, a) => reducer(d, a), before);
+    const added = after.operations.global.slice(
+      before.operations.global.length,
+    );
+    expect(added.map((o) => o.error ?? null)).toEqual([null, null]);
+    const tests = after.state.global.changes[0].steps.find(
+      (s) => s.kind === "TESTS",
+    );
+    expect(tests?.status).toBe("DONE");
+  });
+
+  it("the Studio restarting says it is back in a moment", () => {
+    const p = product(...working);
+    const c = chat(idea(), failed("a1", "u0", at(3)));
+    const container = renderStory(p, c, { studioRestarting: true });
+    expect(failureLine(container)?.textContent).toBe(RESTARTING_TEXT);
+    expect(failureLine(container)?.querySelector("button")).toBeNull();
+    // All steps keep their last state while the Studio restarts.
+    expect(stripIcon(p, c, null, true).DATA).toBe("◐");
+    expectNoForbiddenWords(container);
+  });
+
+  it("signed out: a sign-in dialog over the page", () => {
+    const onSignIn = vi.fn();
+    const container = render(<SignInModal onSignIn={onSignIn} />);
+    expect(container.querySelector("[role=dialog]")?.textContent).toContain(
+      SIGNED_OUT_TITLE,
+    );
+    expectNoForbiddenWords(container);
+    click(button(container, "Sign in"));
+    expect(onSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("nothing wrong, no failure line", () => {
+    const p = product(...working);
+    const c = chat(idea(), reply("a1", "Working.", at(2)));
+    const container = renderStory(p, c);
+    expect(failureLine(container)).toBeNull();
+  });
+
+  it("the Studio counts as restarting only after it answered and then missed twice", () => {
+    const never = nextWatch(nextWatch(INITIAL_WATCH, false), false);
+    expect(isRestarting(never)).toBe(false);
+    const once = nextWatch(nextWatch(INITIAL_WATCH, true), false);
+    expect(isRestarting(once)).toBe(false);
+    const twice = nextWatch(once, false);
+    expect(isRestarting(twice)).toBe(true);
+    expect(isRestarting(nextWatch(twice, true))).toBe(false);
+  });
+});

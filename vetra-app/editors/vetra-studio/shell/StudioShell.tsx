@@ -31,9 +31,13 @@ import {
   ProductDebugPanel,
   isProductDebugEnabled,
 } from "../debug/ProductDebugPanel.js";
+import { SignInModal } from "../failures/FailureLine.js";
+import { failureFor, withFailure } from "../failures/failureStates.js";
+import { useStudioRestarting } from "../failures/useStudioRestarting.js";
 import { IdeaScreen } from "../idea/IdeaScreen.js";
+import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
-import { PreviewPane } from "../preview/PreviewPane.js";
+import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { DataDetail } from "../steps/DataDetail.js";
 import { LiveDetail } from "../steps/LiveDetail.js";
@@ -197,7 +201,7 @@ function ProductView({
   const change = product ? stripChange(product) : null;
   // The time left shown before for this change: it never goes back up.
   const shownTimeLeft = useRef<{ changeId: string; text: string | null }>(null);
-  const view = stripModel(product, {
+  const plainView = stripModel(product, {
     budget: usage
       ? { spentUsd: usage.usageUsd, limitUsd: usage.limitUsd }
       : null,
@@ -208,8 +212,11 @@ function ProductView({
         ? shownTimeLeft.current.text
         : null,
   });
-  const right = view.right;
-  const budgetLevel = budgetView(budget.snapshot)?.level;
+  const right = plainView.right;
+  const shownBudget = budgetView(budget.snapshot);
+  const budgetLevel = shownBudget?.level;
+  const studioRestarting = useStudioRestarting();
+  const signIn = useStudioSignIn();
   useEffect(() => {
     if (!change || "liveUrl" in right) return;
     shownTimeLeft.current = {
@@ -226,6 +233,17 @@ function ProductView({
     isChatSessionDocument(sessionState.data)
       ? sessionState.data
       : undefined;
+  const chat = sessionDocument?.state.global ?? null;
+  const failureBudget = shownBudget
+    ? { level: shownBudget.level, request: shownBudget.request }
+    : null;
+  // The strip marks the step a build failure is on (spec §5.9).
+  const view = withFailure(
+    plainView,
+    live
+      ? null
+      : failureFor(product, chat, failureBudget, { studioRestarting }, { now }),
+  );
   const previewPane = (
     <PreviewPane
       change={change}
@@ -295,9 +313,15 @@ function ProductView({
               <StoryPane
                 product={product}
                 change={change}
-                chat={sessionDocument?.state.global ?? null}
+                chat={chat}
                 sessionId={sessionId ?? null}
                 productId={productId}
+                failureContext={{
+                  budget: failureBudget,
+                  requestBudget: budget.request,
+                  studioRestarting,
+                  restartPreview,
+                }}
               />
             ) : sessionId ? (
               /* No readable product yet: the conversation as it is. */
@@ -334,6 +358,10 @@ function ProductView({
           }
         />
       )}
+      {signIn.status === "signed-out" ? (
+        /* The session ended: sign in again over the page, which stays. */
+        <SignInModal onSignIn={signIn.signIn} />
+      ) : null}
     </>
   );
 }
