@@ -31,6 +31,8 @@ export function normalizeProduct(
   s.access ??= "SIGNED_IN";
   s.activeChangeId ??= null;
   s.liveVersion ??= null;
+  s.liveSince ??= null;
+  s.liveDeploymentId ??= null;
   s.health ??= "UNKNOWN";
   s.pendingRequest ??= null;
   s.launchPermission ??= "UNKNOWN";

@@ -150,7 +150,7 @@ function lintWaived(change: Change, lintRunAt: string): boolean {
   return !!change.lintWaivedAt && time(change.lintWaivedAt) >= time(lintRunAt);
 }
 
-/** Returns why the step's gate is not met, or null when it is. */
+/** Returns why the step's gate is not met, or null when it is (LIVE: see liveProblem). */
 function gateProblem(change: Change, kind: StepKind): string | null {
   const required: CheckKind[] =
     kind === "DATA"
@@ -182,6 +182,12 @@ function gateProblem(change: Change, kind: StepKind): string | null {
     }
   }
   return null;
+}
+
+/** LIVE is done only once the live version is this change's launch. */
+function liveProblem(state: StudioProductState, change: Change): string | null {
+  const live = state.versions.find((v) => v.number === state.liveVersion);
+  return live?.changeId === change.id ? null : "the change has not gone live";
 }
 
 export const studioProductChangeOperations: StudioProductChangeOperations = {
@@ -295,7 +301,10 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
   completeStepOperation(state, action) {
     const change = openChange(state, action.input.changeId);
     const step = findStep(change, action.input.kind);
-    const problem = gateProblem(change, step.kind);
+    const problem =
+      step.kind === "LIVE"
+        ? liveProblem(state, change)
+        : gateProblem(change, step.kind);
     if (problem) {
       throw new GateNotMetError(
         `${STEP_LABELS[step.kind]} can't be done: ${problem}.`,

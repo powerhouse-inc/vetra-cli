@@ -556,14 +556,17 @@ describe("gates", () => {
     expect(errorAt(doc, 9)).toMatch(/LINT/);
   });
 
-  it("PLAN and LIVE have no gate", () => {
+  it("PLAN has no gate; LIVE is refused until the change has gone live", () => {
     const doc = apply(
       building(),
       completeStep({ changeId: "c1", kind: "PLAN", at: at(2) }),
       completeStep({ changeId: "c1", kind: "LIVE", at: at(3) }),
     );
     expect(step(doc, "PLAN").status).toBe("DONE");
-    expect(step(doc, "LIVE").status).toBe("DONE");
+    expect(errorAt(doc, 4)).toBe(
+      "Live can't be done: the change has not gone live.",
+    );
+    expect(step(doc, "LIVE").status).toBe("NOT_STARTED");
     expect(change(doc).status).toBe("BUILDING");
   });
 });

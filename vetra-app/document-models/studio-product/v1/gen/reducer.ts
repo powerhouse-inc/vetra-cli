@@ -5,14 +5,18 @@ import { createReducer, isDocumentAction } from "document-model";
 import type { StudioProductPHState } from "document-models/studio-product/v1";
 
 import { studioProductChangeOperations } from "../src/reducers/change.js";
+import { studioProductLaunchOperations } from "../src/reducers/launch.js";
 import { studioProductProductOperations } from "../src/reducers/product.js";
 
 import {
   AddMilestoneInputSchema,
   AdoptExistingInputSchema,
+  ClearRequestInputSchema,
   ClearStuckInputSchema,
+  CompleteLaunchInputSchema,
   CompleteStepInputSchema,
   CountStepInputSchema,
+  FailLaunchInputSchema,
   InitProductInputSchema,
   MarkStuckInputSchema,
   PauseChangeInputSchema,
@@ -21,11 +25,23 @@ import {
   RecordCheckRunInputSchema,
   RenameProductInputSchema,
   ReopenStepInputSchema,
+  RequestDiscardInputSchema,
+  RequestLaunchInputSchema,
+  RequestMirrorInputSchema,
+  RequestRestartInputSchema,
+  RequestRollbackInputSchema,
   ResumeChangeInputSchema,
   SetAccessInputSchema,
   SetChangeTitleInputSchema,
+  SetHealthInputSchema,
+  SetLaunchLineInputSchema,
+  SetLaunchPermissionInputSchema,
+  SetLiveTargetInputSchema,
+  SetLiveVersionInputSchema,
+  SetProductDriveInputSchema,
   SetStepAttentionInputSchema,
   StartChangeInputSchema,
+  StartLaunchInputSchema,
   StartStepInputSchema,
   WaiveLintInputSchema,
 } from "./schema/zod.js";
@@ -282,6 +298,186 @@ const stateReducer: StateReducer<StudioProductPHState> = (
       memoizedSchema(WaiveLintInputSchema).parse(action.input);
 
       studioProductChangeOperations.waiveLintOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_LIVE_TARGET": {
+      memoizedSchema(SetLiveTargetInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.setLiveTargetOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_PRODUCT_DRIVE": {
+      memoizedSchema(SetProductDriveInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.setProductDriveOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "REQUEST_LAUNCH": {
+      memoizedSchema(RequestLaunchInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.requestLaunchOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "REQUEST_ROLLBACK": {
+      memoizedSchema(RequestRollbackInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.requestRollbackOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "REQUEST_DISCARD": {
+      memoizedSchema(RequestDiscardInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.requestDiscardOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "REQUEST_RESTART": {
+      memoizedSchema(RequestRestartInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.requestRestartOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "REQUEST_MIRROR": {
+      memoizedSchema(RequestMirrorInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.requestMirrorOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "CLEAR_REQUEST": {
+      memoizedSchema(ClearRequestInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.clearRequestOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "START_LAUNCH": {
+      memoizedSchema(StartLaunchInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.startLaunchOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_LAUNCH_LINE": {
+      memoizedSchema(SetLaunchLineInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.setLaunchLineOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "COMPLETE_LAUNCH": {
+      memoizedSchema(CompleteLaunchInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.completeLaunchOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "FAIL_LAUNCH": {
+      memoizedSchema(FailLaunchInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.failLaunchOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_LIVE_VERSION": {
+      memoizedSchema(SetLiveVersionInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.setLiveVersionOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_HEALTH": {
+      memoizedSchema(SetHealthInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.setHealthOperation(
+        (state as any)[action.scope],
+        action as any,
+        dispatch,
+      );
+
+      break;
+    }
+
+    case "SET_LAUNCH_PERMISSION": {
+      memoizedSchema(SetLaunchPermissionInputSchema).parse(action.input);
+
+      studioProductLaunchOperations.setLaunchPermissionOperation(
         (state as any)[action.scope],
         action as any,
         dispatch,
