@@ -23,8 +23,9 @@
  *             product has a repository (mirror.ts; detail: sha). SKIPPED
  *             without one; FAILED with the plain reason when the push fails —
  *             never a failed launch ("Couldn't save to GitHub (<reason>). Will
- *             retry with the next launch.").
- * then `COMPLETE_LAUNCH`. On a failure the running line is FAILED and
+ *             retry with the next launch."). Runs right after
+ *             `COMPLETE_LAUNCH`, so the version is live before GitHub answers.
+ * VERIFY is followed by `COMPLETE_LAUNCH`. On a failure the running line is FAILED and
  * `FAIL_LAUNCH` records the plain reason (F39); a missing or expired permission
  * (F7) is the exception: the Version stays LAUNCHING, its running line goes
  * back to WAITING and `SET_LAUNCH_PERMISSION` records what the owner must do.
@@ -594,10 +595,7 @@ async function runLaunch(
       await setLine(current, "DONE");
     }
 
-    // MIRROR: never fails the launch (the app is already live).
     current = null;
-    if (line("MIRROR")?.status !== "DONE") await mirrorLine(ctx, number, state, gitTag, setLine);
-
     let files: string[] = [];
     try {
       files = d.changedFiles(ctx.workdir, live?.gitTag ?? null, sha);
@@ -623,6 +621,8 @@ async function runLaunch(
     // A later launch settles any Go back still waiting on the cloud.
     awaitRollbackSettle(null);
     ctx.log?.info?.(`[launch] Version ${number} is live at ${liveUrl}`);
+    // MIRROR after COMPLETE_LAUNCH: the version is live whatever GitHub says.
+    if (line("MIRROR")?.status !== "DONE") await mirrorLine(ctx, number, state, gitTag, setLine);
     // F26: the earlier versions' Go back is worked out again, in the
     // background (it reads the live drive; never throws).
     void (d.refreshRollbackBlocks ?? refreshRollbackBlocks)(ctx);

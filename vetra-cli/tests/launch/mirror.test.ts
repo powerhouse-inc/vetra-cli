@@ -6,7 +6,14 @@ import os from "node:os";
 import path from "node:path";
 import * as studioProduct from "vetra-app/document-models/studio-product";
 import { LaunchError } from "../../src/launch/errors.js";
-import { discardDraft, snapshot, workspaceGit, type WorkspaceGitOptions } from "../../src/launch/git-versions.js";
+import {
+  MERGE_UNFINISHED_REASON,
+  discardDraft,
+  restoreVersion,
+  snapshot,
+  workspaceGit,
+  type WorkspaceGitOptions,
+} from "../../src/launch/git-versions.js";
 import {
   MIRROR_REASONS,
   classify,
@@ -19,7 +26,14 @@ import {
   type MirrorDeps,
 } from "../../src/launch/mirror.js";
 import { LAUNCH_TRIGGER, autoLaunchCandidate, launch } from "../../src/launch/orchestrator.js";
-import { BRING_IN_REQUEST, GITHUB_MAIN_REF, isBringIn, prepareChangeBase } from "../../src/product/changes.js";
+import {
+  BRING_IN_REASONS,
+  BRING_IN_REQUEST,
+  GITHUB_MAIN_REF,
+  isBringIn,
+  mergeFailure,
+  prepareChangeBase,
+} from "../../src/product/changes.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
 import { newRequestsMemory, requestsPass } from "../../src/triggers/product-requests.js";
 import { AT, a, launchHarness, makeReady, type LaunchHarness } from "./orchestrator-helpers.js";
@@ -69,7 +83,7 @@ function pushOnGithub(bare: string, file: string, content: string): string {
   try {
     git(clone, "clone", "-q", bare, ".");
     write(clone, file, content);
-    git(clone, "add", "-A");
+    git(clone, "add", "-A", "-f");
     git(clone, "commit", "-q", "-m", "Edit on GitHub");
     git(clone, "push", "-q", "origin", "HEAD:refs/heads/main");
     return git(clone, "rev-parse", "HEAD");
@@ -83,7 +97,7 @@ interface Mirrored {
   gh: ReturnType<typeof fakeGithub>;
   token: string;
   gitCalls: GitCall[];
-  recorded: { sha: string; remoteHadMain: boolean }[];
+  recorded: { sha: string; remoteHadMain: boolean; liveVersion: number | null }[];
   cleared: string[];
   external: { sha: string | null | undefined };
 }
@@ -108,7 +122,11 @@ async function studio(opts: { connected?: boolean } = {}): Promise<Mirrored> {
       return { token, expiresAt: "2026-10-21T10:00:00.000Z", remoteUrl: gh.url };
     },
     recordMirror: async (_ctx, _appId, sha) => {
-      recorded.push({ sha, remoteHadMain: "refs/heads/main" in remoteRefs(gh.bare) });
+      recorded.push({
+        sha,
+        remoteHadMain: "refs/heads/main" in remoteRefs(gh.bare),
+        liveVersion: (await h.state()).liveVersion ?? null,
+      });
       return true;
     },
     clearExternalChanges: async (_ctx, appId) => {
@@ -150,6 +168,28 @@ function expectTokenNowhere(m: Mirrored, extra: string[] = []): void {
   expect(config).not.toContain("extraHeader");
 }
 
+/** The page's Bring them in, then the agent's first step of that change; returns the notes. */
+async function bringInNow(m: Mirrored, id = "bring-1"): Promise<string[]> {
+  await dispatchProduct(m.h.ctx, [
+    a.startChange({ id, kind: "CHANGE", request: BRING_IN_REQUEST, startedAt: AT }),
+  ]);
+  const s = await m.h.state();
+  const notes: string[] = [];
+  await prepareChangeBase(m.h.octx, s.changes.find((c) => c.id === id)!, {
+    state: s,
+    note: (t) => notes.push(t),
+  });
+  return notes;
+}
+
+function mergeHead(root: string): string | null {
+  try {
+    return git(root, "rev-parse", "-q", "--verify", "MERGE_HEAD");
+  } catch {
+    return null;
+  }
+}
+
 async function launchReady(m: Mirrored, changeId: string): Promise<void> {
   const out = await launch(m.h.octx, { changeId, trigger: LAUNCH_TRIGGER, launchedBy: BY });
   expect(out.status).toBe("LIVE");
@@ -181,8 +221,11 @@ describe("GitHub mirror", () => {
       lastError: null,
       externalChangesSha: null,
     });
-    // F25b: the commit was announced before GitHub had it.
-    expect(m.recorded).toEqual([{ sha: v1.sha, remoteHadMain: false }]);
+    // F25b: the commit was announced before GitHub had it — and after the
+    // version was already live (MIRROR runs after COMPLETE_LAUNCH).
+    expect(m.recorded).toEqual([{ sha: v1.sha, remoteHadMain: false, liveVersion: 1 }]);
+    const push = m.gitCalls.find((c) => c.args[0] === "push")!;
+    expect(push.env?.GIT_CONFIG_KEY_0).toBe("http.https://github.com/.extraHeader");
     expectTokenNowhere(m, [JSON.stringify(s)]);
   });
 
@@ -305,7 +348,7 @@ describe("GitHub mirror", () => {
     expect(s.pendingRequest).toBeNull();
     expect(s.lastRequestFailure).toBeNull();
     expect(s.github.status).toBe("CONNECTED");
-    expect(m.recorded).toEqual([{ sha: v2.sha, remoteHadMain: false }]);
+    expect(m.recorded).toEqual([{ sha: v2.sha, remoteHadMain: false, liveVersion: 2 }]);
     expectTokenNowhere(m, [JSON.stringify(s)]);
 
     // Again: nothing new, still fine.
@@ -426,6 +469,85 @@ describe("GitHub mirror", () => {
     expect(notes[0]).toContain("conflict");
   });
 
+  it("a failed snapshot keeps the merge; the retried version still has GitHub's commit as a parent", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    const theirs = pushOnGithub(m.gh.bare, "todo/src/extra.ts", "export const x = 1;\n");
+    await bringInNow(m);
+    expect(mergeHead(m.h.workdir)).toBe(theirs);
+    // Force a failure after staging: v2 already exists elsewhere.
+    git(m.h.workdir, "tag", "v2", "v1");
+    await expect(snapshot(m.h.workdir, 2, "bring in")).rejects.toMatchObject({ code: "TAG_EXISTS" });
+    expect(mergeHead(m.h.workdir)).toBe(theirs);
+    git(m.h.workdir, "tag", "-d", "v2");
+    const { sha } = await snapshot(m.h.workdir, 2, "bring in");
+    expect(git(m.h.workdir, "rev-list", "--parents", "-n", "1", sha).split(" ")).toHaveLength(3);
+    expect(git(m.h.workdir, "rev-list", "--parents", "-n", "1", sha)).toContain(theirs);
+  });
+
+  it("a version refuses an unfinished merge, then saves the resolved one", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    pushOnGithub(m.gh.bare, "todo/src/model.ts", "export const v = 'github';\n");
+    await dispatchProduct(m.h.ctx, [
+      a.startChange({ id: "change-2", kind: "CHANGE", request: "count to two", startedAt: AT }),
+    ]);
+    write(m.h.workdir, "todo/src/model.ts", "export const v = 2;\n");
+    await makeReady(m.h, "change-2");
+    await launchReady(m, "change-2");
+    await bringInNow(m);
+
+    // Still unmerged.
+    await expect(snapshot(m.h.workdir, 3, "bring in")).rejects.toMatchObject({
+      code: "MERGE_UNFINISHED",
+      reason: MERGE_UNFINISHED_REASON,
+    });
+    // Staged, but the markers are still in the file.
+    git(m.h.workdir, "add", "todo/src/model.ts");
+    await expect(snapshot(m.h.workdir, 3, "bring in")).rejects.toMatchObject({ code: "MERGE_UNFINISHED" });
+    // Resolved.
+    write(m.h.workdir, "todo/src/model.ts", "export const v = 'both';\n");
+    git(m.h.workdir, "add", "todo/src/model.ts");
+    const { sha } = await snapshot(m.h.workdir, 3, "bring in");
+    expect(git(m.h.workdir, "rev-list", "--parents", "-n", "1", sha).split(" ")).toHaveLength(3);
+  });
+
+  it("discarding a bring-in puts GitHub's files outside the projects back too; Go back works", async () => {
+    m = await studio();
+    write(m.h.workdir, "specs/product/idea.md", "# Idea\n");
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    pushOnGithub(m.gh.bare, "README.md", "# From GitHub\n");
+    await bringInNow(m);
+    expect(fs.existsSync(path.join(m.h.workdir, "README.md"))).toBe(true);
+    // The customer's own spec edit, which the merge didn't touch.
+    write(m.h.workdir, "specs/product/idea.md", "# Idea, edited\n");
+
+    const kept = await discardDraft(m.h.workdir, "v1", { label: "bring-1" });
+
+    expect(mergeHead(m.h.workdir)).toBeNull();
+    expect(fs.existsSync(path.join(m.h.workdir, "README.md"))).toBe(false);
+    expect(git(m.h.workdir, "show", `${kept}:README.md`)).toBe("# From GitHub");
+    expect(fs.readFileSync(path.join(m.h.workdir, "specs/product/idea.md"), "utf8")).toBe("# Idea, edited\n");
+    // Nothing GitHub brought is left staged: only the spec edit is a draft.
+    expect(git(m.h.workdir, "status", "--porcelain")).toBe("M specs/product/idea.md");
+    write(m.h.workdir, "specs/product/idea.md", "# Idea\n");
+    await expect(restoreVersion(m.h.workdir, 1)).resolves.toBeDefined();
+  });
+
+  it("bring in refuses code on GitHub that has a .ph folder", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    pushOnGithub(m.gh.bare, "todo/.ph/keys.json", "{}\n");
+    const notes = await bringInNow(m);
+    expect(notes[0]).toContain(BRING_IN_REASONS.runtimeDir);
+    expect(mergeHead(m.h.workdir)).toBeNull();
+    expect(fs.existsSync(path.join(m.h.workdir, "todo/.ph/keys.json"))).toBe(false);
+  });
+
   it("bring in without a token tells the agent it couldn't fetch", async () => {
     m = await studio();
     await makeReady(m.h, "change-1");
@@ -480,6 +602,17 @@ describe("mirror words", () => {
     );
   });
 
+  it("merge refusals in plain words", () => {
+    expect(mergeFailure("error: Your local changes to the following files would be overwritten by merge:")).toBe(
+      BRING_IN_REASONS.overwrite,
+    );
+    expect(mergeFailure("error: The following untracked working tree files would be overwritten by merge:")).toBe(
+      BRING_IN_REASONS.overwrite,
+    );
+    expect(mergeFailure("fatal: refusing to merge unrelated histories")).toBe(BRING_IN_REASONS.unrelated);
+    expect(mergeFailure("fatal: something else")).toBe(BRING_IN_REASONS.other);
+  });
+
   it("repository names and git refusals", () => {
     expect(repoFullName("https://github.com/web3-berlin/kitchen.git")).toBe("web3-berlin/kitchen");
     expect(repoFullName("kitchen")).toBeNull();
@@ -487,5 +620,36 @@ describe("mirror words", () => {
     expect(classify(" ! [rejected]        v2 -> v2 (already exists)")).toBe(MIRROR_REASONS.tagMoved);
     expect(classify("remote: Permission to acme/x.git denied to bot.\nfatal: ... 403")).toBe(MIRROR_REASONS.refused);
     expect(classify("fatal: unable to access: Could not resolve host")).toBe(MIRROR_REASONS.notAnswering);
+    // --atomic: the moved tag is the cause; main only failed with it.
+    expect(
+      classify(
+        [
+          "error: atomic push failed for ref refs/tags/v1. status: 3",
+          "To https://github.com/acme/team-todo.git",
+          " ! [rejected]        main -> main (atomic push failed)",
+          " ! [rejected]        v1 -> v1 (already exists)",
+          "error: failed to push some refs to 'https://github.com/acme/team-todo.git'",
+        ].join("\n"),
+      ),
+    ).toBe(MIRROR_REASONS.tagMoved);
+    expect(
+      classify(
+        [
+          " ! [rejected]        main -> main (fetch first)",
+          " ! [rejected]        v2 -> v2 (atomic push failed)",
+        ].join("\n"),
+      ),
+    ).toBe(MIRROR_REASONS.diverged);
+    expect(classify(" ! [rejected]        main -> main (non-fast-forward)")).toBe(MIRROR_REASONS.diverged);
+    // A protected branch (or any hook) declining the push.
+    expect(
+      classify(
+        [
+          "remote: error: GH006: Protected branch update failed for refs/heads/main.",
+          " ! [remote rejected] main -> main (protected branch hook declined)",
+        ].join("\n"),
+      ),
+    ).toBe(MIRROR_REASONS.refused);
+    expect(classify(" ! [rejected]        main -> main (atomic push failed)")).toBe(MIRROR_REASONS.notAnswering);
   });
 });

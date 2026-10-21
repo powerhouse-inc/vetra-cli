@@ -36,6 +36,8 @@ import { MAIN_BRANCH, workspaceGit, type WorkspaceGitOptions } from "./git-versi
 import { dispatchProduct, getProductDoc, productActions as a, type ProductContext } from "../product/product-doc.js";
 
 const TAG = "[mirror]";
+/** Where the product's repositories live; the token header is sent only there. */
+export const GITHUB_ORIGIN = "https://github.com";
 /** A push or fetch that takes longer than this is given up (the launch is already live). */
 export const GIT_NETWORK_TIMEOUT_MS = 120_000;
 
@@ -112,8 +114,11 @@ export function tokenEnv(token: string): Record<string, string> {
   const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
   return {
     GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: "http.extraHeader",
+    // Scoped to GitHub: the header never goes to any other host.
+    GIT_CONFIG_KEY_0: `http.${GITHUB_ORIGIN}/.extraHeader`,
     GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
+    // git's messages untranslated, so `classify` reads them.
+    LC_ALL: "C",
   };
 }
 
@@ -148,17 +153,23 @@ export async function gitWithToken(
   }
 }
 
-/** git's refusal in plain words (from its stderr). */
+/**
+ * git's refusal in plain words, from its per-ref status lines (`! [rejected]
+ * <src> -> <dst> (<why>)`; not translated, unlike the hints). With
+ * `--atomic` the refs that were fine are listed as "(atomic push failed)":
+ * those say nothing about the cause and are ignored.
+ */
 export function classify(detail: string): string {
   if (/create or update workflow|without `?workflows`? permission/i.test(detail)) {
     return MIRROR_REASONS.workflows;
   }
-  if (/\[(?:remote )?rejected\][^\n]*\bmain -> main\b/.test(detail) || /non-fast-forward/i.test(detail)) {
-    return MIRROR_REASONS.diverged;
-  }
-  if (/\[rejected\][^\n]*\(already exists\)|would clobber existing tag|tag already exists/i.test(detail)) {
+  if (/\[rejected\]\s+\S+ -> \S+ \(already exists\)|would clobber existing tag/.test(detail)) {
     return MIRROR_REASONS.tagMoved;
   }
+  if (/\[rejected\]\s+main -> main \((?:fetch first|non-fast-forward)\)/.test(detail)) {
+    return MIRROR_REASONS.diverged;
+  }
+  if (/\[remote rejected\]/.test(detail)) return MIRROR_REASONS.refused;
   if (/\b(?:401|403)\b|Authentication failed|Permission to \S+ denied|Repository not found|Invalid username or password/i.test(detail)) {
     return MIRROR_REASONS.refused;
   }

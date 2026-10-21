@@ -238,6 +238,8 @@ export async function snapshot(
   await ensureWorkspaceRepo(workdir);
   const tag = versionTag(n);
   const author = opts.author ?? DEFAULT_AUTHOR;
+  // Before staging: staging would hide which paths are still unmerged.
+  await assertMergeFinished(workdir);
 
   try {
     await stageAll(workdir);
@@ -271,7 +273,9 @@ export async function snapshot(
 
 /** Put the index back to HEAD (nothing staged) after a failed snapshot. */
 async function unstageAll(workdir: string): Promise<void> {
-  if (await headSha(workdir)) await gitMaybe(workdir, ["reset", "-q"]);
+  // `read-tree`, not `reset`: a merge in progress (Bring them in) keeps its
+  // MERGE_HEAD, so the retried snapshot still completes the merge.
+  if (await headSha(workdir)) await gitMaybe(workdir, ["read-tree", "HEAD"]);
   else await gitMaybe(workdir, ["read-tree", "--empty"]);
 }
 
@@ -346,7 +350,13 @@ export async function saveUnsaved(
     if (head) await run(["read-tree", "HEAD"]);
     else await run(["read-tree", "--empty"]);
     const inHead = head ? await projectDirs(workdir, "HEAD", { onDisk: false }) : [];
-    const present = dirs.filter((d) => inHead.includes(d) || fs.existsSync(path.join(workdir, d)));
+    const present: string[] = [];
+    for (const d of dirs) {
+      const inHeadTree =
+        inHead.includes(d) ||
+        (head !== null && (await gitMaybe(workdir, ["rev-parse", "-q", "--verify", `HEAD:${d}`])) !== null);
+      if (inHeadTree || fs.existsSync(path.join(workdir, d))) present.push(d);
+    }
     if (present.length > 0) {
       await run(["add", "-A", "--", ...present]);
       await run(["rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ".ph", "*/.ph/*"]);
@@ -490,17 +500,22 @@ export async function discardDraft(
     );
   }
   // A merge started by Bring them in is forgotten with the change: the next
-  // version must not claim GitHub's commits it doesn't contain.
-  await quitMerge(workdir);
+  // version must not claim GitHub's commits it doesn't contain. The paths it
+  // brought in outside the projects (a README, .github/…) go back to HEAD
+  // too, after being kept with the rest; other workspace files stay.
   const head = await headSha(workdir);
   const dirs = await projectDirs(workdir, liveTag);
   if (head) for (const d of await projectDirs(workdir, "HEAD")) if (!dirs.includes(d)) dirs.push(d);
-  if (dirs.length === 0) return null;
+  const inDirs = (p: string) => dirs.some((d) => p === d || p.startsWith(`${d}/`));
+  const merged = (await mergeTouched(workdir)).filter((p) => !inDirs(p));
+  await quitMerge(workdir);
+  if (dirs.length === 0 && merged.length === 0) return null;
 
   // Never destroy: keep what is about to be reset first.
-  const unsaved = (await draftMatches(workdir, liveTag))
-    ? null
-    : await saveUnsaved(workdir, dirs, opts.label ?? "discard", opts);
+  const unsaved =
+    merged.length === 0 && (await draftMatches(workdir, liveTag))
+      ? null
+      : await saveUnsaved(workdir, [...dirs, ...merged], opts.label ?? "discard", opts);
 
   // Build "HEAD with the project dirs taken from liveTag" in a scratch index.
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vetra-discard-"));
@@ -524,6 +539,8 @@ export async function discardDraft(
     await commitTree(workdir, tree, "Discard change", opts.author ?? DEFAULT_AUTHOR);
   }
 
+  if (merged.length > 0) await resetPaths(workdir, merged);
+  if (dirs.length === 0) return unsaved;
   const tracked = new Set(
     (await git(workdir, ["ls-tree", "-d", "--name-only", "HEAD"])).split("\n").filter(Boolean),
   );
@@ -577,6 +594,62 @@ export function changedFiles(
 export async function mergeInProgress(workdir: string): Promise<boolean> {
   if (!fs.existsSync(path.join(workdir, ".git"))) return false;
   return (await gitMaybe(workdir, ["rev-parse", "-q", "--verify", "MERGE_HEAD"])) !== null;
+}
+
+/**
+ * The paths a merge in progress changes: what MERGE_HEAD changed since the
+ * merge base, plus any path still unmerged. Empty without a merge.
+ */
+export async function mergeTouched(workdir: string): Promise<string[]> {
+  if (!(await mergeInProgress(workdir))) return [];
+  const changed = await git(workdir, ["diff", "--name-only", "HEAD...MERGE_HEAD"]);
+  const unmerged = await git(workdir, ["diff", "--name-only", "--diff-filter=U"]);
+  return [...new Set([...changed.split("\n"), ...unmerged.split("\n")].filter(Boolean))].sort();
+}
+
+/** Files (outside the projects) back to HEAD in the index and on disk; ones HEAD lacks are removed. */
+async function resetPaths(workdir: string, paths: string[]): Promise<void> {
+  await git(workdir, ["reset", "-q", "HEAD", "--", ...paths]);
+  for (const p of paths) {
+    if (await gitMaybe(workdir, ["rev-parse", "-q", "--verify", `HEAD:${p}`])) {
+      await git(workdir, ["checkout", "-q", "HEAD", "--", p]);
+    } else {
+      fs.rmSync(path.join(workdir, p), { force: true });
+    }
+  }
+}
+
+/** Plain reason when a version would save a merge that isn't finished. */
+export const MERGE_UNFINISHED_REASON = "the changes from GitHub aren't merged yet";
+
+/** Both ends of a conflict block (a lone `=======` is a Markdown heading underline). */
+function hasConflictMarkers(text: string): boolean {
+  return /^<{7}(?: |$)/m.test(text) && /^>{7}(?: |$)/m.test(text);
+}
+
+/**
+ * A merge in progress (Bring them in) must be finished before a version
+ * saves it: no path still unmerged, and no conflict marker left in what the
+ * merge touched. Throws `MERGE_UNFINISHED` with the plain reason.
+ */
+export async function assertMergeFinished(workdir: string): Promise<void> {
+  if (!(await mergeInProgress(workdir))) return;
+  const unmerged = (await git(workdir, ["diff", "--name-only", "--diff-filter=U"])).split("\n").filter(Boolean);
+  const marked = (await mergeTouched(workdir)).filter((p) => {
+    try {
+      return hasConflictMarkers(fs.readFileSync(path.join(workdir, p), "utf8"));
+    } catch {
+      return false; // deleted, or not a file
+    }
+  });
+  const open = [...new Set([...unmerged, ...marked])];
+  if (open.length > 0) {
+    throw new LaunchError(
+      "MERGE_UNFINISHED",
+      MERGE_UNFINISHED_REASON,
+      `Unfinished merge in ${open.length} file(s): ${open.slice(0, 5).join(", ")}`,
+    );
+  }
 }
 
 /** Forget a merge in progress, leaving the files as they are. */

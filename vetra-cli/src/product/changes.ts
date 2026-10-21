@@ -150,11 +150,13 @@ export async function prepareChangeBase(
     );
     outcome = "restored";
   }
-  await d.markChangeBase(ctx.workdir, change.id, tag);
+  // Before the mark: a restart in between prepares (and brings in) again
+  // rather than losing it.
   if (state && isBringIn(change)) {
     const text = await bringIn(ctx, state);
     opts.note?.(text);
   }
+  await d.markChangeBase(ctx.workdir, change.id, tag);
   return outcome;
 }
 
@@ -164,18 +166,39 @@ function message(err: unknown): string {
 
 const DONT_COMMIT = "Don't commit or push: the launch saves it.";
 
+/** Plain reasons a bring-in stops before merging. */
+export const BRING_IN_REASONS = {
+  runtimeDir: "the code on GitHub contains a .ph folder, which a Studio never takes from outside",
+  overwrite: "files in your Studio that aren't saved yet would be overwritten",
+  unrelated: "the code on GitHub doesn't share any history with your Studio",
+  other: "they couldn't be combined with your Studio's code",
+} as const;
+
+/** git's merge refusal in plain words. */
+export function mergeFailure(detail: string): string {
+  if (/would be overwritten by merge|untracked working tree files would be/i.test(detail)) {
+    return BRING_IN_REASONS.overwrite;
+  }
+  if (/refusing to merge unrelated histories/i.test(detail)) return BRING_IN_REASONS.unrelated;
+  return BRING_IN_REASONS.other;
+}
+
 /**
  * Fetch GitHub's `main` and merge it into the working tree (no commit).
  * Returns the note for the agent; never throws.
  */
 export async function bringIn(ctx: ChangeBaseContext, state: StudioProductState): Promise<string> {
+  const notMerged = (reason: string) =>
+    `The customer asked to bring in the changes made on GitHub, but they couldn't be brought in (${reason}). ` +
+    "Tell them in one sentence what they can do about it. Change nothing.";
   const failed = (reason: string) =>
     `The customer asked to bring in the changes made on GitHub, but they couldn't be fetched (${reason}). ` +
     "Tell them in one sentence, and that they can discard this change and choose Bring them in again. Change nothing.";
   if (!state.appId || !ctx.config) return failed(MIRROR_REASONS.notConnected);
   const mctx: MirrorContext = { ...ctx, config: ctx.config, log: ctx.log };
   const d = mirrorDepsOf(mctx);
-  const git = (args: string[]) => d.git(ctx.workdir, args, { author: DEFAULT_AUTHOR });
+  // Untranslated messages, so `mergeFailure` reads them.
+  const git = (args: string[]) => d.git(ctx.workdir, args, { author: DEFAULT_AUTHOR, env: { LC_ALL: "C" } });
   let sha: string;
   try {
     let token;
@@ -192,8 +215,15 @@ export async function bringIn(ctx: ChangeBaseContext, state: StudioProductState)
     await gitWithToken(mctx, ["fetch", "--no-tags", token.remoteUrl, `+refs/heads/main:${GITHUB_MAIN_REF}`], token);
     sha = await git(["rev-parse", "--verify", `${GITHUB_MAIN_REF}^{commit}`]);
   } catch (err) {
-    ctx.log?.warn?.(`${TAG} changes made on GitHub not fetched: ${message(err)}`);
-    return failed(err instanceof LaunchError ? err.reason : MIRROR_REASONS.notAnswering);
+    const reason = err instanceof LaunchError ? err.reason : MIRROR_REASONS.notAnswering;
+    ctx.log?.warn?.(`${TAG} changes made on GitHub not fetched (${reason}): ${message(err)}`);
+    return failed(reason);
+  }
+  // The agent runtime directory never comes from outside (keys, credentials).
+  const tracked = await git(["ls-tree", "-r", "--name-only", GITHUB_MAIN_REF]);
+  if (tracked.split("\n").some((p) => /(^|\/)\.ph(\/|$)/.test(p))) {
+    ctx.log?.warn?.(`${TAG} GitHub's main tracks a .ph directory; not brought in`);
+    return notMerged(BRING_IN_REASONS.runtimeDir);
   }
   const short = sha.slice(0, 12);
   let inStudio = true;
@@ -225,14 +255,15 @@ export async function bringIn(ctx: ChangeBaseContext, state: StudioProductState)
       // listed as none
     }
     if (files.length === 0) {
-      ctx.log?.warn?.(`${TAG} changes made on GitHub not merged: ${message(mergeErr)}`);
-      return failed("they couldn't be combined with your Studio's code");
+      const reason = mergeFailure(message(mergeErr));
+      ctx.log?.warn?.(`${TAG} changes made on GitHub not merged (${reason}): ${message(mergeErr)}`);
+      return notMerged(reason);
     }
     ctx.log?.info?.(`${TAG} GitHub's main (${short}) merged with ${files.length} conflicting file(s)`);
     return (
       `Bring them in: the changes made on GitHub (commit ${short}) are merged into this change's files, but these files ` +
       `conflict with the Studio's code: ${files.join(", ")}. Resolve each conflict (keep what both sides meant and remove the ` +
-      `conflict markers), run the checks, then tell the customer in one or two sentences what came in. ${DONT_COMMIT}`
+      `conflict markers) and \`git add\` it, run the checks, then tell the customer in one or two sentences what came in. ${DONT_COMMIT}`
     );
   }
 }
