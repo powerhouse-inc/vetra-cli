@@ -5,7 +5,13 @@ import path from "node:path";
 import { verifyActionSignature } from "@powerhousedao/reactor";
 import type { ISigner } from "document-model";
 import { getRenown } from "../../src/auth/renown.js";
-import { ensureTeamDoc, getTeamState, isOrgStudio, type TeamContext } from "../../src/team/team-doc.js";
+import {
+  ensureTeamDoc,
+  getTeamState,
+  isOrgStudio,
+  readTeamDocument,
+  type TeamContext,
+} from "../../src/team/team-doc.js";
 import { productHarness, type ProductHarness } from "../product/helpers.js";
 
 const USER = { address: "0x1111111111111111111111111111111111111111", networkId: "eip155", chainId: 1 };
@@ -38,6 +44,15 @@ describe("team document", () => {
     const ops = await h.module.client.getOperations(first.documentId!, { branch: "main", scopes: ["global"] });
     expect(ops.results).toHaveLength(1);
     expect(JSON.parse(fs.readFileSync(path.join(workdir, ".ph/vetra/team/doc.json"), "utf-8"))).toEqual({ documentId: first.documentId });
+  });
+
+  it("reads the document with its global operations", async () => {
+    const c = ctx({});
+    const created = await ensureTeamDoc(c);
+    const doc = await readTeamDocument(c);
+    expect(doc?.documentId).toBe(created.documentId);
+    expect(doc?.state).toMatchObject({ initialized: true });
+    expect(doc?.operations.map((op) => op.action.type)).toEqual(["INIT_TEAM"]);
   });
 
   it("org Studio starts with review required", async () => {
