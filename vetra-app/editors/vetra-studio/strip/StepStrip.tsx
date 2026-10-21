@@ -208,6 +208,20 @@ export function StepStrip({
           </li>
         ))}
       </ol>
+      {view.change ? (
+        <span
+          data-change-progress
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${tone(view.change.icon)}`}
+        >
+          <span
+            aria-hidden
+            className={view.change.icon === "◐" ? "animate-pulse" : ""}
+          >
+            {view.change.icon}
+          </span>
+          <span>{view.change.text}</span>
+        </span>
+      ) : null}
       <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
         {"liveUrl" in right ? (
           /* Live: "· <slug>.vetra.io ↗" over "Deployed 2 min ago · GitHub ✓". */

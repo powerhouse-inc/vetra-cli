@@ -66,10 +66,18 @@ export type StripRight =
   | { budget: string; timeLeft?: string }
   | { liveUrl: string; deployedAgo: string; github: string };
 
+/** A change's progress next to Live (§5.7): "◐ Change: Data 1/1 · Editors · Tests". */
+export interface StripChangeProgress {
+  icon: StepIcon;
+  text: string;
+}
+
 export interface StripView {
   name: string;
   steps: StripStep[];
   right: StripRight;
+  /** Set while a change is open on a live product. */
+  change?: StripChangeProgress;
 }
 
 export type { PhaseAverages };
@@ -100,9 +108,8 @@ function liveVersionOf(product: StudioProductState): Version | null {
 }
 
 /**
- * The change being worked on, if any. While one is open the page keeps the
- * build surface even when a version is live (Task 2.9; the Live | Preview
- * split arrives with Task 3.5).
+ * The change being worked on, if any. While one is open on a live product
+ * the page shows the Live | Preview split (Task 3.5).
  */
 export function openChange(product: StudioProductState): Change | null {
   const active = product.changes.find((c) => c.id === product.activeChangeId);
@@ -200,6 +207,38 @@ function withTimeLeft(budget: string, left: string | null): StripRight {
   return left ? { budget, timeLeft: left } : { budget };
 }
 
+/** One step in the change's line: "Data 1/1" working, "Data ✓" done. */
+function changeStepText(step: ProductStep): string {
+  const label = STEP_LABELS[step.kind];
+  const count = countFor(step);
+  if (count) return `${label} ${count}`;
+  if (step.status === "DONE") return `${label} ✓`;
+  if (step.status === "NEEDS_YOU") return `${label} !`;
+  if (step.status === "STOPPED") return `${label} ✕`;
+  return label;
+}
+
+/**
+ * The open change's progress next to `● Live · v<n>` (spec §5.7): its
+ * planned steps up to Tests — Live is the live version's.
+ */
+export function changeProgress(change: Change): StripChangeProgress {
+  if (change.status === "LAUNCHING") {
+    return { icon: "◐", text: "Change: Going live…" };
+  }
+  const steps = STEP_ORDER.filter((kind) => kind !== "LIVE")
+    .map((kind) => change.steps.find((s) => s.kind === kind))
+    .filter((s): s is ProductStep => s !== undefined);
+  const text = `Change: ${steps.length > 0 ? steps.map(changeStepText).join(" · ") : "getting ready…"}`;
+  const icon: StepIcon =
+    change.status === "READY"
+      ? "✓"
+      : steps.some((s) => s.status === "NEEDS_YOU")
+        ? "!"
+        : "◐";
+  return { icon, text };
+}
+
 /** The strip for a product (null while the product isn't readable yet). */
 export function stripModel(
   product: StudioProductState | null,
@@ -210,12 +249,19 @@ export function stripModel(
   const live = product?.liveVersion != null;
   // Unhealthy: `● Live` turns amber (§5.9); the banner says why.
   const unhealthy = live && product.health === "UNHEALTHY";
+  // A change on a live product (§5.7): the strip stays in live mode — the
+  // live version's steps, `● Live · v<n>` — with the change's progress next
+  // to it.
+  const open = live ? openChange(product) : null;
+  const liveNumber = live ? product.liveVersion : 0;
   const steps = STEP_ORDER.map((kind): StripStep => {
-    const step = stripStep(
-      kind,
-      change?.steps.find((s) => s.kind === kind),
-      live,
-    );
+    const step = open
+      ? liveModeStep(kind, liveNumber ?? 0)
+      : stripStep(
+          kind,
+          change?.steps.find((s) => s.kind === kind),
+          live,
+        );
     return unhealthy && kind === "LIVE"
       ? { ...step, icon: "!", stateText: "not responding" }
       : step;
@@ -235,5 +281,21 @@ export function stripModel(
           budgetText(inputs.budget),
           timeLeft(change, inputs.averages, inputs.now, inputs.prevTimeLeft),
         );
-  return { name, steps, right };
+  return open
+    ? { name, steps, right, change: changeProgress(open) }
+    : { name, steps, right };
+}
+
+/** The live version's strip while a change is open: its steps all done. */
+function liveModeStep(kind: StepKind, liveVersion: number): StripStep {
+  const status: StepStatus = kind === "LIVE" ? "LIVE" : "DONE";
+  return {
+    kind,
+    status,
+    icon: STATUS_ICON[status],
+    label: STEP_LABELS[kind],
+    stateText: STATUS_TEXT[status],
+    ...(kind === "LIVE" ? { count: `· v${liveVersion}` } : {}),
+    clickable: true,
+  };
 }

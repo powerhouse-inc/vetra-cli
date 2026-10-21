@@ -305,10 +305,10 @@ describe("StudioShell", () => {
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
-  it("a change open on a live product keeps the build surface", () => {
-    // The live version is there, but a change is being worked on: the strip
-    // is in live mode over the story | preview surface (Task 3.5 adds the
-    // Live | Preview split).
+  it("a change open on a live product shows the Live | Preview split", () => {
+    // The live version is there and a change is being worked on: the strip
+    // stays in live mode with the change's progress; the page splits into
+    // the live app and the change's preview, the drawer holds its story.
     const doc = withLiveVersion(productDoc(...buildingOps()));
     const change = doc.state.global.changes[0];
     change.status = "BUILDING";
@@ -320,11 +320,24 @@ describe("StudioShell", () => {
         dispatch={() => {}}
       />,
     );
-    expect(container.querySelector("aside")).not.toBeNull();
-    expect(container.textContent).toContain("Preview pane");
+    expect(
+      container.querySelector('[data-pane="live"] [data-embed="live"]')
+        ?.textContent,
+    ).toBe("Live app at https://task-board.vetra.io");
+    expect(
+      container.querySelector('[data-pane="preview"]')?.textContent,
+    ).toContain("Preview pane");
+    expect(
+      container.querySelector(
+        '[data-drawer="change"] input[aria-label="Steer it"]',
+      ),
+    ).not.toBeNull();
     expect(
       container.querySelector('[data-step="LIVE"]')?.textContent,
     ).toContain("●");
+    expect(
+      container.querySelector("[data-change-progress]")?.textContent,
+    ).toContain("Change: Plan");
     expect(container.textContent).toContain("task-board.vetra.io");
     expect(container.querySelector('[data-banner="live"]')).toBeNull();
     expectNoForbiddenWords(container);

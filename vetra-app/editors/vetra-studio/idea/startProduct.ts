@@ -77,7 +77,7 @@ async function readDocument(id: string): Promise<PHDocument | undefined> {
   }
 }
 
-const defaultDeps: StartProductDeps = {
+export const defaultDeps: StartProductDeps = {
   addDocument: (driveId, name, documentType) =>
     addAgentWritableDocument(driveId, name, documentType),
   dispatch: dispatchOrThrow,

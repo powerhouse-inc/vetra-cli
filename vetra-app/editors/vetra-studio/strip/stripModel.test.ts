@@ -7,6 +7,8 @@ import {
   withLiveVersion,
 } from "../test-utils/studioFixtures.js";
 import { readProduct } from "../shell/useStudioState.js";
+import { changing } from "../change/changeFixtures.js";
+import { withFailure } from "../failures/failureStates.js";
 import {
   budgetText,
   deployedAgo,
@@ -190,6 +192,43 @@ describe("stripModel", () => {
     expect("liveUrl" in view.right && view.right.deployedAgo).toBe(
       "Deployed 5 min ago",
     );
+  });
+
+  it("a change on the live product: ● Live · v1 and the change's progress", () => {
+    const view = stripModel(changing("BUILDING"), INPUTS);
+    // Live mode: the live version's steps, its number on Live.
+    expect(view.steps.map((s) => s.icon).join("")).toBe("✓✓✓✓●");
+    expect(step(view, "LIVE").count).toBe("· v1");
+    expect(view.right).toMatchObject({
+      liveUrl: "https://task-board.vetra.io",
+    });
+    expect(view.change).toEqual({
+      icon: "◐",
+      text: "Change: Data 1/1 · Editors · Tests",
+    });
+    expect(stripModel(changing("READY"), INPUTS).change).toEqual({
+      icon: "✓",
+      text: "Change: Data ✓ · Editors ✓ · Tests ✓",
+    });
+    expect(stripModel(changing("LAUNCHING"), INPUTS).change).toEqual({
+      icon: "◐",
+      text: "Change: Going live…",
+    });
+    // A build step's failure marks the change's line, not the live pills.
+    const marked = withFailure(view, {
+      situation: "budget-used-up",
+      stripStep: "EDITORS",
+      stripIcon: "!",
+      text: "",
+      actions: [],
+    });
+    expect(marked.change?.icon).toBe("!");
+    expect(step(marked, "EDITORS").icon).toBe("✓");
+    // No change open: no progress next to Live.
+    const live = readProduct(
+      withLiveVersion(productDoc(...buildingOps())).state.global,
+    );
+    expect(stripModel(live, INPUTS).change).toBeUndefined();
   });
 
   it("an unhealthy live app turns Live amber", () => {

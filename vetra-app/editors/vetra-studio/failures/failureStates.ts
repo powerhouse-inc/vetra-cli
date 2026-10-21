@@ -637,6 +637,11 @@ export function withFailure(
 ): StripView {
   if (!failure?.stripStep || !failure.stripIcon) return view;
   const { stripStep, stripIcon } = failure;
+  // A change on a live product: the pills are the live version's, so a
+  // build step's mark goes on the change's own line (§5.7); Live keeps its.
+  if (view.change && stripStep !== "LIVE") {
+    return { ...view, change: { ...view.change, icon: stripIcon } };
+  }
   return {
     ...view,
     steps: view.steps.map((step) =>
