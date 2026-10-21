@@ -26,6 +26,13 @@ on:
 permissions:
   contents: read
 
+# The vetra tarball is ~120 MB and uploads into the cluster can run well under
+# 1 MB/s; npm's default 5-minute fetch timeout cuts the upload and reports it as
+# a network timeout. Give each request 30 minutes and no silent retries.
+env:
+  NPM_CONFIG_FETCH_TIMEOUT: "1800000"
+  NPM_CONFIG_FETCH_RETRIES: "0"
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
