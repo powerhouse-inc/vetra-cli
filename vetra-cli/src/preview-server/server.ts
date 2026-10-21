@@ -32,7 +32,14 @@ import { publishProjectForDeploy } from "./publish-project.js";
 import { checkReleaseStatus } from "./release-status.js";
 import { resolvePreview } from "./resolver.js";
 import { restartPreview, startPreview } from "./starter.js";
-import { createRequestAuthorizer, type RequestAuthorizer } from "./request-auth.js";
+import {
+  createCapabilityGate,
+  createRequestAuthorizer,
+  type MemberAuthorizer,
+  type RequestAuthorizer,
+} from "./request-auth.js";
+import { routeCapability } from "./route-capabilities.js";
+import type { TeamRoutes } from "./team-routes.js";
 import { buildSessionExport, listSessions } from "./session-export.js";
 import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-export.js";
 import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
@@ -72,6 +79,10 @@ interface PreviewServerDeps {
   getProxyPublicUrl?: () => string | undefined;
   /** Owner gate override (tests); default `createRequestAuthorizer`. */
   authorizeRequest?: RequestAuthorizer;
+  /** Member gate (org Studios / team routes); default: absent (owner gate only). */
+  authorizeMember?: MemberAuthorizer;
+  /** Team route handlers; absent = team routes answer 404. */
+  teamRoutes?: TeamRoutes;
   log?: {
     info: (m: string) => void;
     error: (m: string) => void;
@@ -168,6 +179,23 @@ export async function startPreviewServer(
     return false;
   }
 
+  const capabilityGate = deps.authorizeMember
+    ? createCapabilityGate({ authorizeMember: deps.authorizeMember })
+    : undefined;
+  const teamRoutes = deps.teamRoutes;
+
+  /** Capability gate when members are wired; the owner gate otherwise (S1 tests). */
+  async function requireCapability(
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: string,
+    cap: Parameters<NonNullable<typeof capabilityGate>>[3],
+    ctx?: Parameters<NonNullable<typeof capabilityGate>>[4],
+  ): Promise<boolean> {
+    if (!capabilityGate) return requireOwner(req, res, url);
+    return (await capabilityGate(req, res, url, cap, ctx)) !== null;
+  }
+
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void handleRequest(req, res);
   });
@@ -185,6 +213,23 @@ export async function startPreviewServer(
     const path = url.split("?")[0];
 
     try {
+      // Team routes (task 1.9): the route table decides the capability, the
+      // gate enforces it, and the handler sees the accepted member.
+      if (path.startsWith("/team/")) {
+        const cap = routeCapability(method, path);
+        if (!cap || cap === "public" || !capabilityGate || !teamRoutes) {
+          writeJson(res, 404, { error: "not found", path });
+          return;
+        }
+        const changeId = parseQuery(url).get("changeId") ?? undefined;
+        // Guests may see themselves on their change; the member list is members-only.
+        const ctx = path === "/team/members" ? {} : { changeId };
+        const check = await capabilityGate(req, res, url, cap, ctx);
+        if (!check) return;
+        await teamRoutes.handle({ req, res, url, method, check });
+        return;
+      }
+
       if (path === "/healthz" && method === "GET") {
         writeJson(res, 200, { ok: true });
         return;
@@ -211,7 +256,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/project-package" && method === "GET") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const q = parseQuery(url);
         const result = await readProjectPackage(workdir, q.get("project") ?? "");
         writeJson(res, 200, result);
@@ -219,7 +264,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/release-status" && method === "GET") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const q = parseQuery(url);
         const result = await checkReleaseStatus({
           workdir,
@@ -232,7 +277,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/publish" && method === "POST") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "launch"))) return;
         const q = parseQuery(url);
         const result = await publishProjectForDeploy({
           workdir,
@@ -253,7 +298,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/start" && method === "POST") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "startChange"))) return;
         const q = parseQuery(url);
         const result = await startPreview({
           services,
@@ -273,7 +318,7 @@ export async function startPreviewServer(
 
       // Restart can take down a running preview: owner-only, like the exports.
       if (path === "/restart" && method === "POST") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const q = parseQuery(url);
         const result = await restartPreview({
           services,
@@ -297,7 +342,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/sessions" && method === "GET") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const drive = await getReactor?.();
         if (!drive) {
           writeJson(res, 503, { error: "reactor-unavailable" });
@@ -308,7 +353,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/sessions/export" && method === "GET") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const q = parseQuery(url);
         const id = q.get("id") ?? "";
         if (!id) {
@@ -348,7 +393,7 @@ export async function startPreviewServer(
 
       // General export: selectable workspace parts, decoupled from any session.
       if (path === "/export" && method === "GET") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const q = parseQuery(url);
         if (!isTruthyParam(q.get("workspace"))) {
           writeJson(res, 400, { error: "no export parts selected", hint: "add ?workspace=1" });
@@ -384,28 +429,28 @@ export async function startPreviewServer(
       // tools read. Owner-only: status names the owner's wallet, and start /
       // confirm / logout change which identity the agent acts as.
       if (path === "/auth/status" && method === "GET") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const state = await getAuthState(workdir, renownUrl);
         writeJson(res, 200, state);
         return;
       }
 
       if (path === "/auth/start" && method === "POST") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const state = await startAuth(workdir, renownUrl);
         writeJson(res, 200, state);
         return;
       }
 
       if (path === "/auth/logout" && method === "POST") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const state = await logoutAuth(workdir, renownUrl);
         writeJson(res, 200, state);
         return;
       }
 
       if (path === "/auth/confirm" && method === "POST") {
-        if (!(await requireOwner(req, res, url))) return;
+        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
         const q = parseQuery(url);
         const waitMs = Math.min(Math.max(Number(q.get("wait")) || 20000, 0), 60000);
         // A cloud Studio's agent may only act as the owner: a login approved

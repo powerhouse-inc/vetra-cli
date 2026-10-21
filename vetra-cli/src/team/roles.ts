@@ -3,6 +3,7 @@
 import {
   CAPABILITIES,
   type Capability,
+  type CapabilityContext,
   type Member,
   type StudioRoleName,
 } from "vetra-app/studio-team";
@@ -10,7 +11,7 @@ import {
 import type { OrgMembership } from "./renown-orgs.js";
 
 export { CAPABILITIES };
-export type { Capability, Member, StudioRoleName };
+export type { Capability, CapabilityContext, Member, StudioRoleName };
 
 /**
  * Cloud's rule (shared/org-access.ts hasPublisherCapability): OWNER/ADMIN

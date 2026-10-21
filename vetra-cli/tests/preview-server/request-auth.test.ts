@@ -2,7 +2,13 @@ import type { IncomingMessage } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { MemoryKeyStorage, RenownCryptoBuilder } from "@renown/sdk/node";
 
-import { createRequestAuthorizer, isLocalRequest } from "../../src/preview-server/request-auth.js";
+import type { ServerResponse } from "node:http";
+import {
+  createCapabilityGate,
+  createMemberAuthorizer,
+  createRequestAuthorizer,
+  isLocalRequest,
+} from "../../src/preview-server/request-auth.js";
 
 const OWNER = "0x00000000000000000000000000000000000000aa";
 const STUDIO = "https://studio-1.vetra.example";
@@ -251,5 +257,96 @@ describe("isLocalRequest", () => {
     expect(isLocalRequest(req({ origin: "http://localhost:8090" }))).toBe(true);
     expect(isLocalRequest(req({ origin: "https://evil.example" }))).toBe(false);
     expect(isLocalRequest(req({ origin: "null" }))).toBe(false);
+  });
+});
+
+
+describe("createMemberAuthorizer and the capability gate", () => {
+  const member = (role: "owner" | "maker" | "viewer") => ({
+    address: OWNER,
+    name: null,
+    role,
+    reviewer: role !== "viewer",
+  });
+
+  function fakeRes() {
+    const out = { status: 0, body: "" };
+    const res = {
+      writeHead(status: number) {
+        out.status = status;
+        return res;
+      },
+      end(body?: string) {
+        out.body = String(body ?? "");
+      },
+    } as unknown as ServerResponse;
+    return { res, out };
+  }
+
+  function memberAuth(
+    resolve: () => Promise<ReturnType<typeof member> | null>,
+    verifyDelegation = jest.fn(async () => true),
+  ) {
+    return createMemberAuthorizer({
+      renownUrl: "http://renown.invalid",
+      cloud: true,
+      audience: () => STUDIO,
+      verifyDelegation,
+      membership: { resolve },
+    });
+  }
+
+  it("a maker bearer passes a maker route (startChange)", async () => {
+    const token = await mintToken(OWNER);
+    const gate = createCapabilityGate({ authorizeMember: memberAuth(async () => member("maker")) });
+    const { res, out } = fakeRes();
+    const check = await gate(req({ authorization: `Bearer ${token}` }), res, "/start", "startChange");
+    expect(check).toMatchObject({ ok: true, via: "member", member: { role: "maker" } });
+    expect(out.status).toBe(0);
+  });
+
+  it("a viewer gets 403 on a startChange route", async () => {
+    const token = await mintToken(OWNER);
+    const gate = createCapabilityGate({ authorizeMember: memberAuth(async () => member("viewer")) });
+    const { res, out } = fakeRes();
+    expect(await gate(req({ authorization: `Bearer ${token}` }), res, "/start", "startChange")).toBeNull();
+    expect(out.status).toBe(403);
+    expect(JSON.parse(out.body)).toEqual({ error: "forbidden" });
+  });
+
+  it("an outsider without a token gets 401", async () => {
+    const gate = createCapabilityGate({ authorizeMember: memberAuth(async () => null) });
+    const { res, out } = fakeRes();
+    expect(await gate(req({}), res, "/team/me", "view")).toBeNull();
+    expect(out.status).toBe(401);
+    expect(JSON.parse(out.body)).toEqual({ error: "unauthorized" });
+  });
+
+  it("a valid bearer without membership gets 403", async () => {
+    const token = await mintToken(OWNER);
+    const gate = createCapabilityGate({ authorizeMember: memberAuth(async () => null) });
+    const { res, out } = fakeRes();
+    expect(await gate(req({ authorization: `Bearer ${token}` }), res, "/team/me", "view")).toBeNull();
+    expect(out.status).toBe(403);
+    expect(JSON.parse(out.body)).toEqual({ error: "forbidden" });
+  });
+
+  it("a membership failure refuses with access-unavailable", async () => {
+    const token = await mintToken(OWNER);
+    const authorize = memberAuth(async () => {
+      throw new Error("renown down");
+    });
+    const check = await authorize(req({ authorization: `Bearer ${token}` }), null);
+    expect(check).toEqual({ ok: false, status: 403, error: "access-unavailable" });
+  });
+
+  it("a bearer for another Studio is refused", async () => {
+    const token = await mintToken(OWNER, { aud: "https://other-studio.vetra.example" });
+    const authorize = memberAuth(async () => member("owner"));
+    expect(await authorize(req({ authorization: `Bearer ${token}` }), null)).toEqual({
+      ok: false,
+      status: 401,
+      error: "unauthorized",
+    });
   });
 });
