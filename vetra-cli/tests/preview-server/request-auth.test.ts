@@ -410,6 +410,50 @@ describe("trusted keys: kept across restarts, per-client lookup shares, evicted 
   });
 });
 
+describe("Renown unreachable: a trusted key passes only within 1 h of its last OK check", () => {
+  const saved = process.env.ADMINS;
+  let errorSpy: ReturnType<typeof jest.spyOn>;
+  beforeEach(() => {
+    process.env.ADMINS = OWNER;
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errorSpy.mockRestore();
+    if (saved === undefined) delete process.env.ADMINS;
+    else process.env.ADMINS = saved;
+  });
+
+  it("passes under 1 h, refuses past it without caching the refusal", async () => {
+    let t = 1_000_000;
+    const crypto = await new RenownCryptoBuilder().withKeyPairStorage(new MemoryKeyStorage()).build();
+    const mint = () => crypto.getBearerToken(OWNER, { expiresIn: 600, aud: STUDIO });
+    let down = false;
+    const delegation = jest.fn(async () => {
+      if (down) throw new Error("fetch failed");
+      return true;
+    });
+    const authorize = authorizer(delegation, { now: () => t });
+    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
+
+    down = true;
+    t += 60 * 60_000 - 1_000; // just under 1 h since the last OK check
+    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
+
+    t += 31_000; // past 1 h (the grace verdict has run out too)
+    expect(await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).toEqual({
+      ok: false,
+      status: 401,
+      error: "unauthorized",
+    });
+    // Not cached: the next request asks Renown again, and passes once it answers.
+    const calls = delegation.mock.calls.length;
+    down = false;
+    t += 1_000;
+    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
+    expect(delegation.mock.calls.length).toBe(calls + 1);
+  });
+});
+
 describe("lookup shares: IPv6 clients by /64, a reserve for clients new to the window", () => {
   const saved = process.env.ADMINS;
   let errorSpy: ReturnType<typeof jest.spyOn>;

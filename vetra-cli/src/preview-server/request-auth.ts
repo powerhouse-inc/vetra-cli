@@ -255,6 +255,9 @@ const OK_TTL_MS = 5 * 60_000;
 const FAIL_TTL_MS = 30_000;
 /** A key verified within this long re-verifies without the lookup caps. */
 const TRUSTED_MS = 24 * 60 * 60_000;
+/** While Renown can't be asked, a trusted key passes only this long after
+ *  its last OK check (ruling X38); signature, `aud` and ADMINS still apply. */
+const UNREACHABLE_GRACE_MS = 60 * 60_000;
 const WINDOW_MS = 60_000;
 const CACHE_MAX = 500;
 
@@ -447,14 +450,17 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     const lookup = (async () => {
       let ok = false;
       // A lookup that couldn't run (Renown down, network) is no verdict on the
-      // key: a trusted key keeps its last OK verdict, asked again in 30 s.
+      // key: a key whose last OK check is under 1 h old keeps that verdict,
+      // asked again in 30 s; an older one is refused, uncached, so the next
+      // request asks again.
       let errored = false;
       try {
         ok = await verifyDelegation(jwt, audience);
       } catch {
         errored = true;
-        ok = isTrusted;
+        ok = isTrusted && t - lastOk < UNREACHABLE_GRACE_MS;
       }
+      if (errored && !ok) return false;
       const done = now();
       const ttl = ok && !errored ? OK_TTL_MS : FAIL_TTL_MS;
       boundedSet(verdicts, key, { ok, until: done + ttl });
