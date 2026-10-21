@@ -9,7 +9,7 @@ import { specDelete } from "../../src/commands/spec/delete.js";
 import { specGenerate } from "../../src/commands/spec/generate.js";
 import { specGet } from "../../src/commands/spec/get.js";
 import { specList } from "../../src/commands/spec/list.js";
-import { specSchema } from "../../src/commands/spec/schema.js";
+import { enumValues, specSchema } from "../../src/commands/spec/schema.js";
 import { specSchemaList } from "../../src/commands/spec/schema-list.js";
 import { specUpdate } from "../../src/commands/spec/update.js";
 import { makeCtx, makeWorkdir } from "./_fixtures.js";
@@ -604,6 +604,21 @@ describe("spec-schema", () => {
       makeCtx(workdir),
     );
     expect(json.text).not.toContain("Enum values");
+  });
+
+  it("enum values skip descriptions, comments and directives", () => {
+    const schema = [
+      '"""Why: { the job } matters"""',
+      "enum Motivation {",
+      '  "loves it" LOVE_TO',
+      "  # legacy values below",
+      '  NEED_TO @deprecated(reason: "use HAVE_TO")',
+      "  HAVE_TO",
+      "}",
+    ].join("\n");
+    expect(enumValues({ state: { global: { schema } } })).toEqual(
+      new Map([["Motivation", ["LOVE_TO", "NEED_TO", "HAVE_TO"]]]),
+    );
   });
 
   it("--state returns the GraphQL state schema", async () => {

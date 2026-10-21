@@ -64,6 +64,9 @@ function rephrase(...texts: Array<string | undefined>): string | null {
   return words.length ? `Rephrase in the customer's words without: ${words.join(", ")}.` : null;
 }
 
+/** `stuck` reasons refused for naming a visible tool, per change (process lifetime). */
+const refusedStuck = new Set<string>();
+
 /** Actions that can change the step, so the reply names the tools it adds. */
 const MOVES_STEP = new Set<Input["action"]>(["start", "done", "back"]);
 const MAX_LISTED = 12;
@@ -144,8 +147,12 @@ function buildActions(
     case "stuck": {
       if (!input.reason) return { refused: missing("reason", "stuck") };
       const tried = input.tried ?? [];
-      const present = claimedMissingTools(input.reason, activePhases(state));
+      // Refused once per change and reason: a repeat goes through, so a
+      // misread claim can never leave the agent without a way to ask for help.
+      const key = `${changeId}\n${input.reason}`;
+      const present = refusedStuck.has(key) ? [] : claimedMissingTools(input.reason, activePhases(state));
       if (present.length) {
+        refusedStuck.add(key);
         return {
           refused: `${present.join(", ")} ${present.length > 1 ? "are" : "is"} available in this step — use ${present.length > 1 ? "them" : "it"}.`,
         };

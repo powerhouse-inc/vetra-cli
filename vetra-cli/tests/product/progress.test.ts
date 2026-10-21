@@ -179,14 +179,30 @@ describe("product-progress", () => {
     expect(
       await runProgress(h.ctx, {
         action: "stuck",
-        reason: "reactor-project-init and reactor-project-start are missing",
+        reason: "reactor-project-init is missing and there is no reactor-project-start tool",
         tried: ["a"],
       }),
     ).toBe("Refused: reactor-project-init, reactor-project-start are available in this step — use them.");
-    expect((await h.state()).changes[0].stuck).toBeNull();
-    // A tool this step really lacks, or a failure that claims nothing missing, is accepted.
     expect(
-      await runProgress(h.ctx, { action: "stuck", reason: "Saving dates keeps failing", tried: ["a", "b", "c"] }),
+      await runProgress(h.ctx, { action: "stuck", reason: "there is no reactor-project-init tool", tried: ["a"] }),
+    ).toBe("Refused: reactor-project-init is available in this step — use it.");
+    expect((await h.state()).changes[0].stuck).toBeNull();
+    // The same reason again is accepted: the refusal never leaves the agent without a way out.
+    expect(
+      await runProgress(h.ctx, { action: "stuck", reason: "there is no reactor-project-init tool", tried: ["a"] }),
+    ).toBe("Marked as stuck; the customer will be asked for help.");
+  });
+
+  it("stuck accepts a real failure that names a tool", async () => {
+    h = await productHarness();
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] });
+    await runProgress(h.ctx, { action: "start", step: "PLAN" });
+    expect(
+      await runProgress(h.ctx, {
+        action: "stuck",
+        reason: "spec-generate keeps failing: missing type TodoItem in the model",
+        tried: ["a", "b", "c"],
+      }),
     ).toBe("Marked as stuck; the customer will be asked for help.");
   });
 

@@ -277,21 +277,25 @@ function toolAliases(name: string): string[] {
   return [...new Set([name, short, short.replace(/_/g, ' ')])].filter((a) => a.length > 4);
 }
 
-const MISSING_CLAIM =
-  /\b(?:missing|unavailable|not (?:available|exposed|listed|offered|present|provided|in (?:my|the|this))|(?:don'?t|do not|doesn'?t|does not) (?:have|expose|offer|list|provide)|lacks?|no\b[^.]{0,40}\btools?\b)/i;
+/** Phrases that put a tool name inside a "missing" claim, before or after it. */
+const MISSING_BEFORE =
+  "(?:\\bno|\\bmissing|\\bwithout|\\black(?:s|ing)?|(?:don'?t|do not|doesn'?t|does not|can'?t|cannot) (?:have|see|find|get|call)|not (?:available|exposed|listed|offered|given))\\s+(?:an?\\s+|the\\s+|any\\s+)?";
+const MISSING_AFTER =
+  "(?:\\s+tools?)?\\s+(?:is\\s+|are\\s+)?(?:missing|unavailable|absent|not (?:available|exposed|listed|offered|present|there|in)|isn'?t (?:there|available|listed|exposed)|(?:doesn'?t|does not) exist)";
 
 /**
  * Tools visible in `phases` that `reason` claims are missing (the dev.9
  * staging agent marked itself stuck on "no project-init tool is exposed"
- * while reactor-project-init was in its tool list). Empty when the reason
- * makes no such claim.
+ * while reactor-project-init was in its tool list). The tool must sit inside
+ * the claim ("no reactor-project-init tool", "reactor-project-init is
+ * missing"), so a real failure that names a tool ("spec-generate keeps
+ * failing: missing type X") is not caught.
  */
 export function claimedMissingTools(reason: string, phases: StepKind[] | null): string[] {
-  if (!MISSING_CLAIM.test(reason)) return [];
   return namedVisibleTools(phases).filter((name) =>
     toolAliases(name).some((alias) => {
-      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, 'i').test(reason);
+      const tool = `(?<![\\w-])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`;
+      return new RegExp(`${MISSING_BEFORE}${tool}|${tool}${MISSING_AFTER}`, 'i').test(reason);
     }),
   );
 }

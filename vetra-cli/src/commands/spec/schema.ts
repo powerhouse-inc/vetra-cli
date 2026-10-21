@@ -38,8 +38,15 @@ function buildNextSteps(
  * read the list off the validation error (M0 staging run: 18–33 calls). */
 const ENUM_DECL = /\benum\s+(\w+)\s*\{([^}]*)\}/g;
 
-function enumValues(latest: LatestSpec | undefined): Map<string, string[]> {
-  const sdl = [latest?.state?.global?.schema, latest?.state?.local?.schema].join("\n");
+export function enumValues(latest: LatestSpec | undefined): Map<string, string[]> {
+  // Drop descriptions ("""…""" and "…"), # comments and directives first:
+  // their words are not values, and a "}" in one would end the enum early.
+  const sdl = [latest?.state?.global?.schema, latest?.state?.local?.schema]
+    .join("\n")
+    .replace(/"""[^]*?"""/g, " ")
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, " ")
+    .replace(/#[^\n]*/g, " ")
+    .replace(/@\w+(?:\([^)]*\))?/g, " ");
   const enums = new Map<string, string[]>();
   for (const [, name, body] of sdl.matchAll(ENUM_DECL)) {
     enums.set(name, body.split(/[\s,]+/).filter((v) => /^\w+$/.test(v)));

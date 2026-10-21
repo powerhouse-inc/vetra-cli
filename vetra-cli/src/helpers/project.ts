@@ -70,7 +70,7 @@ export async function assertProjectInstalled(base: string, subdir: string | unde
     [
       `${label} is not an initialised project (no node_modules at ${base}).`,
       initHint(subdir),
-      "If reactor-project-init created it and its install failed, run `pnpm install` in it.",
+      "reactor-project-init installs the project; it won't take over this directory, so init one under an unused name and use that.",
     ].join("\n"),
   );
 }
