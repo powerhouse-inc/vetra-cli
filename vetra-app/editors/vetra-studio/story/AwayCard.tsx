@@ -62,7 +62,9 @@ export function AwayCard({
       <button
         type="button"
         onClick={() => {
-          writeLastVisit(studioId, Date.now());
+          const now = Date.now();
+          writeLastVisit(studioId, now);
+          sinceByStudio.set(studioId, now);
           setDismissed(true);
         }}
         className="mt-2 rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-foreground hover:bg-accent"

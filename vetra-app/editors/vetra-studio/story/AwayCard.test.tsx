@@ -67,6 +67,15 @@ describe("AwayCard", () => {
     expect(Number(window.localStorage.getItem(key))).toBeGreaterThan(ms(4));
   });
 
+  it("Got it survives a remount", () => {
+    window.localStorage.setItem(key, String(ms(4)));
+    const a = render(<AwayCard studioId="s1" product={buildingProduct()} />);
+    click(button(a, "Got it"));
+    rerender(a, <span />);
+    const b = render(<AwayCard studioId="s1" product={buildingProduct()} />);
+    expect(b.textContent).toBe("");
+  });
+
   it("blocked storage renders nothing and does not throw", () => {
     const real = Object.getOwnPropertyDescriptor(window, "localStorage");
     Object.defineProperty(window, "localStorage", {
