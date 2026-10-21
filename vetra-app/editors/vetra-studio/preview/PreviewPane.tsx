@@ -10,7 +10,13 @@
 import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import type { PHDocument } from "document-model";
 import type { Change } from "document-models/studio-product";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { PreviewBody, STARTING } from "../BuildSection.js";
 import { fetchRestart, fetchStart } from "../hooks/preview-server-client.js";
 import {
@@ -21,6 +27,8 @@ import {
   useProjectHomeTarget,
   useSessionPreviewTarget,
 } from "../hooks/useSessionPreviewTarget.js";
+import { frameDocument } from "./pointLayer.js";
+import { usePointMode } from "./usePointMode.js";
 import {
   previewScreens,
   previewTabs,
@@ -171,6 +179,14 @@ export function PreviewPane({
     };
   }, [project]);
 
+  // Point mode: offered only while a same-origin frame is showing.
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [frameLoads, setFrameLoads] = useState(0);
+  const point = usePointMode(frameRef, `${frameLoads}`);
+  const canPoint =
+    preview.kind === "ready" &&
+    (frameRef.current === null || frameDocument(frameRef.current) !== null);
+
   const building = shownTab?.building
     ? `${shownTab.label} — building…`
     : undefined;
@@ -181,6 +197,20 @@ export function PreviewPane({
         <span className="text-xs text-muted-foreground">
           Live preview · updates as it builds
         </span>
+        {canPoint ? (
+          <button
+            type="button"
+            aria-pressed={point.active}
+            onClick={point.toggle}
+            className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+              point.active
+                ? "border-vetra-primary bg-vetra-primary/10 text-foreground"
+                : "border-border text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            Point
+          </button>
+        ) : null}
         {following ? null : (
           <button
             type="button"
@@ -193,6 +223,8 @@ export function PreviewPane({
       </div>
       <PreviewBody
         preview={preview}
+        frameRef={frameRef}
+        onFrameLoad={() => setFrameLoads((n) => n + 1)}
         reloadKey={reloadKey}
         activity={
           building ??

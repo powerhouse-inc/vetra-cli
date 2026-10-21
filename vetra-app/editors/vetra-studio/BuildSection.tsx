@@ -1,5 +1,5 @@
 import { useTheme } from "@powerhousedao/reactor-browser";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type Ref } from "react";
 import { Breadcrumb, type Crumb } from "./Breadcrumb.js";
 import { PreviewStatusChip } from "./PreviewStatusChip.js";
 import type { ResolvedPreview } from "./hooks/useResolvedPreview.js";
@@ -67,8 +67,14 @@ export function PreviewBody({
   reloadKey = 0,
   activity,
   note,
+  frameRef,
+  onFrameLoad,
 }: {
   preview: ResolvedPreview;
+  /** The preview iframe, for Point mode (same-origin only). */
+  frameRef?: Ref<HTMLIFrameElement>;
+  /** Called when the frame finishes loading. */
+  onFrameLoad?: () => void;
   /** Bumped to reload the frame (Restart preview). */
   reloadKey?: number;
   /** Replaces the skeleton copy (e.g. "Kitchen queue — building…"). */
@@ -109,9 +115,13 @@ export function PreviewBody({
       {frameSrc ? (
         <iframe
           key={frameKey}
+          ref={frameRef}
           src={frameSrc}
           title="Preview"
-          onLoad={() => setLoadedKey(frameKey)}
+          onLoad={() => {
+            setLoadedKey(frameKey);
+            onFrameLoad?.();
+          }}
           className="block min-h-0 w-full flex-1 border-0"
         />
       ) : null}
