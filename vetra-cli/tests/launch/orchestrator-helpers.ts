@@ -79,6 +79,7 @@ export async function launchHarness(
     },
     discardDraft: async (_wd, tag) => {
       calls.push(`discard ${tag}`);
+      return null;
     },
     setAccess: async (_ctx, access, target) => {
       calls.push(`access ${access} ${target.driveId}`);

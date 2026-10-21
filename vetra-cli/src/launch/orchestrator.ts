@@ -914,7 +914,8 @@ export async function discardChange(ctx: OrchestratorContext, changeId: string |
   const live = state?.versions.find((v) => v.number === state.liveVersion);
   try {
     if (live) {
-      await depsOf(ctx).discardDraft(ctx.workdir, live.gitTag);
+      const unsaved = await depsOf(ctx).discardDraft(ctx.workdir, live.gitTag, { label: changeId });
+      if (unsaved) ctx.log?.info?.(`[launch] the discarded code is kept at ${unsaved}`);
       ctx.log?.info?.(`[launch] change ${changeId} discarded; code back on Version ${live.number}`);
     } else {
       ctx.log?.info?.(`[launch] change ${changeId} discarded with nothing live; files kept`);
