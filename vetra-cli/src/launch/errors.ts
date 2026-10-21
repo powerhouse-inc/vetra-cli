@@ -42,3 +42,15 @@ const PERMISSION_CODES = new Set([
 export function isPermissionError(err: unknown): boolean {
   return err instanceof LaunchError && PERMISSION_CODES.has(err.code);
 }
+
+/**
+ * The state to record for a permission error (F7): a delegation that was
+ * never made is `MISSING`; one that ran out (or was refused) is `EXPIRED`.
+ * Null for every other error — `STUDIO_BINDING` stays a plain failure.
+ */
+export function launchPermissionState(
+  err: unknown,
+): "MISSING" | "EXPIRED" | null {
+  if (!isPermissionError(err) || !(err instanceof LaunchError)) return null;
+  return err.code === "DELEGATION_MISSING" ? "MISSING" : "EXPIRED";
+}

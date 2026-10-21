@@ -15,9 +15,12 @@
  *             and `SET_PRODUCT_DRIVE`
  *   VERIFY    "Checking it's up"           HTTP check of the live address
  *   MIRROR    SKIPPED until GitHub arrives (M4)
- * then `COMPLETE_LAUNCH`; on any failure the running line is FAILED and
- * `FAIL_LAUNCH` records the plain reason (F39). START/COMPLETE/FAIL_LAUNCH move
- * the change's LIVE step; `product-progress done LIVE` is never called.
+ * then `COMPLETE_LAUNCH`. On a failure the running line is FAILED and
+ * `FAIL_LAUNCH` records the plain reason (F39); a missing or expired permission
+ * (F7) is the exception: the Version stays LAUNCHING, its running line goes
+ * back to WAITING and `SET_LAUNCH_PERMISSION` records what the owner must do.
+ * START/COMPLETE/FAIL_LAUNCH move the change's LIVE step; `product-progress
+ * done LIVE` is never called.
  *
  * A launch interrupted by a restart resumes from its first line not DONE: the
  * details of the DONE lines are what it needs (F22); a DEPLOY line with a
@@ -51,7 +54,7 @@ import {
   ensureProduct,
   isSecretPending,
 } from "./cloud-launch.js";
-import { LaunchError } from "./errors.js";
+import { LaunchError, launchPermissionState } from "./errors.js";
 import { changedFiles, discardDraft, restoreVersion, snapshot } from "./git-versions.js";
 import {
   ensureProductDrive,
@@ -349,6 +352,8 @@ export interface LaunchOptions {
 export type LaunchOutcome =
   | { status: "LIVE"; number: number }
   | { status: "FAILED"; number: number; reason: string }
+  /** F7: the owner's OK is missing or ran out; the Version stays LAUNCHING. */
+  | { status: "NEEDS_PERMISSION"; number: number }
   | { status: "SKIPPED"; reason: string };
 
 /** Who and what started the launch in flight, kept for a resume after a restart. */
@@ -553,6 +558,25 @@ async function runLaunch(
     clearLaunchRecord(ctx.workdir);
     ctx.log?.info?.(`[launch] Version ${number} is live at ${liveUrl}`);
   } catch (err) {
+    const permission = launchPermissionState(err);
+    if (permission) {
+      // F7: the owner's OK is missing or ran out. The Version stays LAUNCHING
+      // and the running line goes back to WAITING, so the requests trigger can
+      // resume it once the page records the OK (no FAIL_LAUNCH, no retry storm).
+      ctx.log?.warn?.(
+        `[launch] Version ${number} waits for the owner's OK to publish${current ? ` at ${current}` : ""}: ${message(err)}`,
+      );
+      try {
+        await dispatchProduct(ctx, [
+          ...(current ? [a.setLaunchLine({ number, kind: current, status: "WAITING", detail: null })] : []),
+          a.setLaunchPermission({ state: permission }),
+        ]);
+      } catch (recordErr) {
+        ctx.log?.error?.(`[launch] Version ${number}: the permission state couldn't be recorded: ${message(recordErr)}`);
+      }
+      return { status: "NEEDS_PERMISSION", number };
+    }
+
     const reason = err instanceof LaunchError ? err.reason : LAUNCH_REASONS.unexpected;
     ctx.log?.error?.(
       `[launch] Version ${number} failed${current ? ` at ${current}` : ""}: ${message(err)} — ${launchFailureText(reason, liveBefore)}`,

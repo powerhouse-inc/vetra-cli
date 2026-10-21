@@ -98,6 +98,10 @@ vi.mock("../hooks/useResolvedPreview.js", () => ({
 vi.mock("../settings/SettingsDialog.js", () => ({
   SettingsDialog: () => <div role="dialog">Settings dialog</div>,
 }));
+// The one-time publish ask has its own test; shell tests are about routing.
+vi.mock("../permission/PublishPermissionModal.js", () => ({
+  PublishPermissionModal: () => null,
+}));
 vi.mock("../ideation/DocumentHost.js", () => ({
   DocumentHost: () => <div>Document editor</div>,
 }));

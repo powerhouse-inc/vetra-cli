@@ -37,6 +37,7 @@ import { useStudioRestarting } from "../failures/useStudioRestarting.js";
 import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
+import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
 import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { DataDetail } from "../steps/DataDetail.js";
@@ -131,6 +132,11 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
           onClose={closeSettings}
         />
       ) : null}
+      {/* D7: the one-time ask right after sign-in, over either screen. */}
+      <PublishPermissionModal
+        productId={productId}
+        studioId={document.header.id}
+      />
       {showDebug ? <ProductDebugPanel drive={document} /> : null}
     </div>
   );

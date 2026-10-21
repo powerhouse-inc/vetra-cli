@@ -1,6 +1,7 @@
 /**
- * "Authorize agent" control in the studio header. Auth state and the
- * renown.id console flow live in useAgentAuth (shared with the deploy flow).
+ * "Authorize agent" control in Settings. Auth state and the renown.id console
+ * flow live in useAgentAuth (shared with the deploy flow and the sign-in
+ * publishing modal, D7).
  *
  * States: not authorized → "Authorize agent"; awaiting approval → "Authorizing…"
  * (reopens the console on click); authorized → a "✓ Renown 0x…" chip with

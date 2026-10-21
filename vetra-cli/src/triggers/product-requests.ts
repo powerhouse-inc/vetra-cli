@@ -67,8 +67,17 @@ export async function requestsPass(
 
     // Any pass, not only the first after a start: a START_LAUNCH that applied
     // but whose dispatch then threw would otherwise wait for the next restart.
+    // F7: while the owner's OK is missing or ran out, resuming would only hit
+    // the same cloud refusal every pass (a 3-second retry storm). The page
+    // records `SET_LAUNCH_PERMISSION GRANTED`; the next pass resumes.
     const launching = state.versions.filter((v) => v.status === "LAUNCHING");
     if (launching.length > 0) {
+      if (
+        state.launchPermission === "MISSING" ||
+        state.launchPermission === "EXPIRED"
+      ) {
+        return "needs-permission";
+      }
       for (const v of launching) await resumeLaunch(ctx, v.number);
       return "resume";
     }

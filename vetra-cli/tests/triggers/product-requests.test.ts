@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { seedCheck } from "../../src/launch/seed.js";
+import { LaunchError } from "../../src/launch/errors.js";
 import { DEPLOY_FAILED_REASON } from "../../src/launch/verify.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
 import {
@@ -235,6 +236,41 @@ describe("product-requests trigger", () => {
 
     expect(await requestsPass(h.octx, memory)).toBe("resume");
     expect((await h.state()).liveVersion).toBe(2);
+  });
+
+  it("waits for the owner's OK instead of resuming every 3 seconds (F7)", async () => {
+    const reason = "your Studio needs your OK to publish";
+    h = await launchHarness({
+      publishAll: async () => {
+        throw new LaunchError("DELEGATION_EXPIRED", reason, reason);
+      },
+    });
+    await makeReady(h);
+    const memory = newRequestsMemory();
+
+    // The automatic launch meets the cloud refusal: the state is recorded and
+    // the Version keeps waiting instead of failing.
+    expect(await requestsPass(h.octx, memory)).toBe("auto-launch");
+    let s = await h.state();
+    expect(s.launchPermission).toBe("EXPIRED");
+    expect(s.versions[0].status).toBe("LAUNCHING");
+    expect(s.liveVersion).toBeNull();
+
+    // While the OK is missing, every pass skips the resume without any call.
+    h.calls.length = 0;
+    expect(await requestsPass(h.octx, memory)).toBe("needs-permission");
+    expect(await requestsPass(h.octx, memory)).toBe("needs-permission");
+    expect(h.calls).toEqual([]);
+
+    // The page records the OK; the next pass resumes the same Version.
+    h.deps.publishAll = async () => [
+      { name: "@vetra-apps/team-todo", version: "1.0.1" },
+    ];
+    await dispatchProduct(h.ctx, [a.setLaunchPermission({ state: "GRANTED" })]);
+    expect(await requestsPass(h.octx, memory)).toBe("resume");
+    s = await h.state();
+    expect(s.liveVersion).toBe(1);
+    expect(s.versions[0].status).toBe("LIVE");
   });
 
   it("a LAUNCH request that can no longer start is cleared with a plain reason (X28)", async () => {
