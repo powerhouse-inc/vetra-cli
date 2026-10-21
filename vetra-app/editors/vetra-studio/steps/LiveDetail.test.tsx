@@ -57,7 +57,11 @@ describe("LiveDetail", () => {
       "https://task-board.vetra.io",
     );
     expect(text).toContain("task-board.vetra.io ↗");
-    expect(text).toContain("Version 2 · Deployed 2 min ago · GitHub ✓");
+    expect(text).toContain("Version 2 · Deployed 2 min ago");
+    expect(text).toContain(
+      "Keep a copy of your code in your own GitHub account. Every launch becomes a commit you can see.",
+    );
+    expect(text).toContain("GitHub ✓");
     expect(text).toContain("Version 2 — Ready column · Live");
     expect(text).toContain("Version 1 — First version");
     expectNoForbiddenWords(container);

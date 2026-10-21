@@ -14,8 +14,9 @@ import { useEffect, useRef, useState } from "react";
 import { AgentAuthButton } from "../AgentAuthButton.js";
 import { StudioBudgetMeter } from "../budget/BudgetMeter.js";
 import { DeploySection } from "../DeploySection.js";
+import { GithubStatusLine } from "../github/GithubStatusLine.js";
+import type { StartProductDrive } from "../idea/startProduct.js";
 import { ANYONE_WITH_THE_LINK } from "../live/liveCopy.js";
-import { githubText } from "../strip/stripModel.js";
 import { VersionBadge } from "../VersionBadge.js";
 import { WorkspaceExportButton } from "../WorkspaceExportButton.js";
 
@@ -40,11 +41,14 @@ export type SettingsSection = "access";
 export function SettingsDialog({
   product,
   productId,
+  drive,
   initialSection,
   onClose,
 }: {
   product: StudioProductState | null;
   productId: string | null;
+  /** For "Bring them in" (the same change path as the live strip). */
+  drive?: StartProductDrive;
   initialSection?: SettingsSection;
   onClose: () => void;
 }) {
@@ -205,9 +209,19 @@ export function SettingsDialog({
           </section>
           <section className="flex flex-col gap-1">
             <h3 className="font-medium text-foreground">GitHub</h3>
-            <p className="text-muted-foreground">
-              {githubText(product?.github.status ?? "NOT_CONNECTED")}
-            </p>
+            {product?.liveVersion != null ? (
+              <p className="text-muted-foreground">
+                <GithubStatusLine
+                  product={product}
+                  productId={productId}
+                  drive={drive}
+                />
+              </p>
+            ) : (
+              <p className="text-muted-foreground">
+                GitHub becomes available after your first launch.
+              </p>
+            )}
           </section>
           <section className="flex flex-col gap-1.5">
             <h3 className="font-medium text-foreground">Budget</h3>
