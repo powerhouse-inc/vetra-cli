@@ -38,7 +38,11 @@ const hoisted = vi.hoisted(() => ({
   dispatched: [] as { action: unknown; id: string }[],
   /** The build's conversation as `useDocumentSafe` returns it; loading when unset. */
   session: undefined as PHDocument | undefined,
+  toasts: [] as { text: string; type?: string }[],
 }));
+const toastFn = (text: string, o?: { type?: string }) => {
+  hoisted.toasts.push({ text, type: o?.type });
+};
 
 vi.mock("../change/startChange.js", async (importOriginal) => ({
   ...(await importOriginal<typeof StartChangeModule>()),
@@ -149,7 +153,7 @@ vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
     hoisted.session
       ? { status: "success", data: hoisted.session }
       : { status: "loading" },
-  usePHToast: () => undefined,
+  usePHToast: () => toastFn,
   dispatchActions: (action: unknown, id: string) => {
     hoisted.dispatched.push({ action, id });
     return Promise.resolve(undefined);
@@ -263,6 +267,7 @@ beforeEach(() => {
   hoisted.session = undefined;
   hoisted.documents = undefined;
   hoisted.dispatched = [];
+  hoisted.toasts = [];
   vi.mocked(plainModel).mockClear();
 });
 
@@ -591,6 +596,41 @@ describe("StudioShell", () => {
       container.querySelector("[data-demo-question]")?.textContent,
     ).toContain("Should tasks have due dates?");
     expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+  });
+
+  it("a question in Demo shows a badge and one toast", () => {
+    hoisted.session = askingSession();
+    const container = building();
+    // The story is in view in Build: no toast.
+    expect(hoisted.toasts).toEqual([]);
+    click(button(container, "Demo"));
+    expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+    expect(hoisted.toasts).toHaveLength(1);
+    expect(hoisted.toasts[0]).toEqual({
+      text: "Should tasks have due dates? Open chat to answer.",
+      type: "warning",
+    });
+  });
+
+  it("the same item never toasts twice", () => {
+    hoisted.session = askingSession();
+    const container = building();
+    click(button(container, "Demo"));
+    click(button(container, "Build"));
+    click(button(container, "Demo"));
+    click(button(container, "Review"));
+    click(button(container, "Demo"));
+    expect(hoisted.toasts).toHaveLength(1);
+  });
+
+  it("Build with the story visible shows no toast, and the badge opens Review", () => {
+    hoisted.session = askingSession();
+    const container = building();
+    expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+    expect(hoisted.toasts).toEqual([]);
+    click(container.querySelector<HTMLElement>("[data-attention]"));
+    expect(pressedModes(container)).toEqual(["Review"]);
+    expect(hoisted.toasts).toEqual([]);
   });
 
   function sendFromDemoBar(container: HTMLElement, text: string) {
