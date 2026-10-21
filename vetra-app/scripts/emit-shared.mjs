@@ -3,19 +3,21 @@
 // Types come from the tsc declaration emit (dist/types/shared).
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { URL, fileURLToPath } from "node:url";
 
+const root = fileURLToPath(new URL("..", import.meta.url));
 const ts = createRequire(import.meta.url)("typescript");
-const files = readdirSync("shared").filter(
-  (f) => f.endsWith(".ts") && !f.endsWith(".test.ts"),
+const files = readdirSync(`${root}shared`).filter(
+  (f) => f.endsWith(".ts") && !/\.(test|spec)\.ts$/.test(f),
 );
 for (const [dir, ext] of [
   ["dist/browser/shared", ".js"],
   ["dist/node/shared", ".mjs"],
 ]) {
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(`${root}${dir}`, { recursive: true });
   for (const f of files) {
     const { outputText } = ts.transpileModule(
-      readFileSync(`shared/${f}`, "utf8"),
+      readFileSync(`${root}shared/${f}`, "utf8"),
       {
         compilerOptions: {
           module: ts.ModuleKind.ESNext,
@@ -23,6 +25,6 @@ for (const [dir, ext] of [
         },
       },
     );
-    writeFileSync(`${dir}/${f.replace(/\.ts$/, ext)}`, outputText);
+    writeFileSync(`${root}${dir}/${f.replace(/\.ts$/, ext)}`, outputText);
   }
 }

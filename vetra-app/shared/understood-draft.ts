@@ -75,13 +75,13 @@ export type UnderstoodDraft = {
 
 /** Upper bounds applied by `parseDraft` (the understand-pass limits). */
 export const DRAFT_LIMITS = {
-  things: 12,
-  fieldsPerThing: 25,
+  things: 8,
+  fieldsPerThing: 15,
   options: 12,
   roles: 8,
-  steps: 20,
+  steps: 12,
   links: 20,
-  questions: 5,
+  questions: 3,
   materials: 20,
   text: 200,
   summary: 600,
@@ -92,7 +92,7 @@ export const DRAFT_LIMITS = {
 /**
  * Fold a name for comparison: lower case, German umlauts and ß folded
  * (ä→a, ö→o, ü→u, ß→ss), non-alphanumerics dropped, then one plural ending
- * (-en, -e, -s, -n) stripped from words longer than 4 letters. So "Mangel"
+ * (-en, -e, -s) stripped from words longer than 4 letters. So "Mangel"
  * and "Mängel" and "Prüfung"/"Prüfungen" compare equal.
  */
 export function normalizeName(name: string): string {
@@ -102,11 +102,14 @@ export function normalizeName(name: string): string {
     .replace(/ö/g, "o")
     .replace(/ü/g, "u")
     .replace(/ß/g, "ss")
-    .replace(/[^a-z0-9]+/g, " ")
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+  if (!folded) return name.trim().toLowerCase();
   return folded
     .split(" ")
-    .map((w) => (w.length > 4 ? w.replace(/(en|e|s|n)$/, "") : w))
+    .map((w) => (w.length > 4 ? w.replace(/(en|e|s)$/, "") : w))
     .join(" ");
 }
 

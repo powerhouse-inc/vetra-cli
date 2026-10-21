@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  DRAFT_LIMITS,
   addField,
   addRole,
   addStep,
@@ -99,13 +98,13 @@ describe("parseDraft", () => {
       }),
       counter(),
     );
-    expect(d?.things).toHaveLength(DRAFT_LIMITS.things);
-    expect(d?.things[0].fields).toHaveLength(DRAFT_LIMITS.fieldsPerThing);
-    expect(d?.things[0].fields[0].options).toHaveLength(DRAFT_LIMITS.options);
-    expect(d?.roles).toHaveLength(DRAFT_LIMITS.roles);
-    expect(d?.steps).toHaveLength(DRAFT_LIMITS.steps);
-    expect(d?.questions).toHaveLength(DRAFT_LIMITS.questions);
-    expect(d?.summary).toHaveLength(DRAFT_LIMITS.summary);
+    expect(d?.things).toHaveLength(8);
+    expect(d?.things[0].fields).toHaveLength(15);
+    expect(d?.things[0].fields[0].options).toHaveLength(12);
+    expect(d?.roles).toHaveLength(8);
+    expect(d?.steps).toHaveLength(12);
+    expect(d?.questions).toHaveLength(3);
+    expect(d?.summary).toHaveLength(600);
   });
 
   it("drops dangling references and keeps sources", () => {
@@ -145,6 +144,16 @@ describe("normalizeName", () => {
     expect(normalizeName("Mängel")).toBe(normalizeName("Mangel"));
     expect(normalizeName("Prüfungen")).toBe(normalizeName("Prüfung"));
     expect(normalizeName("Straße")).toBe(normalizeName("Strassen"));
+    expect(normalizeName("Café")).toBe(normalizeName("Cafe"));
+  });
+
+  it("keeps non-Latin names distinct and strips only -e/-en/-s", () => {
+    expect(normalizeName("Заказ")).not.toBe(normalizeName("Клиент"));
+    expect(normalizeName("顧客")).not.toBe(normalizeName("注文"));
+    expect(normalizeName("顧客")).not.toBe("");
+    expect(normalizeName("Kartons")).toBe(normalizeName("Karton"));
+    expect(normalizeName("Wagen")).toBe(normalizeName("Wag"));
+    expect(normalizeName("Zahn")).not.toBe(normalizeName("Zah"));
   });
 });
 
