@@ -12,12 +12,14 @@ import type {
 import { StudioProductV1 } from "vetra-app/document-models";
 import type { StudioProductState } from "vetra-app/document-models/studio-product";
 import {
+  BREATHER_MILESTONE,
   BREATHER_REASON,
+  PREVIEW_SLOW_REASON,
   CONTINUE_TEXT,
   evaluate,
   type SupervisorAction,
 } from "../../src/product/supervisor-rules.js";
-import { supervise } from "../../src/product/supervisor.js";
+import { productSupervisorTrigger, supervise } from "../../src/product/supervisor.js";
 import type { ProductContext } from "../../src/product/product-doc.js";
 
 const a = StudioProductV1.actions;
@@ -159,7 +161,9 @@ describe("supervisor rules: step cap", () => {
   it("auto-continues once, then asks", () => {
     const capped = chat(user("build it", 0), toolCall("spec-get", "x1", 1), toolResult("spec-get", "x1", 2), reply(3, "tool-calls"));
     const first = run(product(), capped, 10);
-    expect(of(first, "autoContinue")).toEqual([expect.objectContaining({ changeId: "c1", chatSessionId: "chat-1" })]);
+    expect(of(first, "autoContinue")).toEqual([
+      expect.objectContaining({ changeId: "c1", chatSessionId: "chat-1", milestoneId: `breather:${capped.messages[3].id}` }),
+    ]);
     expect(of(first, "stepAttention")).toEqual([]);
 
     // The continue was sent: nothing more until it is answered.
@@ -175,6 +179,19 @@ describe("supervisor rules: step cap", () => {
     // Already asked: not again.
     const asked = product(a.setStepAttention({ changeId: "c1", kind: "PLAN", status: "NEEDS_YOU", reason: BREATHER_REASON, at: at(31) }));
     expect(of(run(asked, twice, 40), "stepAttention")).toEqual([]);
+    // A flag from an earlier cap hit: Continue was pressed and the cap hit again — ask again.
+    const again = chat(...twice.messages, user(CONTINUE_TEXT, 50), reply(60, "tool-calls"));
+    expect(of(run(asked, again, 70), "stepAttention")).toEqual([
+      expect.objectContaining({ kind: "PLAN", reason: BREATHER_REASON }),
+    ]);
+  });
+
+  it("does not mark stuck while it continues a capped turn", () => {
+    const capped = chat(user("build it", 0), toolCall("spec-get", "x1", 1), toolResult("spec-get", "x1", 2), reply(3, "tool-calls"));
+    const s = product(checkRun("r1", 10, "GENERATE", false), checkRun("r2", 20, "GENERATE", false), checkRun("r3", 30, "GENERATE", false));
+    const actions = run(s, capped, 10 * MIN);
+    expect(of(actions, "autoContinue")).toHaveLength(1);
+    expect(of(actions, "markStuck")).toEqual([]);
   });
 
   it("leaves a turn that finished normally, or a change that isn't BUILDING, alone", () => {
@@ -198,7 +215,19 @@ describe("supervisor rules: preview", () => {
     expect(of(run(product(), started, 200, undefined), "previewSlow")).toEqual([]);
     expect(of(run(product(checkRun("s1", 150, "SMOKE", false)), started, 200, false), "previewSlow")).toEqual([]);
     const flagged = product(a.setStepAttention({ changeId: "c1", kind: "EDITORS", status: "NEEDS_YOU", reason: "x", at: at(170) }));
+    // Someone else's NEEDS_YOU on Editors is never cleared by the preview coming up.
+    expect(of(run(flagged, started, 200, true), "previewRecovered")).toEqual([]);
     expect(of(run(flagged, started, 200, false), "previewSlow")).toEqual([]);
+  });
+});
+
+describe("supervisor rules: preview recovery", () => {
+  it("puts Editors back to WORKING once the preview is up", () => {
+    const started = chat(user("build it", 0), toolCall("reactor-project-start", "p1", 100), toolResult("reactor-project-start", "p1", 101));
+    const slow = product(a.setStepAttention({ changeId: "c1", kind: "EDITORS", status: "NEEDS_YOU", reason: PREVIEW_SLOW_REASON, at: at(170) }));
+    expect(of(run(slow, started, 200, false), "previewRecovered")).toEqual([]);
+    expect(of(run(slow, started, 200, undefined), "previewRecovered")).toEqual([]);
+    expect(of(run(slow, started, 200, true), "previewRecovered")).toEqual([expect.objectContaining({ changeId: "c1" })]);
   });
 });
 
@@ -268,29 +297,117 @@ describe("supervise", () => {
     return { ctx, productId, chatId };
   }
 
-  it("marks stuck, continues a capped turn and records metrics — once", async () => {
-    const { ctx, productId, chatId } = await setup();
+  async function turn(chatId: string, finishReason: string): Promise<void> {
     const c = ChatSession.actions;
     await module!.client.execute(chatId, "main", [
       c.addUserMessage({ id: "u1", createdAt: at(0), content: [{ id: "p1", type: "TEXT", text: "build it" }] }),
       c.addAssistantMessage({ id: "a1", createdAt: at(1), stepIndex: 0, content: [{ id: "p2", type: "TEXT", text: "on it" }] }),
-      c.finishAssistantMessage({ messageId: "a1", finishReason: "tool-calls", finishedAt: at(2) }),
+      c.finishAssistantMessage({ messageId: "a1", finishReason, finishedAt: at(2) }),
     ] as Action[]);
-    const done = new Set<string>();
-    const now = () => new Date(T0 + 60_000);
-    const carried = await supervise({ ctx, done, now });
-    expect(carried.map((x) => x.type).sort()).toEqual(["autoContinue", "markStuck", "recordMetrics"]);
+  }
+  const getProduct = async (id: string) =>
+    ((await module!.client.get(id)) as { state: { global: StudioProductState } }).state.global.changes[0];
+  const lastMessage = async (id: string) =>
+    ((await module!.client.get(id)) as { state: { global: ChatSessionState } }).state.global.messages.at(-1)!;
+  const now = () => new Date(T0 + 60_000);
 
-    const product = (await module!.client.get(productId)) as { state: { global: StudioProductState } };
-    const change = product.state.global.changes[0];
+  it("marks stuck and records metrics — once", async () => {
+    const { ctx, productId, chatId } = await setup();
+    await turn(chatId, "stop");
+    const done = new Set<string>();
+    const carried = await supervise({ ctx, done, now });
+    expect(carried.map((x) => x.type).sort()).toEqual(["markStuck", "recordMetrics"]);
+    const change = await getProduct(productId);
     expect(change.stuck?.reason).toBe("I'm stuck: the code generation failed 3 times in a row.");
     expect(change.metrics.steps).toBe(1);
-    const chatDoc = (await module!.client.get(chatId)) as { state: { global: ChatSessionState } };
-    const last = chatDoc.state.global.messages.at(-1)!;
+    expect(await supervise({ ctx, done, now })).toEqual([]);
+  });
+
+  it("continues a capped turn with the breather milestone — once, and safely after a restart", async () => {
+    const { ctx, productId, chatId } = await setup();
+    await turn(chatId, "tool-calls");
+    const done = new Set<string>();
+    const carried = await supervise({ ctx, done, now });
+    expect(carried.map((x) => x.type).sort()).toEqual(["autoContinue", "recordMetrics"]);
+    const change = await getProduct(productId);
+    expect(change.milestones).toEqual([expect.objectContaining({ id: "breather:a1", text: BREATHER_MILESTONE })]);
+    expect(change.stuck).toBeNull();
+    const last = await lastMessage(chatId);
     expect(last.role).toBe("USER");
     expect(last.content[0].text).toBe(CONTINUE_TEXT);
-
     expect(await supervise({ ctx, done, now })).toEqual([]);
+  });
+
+  it("still sends the continue when the breather milestone already exists", async () => {
+    const { ctx, productId, chatId } = await setup();
+    await turn(chatId, "tool-calls");
+    await module!.client.execute(productId, "main", [
+      a.addMilestone({ changeId: "c1", id: "breather:a1", text: BREATHER_MILESTONE, at: at(3) }),
+    ]);
+    const carried = await supervise({ ctx, done: new Set(), now });
+    expect(carried.map((x) => x.type)).toContain("autoContinue");
+    expect((await getProduct(productId)).milestones).toHaveLength(1);
+    expect((await lastMessage(chatId)).content[0].text).toBe(CONTINUE_TEXT);
+  });
+
+  it("retries a write that failed for a passing reason", async () => {
+    const { ctx, productId, chatId } = await setup();
+    await turn(chatId, "stop");
+    let failing = true;
+    const flaky: ProductContext = {
+      ...ctx,
+      reactor: async () => {
+        const r = await ctx.reactor!();
+        const client = r!.client as { get: (id: string) => Promise<unknown>; execute: (...x: never[]) => Promise<unknown> };
+        return {
+          ...r!,
+          client: {
+            get: (i: string) => client.get(i),
+            execute: (...x: never[]) => (failing ? Promise.reject(new Error("write failed")) : client.execute(...x)),
+          },
+        };
+      },
+    };
+    const done = new Set<string>();
+    const attempts = new Map<string, number>();
+    expect(await supervise({ ctx: flaky, done, attempts, now })).toEqual([]);
+    failing = false;
+    const carried = await supervise({ ctx: flaky, done, attempts, now });
+    expect(carried.map((x) => x.type).sort()).toEqual(["markStuck", "recordMetrics"]);
+    expect((await getProduct(productId)).stuck).not.toBeNull();
+  });
+
+  it("gives up on an action after 3 failed tries", async () => {
+    const { ctx, chatId } = await setup();
+    await turn(chatId, "stop");
+    const broken: ProductContext = {
+      ...ctx,
+      reactor: async () => {
+        const r = await ctx.reactor!();
+        const client = r!.client as { get: (id: string) => Promise<unknown> };
+        return { ...r!, client: { get: (i: string) => client.get(i), execute: () => Promise.reject(new Error("write failed")) } };
+      },
+    };
+    const done = new Set<string>();
+    const attempts = new Map<string, number>();
+    for (let i = 0; i < 3; i++) await supervise({ ctx: broken, done, attempts, now });
+    expect(done.size).toBe(2);
+    expect(attempts.size).toBe(0);
+  });
+
+  it("poll returns at once while a pass hangs, and never overlaps passes", async () => {
+    let reads = 0;
+    const hang = new Promise<never>(() => {});
+    const commandContext = { folders: {}, reactor: () => { reads++; return hang; } };
+    const state = productSupervisorTrigger.state!();
+    const tctx = { state, commandContext, context: { log: {} } } as never;
+    const started = Date.now();
+    expect(await productSupervisorTrigger.poll(tctx)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(state.running).toBe(true);
+    state.lastPassAt = 0; // the interval has passed, the pass still hangs
+    expect(await productSupervisorTrigger.poll(tctx)).toBeNull();
+    expect(reads).toBe(1);
   });
 
   it("logs and carries on when an action fails", async () => {

@@ -4,9 +4,11 @@
  * (`supervisor-rules.ts`) what to do and does it — mark the change stuck,
  * continue a turn the step cap ended, flag a slow preview, record metrics.
  *
- * Each action is carried out once (by its key) per process. A failure is
- * logged and never reaches the agent's turn; a stalled reactor is given up on
- * after a timeout so the routine loop keeps going.
+ * Each action is carried out once (by its key) per process: a reducer refusal
+ * is final, any other failure is retried on later passes (at most
+ * MAX_ATTEMPTS times). A failure is logged and never reaches the agent's turn.
+ * A pass runs detached from the shared trigger loop, so a stalled reactor
+ * never holds up the other triggers (chat included).
  */
 import { randomUUID } from "node:crypto";
 import type { Action } from "document-model";
@@ -15,6 +17,8 @@ import { actions as chatActions } from "@powerhousedao/clint-common/document-mod
 import { defineTrigger } from "../framework.js";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
 import {
+  IN_PROGRESS,
+  ProductRefusedError,
   activeChange,
   dispatchProduct,
   getProductDoc,
@@ -22,6 +26,7 @@ import {
   type ProductContext,
 } from "./product-doc.js";
 import {
+  BREATHER_MILESTONE,
   CONTINUE_TEXT,
   PREVIEW_SLOW_REASON,
   evaluate,
@@ -32,7 +37,10 @@ import {
 const TAG = "[product-supervisor]";
 /** How often the rules run (the shortest rule threshold is 60 s). */
 export const SUPERVISOR_INTERVAL_MS = 10_000;
-const PASS_TIMEOUT_MS = 15_000;
+/** A pass still running after this is logged as slow. */
+export const PASS_WARN_MS = 15_000;
+/** Tries per action key when the write fails for a reason other than a refusal. */
+export const MAX_ATTEMPTS = 3;
 const PREVIEW_SERVICE = "reactor-project";
 
 interface Log {
@@ -54,8 +62,10 @@ export interface SupervisorDeps {
   services?: ServiceList;
   now?: () => Date;
   log?: Log;
-  /** Keys already carried out (kept across passes by the trigger). */
+  /** Keys already carried out or given up on (kept across passes by the trigger). */
   done: Set<string>;
+  /** Failed tries per key (kept across passes by the trigger). */
+  attempts?: Map<string, number>;
 }
 
 /** Whether the preview is up; undefined when there is no way to tell. */
@@ -108,6 +118,16 @@ async function carryOut(
           at,
         }),
       ]);
+    case "previewRecovered":
+      return dispatchProduct(ctx, [
+        a.setStepAttention({
+          changeId: action.changeId,
+          kind: "EDITORS",
+          status: "WORKING",
+          reason: null,
+          at,
+        }),
+      ]);
     case "recordMetrics":
       return dispatchProduct(ctx, [
         a.recordChangeMetrics({
@@ -120,6 +140,21 @@ async function carryOut(
     case "autoContinue": {
       const client = await chatClient(ctx);
       if (!client) throw new Error("no reactor to reach the chat");
+      // The story line first. Its id is fixed per capped turn: a repeat after a
+      // restart is refused as a duplicate, and the continue still goes out.
+      try {
+        await dispatchProduct(ctx, [
+          a.addMilestone({
+            changeId: action.changeId,
+            id: action.milestoneId,
+            text: BREATHER_MILESTONE,
+            at,
+          }),
+        ]);
+      } catch (err) {
+        if (!(err instanceof ProductRefusedError)) throw err;
+        deps.log?.debug?.(`${TAG} breather milestone not added: ${err.message}`);
+      }
       await client.execute(action.chatSessionId, "main", [
         chatActions.addUserMessage({
           id: randomUUID(),
@@ -140,7 +175,7 @@ export async function supervise(deps: SupervisorDeps): Promise<SupervisorAction[
   try {
     const product = await getProductDoc(ctx);
     const change = product ? activeChange(product.state) : null;
-    if (!product || !change) return carried;
+    if (!product || !change || !IN_PROGRESS.includes(change.status)) return carried;
     let chat: ChatSessionState | null = null;
     const chatSessionId = change.chatSessionId ?? undefined;
     if (chatSessionId) {
@@ -159,15 +194,23 @@ export async function supervise(deps: SupervisorDeps): Promise<SupervisorAction[
       previewReady: previewReady(deps.services),
     };
     const at = now.toISOString();
+    const attempts = deps.attempts ?? new Map<string, number>();
     for (const action of evaluate(product.state, chat, now, observed)) {
       if (done.has(action.key)) continue;
-      // Marked before trying: a refused action is not retried every pass.
-      done.add(action.key);
       try {
         await carryOut(deps, action, at);
+        done.add(action.key);
+        attempts.delete(action.key);
         carried.push(action);
       } catch (err) {
-        log?.warn?.(`${TAG} ${action.type} failed: ${message(err)}`);
+        // A refusal won't change on a retry; anything else may be transient.
+        const tries = (attempts.get(action.key) ?? 0) + 1;
+        attempts.set(action.key, tries);
+        if (err instanceof ProductRefusedError || tries >= MAX_ATTEMPTS) {
+          done.add(action.key);
+          attempts.delete(action.key);
+        }
+        log?.warn?.(`${TAG} ${action.type} failed (try ${tries}): ${message(err)}`);
       }
     }
   } catch (err) {
@@ -180,41 +223,48 @@ interface SupervisorState extends Record<string, unknown> {
   lastPassAt: number;
   running: boolean;
   done: Set<string>;
+  attempts: Map<string, number>;
 }
 
 export const productSupervisorTrigger = defineTrigger<SupervisorState>({
   id: "product-supervisor",
   type: "condition",
-  state: () => ({ lastPassAt: 0, running: false, done: new Set<string>() }),
+  state: () => ({
+    lastPassAt: 0,
+    running: false,
+    done: new Set<string>(),
+    attempts: new Map<string, number>(),
+  }),
 
+  // Returns at once: the routine loop polls every trigger in turn, so the
+  // pass runs detached. `running` keeps passes from overlapping.
+   
   async poll(tctx) {
+    const state = tctx.state;
     const nowMs = Date.now();
-    // A pass that outlived its timeout is still running: never two at once.
-    if (tctx.state.running || nowMs - tctx.state.lastPassAt < SUPERVISOR_INTERVAL_MS) return null;
-    tctx.state.lastPassAt = nowMs;
+    if (state.running || nowMs - state.lastPassAt < SUPERVISOR_INTERVAL_MS) return null;
+    state.lastPassAt = nowMs;
     const ctx = tctx.commandContext as unknown as ProductContext & {
       services?: ServiceList;
     };
     // Reads only: never boots a reactor on a one-shot run.
     if (!ctx.folders) return null;
     const log = tctx.context.log as Log | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<void>((resolve) => {
-      timer = setTimeout(() => {
-        log?.warn?.(`${TAG} pass timed out after ${PASS_TIMEOUT_MS} ms`);
-        resolve();
-      }, PASS_TIMEOUT_MS);
-    });
-    const state = tctx.state;
     state.running = true;
-    const pass = supervise({ ctx, services: ctx.services, log, done: state.done }).finally(() => {
+    const timer = setTimeout(() => {
+      log?.warn?.(`${TAG} pass still running after ${PASS_WARN_MS} ms`);
+    }, PASS_WARN_MS);
+    timer.unref?.();
+    void supervise({
+      ctx,
+      services: ctx.services,
+      log,
+      done: state.done,
+      attempts: state.attempts,
+    }).finally(() => {
+      clearTimeout(timer);
       state.running = false;
     });
-    try {
-      await Promise.race([pass, timeout]);
-    } finally {
-      clearTimeout(timer);
-    }
     return null;
   },
 });

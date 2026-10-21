@@ -10,10 +10,12 @@
  *   and never within 5 min of the last milestone (F38: recovery clears
  *   `stuck` in the reducer, the supervisor never dispatches CLEAR_STUCK).
  * - `autoContinue` — the turn ended at the step cap with the change still
- *   BUILDING: send `continue` once. When the capped turn was itself that
+ *   BUILDING: add the milestone "Taking a breather — continuing." and send
+ *   `continue` once. When the capped turn was itself that
  *   `continue`, ask instead (`stepAttention` NEEDS_YOU "Taking a breather").
  * - `previewSlow` — 60 s after the latest preview start the preview is not up
- *   and no SMOKE ran since: Editors NEEDS_YOU.
+ *   and no SMOKE ran since: Editors NEEDS_YOU. `previewRecovered` puts Editors
+ *   back to WORKING once the preview is up.
  * - `recordMetrics` — steps, first preview, ready time, when they changed.
  *
  * Every action carries a `key`; the supervisor carries out a key once.
@@ -37,6 +39,8 @@ export const PREVIEW_SLOW_AFTER_MS = 60_000;
 /** The message the supervisor sends to continue a capped turn. */
 export const CONTINUE_TEXT = "continue";
 export const BREATHER_REASON = "Taking a breather";
+/** The story line of an automatic continue (spec §5.9). */
+export const BREATHER_MILESTONE = "Taking a breather — continuing.";
 export const PREVIEW_SLOW_REASON = "The preview is taking longer than usual.";
 /** Finish reasons of a turn the step cap ended (the last step still had tool calls). */
 const CAP_FINISH_REASONS = new Set(["tool-calls", "tool_calls"]);
@@ -54,7 +58,14 @@ const CHECK_LABELS: Record<CheckKind, string> = {
 
 export type SupervisorAction =
   | { type: "markStuck"; key: string; changeId: string; reason: string; tried: string[] }
-  | { type: "autoContinue"; key: string; changeId: string; chatSessionId: string }
+  | {
+      type: "autoContinue";
+      key: string;
+      changeId: string;
+      chatSessionId: string;
+      /** Fixed per capped turn, so a repeat is refused as a duplicate. */
+      milestoneId: string;
+    }
   | {
       type: "stepAttention";
       key: string;
@@ -63,6 +74,7 @@ export type SupervisorAction =
       reason: string;
     }
   | { type: "previewSlow"; key: string; changeId: string }
+  | { type: "previewRecovered"; key: string; changeId: string }
   | {
       type: "recordMetrics";
       key: string;
@@ -336,13 +348,21 @@ function capRules(
         key: `continue:${change.id}:${turn.ended.id}`,
         changeId: change.id,
         chatSessionId,
+        milestoneId: `breather:${turn.ended.id}`,
       },
     ];
   }
   const kind = currentStep(change);
   if (!kind) return [];
   const step = change.steps.find((s) => s.kind === kind);
-  if (step?.status === "NEEDS_YOU" && step.reason === BREATHER_REASON) return [];
+  // Already asked about this cap hit (a flag older than it is a past one).
+  if (
+    step?.status === "NEEDS_YOU" &&
+    step.reason === BREATHER_REASON &&
+    ms(step.updatedAt) >= ms(turn.ended.finishedAt)
+  ) {
+    return [];
+  }
   return [
     {
       type: "stepAttention",
@@ -360,9 +380,23 @@ function previewRules(
   now: number,
   previewReady: boolean | undefined,
 ): SupervisorAction[] {
-  // Unknown preview state: say nothing rather than raise a false alarm.
-  if (change.status !== "BUILDING" || previewReady !== false) return [];
+  if (change.status !== "BUILDING") return [];
   const editors = change.steps.find((s) => s.kind === "EDITORS");
+  if (
+    previewReady === true &&
+    editors?.status === "NEEDS_YOU" &&
+    editors.reason === PREVIEW_SLOW_REASON
+  ) {
+    return [
+      {
+        type: "previewRecovered",
+        key: `preview-ok:${change.id}:${editors.updatedAt ?? ""}`,
+        changeId: change.id,
+      },
+    ];
+  }
+  // Unknown preview state: say nothing rather than raise a false alarm.
+  if (previewReady !== false) return [];
   if (!editors || editors.status === "DONE" || editors.status === "NEEDS_YOU") return [];
   const start = latestPreviewStart(chat, ms(change.startedAt));
   if (!start || now - start.at < PREVIEW_SLOW_AFTER_MS) return [];
@@ -410,9 +444,12 @@ export function evaluate(
   if (!change || !OPEN.has(change.status)) return [];
   const t = now.getTime();
   const turn = chat ? latestTurn(chat) : null;
+  const cap = chat ? capRules(change, chat, turn, observed.chatSessionId) : [];
+  // An automatic continue moves the build again: not stuck.
+  const continuing = cap.some((x) => x.type === "autoContinue");
   return [
-    ...stuckRules(change, turn, t),
-    ...(chat ? capRules(change, chat, turn, observed.chatSessionId) : []),
+    ...(continuing ? [] : stuckRules(change, turn, t)),
+    ...cap,
     ...(chat ? previewRules(change, chat, t, observed.previewReady) : []),
     ...metricsRules(change, chat, now),
   ];
