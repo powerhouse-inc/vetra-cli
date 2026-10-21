@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 import { REACTOR_PROJECT_CONNECT_PROXY_PATH } from "../../constants.js";
 import { defineCommand } from "../../framework.js";
@@ -47,6 +48,9 @@ export const specPreviewShow = defineCommand({
       context.workdir,
       input.project,
     );
+    // The Studio's preview pane finds the project here when the agent left
+    // `project` out (the workspace's only project).
+    const project = path.relative(context.workdir, base) || ".";
 
     // Gate: the app/editor code must type-check AND be `any`-free before we
     // surface a preview. A non-compiling editor.tsx renders "Something went
@@ -153,6 +157,7 @@ export const specPreviewShow = defineCommand({
           `Preview URL (drive): ${previewUrl}` +
           (input.app ? `  (preferredEditor: ${preferredEditor ?? "(none)"})` : ""),
         data: {
+          project,
           projectPath: base,
           driveId: input.drive,
           kind: "drive" as const,
@@ -173,6 +178,7 @@ export const specPreviewShow = defineCommand({
     return {
       text: `Preview URL: ${previewUrl}`,
       data: {
+        project,
         projectPath: base,
         driveId,
         kind: "document" as const,

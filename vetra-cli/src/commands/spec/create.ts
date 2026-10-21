@@ -9,7 +9,13 @@ import {
 import { getEmbeddedDrive } from "../../helpers/embedded-drive.js";
 import { applyFsChangesToReactor } from "../../helpers/spec-drive-sync.js";
 import { assertKnownDocumentType, slugify } from "./_helpers.js";
-import { createSpecDocument, isProductSpecType, saveSpec } from "./registry.js";
+import {
+  createSpecDocument,
+  isProductSpecType,
+  listSpecTypes,
+  saveSpec,
+} from "./registry.js";
+import { actionReference } from "./schema.js";
 
 export const specCreate = defineCommand({
   id: "spec-create",
@@ -35,7 +41,7 @@ export const specCreate = defineCommand({
   }),
   execute: async (input, context) => {
     const { workdir } = context;
-    requireOption(input.type, "type", "Run `spec-schema-list` to see valid types.");
+    requireOption(input.type, "type", `Valid types: ${listSpecTypes().join(", ")}`);
     assertKnownDocumentType(input.type);
     // Product specs are workspace-level: always saved at the workdir root,
     // never inside a project. Project specs require a reactor project.
@@ -56,9 +62,16 @@ export const specCreate = defineCommand({
     /* `createDocument` only seeds `name`; populate slug from it so the doc
      * has a stable short handle alongside its display name and id. */
     doc.header.slug = slugify(input.name);
+    // The type's action shapes ride along, so the agent's spec-update calls
+    // need no spec-schema lookup per action (staging: 5–10 per spec).
+    const reference = actionReference(input.type);
+    const withReference = (text: string) =>
+      reference ? `${text}\n\n${reference}` : text;
     if (input.dryRun) {
       return {
-        text: `Created ${doc.header.documentType} "${doc.header.name}" (in-memory, not saved).`,
+        text: withReference(
+          `Created ${doc.header.documentType} "${doc.header.name}" (in-memory, not saved).`,
+        ),
       };
     }
     const path = await saveSpec(doc, base);
@@ -75,7 +88,9 @@ export const specCreate = defineCommand({
       );
     }
     return {
-      text: `Created ${doc.header.documentType} "${doc.header.name}"  id: ${doc.header.id}\n${path}`,
+      text: withReference(
+        `Created ${doc.header.documentType} "${doc.header.name}"  id: ${doc.header.id}\n${path}`,
+      ),
       data: {
         documentId: doc.header.id,
         documentType: doc.header.documentType,

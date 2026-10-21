@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 import { formatStatus } from "@powerhousedao/ph-clint";
 import { defineCommand } from "../../framework.js";
@@ -52,8 +53,14 @@ export const reactorProjectStart = defineCommand({
           s.workdir === resolvedWorkdir &&
           (s.status === "ready" || s.status === "starting"),
       );
+    // The project the Studio's preview pane shows from now on, even when the
+    // agent left `workdir` out (the workspace's only project).
+    const data = {
+      project: path.relative(context.workdir, resolvedWorkdir) || ".",
+      projectPath: resolvedWorkdir,
+    };
     if (existing) {
-      return { text: formatStatus(existing) };
+      return { text: formatStatus(existing), data };
     }
 
     const params: Record<string, unknown> = {};
@@ -74,7 +81,7 @@ export const reactorProjectStart = defineCommand({
       const status = services
         .list("reactor-project")
         .find((s) => s.instanceId === instanceId);
-      return { text: status ? formatStatus(status) : "" };
+      return { text: status ? formatStatus(status) : "", data };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { text: `✗ reactor-project: ${msg}` };

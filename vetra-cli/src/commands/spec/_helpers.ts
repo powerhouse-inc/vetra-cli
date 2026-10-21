@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { PHDocument } from "@powerhousedao/shared/document-model";
 import { z } from "zod";
 import { requireOption, unknownValueError } from "../../helpers/cli-errors.js";
+import { resolveSpecBasePath, soleReactorProject } from "../../helpers/project.js";
 import { suggestNames } from "../../helpers/suggestions.js";
 import { applyJsonPath, encodeValue, type OutputFormat } from "./projection.js";
 import {
@@ -982,6 +983,35 @@ function rejectInlineReducerBody(action: ActionInput, modelSlug: string): void {
 }
 
 /** Load a spec by name and return the document — convenience wrapper. */
+/**
+ * The base directory holding the spec `name`, for commands that reach
+ * workspace-root product specs without a project. With no `project`, a name
+ * that isn't a root spec but is one of the workspace's only project resolves
+ * there — the agent often names an editor or model spec without its project,
+ * which used to fail ("Unknown spec") and cost a retry step. Anything else
+ * resolves as `resolveSpecBasePath` does, so its errors are unchanged.
+ */
+export async function resolveNamedSpecBase(
+  workdir: string,
+  project: string | undefined,
+  name: string,
+): Promise<string> {
+  const { base, productFallback } = await resolveSpecBasePath(workdir, project, true);
+  if (!productFallback || !name) return base;
+  if (await hasSpec(base, name)) return base;
+  const sole = await soleReactorProject(workdir);
+  return sole && (await hasSpec(sole, name)) ? sole : base;
+}
+
+async function hasSpec(base: string, name: string): Promise<boolean> {
+  try {
+    await findByName(base, name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function loadByName(
   workdir: string,
   name: string,
