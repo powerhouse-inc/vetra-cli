@@ -12,6 +12,7 @@ import {
   click,
   pressKey,
   render,
+  rerender,
   typeInto,
 } from "../test-utils/render.js";
 import { plainModel } from "../steps/plainModel.js";
@@ -24,6 +25,7 @@ import {
   chatDoc,
   file,
   productDoc,
+  withLiveVersion,
 } from "../test-utils/studioFixtures.js";
 import { StudioShell } from "./StudioShell.js";
 
@@ -97,6 +99,24 @@ vi.mock("../hooks/useResolvedPreview.js", () => ({
 }));
 vi.mock("../settings/SettingsDialog.js", () => ({
   SettingsDialog: () => <div role="dialog">Settings dialog</div>,
+}));
+// The live embed has its own test; the shell only routes to it.
+vi.mock("../live/LiveEmbed.js", () => ({
+  LiveEmbed: ({ liveUrl }: { liveUrl: string }) => (
+    <div data-embed="live">Live app at {liveUrl}</div>
+  ),
+}));
+// The one-time publish ask has its own test; shell tests are about routing.
+vi.mock("../permission/PublishPermissionModal.js", () => ({
+  PublishPermissionModal: () => null,
+}));
+vi.mock("../permission/usePublishPermission.js", () => ({
+  usePublishPermission: () => ({
+    state: "GRANTED",
+    delegated: true,
+    pending: false,
+    allow: () => Promise.resolve(true),
+  }),
 }));
 vi.mock("../ideation/DocumentHost.js", () => ({
   DocumentHost: () => <div>Document editor</div>,
@@ -285,43 +305,70 @@ describe("StudioShell", () => {
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
-  it("live product shows the live state under the strip", () => {
-    const product = productDoc(...buildingOps());
-    const g = product.state.global;
-    g.liveVersion = 1;
-    g.liveUrl = "https://task-board.vetra.io";
-    g.versions = [
-      {
-        number: 1,
-        title: "First version",
-        summary: null,
-        changeId: "c1",
-        gitTag: "v1",
-        sha: "abc",
-        packages: [],
-        deploymentId: null,
-        launchedAt: at(1),
-        launchedBy: "Vetra",
-        trigger: "AUTO",
-        status: "LIVE",
-        lines: [],
-        changedFiles: [],
-        failure: null,
-        rollbackBlockedReason: null,
-      },
-    ];
-    hoisted.documents = [product, chatDoc(SESSION_ID, 1)];
+  it("a change open on a live product keeps the build surface", () => {
+    // The live version is there, but a change is being worked on: the strip
+    // is in live mode over the story | preview surface (Task 3.5 adds the
+    // Live | Preview split).
+    const doc = withLiveVersion(productDoc(...buildingOps()));
+    const change = doc.state.global.changes[0];
+    change.status = "BUILDING";
+    change.steps[0].status = "WORKING";
+    hoisted.documents = [doc, chatDoc(SESSION_ID, 1)];
     const container = render(
       <StudioShell
         document={driveDoc([PRODUCT, SESSION])}
         dispatch={() => {}}
       />,
     );
+    expect(container.querySelector("aside")).not.toBeNull();
+    expect(container.textContent).toContain("Preview pane");
     expect(
       container.querySelector('[data-step="LIVE"]')?.textContent,
     ).toContain("●");
-    expect(container.textContent).toContain("Version 1");
-    expect(container.querySelector("aside")).toBeNull();
+    expect(container.textContent).toContain("task-board.vetra.io");
+    expect(container.querySelector('[data-banner="live"]')).toBeNull();
     expectNoForbiddenWords(container);
+  });
+
+  it("transition to the live view with the banner after the first launch", () => {
+    window.localStorage.clear();
+    const container = building();
+    expect(container.textContent).toContain("Preview pane");
+    expect(container.querySelector("aside")).not.toBeNull();
+
+    // The launch completes while the page is open: state 2 fills the page.
+    const live = withLiveVersion(productDoc(...buildingOps()));
+    hoisted.documents = [live, chatDoc(SESSION_ID, 1)];
+    rerender(
+      container,
+      <StudioShell
+        document={driveDoc([PRODUCT, SESSION])}
+        dispatch={() => {}}
+      />,
+    );
+    expect(container.querySelector("aside")).toBeNull();
+    expect(
+      container.querySelector('[data-banner="live"]')?.textContent,
+    ).toContain("Your product is live.");
+    expect(container.querySelector('[data-embed="live"]')?.textContent).toBe(
+      "Live app at https://task-board.vetra.io",
+    );
+    expect(
+      container.querySelector('[data-step="LIVE"]')?.textContent,
+    ).toContain("●");
+    expect(
+      container.querySelector('[data-step="TESTS"]')?.textContent,
+    ).toContain("✓");
+    expectNoForbiddenWords(container);
+
+    // A later visit to this Studio and version: the compact line only.
+    const again = render(
+      <StudioShell
+        document={driveDoc([PRODUCT, SESSION])}
+        dispatch={() => {}}
+      />,
+    );
+    expect(again.textContent).toContain("Went live");
+    expect(again.textContent).not.toContain("Your product is live.");
   });
 });

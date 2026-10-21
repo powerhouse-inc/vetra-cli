@@ -161,4 +161,6 @@ export const errors = {
   SetStepAttention: { InvalidAttentionStatusError },
 
   WaiveLint: { NothingToWaiveError },
+
+  DiscardChange: { InvalidChangeStatusError },
 };

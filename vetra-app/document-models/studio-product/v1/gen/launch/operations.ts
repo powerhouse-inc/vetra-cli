@@ -8,6 +8,7 @@ import type {
   ClearRequestAction,
   CompleteLaunchAction,
   FailLaunchAction,
+  FailRequestAction,
   RequestDiscardAction,
   RequestLaunchAction,
   RequestMirrorAction,
@@ -61,6 +62,11 @@ export interface StudioProductLaunchOperations {
   clearRequestOperation: (
     state: StudioProductGlobalState,
     action: ClearRequestAction,
+    dispatch?: SignalDispatch,
+  ) => void;
+  failRequestOperation: (
+    state: StudioProductGlobalState,
+    action: FailRequestAction,
     dispatch?: SignalDispatch,
   ) => void;
   startLaunchOperation: (

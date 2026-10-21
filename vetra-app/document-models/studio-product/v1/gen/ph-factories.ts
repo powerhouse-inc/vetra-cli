@@ -32,6 +32,7 @@ export function defaultGlobalState(): StudioProductGlobalState {
     versions: [],
     health: "UNKNOWN",
     pendingRequest: null,
+    lastRequestFailure: null,
     launchPermission: "UNKNOWN",
     suggestions: [],
     github: {

@@ -4,6 +4,7 @@ import {
   cloudLaunch,
   cloudRollback,
   ensureProduct,
+  isSecretPending,
   STUDIO_SECRET_ENV,
   STUDIO_SECRET_HEADER,
   type CloudContext,
@@ -114,16 +115,23 @@ describe("cloudLaunch", () => {
     }
   });
 
-  it("refuses to call without a launch secret or a signed-in agent", async () => {
-    const noSecret = harness(() => ({ json: {} }));
+  it("sends an empty secret header when the Studio has none yet; the pending answer is transient", async () => {
+    const noSecret = harness(() => ({
+      json: { errors: [{ message: "getting ready", extensions: { code: "STUDIO_SECRET_PENDING" } }] },
+    }));
     noSecret.ctx.env = {};
-    await expect(cloudLaunch(noSecret.ctx, input)).rejects.toMatchObject({ code: "NO_LAUNCH_SECRET" });
+    const err = await ensureProduct(noSecret.ctx, "Team Todo").catch((e: unknown) => e);
+    expect(noSecret.calls).toHaveLength(1);
+    expect(noSecret.calls[0].headers[STUDIO_SECRET_HEADER]).toBe("");
+    expect(isSecretPending(err)).toBe(true);
+    expect((err as LaunchError).reason).toBe("your Studio is still getting ready to publish");
+  });
 
+  it("refuses to call without a signed-in agent", async () => {
     const signedOut = harness(() => ({ json: {} }));
     signedOut.ctx.bearerToken = async () => null;
     const err = await cloudLaunch(signedOut.ctx, input).catch((e: unknown) => e);
     expect(isPermissionError(err)).toBe(true);
-    expect(noSecret.calls).toHaveLength(0);
     expect(signedOut.calls).toHaveLength(0);
   });
 

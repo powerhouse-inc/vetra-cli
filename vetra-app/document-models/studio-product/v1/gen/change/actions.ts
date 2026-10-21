@@ -9,6 +9,7 @@ import type {
   ClearStuckInput,
   CompleteStepInput,
   CountStepInput,
+  DiscardChangeInput,
   MarkStuckInput,
   PauseChangeInput,
   PlanStepsInput,
@@ -91,6 +92,10 @@ export type WaiveLintAction = Action & {
   type: "WAIVE_LINT";
   input: WaiveLintInput;
 };
+export type DiscardChangeAction = Action & {
+  type: "DISCARD_CHANGE";
+  input: DiscardChangeInput;
+};
 
 export type StudioProductChangeAction =
   | StartChangeAction
@@ -109,4 +114,5 @@ export type StudioProductChangeAction =
   | ResumeChangeAction
   | RecordChangeMetricsAction
   | SetChangeTitleAction
-  | WaiveLintAction;
+  | WaiveLintAction
+  | DiscardChangeAction;

@@ -6,11 +6,17 @@
  * (the reactor project's Vite dev server) answers 200 without an error-overlay
  * payload for every source module of each editor and app. Vite transforms a
  * module only when it is requested, so each module file is requested.
+ *
+ * The example documents (`seed/*.json`, D21) are part of SMOKE too: every one
+ * must fit the project's document models, and — when the workspace has a
+ * product document — a project with document types needs at least one
+ * (`seedCheck`, launch/seed.ts). The screens are checked either way.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { runBuild } from "../commands/reactor-project/build.js";
 import { capReason, type ObservedCheck } from "./check-results.js";
+import { seedCheck } from "../launch/seed.js";
 
 export type CheckResult = ObservedCheck;
 
@@ -19,6 +25,13 @@ export interface SmokeDeps {
   previewUrl?: string;
   build?: (projectPath: string) => Promise<{ success: boolean; output: string }>;
   fetch?: typeof fetch;
+  /**
+   * Example documents are required (Ruling X27: when the workspace has a
+   * product document). Otherwise missing examples only add a note.
+   */
+  requireExamples?: boolean;
+  /** Receives notes for the tool output (e.g. no example documents yet). */
+  notes?: string[];
 }
 
 const MODULE_ROOTS = ["editors", "apps"];
@@ -72,6 +85,19 @@ export async function runSmoke(projectPath: string, deps: SmokeDeps = {}): Promi
     return fail("The app didn't build.", `ph build failed: ${tail || "(no output)"}`, projectPath);
   }
 
+  const screens = await checkScreens(projectPath, deps);
+  const seeds = seedCheck(projectPath, { requireExamples: deps.requireExamples === true });
+  if (seeds.note) deps.notes?.push(seeds.note);
+  if (!seeds.check) return screens;
+  // A screen that doesn't load is the bigger problem: report it first, with the examples' detail.
+  if (!screens.passed) {
+    return { ...screens, detail: `${screens.detail ?? ""} Also: ${seeds.check.detail ?? seeds.check.reason ?? ""}`.trim() };
+  }
+  return seeds.check;
+}
+
+/** Every editor/app module loads in the running preview. */
+async function checkScreens(projectPath: string, deps: SmokeDeps): Promise<CheckResult> {
   const modules = listModules(projectPath);
   if (modules.length === 0) {
     return { kind: "SMOKE", passed: true, reason: "There are no screens to check." };

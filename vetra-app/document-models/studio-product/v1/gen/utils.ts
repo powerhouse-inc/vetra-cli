@@ -42,6 +42,7 @@ export const initialGlobalState: StudioProductGlobalState = {
   versions: [],
   health: "UNKNOWN",
   pendingRequest: null,
+  lastRequestFailure: null,
   launchPermission: "UNKNOWN",
   suggestions: [],
   github: {

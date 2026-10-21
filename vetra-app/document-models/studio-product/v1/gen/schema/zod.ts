@@ -18,7 +18,9 @@ import type {
   CompleteLaunchPackageInput,
   CompleteStepInput,
   CountStepInput,
+  DiscardChangeInput,
   FailLaunchInput,
+  FailRequestInput,
   GithubLink,
   GithubStatus,
   InitProductInput,
@@ -41,6 +43,7 @@ import type {
   RenameProductInput,
   ReopenStepInput,
   RequestDiscardInput,
+  RequestFailure,
   RequestKind,
   RequestLaunchInput,
   RequestMirrorInput,
@@ -323,12 +326,31 @@ export function CountStepInputSchema(): z.ZodObject<
   });
 }
 
+export function DiscardChangeInputSchema(): z.ZodObject<
+  Properties<DiscardChangeInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    changeId: z.string(),
+  });
+}
+
 export function FailLaunchInputSchema(): z.ZodObject<
   Properties<FailLaunchInput>
 > {
   return z.object({
     at: z.iso.datetime(),
     number: z.number(),
+    reason: z.string(),
+  });
+}
+
+export function FailRequestInputSchema(): z.ZodObject<
+  Properties<FailRequestInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    kind: RequestKindSchema,
     reason: z.string(),
   });
 }
@@ -492,6 +514,17 @@ export function RequestDiscardInputSchema(): z.ZodObject<
     changeId: z.string(),
     requestedAt: z.iso.datetime(),
     requestedBy: z.string(),
+  });
+}
+
+export function RequestFailureSchema(): z.ZodObject<
+  Properties<RequestFailure>
+> {
+  return z.object({
+    __typename: z.literal("RequestFailure").optional(),
+    at: z.iso.datetime(),
+    kind: RequestKindSchema,
+    reason: z.string(),
   });
 }
 
@@ -684,6 +717,7 @@ export function StudioProductStateSchema(): z.ZodObject<
     github: z.lazy(() => GithubLinkSchema()),
     health: LiveHealthSchema,
     idea: z.string().nullish(),
+    lastRequestFailure: z.lazy(() => RequestFailureSchema().nullish()),
     launchPermission: PermissionStateSchema,
     liveDeploymentId: z.string().nullish(),
     liveSince: z.iso.datetime().nullish(),

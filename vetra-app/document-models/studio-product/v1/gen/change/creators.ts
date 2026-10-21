@@ -9,6 +9,7 @@ import {
   ClearStuckInputSchema,
   CompleteStepInputSchema,
   CountStepInputSchema,
+  DiscardChangeInputSchema,
   MarkStuckInputSchema,
   PauseChangeInputSchema,
   PlanStepsInputSchema,
@@ -28,6 +29,7 @@ import type {
   ClearStuckInput,
   CompleteStepInput,
   CountStepInput,
+  DiscardChangeInput,
   MarkStuckInput,
   PauseChangeInput,
   PlanStepsInput,
@@ -47,6 +49,7 @@ import type {
   ClearStuckAction,
   CompleteStepAction,
   CountStepAction,
+  DiscardChangeAction,
   MarkStuckAction,
   PauseChangeAction,
   PlanStepsAction,
@@ -211,5 +214,14 @@ export const waiveLint = (input: WaiveLintInput) =>
     { ...input },
     undefined,
     WaiveLintInputSchema,
+    "global",
+  );
+
+export const discardChange = (input: DiscardChangeInput) =>
+  createAction<DiscardChangeAction>(
+    "DISCARD_CHANGE",
+    { ...input },
+    undefined,
+    DiscardChangeInputSchema,
     "global",
   );

@@ -4,8 +4,9 @@
  *
  * Every call carries the agent's Renown bearer (the owner's delegation to the
  * agent's did:key) and the Studio's launch secret in `x-vetra-studio-secret`
- * (Ruling E3; written into the Studio as `VETRA_STUDIO_LAUNCH_SECRET`). The
- * secret never reaches a log line or an error message.
+ * (Ruling E3; written into the Studio as `VETRA_STUDIO_LAUNCH_SECRET`; sent
+ * empty until the cloud has given the Studio one). The secret never reaches a
+ * log line or an error message.
  *
  * These are short requests: the cloud records the deployment and returns;
  * progress is read by polling (`waitForDeployment`, verify.ts). Nothing here
@@ -46,6 +47,8 @@ export const REASONS = {
   launchStudioVersion: "the new version didn't start",
   rollbackStudioVersion: "the earlier version couldn't be started again",
   studioDeployment: "the new version didn't start",
+  studioProduct: "your live product couldn't be checked",
+  setStudioProductDrive: "your live address couldn't open your product",
 } as const;
 
 export type StudioOperation = keyof typeof REASONS;
@@ -55,16 +58,23 @@ function retryableStatus(status: number): boolean {
   return status >= 500 || status === 408 || status === 429;
 }
 
+/**
+ * The Studio's launch secret, or "" when it has none yet. The header is always
+ * sent: a Studio without a secret gets one from the cloud on its first call,
+ * refused with `STUDIO_SECRET_PENDING` until the Studio has restarted with it.
+ */
 function studioSecret(ctx: CloudContext): string {
-  const secret = (ctx.env ?? process.env)[STUDIO_SECRET_ENV]?.trim();
-  if (!secret) {
-    throw new LaunchError(
-      "NO_LAUNCH_SECRET",
-      "this Studio isn't set up to go live yet",
-      `${STUDIO_SECRET_ENV} is not set in this Studio.`,
-    );
-  }
-  return secret;
+  return (ctx.env ?? process.env)[STUDIO_SECRET_ENV]?.trim() ?? "";
+}
+
+/**
+ * The cloud gave this Studio its launch secret just now; the call works once
+ * the Studio has restarted with it (a minute or two). Transient.
+ */
+export const SECRET_PENDING_CODE = "STUDIO_SECRET_PENDING";
+
+export function isSecretPending(err: unknown): boolean {
+  return err instanceof LaunchError && err.code === SECRET_PENDING_CODE;
 }
 
 /** Replace every occurrence of the given secrets in `text`. */
@@ -134,7 +144,11 @@ export async function studioGql<T>(
     const permission = code === "DELEGATION_EXPIRED" || code === "DELEGATION_MISSING";
     throw new LaunchError(
       code,
-      permission ? "your Studio needs your OK to publish" : REASONS[operation],
+      permission
+        ? "your Studio needs your OK to publish"
+        : code === SECRET_PENDING_CODE
+          ? "your Studio is still getting ready to publish"
+          : REASONS[operation],
       `${operation}: ${detail}`,
     );
   }
@@ -265,4 +279,28 @@ export async function ensureProduct(ctx: CloudContext, name: string): Promise<Pr
     slug,
     liveUrl: connect ?? `https://${app.slug}.${CLOUD_BASE_DOMAIN}`,
   };
+}
+
+/**
+ * Record the product drive on the App once and point the live address's
+ * Connect at it (`setStudioProductDrive`, Ruling F7b; the same id again is a
+ * no-op, a different one fails with `PRODUCT_DRIVE_SET`). Runs after
+ * `ensureProductDrive` and before VERIFY; a try the cloud didn't answer is
+ * repeated.
+ */
+export async function cloudSetProductDrive(
+  ctx: CloudContext,
+  appId: string,
+  driveId: string,
+): Promise<void> {
+  await retryUnavailable(ctx, () =>
+    studioGql<{ setStudioProductDrive: { id: string } }>(
+      ctx,
+      "setStudioProductDrive",
+      `mutation SetStudioProductDrive($appId: ID!, $driveId: String!) {
+        setStudioProductDrive(appId: $appId, driveId: $driveId) { id }
+      }`,
+      { appId, driveId },
+    ),
+  );
 }

@@ -31,12 +31,15 @@ import {
   ProductDebugPanel,
   isProductDebugEnabled,
 } from "../debug/ProductDebugPanel.js";
-import { SignInModal } from "../failures/FailureLine.js";
+import { SignInModal, useFailureHandlers } from "../failures/FailureLine.js";
 import { failureFor, withFailure } from "../failures/failureStates.js";
 import { useStudioRestarting } from "../failures/useStudioRestarting.js";
 import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
+import { ProductView as LiveProductView } from "../live/ProductView.js";
+import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
+import { usePublishPermission } from "../permission/usePublishPermission.js";
 import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { DataDetail } from "../steps/DataDetail.js";
@@ -46,12 +49,14 @@ import { planBrief } from "../steps/planBrief.js";
 import { TestsDetail } from "../steps/TestsDetail.js";
 import { StoryPane } from "../story/StoryPane.js";
 import { StepStrip } from "../strip/StepStrip.js";
-import { stripChange, stripModel } from "../strip/stripModel.js";
+import { openChange, stripChange, stripModel } from "../strip/stripModel.js";
 import { PHASE_AVERAGES } from "../strip/timeLeft.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { useStudioState } from "./useStudioState.js";
 
 const STORY_WIDTH_STORAGE_KEY = "vetra-studio:story-width";
+/** The live page's failure rows never focus the build's steer box. */
+const NO_FOCUS = () => {};
 const STORY_WIDTH_DEFAULT = 38;
 const STORY_WIDTH_MIN = 24;
 const STORY_WIDTH_MAX = 62;
@@ -68,6 +73,8 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
   const [startInFlight, setStartInFlight] = useState(false);
   const [startedSession, setStartedSession] = useState<string | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // "Change who can use it" opens Settings straight on the access switch.
+  const [settingsOnAccess, setSettingsOnAccess] = useState(false);
   const [showDebug] = useState(isProductDebugEnabled);
   const driveRef = useRef(document);
   driveRef.current = document;
@@ -93,8 +100,18 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
     }
   }, []);
 
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const openSettings = useCallback(() => {
+    setSettingsOnAccess(false);
+    setSettingsOpen(true);
+  }, []);
+  const openAccessSettings = useCallback(() => {
+    setSettingsOnAccess(true);
+    setSettingsOpen(true);
+  }, []);
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsOnAccess(false);
+  }, []);
 
   if (status === "loading") return <ShellLoading />;
   if (status === "legacy") {
@@ -114,7 +131,7 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
           onOpenSettings={openSettings}
         />
       ) : (
-        <ProductView
+        <StudioPage
           drive={document}
           documents={documents}
           product={product}
@@ -122,15 +139,22 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
           fallbackSessionId={startedSession}
           productId={productId}
           onOpenSettings={openSettings}
+          onOpenAccess={openAccessSettings}
         />
       )}
       {settingsOpen ? (
         <SettingsDialog
           product={product}
           productId={productId}
+          initialSection={settingsOnAccess ? "access" : undefined}
           onClose={closeSettings}
         />
       ) : null}
+      {/* D7: the one-time ask right after sign-in, over either screen. */}
+      <PublishPermissionModal
+        productId={productId}
+        studioId={document.header.id}
+      />
       {showDebug ? <ProductDebugPanel drive={document} /> : null}
     </div>
   );
@@ -178,7 +202,7 @@ function writeStoryWidth(width: number): void {
 }
 
 /** States 1 and 2: the strip over the build (story | preview) or the live product. */
-function ProductView({
+function StudioPage({
   drive,
   documents,
   product,
@@ -186,6 +210,7 @@ function ProductView({
   fallbackSessionId,
   productId,
   onOpenSettings,
+  onOpenAccess,
 }: {
   drive: DocumentDriveDocument;
   documents: readonly PHDocument[];
@@ -194,6 +219,7 @@ function ProductView({
   fallbackSessionId: string | undefined;
   productId: string | null;
   onOpenSettings: () => void;
+  onOpenAccess: () => void;
 }) {
   const now = useNow(30_000);
   const budget = useStudioBudget();
@@ -237,13 +263,33 @@ function ProductView({
   const failureBudget = shownBudget
     ? { level: shownBudget.level, request: shownBudget.request }
     : null;
-  // The strip marks the step a build failure is on (spec §5.9).
-  const view = withFailure(
-    plainView,
-    live
-      ? null
-      : failureFor(product, chat, failureBudget, { studioRestarting }, { now }),
+  const permission = usePublishPermission(productId);
+  const handlers = useFailureHandlers({
+    sessionId: sessionId ?? null,
+    productId,
+    product,
+    requestedBy: signIn.name ?? "you",
+    allowPublish: permission.allow,
+    focusSteer: NO_FOCUS,
+    requestBudget: budget.request,
+    restartPreview,
+  });
+  // The strip marks the step a failure is on (spec §5.9); state 2's row uses
+  // the same failure.
+  const failure = failureFor(
+    product,
+    chat,
+    failureBudget,
+    {
+      studioRestarting,
+      publish: permission.state ? { state: permission.state } : null,
+    },
+    { now, handlers },
   );
+  const view = withFailure(plainView, failure);
+  // State 2 (spec §5.6): live, and no change in progress. While a change is
+  // open the page keeps the build surface (the Live | Preview split is 3.5).
+  const stateTwo = live && product !== null && openChange(product) === null;
   const previewPane = (
     <PreviewPane
       change={change}
@@ -272,7 +318,7 @@ function ProductView({
     setOpenStep((current) => (current === kind ? null : kind));
   }, []);
 
-  const following = openStep === null || (!live && openStep === "EDITORS");
+  const following = openStep === null || (!stateTwo && openStep === "EDITORS");
   const detail = following ? null : (
     <StepDetail
       kind={openStep}
@@ -302,10 +348,23 @@ function ProductView({
           ) : undefined
         }
       />
-      {live ? (
-        <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-          {detail ?? <LiveDetail product={product} now={now} />}
-        </main>
+      {stateTwo ? (
+        detail ? (
+          <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
+            {detail}
+          </main>
+        ) : (
+          <main className="flex min-h-0 flex-1 flex-col">
+            <LiveProductView
+              product={product}
+              studioId={drive.header.id}
+              documents={documents}
+              failure={failure}
+              now={now}
+              onOpenAccess={onOpenAccess}
+            />
+          </main>
+        )
       ) : (
         <BuildSplit
           story={
@@ -321,6 +380,11 @@ function ProductView({
                   requestBudget: budget.request,
                   studioRestarting,
                   restartPreview,
+                  publish: permission.state
+                    ? { state: permission.state }
+                    : null,
+                  requestedBy: signIn.name ?? "you",
+                  allowPublish: permission.allow,
                 }}
               />
             ) : sessionId ? (

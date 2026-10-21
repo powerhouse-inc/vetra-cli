@@ -18,7 +18,7 @@ export interface ProductHarness {
 
 /** An in-memory reactor with a Studio drive; optionally a product + first change. */
 export async function productHarness(
-  opts: { product?: boolean; name?: string; changeId?: string } = {},
+  opts: { product?: boolean; name?: string; changeId?: string; kind?: "FIRST_BUILD" | "CHANGE" | "UNDO" } = {},
 ): Promise<ProductHarness> {
   const builder = new ReactorBuilder().withDocumentModelSources([
     driveDocumentModelModule as never,
@@ -42,7 +42,7 @@ export async function productHarness(
     const at = "2026-10-20T10:00:00.000Z";
     await module.client.execute(productId, "main", [
       a.initProduct({ name: opts.name ?? "Create a todo app", idea: "create a todo app for my team", createdAt: at }),
-      a.startChange({ id: opts.changeId ?? "change-1", kind: "FIRST_BUILD", request: "create a todo app", startedAt: at }),
+      a.startChange({ id: opts.changeId ?? "change-1", kind: opts.kind ?? "FIRST_BUILD", request: "create a todo app", startedAt: at }),
     ]);
   }
   return {

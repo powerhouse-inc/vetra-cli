@@ -21,13 +21,25 @@ import {
   at,
   buildingOps,
   productDoc,
+  withFailedLaunch,
+  withLiveVersion,
 } from "../test-utils/studioFixtures.js";
-import { SignInModal, SIGNED_OUT_TITLE } from "./FailureLine.js";
+import {
+  FailureLine,
+  SignInModal,
+  SIGNED_OUT_TITLE,
+  useFailureHandlers,
+} from "./FailureLine.js";
 import {
   INITIAL_WATCH,
   isRestarting,
   nextWatch,
 } from "./useStudioRestarting.js";
+import {
+  ASK_AGENT_TO_FIX,
+  LIVE_UNHEALTHY,
+  PERMISSION_NEEDED,
+} from "../live/liveCopy.js";
 import {
   BREATHER_TEXT,
   BUDGET_USED_UP_TEXT,
@@ -639,5 +651,218 @@ describe("build failure states (spec §5.9, G4)", () => {
     const twice = nextWatch(once, false);
     expect(isRestarting(twice)).toBe(true);
     expect(isRestarting(nextWatch(twice, true))).toBe(false);
+  });
+});
+
+describe("the live product's failure rows (spec §5.6–§5.9)", () => {
+  /** The live rows with the real handlers bound to PRODUCT_ID. */
+  function LiveRows({
+    p,
+    publish = null,
+    allowPublish = () => Promise.resolve(true),
+  }: {
+    p: ReturnType<typeof product>;
+    publish?: { state: "GRANTED" | "MISSING" | "EXPIRED" | "UNKNOWN" } | null;
+    allowPublish?: () => Promise<boolean>;
+  }) {
+    const handlers = useFailureHandlers({
+      sessionId: null,
+      productId: PRODUCT_ID,
+      product: p,
+      requestedBy: "Frank",
+      allowPublish,
+      focusSteer: () => {},
+      requestBudget: () => {},
+      restartPreview: () => Promise.resolve(),
+    });
+    const failure = failureFor(
+      p,
+      null,
+      null,
+      { studioRestarting: false, publish },
+      { now: new Date(at(45)), handlers },
+    );
+    return failure ? <FailureLine failure={failure} /> : <span>all well</span>;
+  }
+
+  function liveFailure(
+    p: ReturnType<typeof product>,
+    publish: {
+      state: "GRANTED" | "MISSING" | "EXPIRED" | "UNKNOWN";
+    } | null = null,
+  ) {
+    return failureFor(
+      p,
+      null,
+      null,
+      { studioRestarting: false, publish },
+      { now: new Date(at(45)) },
+    );
+  }
+
+  function liveStrip(
+    p: ReturnType<typeof product>,
+    publish: {
+      state: "GRANTED" | "MISSING" | "EXPIRED" | "UNKNOWN";
+    } | null = null,
+  ) {
+    const view = withFailure(
+      stripModel(p, {
+        budget: null,
+        averages: PHASE_AVERAGES,
+        now: new Date(at(45)),
+      }),
+      liveFailure(p, publish),
+    );
+    return Object.fromEntries(view.steps.map((s) => [s.kind, s.icon]));
+  }
+
+  it("launch failure says the live app is still on the previous version", () => {
+    const p = readProduct(
+      withFailedLaunch(withLiveVersion(productDoc(...buildingOps()))).state
+        .global,
+    );
+    const failure = liveFailure(p);
+    expect(failure?.situation).toBe("launch-failed");
+    expect(failure?.text).toBe(
+      "Couldn't go live: the new version didn't start. Your live app is still on Version 1.",
+    );
+    expect(liveStrip(p).LIVE).toBe("✕");
+
+    const container = render(<LiveRows p={p} />);
+    expect(container.textContent).toContain(
+      "Your live app is still on Version 1.",
+    );
+    expectNoForbiddenWords(container);
+  });
+
+  it("a first launch that failed says the app isn't live yet", () => {
+    const p = readProduct(
+      withFailedLaunch(productDoc(...buildingOps())).state.global,
+    );
+    expect(liveFailure(p)?.text).toBe(
+      "Couldn't go live: the new version didn't start. Your app isn't live yet.",
+    );
+  });
+
+  it("Try again asks for a new launch; Ask the agent to fix it writes into the failed change's conversation", async () => {
+    const p = readProduct(
+      withFailedLaunch(withLiveVersion(productDoc(...buildingOps()))).state
+        .global,
+    );
+    const container = render(<LiveRows p={p} />);
+
+    click(button(container, "Try again"));
+    await settle();
+    expect(hoisted.dispatched).toMatchObject([
+      {
+        action: {
+          type: "REQUEST_LAUNCH",
+          input: { changeId: "c1", requestedBy: "Frank" },
+        },
+        id: PRODUCT_ID,
+      },
+    ]);
+
+    hoisted.dispatched = [];
+    click(button(container, ASK_AGENT_TO_FIX));
+    await settle();
+    expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
+      [SESSION_ID, "ADD_USER_MESSAGE"],
+    ]);
+    const message = JSON.stringify(hoisted.dispatched[0].action.input);
+    expect(message).toContain(
+      "The last launch failed: the new version didn't start.",
+    );
+  });
+
+  it("permission needs you: Allow runs the owner's OK", async () => {
+    const doc = withLiveVersion(productDoc(...buildingOps()), { number: 2 });
+    const launching = {
+      ...doc.state.global.versions.at(-1)!,
+      number: 3,
+      status: "LAUNCHING" as const,
+      launchedAt: null,
+    };
+    doc.state.global.versions = [...doc.state.global.versions, launching];
+    doc.state.global.changes[0].status = "LAUNCHING";
+    const p = readProduct(doc.state.global);
+
+    const failure = liveFailure(p, { state: "MISSING" });
+    expect(failure?.situation).toBe("permission");
+    expect(failure?.text).toBe(PERMISSION_NEEDED);
+    expect(liveStrip(p, { state: "MISSING" }).LIVE).toBe("!");
+
+    const allowPublish = vi.fn(() => Promise.resolve(true));
+    const container = render(
+      <LiveRows
+        p={p}
+        publish={{ state: "MISSING" }}
+        allowPublish={allowPublish}
+      />,
+    );
+    expect(container.textContent).toContain(
+      "Your Studio needs your OK to publish.",
+    );
+    click(button(container, "Allow"));
+    await settle();
+    expect(allowPublish).toHaveBeenCalledTimes(1);
+  });
+
+  it("health banner actions: Restart, or go back to the version before", async () => {
+    const doc = withLiveVersion(productDoc(...buildingOps()), { number: 3 });
+    doc.state.global.health = "UNHEALTHY";
+    const p = readProduct(doc.state.global);
+
+    const failure = liveFailure(p);
+    expect(failure?.situation).toBe("live-unhealthy");
+    expect(failure?.text).toBe(LIVE_UNHEALTHY);
+    // The Live step turns amber, with its state in words.
+    const view = stripModel(p, {
+      budget: null,
+      averages: PHASE_AVERAGES,
+      now: new Date(at(45)),
+    });
+    expect(view.steps.find((s) => s.kind === "LIVE")).toMatchObject({
+      icon: "!",
+      stateText: "not responding",
+    });
+
+    const container = render(<LiveRows p={p} />);
+    expect(container.textContent).toContain(LIVE_UNHEALTHY);
+    click(button(container, "Restart"));
+    await settle();
+    expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
+      [PRODUCT_ID, "REQUEST_RESTART"],
+    ]);
+
+    hoisted.dispatched = [];
+    click(button(container, "Go back to Version 2"));
+    await settle();
+    expect(hoisted.dispatched).toMatchObject([
+      {
+        action: { type: "REQUEST_ROLLBACK", input: { versionNumber: 2 } },
+        id: PRODUCT_ID,
+      },
+    ]);
+    expectNoForbiddenWords(container);
+  });
+
+  it("a Go back that failed keeps its plain reason until the live version moves on", () => {
+    const doc = withLiveVersion(productDoc(...buildingOps()));
+    doc.state.global.lastRequestFailure = {
+      kind: "ROLLBACK",
+      reason: "Finish or discard your change first.",
+      at: at(40),
+    };
+    const p = readProduct(doc.state.global);
+    expect(liveFailure(p)).toMatchObject({
+      situation: "request-failed",
+      text: "Finish or discard your change first.",
+    });
+
+    // A later successful launch moves liveSince past it: the line goes.
+    doc.state.global.liveSince = at(41);
+    expect(liveFailure(readProduct(doc.state.global))).toBeNull();
   });
 });

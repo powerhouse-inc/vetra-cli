@@ -31,6 +31,13 @@ export function render(element: ReactElement): HTMLElement {
   return container;
 }
 
+/** Re-renders a container from `render` (state that changed underneath it). */
+export function rerender(container: HTMLElement, element: ReactElement): void {
+  const entry = mounted.find((m) => m.container === container);
+  if (!entry) throw new Error("container was not rendered");
+  act(() => entry.root.render(element));
+}
+
 export function click(element: Element | null | undefined): void {
   if (!element) throw new Error("nothing to click");
   act(() => {

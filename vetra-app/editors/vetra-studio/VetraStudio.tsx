@@ -10,7 +10,6 @@ import type {
 } from "@powerhousedao/shared/document-drive";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addAgentWritableDocument } from "./addAgentWritableDocument.js";
-import { AgentAuthButton } from "./AgentAuthButton.js";
 import { StudioBudgetMeter } from "./budget/BudgetMeter.js";
 import { BuildSection } from "./BuildSection.js";
 import { ChatPane, CHAT_SESSION_DOCUMENT_TYPE } from "./ChatPane.js";
@@ -619,7 +618,6 @@ function AutoNavToggle({
       <VersionBadge />
       <div className="flex-1" />
       <StudioBudgetMeter />
-      <AgentAuthButton />
       {enabled && paused ? (
         <span className="text-[11px] text-muted-foreground">
           paused — close the document to resume

@@ -4,7 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import { readProduct } from "../shell/useStudioState.js";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
 import { button, click, render } from "../test-utils/render.js";
-import { at, buildingOps, productDoc } from "../test-utils/studioFixtures.js";
+import {
+  at,
+  buildingOps,
+  productDoc,
+  withLiveVersion,
+} from "../test-utils/studioFixtures.js";
 import { StepStrip, tone } from "./StepStrip.js";
 import { stripModel, type StripView } from "./stripModel.js";
 
@@ -98,5 +103,40 @@ describe("StepStrip", () => {
     expect(tone("✕")).toContain("destructive");
     const all = (["○", "◐", "✓", "!", "✕", "●"] as const).map(tone);
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe("StepStrip — the live product", () => {
+  it("live-strip copy: ● Live · the address, then Deployed … · GitHub", () => {
+    const product = readProduct(
+      withLiveVersion(productDoc(...buildingOps()), {
+        launchedAt: at(25),
+      }).state.global,
+    );
+    const liveView = stripModel(product, {
+      budget: { spentUsd: 0.31, limitUsd: 10 },
+      averages: {},
+      now: new Date(at(30)),
+    });
+    const container = render(
+      <StepStrip
+        view={liveView}
+        selected={null}
+        onOpenStep={() => {}}
+        onOpenSettings={() => {}}
+      />,
+    );
+    const text = container.textContent;
+    expect(text).toContain("●Live");
+    expect(text).toContain("·task-board.vetra.io ↗");
+    for (const step of ["PLAN", "DATA", "EDITORS", "TESTS"]) {
+      expect(
+        container.querySelector(`[data-step="${step}"]`)?.textContent,
+      ).toContain("✓");
+    }
+    expect(text).toContain(
+      "Deployed 5 min ago · Code saved in your Studio · Connect GitHub",
+    );
+    expectNoForbiddenWords(container);
   });
 });

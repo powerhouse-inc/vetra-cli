@@ -1,6 +1,11 @@
 import { actions } from "document-models/studio-product";
 import { describe, expect, it } from "vitest";
-import { at, buildingOps, productDoc } from "../test-utils/studioFixtures.js";
+import {
+  at,
+  buildingOps,
+  productDoc,
+  withLiveVersion,
+} from "../test-utils/studioFixtures.js";
 import { readProduct } from "../shell/useStudioState.js";
 import {
   budgetText,
@@ -170,7 +175,31 @@ describe("stripModel", () => {
     expect(view.right).toEqual({
       liveUrl: "https://task-board.vetra.io",
       deployedAgo: "Deployed 2 min ago",
-      github: "Code saved in your Studio",
+      github: "Code saved in your Studio · Connect GitHub",
+    });
+  });
+
+  it("deployed time reads liveSince, not the launch record", () => {
+    const product = readProduct(
+      withLiveVersion(productDoc(...buildingOps()), {
+        launchedAt: at(2),
+      }).state.global,
+    );
+    product.liveSince = at(25);
+    const view = stripModel(product, INPUTS);
+    expect("liveUrl" in view.right && view.right.deployedAgo).toBe(
+      "Deployed 5 min ago",
+    );
+  });
+
+  it("an unhealthy live app turns Live amber", () => {
+    const product = readProduct(
+      withLiveVersion(productDoc(...buildingOps())).state.global,
+    );
+    product.health = "UNHEALTHY";
+    expect(step(stripModel(product, INPUTS), "LIVE")).toMatchObject({
+      icon: "!",
+      stateText: "not responding",
     });
   });
 

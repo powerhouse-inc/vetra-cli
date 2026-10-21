@@ -10,6 +10,7 @@ import type {
   ClearStuckAction,
   CompleteStepAction,
   CountStepAction,
+  DiscardChangeAction,
   MarkStuckAction,
   PauseChangeAction,
   PlanStepsAction,
@@ -108,6 +109,11 @@ export interface StudioProductChangeOperations {
   waiveLintOperation: (
     state: StudioProductGlobalState,
     action: WaiveLintAction,
+    dispatch?: SignalDispatch,
+  ) => void;
+  discardChangeOperation: (
+    state: StudioProductGlobalState,
+    action: DiscardChangeAction,
     dispatch?: SignalDispatch,
   ) => void;
 }

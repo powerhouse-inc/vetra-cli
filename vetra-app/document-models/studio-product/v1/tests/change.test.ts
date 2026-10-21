@@ -4,6 +4,7 @@ import {
   clearStuck,
   completeStep,
   countStep,
+  discardChange,
   initProduct,
   markStuck,
   pauseChange,
@@ -839,5 +840,74 @@ describe("pause, metrics, title", () => {
       initProduct({ name: "n", idea: "i", createdAt: at(0) }),
     );
     expect(errorAt(doc, 0)).toMatch(/LAUNCHED/);
+  });
+});
+
+describe("DISCARD_CHANGE", () => {
+  it("closes an open change, stops its LIVE step and clears the active pointer", () => {
+    const doc = apply(
+      withState({
+        changes: [
+          craftedChange("c1", "READY", {
+            steps: [
+              {
+                kind: "LIVE",
+                status: "NOT_STARTED",
+                done: null,
+                total: null,
+                label: null,
+                reason: null,
+                updatedAt: null,
+              },
+            ],
+          }),
+        ],
+        activeChangeId: "c1",
+      }),
+      discardChange({ changeId: "c1", at: at(9) }),
+    );
+    expect(lastError(doc)).toBeNull();
+    expect(change(doc).status).toBe("DISCARDED");
+    expect(step(doc, "LIVE")).toMatchObject({
+      status: "STOPPED",
+      reason: null,
+      updatedAt: at(9),
+    });
+    expect(doc.state.global.activeChangeId).toBeNull();
+  });
+
+  it("leaves another active change alone and works without a LIVE step", () => {
+    const doc = apply(
+      withState({
+        changes: [craftedChange("c1", "BUILDING")],
+        activeChangeId: "c2",
+      }),
+      discardChange({ changeId: "c1", at: at(9) }),
+    );
+    expect(lastError(doc)).toBeNull();
+    expect(change(doc).status).toBe("DISCARDED");
+    expect(doc.state.global.activeChangeId).toBe("c2");
+  });
+
+  it("refuses a change that is launching, already closed or unknown", () => {
+    const launching = apply(
+      withState({ changes: [craftedChange("c1", "LAUNCHING")] }),
+      discardChange({ changeId: "c1", at: at(9) }),
+    );
+    const closed = apply(
+      withState({ changes: [craftedChange("c1", "DISCARDED")] }),
+      discardChange({ changeId: "c1", at: at(9) }),
+    );
+    const unknown = apply(
+      withState({ changes: [] }),
+      discardChange({ changeId: "zz", at: at(9) }),
+    );
+    expect(lastError(launching)).toBe(
+      'Change "c1" is LAUNCHING and can\'t be discarded.',
+    );
+    expect(lastError(closed)).toBe(
+      'Change "c1" is DISCARDED and can\'t be discarded.',
+    );
+    expect(lastError(unknown)).toBe('No change "zz" exists.');
   });
 });

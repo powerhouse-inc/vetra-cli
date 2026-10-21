@@ -11,8 +11,10 @@ import {
 } from "../test-utils/render.js";
 import {
   PRODUCT_ID,
+  at,
   buildingOps,
   productDoc,
+  withLiveVersion,
 } from "../test-utils/studioFixtures.js";
 import { SettingsDialog } from "./SettingsDialog.js";
 
@@ -40,6 +42,11 @@ vi.mock("../budget/BudgetMeter.js", () => ({
 }));
 
 const product = () => readProduct(productDoc(...buildingOps()).state.global);
+const live = () =>
+  readProduct(
+    withLiveVersion(productDoc(...buildingOps()), { launchedAt: at(25) }).state
+      .global,
+  );
 
 beforeEach(() => {
   hoisted.dispatched = [];
@@ -99,5 +106,65 @@ describe("SettingsDialog", () => {
     inner.remove();
     pressKey(window, "Escape");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SettingsDialog — the live product", () => {
+  it("shows the live address read-only", () => {
+    const container = render(
+      <SettingsDialog
+        product={live()}
+        productId={PRODUCT_ID}
+        onClose={() => {}}
+      />,
+    );
+    expect(container.textContent).toContain("https://task-board.vetra.io");
+    expect(
+      container.querySelector('input[value="https://task-board.vetra.io"]'),
+    ).toBeNull();
+  });
+
+  it("the access switch dispatches SET_ACCESS on the product", async () => {
+    const container = render(
+      <SettingsDialog
+        product={live()}
+        productId={PRODUCT_ID}
+        onClose={() => {}}
+      />,
+    );
+    const anyone = container.querySelector(
+      'input[value="SIGNED_IN"]',
+    ) as HTMLInputElement;
+    const onlyMe = container.querySelector(
+      'input[value="OWNER_ONLY"]',
+    ) as HTMLInputElement;
+    expect(anyone.checked).toBe(true);
+    click(onlyMe);
+    await vi.waitFor(() =>
+      expect(hoisted.dispatched).toMatchObject([
+        {
+          action: { type: "SET_ACCESS", input: { access: "OWNER_ONLY" } },
+          id: PRODUCT_ID,
+        },
+      ]),
+    );
+    expect(container.textContent).toContain(
+      "Anyone with the link can sign in and use it.",
+    );
+    expectNoForbiddenWords(container);
+  });
+
+  it("'Change who can use it' opens it on the access switch", () => {
+    render(
+      <SettingsDialog
+        product={live()}
+        productId={PRODUCT_ID}
+        initialSection="access"
+        onClose={() => {}}
+      />,
+    );
+    expect(document.activeElement?.getAttribute("aria-label")).toBe(
+      "Who can use it",
+    );
   });
 });

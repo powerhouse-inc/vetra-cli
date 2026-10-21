@@ -1,14 +1,4 @@
 import type { StudioProductChangeOperations } from "document-models/studio-product/v1";
-import type {
-  Change,
-  ChangeStatus,
-  CheckKind,
-  CheckResult,
-  CheckRun,
-  ProductStep,
-  StepKind,
-  StudioProductState,
-} from "../../gen/schema/types.js";
 import {
   AdoptNotAllowedError,
   ChangeInProgressError,
@@ -27,6 +17,16 @@ import {
   StepNotDoneError,
   StepNotPlannedError,
 } from "../../gen/change/error.js";
+import type {
+  Change,
+  ChangeStatus,
+  CheckKind,
+  CheckResult,
+  CheckRun,
+  ProductStep,
+  StepKind,
+  StudioProductState,
+} from "../../gen/schema/types.js";
 import { normalizeProduct } from "../normalize.js";
 
 const STEP_ORDER: StepKind[] = ["PLAN", "DATA", "EDITORS", "TESTS", "LIVE"];
@@ -72,6 +72,30 @@ function openChange(state: StudioProductState, changeId: string): Change {
   }
   return change;
 }
+
+/**
+ * While a launch owns the change (LAUNCHING), START/COMPLETE/FAIL_LAUNCH are
+ * the only writers of its LIVE line; the agent's edits would race them. The
+ * status is checked separately because SET_CHANGE_TITLE is also allowed on a
+ * closed change.
+ */
+function assertNotLaunching(change: Change): void {
+  if (change.status === "LAUNCHING") {
+    throw new InvalidChangeStatusError(
+      `Change "${change.id}" is going live and can't be edited until the launch ends.`,
+    );
+  }
+}
+
+/** A change that can still be worked on and isn't going live. */
+function editableChange(state: StudioProductState, changeId: string): Change {
+  const change = openChange(state, changeId);
+  assertNotLaunching(change);
+  return change;
+}
+
+/** Changes that can still be thrown away (a launch in flight cannot). */
+const DISCARDABLE: ChangeStatus[] = ["BUILDING", "PAUSED", "READY"];
 
 function findStep(change: Change, kind: StepKind): ProductStep {
   const step = change.steps.find((s) => s.kind === kind);
@@ -260,7 +284,7 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
   },
 
   planStepsOperation(state, action) {
-    const change = openChange(state, action.input.changeId);
+    const change = editableChange(state, action.input.changeId);
     const seen = new Set<StepKind>();
     const steps = action.input.steps.map(({ kind, total }) => {
       if (seen.has(kind)) {
@@ -281,7 +305,7 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
   },
 
   startStepOperation(state, action) {
-    const change = openChange(state, action.input.changeId);
+    const change = editableChange(state, action.input.changeId);
     const step = findStep(change, action.input.kind);
     step.status = "WORKING";
     step.label = action.input.label ?? step.label;
@@ -291,7 +315,7 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
   },
 
   countStepOperation(state, action) {
-    const change = openChange(state, action.input.changeId);
+    const change = editableChange(state, action.input.changeId);
     const step = findStep(change, action.input.kind);
     assertCount(action.input.done, action.input.total);
     step.done = action.input.done;
@@ -299,7 +323,7 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
   },
 
   completeStepOperation(state, action) {
-    const change = openChange(state, action.input.changeId);
+    const change = editableChange(state, action.input.changeId);
     const step = findStep(change, action.input.kind);
     const problem =
       step.kind === "LIVE"
@@ -319,7 +343,7 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
   },
 
   reopenStepOperation(state, action) {
-    const change = openChange(state, action.input.changeId);
+    const change = editableChange(state, action.input.changeId);
     const step = findStep(change, action.input.kind);
     if (step.status !== "DONE") {
       throw new StepNotDoneError(
@@ -382,7 +406,7 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
   },
 
   setStepAttentionOperation(state, action) {
-    const change = openChange(state, action.input.changeId);
+    const change = editableChange(state, action.input.changeId);
     const step = findStep(change, action.input.kind);
     const { status } = action.input;
     if (
@@ -430,11 +454,13 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
   },
 
   setChangeTitleOperation(state, action) {
-    findChange(state, action.input.changeId).title = action.input.title;
+    const change = findChange(state, action.input.changeId);
+    assertNotLaunching(change);
+    change.title = action.input.title;
   },
 
   waiveLintOperation(state, action) {
-    const change = openChange(state, action.input.changeId);
+    const change = editableChange(state, action.input.changeId);
     const failing = failingKinds(change);
     if (failing.length !== 1 || failing[0] !== "LINT") {
       throw new NothingToWaiveError(
@@ -442,5 +468,23 @@ export const studioProductChangeOperations: StudioProductChangeOperations = {
       );
     }
     change.lintWaivedAt = action.input.at;
+  },
+
+  discardChangeOperation(state, action) {
+    const { changeId, at } = action.input;
+    const change = findChange(state, changeId);
+    if (!DISCARDABLE.includes(change.status)) {
+      throw new InvalidChangeStatusError(
+        `Change "${changeId}" is ${change.status} and can't be discarded.`,
+      );
+    }
+    change.status = "DISCARDED";
+    const live = change.steps.find((s) => s.kind === "LIVE");
+    if (live) {
+      live.status = "STOPPED";
+      live.reason = null;
+      live.updatedAt = at;
+    }
+    if (state.activeChangeId === changeId) state.activeChangeId = null;
   },
 };

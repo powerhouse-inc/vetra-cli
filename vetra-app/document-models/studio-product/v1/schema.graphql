@@ -226,6 +226,12 @@ type PendingRequest {
   requestedBy: String!
 }
 
+type RequestFailure {
+  kind: RequestKind!
+  reason: String!
+  at: DateTime!
+}
+
 type Suggestion {
   id: OID!
   text: String!
@@ -258,6 +264,7 @@ type StudioProductState {
   versions: [Version!]!
   health: LiveHealth!
   pendingRequest: PendingRequest
+  lastRequestFailure: RequestFailure
   launchPermission: PermissionState!
   suggestions: [Suggestion!]!
   github: GithubLink!
@@ -402,6 +409,11 @@ input WaiveLintInput {
   at: DateTime!
 }
 
+input DiscardChangeInput {
+  changeId: OID!
+  at: DateTime!
+}
+
 # launch
 
 input SetLiveTargetInput {
@@ -446,6 +458,12 @@ input RequestMirrorInput {
 
 input ClearRequestInput {
   _: Boolean
+}
+
+input FailRequestInput {
+  kind: RequestKind!
+  reason: String!
+  at: DateTime!
 }
 
 input StartLaunchInput {

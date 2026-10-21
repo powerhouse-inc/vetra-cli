@@ -10,7 +10,43 @@ import {
 import { resolveReactorProjectPath } from "../../helpers/project.js";
 import { attachCheckResults, type ObservedCheck } from "../../product/check-results.js";
 import { runSmoke } from "../../product/smoke.js";
+import { getProductDoc, type ProductContext } from "../../product/product-doc.js";
 import { phBuildNodeOptions } from "../../helpers/node-memory.js";
+
+/* A stalled reactor must not hang the check. */
+const PRODUCT_LOOKUP_TIMEOUT_MS = 5_000;
+
+/** Workspaces known to hold a product document (a product document is never removed). */
+const productWorkspaces = new Set<string>();
+
+/**
+ * Ruling X27: examples are required only in a Studio product workspace (one
+ * with a product document). A positive answer is kept per workdir for the
+ * process. A lookup that fails or stalls doesn't require examples this time,
+ * and says so in a note.
+ */
+export async function examplesRequired(
+  ctx: ProductContext & { workdir?: string },
+): Promise<{ required: boolean; note?: string }> {
+  const key = ctx.workdir;
+  if (key && productWorkspaces.has(key)) return { required: true };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), PRODUCT_LOOKUP_TIMEOUT_MS);
+    });
+    const found = await Promise.race([getProductDoc(ctx), timeout]);
+    if (found === "timeout") return { required: false, note: UNREADABLE_PRODUCT_NOTE };
+    if (found && key) productWorkspaces.add(key);
+    return { required: found !== null };
+  } catch {
+    return { required: false, note: UNREADABLE_PRODUCT_NOTE };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export const UNREADABLE_PRODUCT_NOTE = "couldn't read the product — examples not required this time";
 
 const inputSchema = z.object({
   name: z
@@ -37,7 +73,7 @@ const inputSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Also run the project's reducer tests and the preview smoke check (package builds; every editor/app module loads in the running preview). Needed before finishing the Tests step. Defaults to false.",
+      "Also run the project's reducer tests and the preview smoke check (package builds; every editor/app module loads in the running preview; the example documents in seed/*.json fit the document models). Needed before finishing the Tests step. Defaults to false.",
     ),
 });
 
@@ -48,8 +84,9 @@ export const reactorProjectCheck = defineCommand({
   inputSchema,
   execute: async (
     { name, scope, skipLint, skipTypecheck, tests },
-    { workdir, runProcess, services },
+    context,
   ) => {
+    const { workdir, runProcess, services } = context;
     const base = await resolveReactorProjectPath(workdir, name);
     const resolvedScope: CheckScope = scope ?? "all";
 
@@ -61,6 +98,8 @@ export const reactorProjectCheck = defineCommand({
     const { diagnostics, notes } = outcome;
     const observed: ObservedCheck[] = checkResultsFromOutcome(outcome, base);
     if (tests) {
+      const examples = await examplesRequired(context);
+      if (examples.note) notes.push(examples.note);
       const reducerTests = await runReducerTests(base, runProcess);
       if (reducerTests) observed.push(reducerTests);
       else notes.push("reducer tests skipped: the project has no `test` script");
@@ -69,6 +108,8 @@ export const reactorProjectCheck = defineCommand({
         .find((i) => i.workdir === base && i.status === "ready");
       observed.push(
         await runSmoke(base, {
+          requireExamples: examples.required,
+          notes,
           previewUrl: preview?.endpoints?.["vetra-studio"],
           build: (projectPath) =>
             runProcess("ph build", {
