@@ -223,3 +223,82 @@ describe("personal Studio", () => {
     expect(fetchOrgMembership).not.toHaveBeenCalled();
   });
 });
+
+describe("review fixes", () => {
+  const guestOf = (id: string, changeId: string, expiresAt: string) => ({
+    id, address: A, changeId, rights: "COMMENT" as const, name: null,
+    invitedAt: "x", expiresAt, revokedAt: null,
+  });
+
+  it("a guest verdict never outlives expiresAt", async () => {
+    const { m, clock } = setup({
+      team: team({ guests: [guestOf("g1", "c1", new Date(NOW + 10_000).toISOString())] }),
+    });
+    expect((await m.resolve(A))?.role).toBe("guest");
+    clock.t += 11_000;
+    expect(await m.resolve(A)).toBeNull();
+  });
+
+  it("a guest hit is re-checked against expiresAt even if the entry is newer", async () => {
+    const { m, clock } = setup({
+      team: team({ guests: [guestOf("g1", "c1", new Date(NOW + 10_000).toISOString())] }),
+    });
+    await m.resolve(A);
+    clock.t += 9_999;
+    expect((await m.resolve(A))?.role).toBe("guest");
+    clock.t += 1;
+    expect(await m.resolve(A)).toBeNull();
+  });
+
+  it("invalidate during an in-flight lookup is not lost", async () => {
+    const { m, state, orgs } = setup({ orgs: { [A]: org("PUBLISHER") } });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const stale = state.team;
+    const fresh = team({ roleOverrides: [{ address: A, at: "x", role: "VIEWER" }] });
+    let calls = 0;
+    const m2 = createMembership({
+      orgId: "acme", admins: "",
+      fetchOrgMembership: async () => orgs[A] ?? null,
+      acceptedTeam: async () => {
+        if (calls++ === 0) { await gate; return stale; }
+        return fresh;
+      },
+      appDid: async () => null, now: () => NOW,
+    });
+    void m;
+    const inflight = m2.resolve(A);
+    m2.invalidate(A);
+    release();
+    expect((await inflight)?.role).toBe("maker"); // the caller of the old lookup
+    expect((await m2.resolve(A))?.role).toBe("viewer"); // but nothing stale was cached
+    // global invalidate too
+    calls = 0;
+    const second = m2.resolve(B);
+    m2.invalidate();
+    release();
+    await second;
+  });
+
+  it("an appDid() failure makes resolve throw (fail closed)", async () => {
+    const f = jest.fn(async () => org("PUBLISHER", { effectiveScope: { all: false, appDids: [] } }));
+    const mm = createMembership({
+      orgId: "acme", admins: "", fetchOrgMembership: f,
+      acceptedTeam: async () => team(),
+      appDid: async () => { throw new Error("registry down"); },
+      now: () => NOW,
+    });
+    await expect(mm.resolve(A)).rejects.toBeInstanceOf(MembershipUnavailableError);
+  });
+
+  it("a guest with several invites gets the one for the requested change", async () => {
+    const exp = "2099-01-01T00:00:00.000Z";
+    const { m } = setup({ team: team({ guests: [guestOf("g1", "c1", exp), guestOf("g2", "c2", exp)] }) });
+    expect((await m.resolve(A, { changeId: "c2" }))?.guest?.id).toBe("g2");
+    expect((await m.resolve(A, { changeId: "c1" }))?.guest?.id).toBe("g1");
+    expect((await m.resolve(A))?.guest?.id).toBe("g1");
+    expect((await m.resolve(A, { changeId: "c9" }))?.guest?.id).toBe("g1");
+    m.invalidate(A);
+    expect((await m.resolve(A, { changeId: "c2" }))?.guest?.id).toBe("g2");
+  });
+});
