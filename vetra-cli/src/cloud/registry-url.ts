@@ -46,3 +46,42 @@ export function findRegistryUrl(options: {
     return null;
   }
 }
+
+/**
+ * Ruling R25: the registry of a Studio's own stack, keyed by the cloud
+ * switchboard's host. Older prod Studios run without PH_REGISTRY_URL; their
+ * launches publish here instead of failing.
+ */
+export const STACK_REGISTRIES: Readonly<Record<string, string>> = {
+  "switchboard.vetra.io": "https://registry.vetra.io",
+};
+
+/** The registry of the stack `cloudSwitchboardUrl` belongs to, or null. */
+export function stackRegistry(cloudSwitchboardUrl: string | null | undefined): string | null {
+  const url = cloudSwitchboardUrl?.trim();
+  if (!url) return null;
+  try {
+    return STACK_REGISTRIES[new URL(url).hostname] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The registry a launch publishes to: the usual lookup (flag/config,
+ * PH_REGISTRY_URL, the project's powerhouse.config.json), then — in a Studio
+ * only (`environmentId` set) — its stack's registry. Nothing is written to the
+ * project. Throws like `resolveRegistryUrl` when none applies.
+ */
+export function resolveLaunchRegistryUrl(options: {
+  registry?: string | null;
+  projectPath: string;
+  env?: Record<string, string | undefined>;
+  environmentId?: string | null;
+  cloudSwitchboardUrl?: string | null;
+}): string {
+  const found = findRegistryUrl(options);
+  if (found) return found;
+  const fallback = options.environmentId?.trim() ? stackRegistry(options.cloudSwitchboardUrl) : null;
+  return fallback ?? resolveRegistryUrl(options);
+}

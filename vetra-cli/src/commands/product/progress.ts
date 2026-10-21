@@ -23,6 +23,7 @@ import {
   sameIdea,
   suggestionVersion,
 } from "../../product/suggestions.js";
+import { adoptedWithoutVersions } from "../../product/upgrade-existing.js";
 import {
   ProductRefusedError,
   activeChange,
@@ -242,6 +243,9 @@ type ProductState = NonNullable<Awaited<ReturnType<typeof getProductDoc>>>["stat
  */
 function prepareLiveTarget(ctx: ProgressContext, state: ProductState): void {
   if (state.appId || !ctx.workdir || !ctx.config?.environmentId) return;
+  // An existing Studio's product (§6.6): its environment from before versions
+  // is adopted only inside the launch the customer asked for, never ahead.
+  if (adoptedWithoutVersions(state)) return;
   const planDone = state.changes.some((c) => c.steps.some((s) => s.kind === "PLAN" && s.status === "DONE"));
   if (!planDone) return;
   void requestLiveTarget({ ...ctx, workdir: ctx.workdir, config: ctx.config });

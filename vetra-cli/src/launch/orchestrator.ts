@@ -166,6 +166,9 @@ export function nextVersionNumber(state: StudioProductState): { number: number; 
  */
 export function autoLaunchCandidate(state: StudioProductState): Change | null {
   if (state.liveVersion != null) return null;
+  // X33: an existing Studio's address that was live before versions only
+  // gets Version 1 when the customer says Make it live.
+  if (state.liveBeforeVersions && state.versions.length === 0) return null;
   if (state.versions.some((v) => v.status === "LAUNCHING")) return null;
   return (
     state.changes.find(

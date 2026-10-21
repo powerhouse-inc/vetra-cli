@@ -15,7 +15,9 @@ import { withSignaturePolicy } from "document-model";
 import { StudioProductV1 } from "vetra-app/document-models";
 import type { StudioProductState } from "vetra-app/document-models/studio-product";
 import { LaunchError } from "../../src/launch/errors.js";
-import { ensureLiveTarget, type OrchestratorContext } from "../../src/launch/orchestrator.js";
+import { autoLaunchCandidate, ensureLiveTarget, type OrchestratorContext } from "../../src/launch/orchestrator.js";
+import { runProgress } from "../../src/commands/product/progress.js";
+import { NOT_AUTHENTICATED } from "../../src/cloud/environments-read.js";
 import type { ProductTarget } from "../../src/launch/cloud-launch.js";
 import {
   BEFORE_VERSIONS_REQUEST,
@@ -29,6 +31,7 @@ import {
   runUpgrade,
   type LiveCandidate,
   type UpgradeContext,
+  type WorkspacePackages,
 } from "../../src/product/upgrade-existing.js";
 
 const chat = ChatSession.actions;
@@ -43,7 +46,7 @@ interface Harness {
   workdir: string;
   ctx: UpgradeContext;
   logs: string[];
-  liveCalls: string[][];
+  liveCalls: WorkspacePackages[];
   live: LiveCandidate[] | Error;
   products(): Promise<string[]>;
   state(): Promise<StudioProductState>;
@@ -72,7 +75,7 @@ async function harness(): Promise<Harness> {
   const driveId = drive.header.id;
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "upgrade-existing-"));
   const logs: string[] = [];
-  const liveCalls: string[][] = [];
+  const liveCalls: WorkspacePackages[] = [];
   const self: Harness = {
     module,
     driveId,
@@ -93,8 +96,8 @@ async function harness(): Promise<Harness> {
         error: (m) => logs.push(`error ${m}`),
       },
       upgradeDeps: {
-        findLiveEnvironments: async (_ctx, names) => {
-          liveCalls.push([...names]);
+        findLiveEnvironments: async (_ctx, workspace) => {
+          liveCalls.push(workspace);
           if (self.live instanceof Error) throw self.live;
           return self.live;
         },
@@ -184,15 +187,18 @@ describe("adoptExisting", () => {
     ]);
     expect(s.activeChangeId).toBeNull();
     expect(s.liveVersion).toBeNull();
-    // Both projects' packages are looked for on the owner's environments.
-    expect(h.liveCalls).toEqual([["@vetra-apps/billing", "@vetra-apps/todo-app"]]);
+    // Both projects' packages are looked for on the owner's environments,
+    // with the stack's registry the launch will publish to (R25).
+    expect(h.liveCalls).toEqual([
+      { names: ["@vetra-apps/billing", "@vetra-apps/todo-app"], registries: ["https://registry.vetra.io"] },
+    ]);
     // Git: a repository on main, nothing committed or tagged until the first launch.
     expect(git(h.workdir, ["symbolic-ref", "--short", "HEAD"])).toBe("main");
     expect(git(h.workdir, ["tag", "--list"])).toBe("");
-    // R25: both projects publish to the stack's registry; nothing else in their config changed.
+    // The projects' files are untouched (R25 is solved at launch time).
     for (const p of ["todo-app", "billing"]) {
       const config = JSON.parse(fs.readFileSync(path.join(h.workdir, p, "powerhouse.config.json"), "utf-8"));
-      expect(config).toEqual({ studio: { port: 3000 }, packageRegistryUrl: "https://registry.vetra.io" });
+      expect(config).toEqual({ studio: { port: 3000 } });
     }
   });
 
@@ -378,30 +384,6 @@ describe("adoptExisting", () => {
     expect((await h.state()).changes.map((c) => c.kind)).toEqual(["BEFORE_VERSIONS"]);
   });
 
-  it("keeps a registry the Studio already names and never invents one off a known stack", async () => {
-    h.project("named", { registry: "https://registry.example.org" });
-    h.project("bare");
-    await h.session(["x"]);
-    await adoptExisting({ ...h.ctx, config: { ...h.ctx.config, cloudSwitchboardUrl: "https://switchboard.example.org" } });
-    const read = (p: string) =>
-      JSON.parse(fs.readFileSync(path.join(h.workdir, p, "powerhouse.config.json"), "utf-8")) as Record<string, unknown>;
-    expect(read("named").packageRegistryUrl).toBe("https://registry.example.org");
-    expect(read("bare").packageRegistryUrl).toBeUndefined();
-    expect(h.logs.some((l) => l.startsWith("warn") && l.includes("no package registry"))).toBe(true);
-    // PH_REGISTRY_URL set: nothing is written.
-    const other = await harness();
-    try {
-      other.project("todo");
-      await other.session(["x"]);
-      await adoptExisting({ ...other.ctx, env: { PH_REGISTRY_URL: "https://registry.vetra.io" } });
-      const config = JSON.parse(fs.readFileSync(path.join(other.workdir, "todo", "powerhouse.config.json"), "utf-8"));
-      expect(config.packageRegistryUrl).toBeUndefined();
-    } finally {
-      await other.module.reactor.kill().completed;
-      fs.rmSync(other.workdir, { recursive: true, force: true });
-    }
-  });
-
   it("a live check that couldn't run is tried again later, and the launch never guesses", async () => {
     h.project("todo-app");
     await h.session(["build a todo app"]);
@@ -440,6 +422,83 @@ describe("adoptExisting", () => {
     // Later polls within the retry window do nothing.
     expect(await poll(tctx)).toBeNull();
     expect(state.running).toBe(false);
+  });
+});
+
+describe("before an explicit launch", () => {
+  async function adoptedWithLive(): Promise<void> {
+    h.project("todo-app");
+    await h.session(["build a todo app"]);
+    h.live = [OLD_ENV];
+    await adoptExisting(h.ctx);
+  }
+
+  it("the adopted env is never touched while a change is built (no early live target)", async () => {
+    await adoptedWithLive();
+    const [id] = await h.products();
+    await h.module.client.execute(id, "main", [
+      a.startChange({ id: "c1", kind: "CHANGE", request: "add due dates", startedAt: NOW }),
+    ]);
+    const ensure = jest.fn(async () => ({
+      appId: "app-1",
+      productionEnvironmentId: "env-old",
+      slug: "bold-crow",
+      liveUrl: "https://bold-crow.vetra.io",
+    }));
+    const ctx = { ...h.ctx, deps: { ensureProduct: ensure } } as unknown as Parameters<typeof runProgress>[0];
+    await runProgress(ctx, { action: "title", text: "Due dates" });
+    await runProgress(ctx, { action: "plan", steps: [{ kind: "PLAN" }, { kind: "DATA" }] });
+    await runProgress(ctx, { action: "start", step: "PLAN" });
+    expect(await runProgress(ctx, { action: "done", step: "PLAN" })).toContain("Plan done.");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(ensure).not.toHaveBeenCalled();
+    expect((await h.state()).appId).toBeNull();
+  });
+
+  it("a READY change is not launched by itself: Version 1 waits for Make it live (X33)", async () => {
+    await adoptedWithLive();
+    const ready = { ...(await h.state()) };
+    ready.changes = [
+      ...ready.changes,
+      { ...ready.changes[0], id: "c1", kind: "CHANGE", status: "READY" },
+    ];
+    expect(autoLaunchCandidate(ready)).toBeNull();
+    // Without an address from before versions, the first launch stays automatic.
+    expect(autoLaunchCandidate({ ...ready, liveBeforeVersions: null })?.id).toBe("c1");
+  });
+
+  it("not signed in during the live check is the owner's missing OK, not an outage", async () => {
+    h.project("todo-app");
+    await h.session(["build a todo app"]);
+    h.live = new Error(NOT_AUTHENTICATED);
+    await adoptExisting(h.ctx);
+    const ensure = jest.fn(async () => ({ appId: "a", productionEnvironmentId: "e", slug: "s", liveUrl: "https://s.vetra.io" }));
+    await expect(ensureProductTarget(h.ctx, await h.state(), "Todo app", ensure)).rejects.toMatchObject({
+      code: "DELEGATION_MISSING",
+    });
+    expect(ensure).not.toHaveBeenCalled();
+  });
+
+  it("one env that also runs other packages is ambiguous: a new address (E10)", async () => {
+    h.project("todo-app");
+    await h.session(["build a todo app"]);
+    h.live = [{ ...OLD_ENV, mismatch: "it also runs @acme/other" }];
+    await adoptExisting(h.ctx);
+    const s = await h.state();
+    expect(s.liveBeforeVersions).toBeNull();
+    expect(readUpgradeRecord(h.workdir)).toMatchObject({ live: "many", candidates: ["env-old"] });
+  });
+
+  it("the upgrade runs only in a Studio", async () => {
+    h.project("todo-app");
+    await h.session(["build a todo app"]);
+    const ctx = { ...h.ctx, config: { ...h.ctx.config, environmentId: undefined } };
+    const state = existingStudioUpgradeTrigger.state!() as Record<string, unknown>;
+    const poll = existingStudioUpgradeTrigger.poll as (t: unknown) => Promise<unknown>;
+    await poll({ state, commandContext: ctx, context: {} });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(state.started).toBe(false);
+    expect(await h.products()).toEqual([]);
   });
 });
 

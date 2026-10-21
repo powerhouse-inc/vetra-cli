@@ -38,6 +38,7 @@ import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
 import { LiveSurface } from "../change/LiveSurface.js";
+import { ReadyBar } from "../change/ReadyBar.js";
 import { startChange } from "../change/startChange.js";
 import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
 import { usePublishPermission } from "../permission/usePublishPermission.js";
@@ -326,6 +327,22 @@ function StudioPage({
     [drive, productId],
   );
 
+  // X33: an existing Studio's address from before versions gets Version 1
+  // only on the customer's Make it live (no automatic first launch).
+  const firstVersionBar =
+    product?.liveBeforeVersions &&
+    product.liveVersion === null &&
+    change &&
+    (change.status === "READY" || change.status === "LAUNCHING") ? (
+      <ReadyBar
+        product={product}
+        productId={productId}
+        change={change}
+        requestedBy={signIn.name ?? "you"}
+        onKeepChanging={NO_FOCUS}
+      />
+    ) : null;
+
   const story =
     product && change ? (
       <StoryPane
@@ -454,6 +471,11 @@ function StudioPage({
                 <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
                   {detail}
                 </div>
+              </div>
+            ) : firstVersionBar ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                {firstVersionBar}
+                {previewPane}
               </div>
             ) : (
               previewPane

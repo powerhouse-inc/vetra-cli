@@ -15,11 +15,11 @@
  *   workspace's packages, `SET_LIVE_BEFORE_VERSIONS`: the page shows it as
  *   "Live (set up before versions)" until Version 1.
  *
- * The upgrade only adds: the product document, the workspace git repository
- * when there is none (`ensureWorkspaceRepo`, no tags until the first launch)
- * and, where nothing names one, the package registry the launch publishes to
- * (Ruling R25). Conversations, specs, projects and environments are never
- * changed. A failure writes nothing to the drive and leaves today's view; the
+ * The upgrade only adds: the product document and the workspace git
+ * repository when there is none (`ensureWorkspaceRepo`, no tags until the
+ * first launch). Conversations, specs, projects (their files included) and
+ * environments are never changed; a Studio without a named registry publishes
+ * to its stack's at launch time (Ruling R25, `resolveLaunchRegistryUrl`). A failure writes nothing to the drive and leaves today's view; the
  * reason is logged and the next start tries again.
  *
  * The first launch makes Version 1 through `ensureStudioProduct`. All reactor
@@ -45,8 +45,12 @@ import type { Config } from "../framework.js";
 import { defineTrigger } from "../framework.js";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
 import { listReactorProjects } from "../helpers/project.js";
-import { findRegistryUrl } from "../cloud/registry-url.js";
-import { listMyEnvironments, type ReadContext } from "../cloud/environments-read.js";
+import { resolveLaunchRegistryUrl } from "../cloud/registry-url.js";
+import {
+  NOT_AUTHENTICATED,
+  listMyEnvironments,
+  type ReadContext,
+} from "../cloud/environments-read.js";
 import { loadEnvironmentState } from "../cloud/environments-write.js";
 import { ensureWorkspaceRepo } from "../launch/git-versions.js";
 import { LaunchError } from "../launch/errors.js";
@@ -70,6 +74,12 @@ export const PROJECT_DOCUMENT_TYPES: ReadonlySet<string> = new Set([
   "powerhouse/subgraph",
   "powerhouse/app",
 ]);
+/**
+ * The drive file name of a product document the upgrade has created but not
+ * yet filled; the Studio page shows today's view for it (same literal in
+ * vetra-app `startProduct.ts`).
+ */
+export const UPGRADING_PRODUCT_NAME = "Product (upgrading)";
 /** The request of the BEFORE_VERSIONS change (the chapter's heading words). */
 export const BEFORE_VERSIONS_REQUEST = "Before versions";
 /** The drive name every Studio starts with; not a product name. */
@@ -80,14 +90,6 @@ export const FALLBACK_NAME = "My product";
 export const IDEA_MAX = 500;
 /** Environment statuses that no longer serve anything. */
 const GONE_STATUSES = new Set(["ARCHIVED", "DESTROYED", "TERMINATING", "DRAFT"]);
-/**
- * Ruling R25: where a Studio on a known stack publishes when nothing names a
- * registry (the older prod Studios have no PH_REGISTRY_URL). Keyed by the
- * cloud switchboard's host.
- */
-export const STACK_REGISTRIES: Readonly<Record<string, string>> = {
-  [`switchboard.${CLOUD_BASE_DOMAIN}`]: `https://registry.${CLOUD_BASE_DOMAIN}`,
-};
 /** The record of what the upgrade did, next to the launch record. */
 export const UPGRADE_RECORD = path.join(".ph", "upgrade-existing.json");
 /** How often a live check that couldn't run is tried again. */
@@ -101,13 +103,24 @@ export const LIVE_RETRY_MS = 10 * 60_000;
 export interface LiveCandidate {
   environmentId: string;
   url: string;
+  /** Why it can't be adopted as it is (other packages, another registry). */
+  mismatch?: string;
+}
+
+/** The workspace's packages and the registries they publish to (when known). */
+export interface WorkspacePackages {
+  names: string[];
+  registries: string[];
 }
 
 export interface UpgradeDeps {
-  ensureWorkspaceRepo: (workdir: string) => Promise<void>;
+  ensureWorkspaceRepo: (
+    workdir: string,
+    opts?: { log?: { info?: (msg: string) => void } },
+  ) => Promise<void>;
   listProjects: (workdir: string) => Promise<string[]>;
-  /** The owner's environments (not Studios) that run any of `packageNames`. */
-  findLiveEnvironments: (ctx: UpgradeContext, packageNames: string[]) => Promise<LiveCandidate[]>;
+  /** The owner's environments (not Studios) that run any of the workspace's packages. */
+  findLiveEnvironments: (ctx: UpgradeContext, workspace: WorkspacePackages) => Promise<LiveCandidate[]>;
   newId: () => string;
 }
 
@@ -343,30 +356,64 @@ export function environmentUrl(state: VetraCloudEnvironmentGlobalState): string 
   return connect ? `https://${sub}-${connect.prefix}.${base}` : `https://${sub}.${base}`;
 }
 
+/** Packages the platform installs itself; they don't make an env someone else's. */
+function isSystemPackage(name: string): boolean {
+  return name.startsWith("@powerhousedao/");
+}
+
+function sameRegistry(x: string, y: string): boolean {
+  return x.trim().replace(/\/+$/, "") === y.trim().replace(/\/+$/, "");
+}
+
+/** Why `state` can't simply become the product's environment, or null. */
+function mismatchOf(state: VetraCloudEnvironmentGlobalState, workspace: WorkspacePackages): string | null {
+  const wanted = new Set(workspace.names);
+  const others = state.packages.filter((p) => !isSystemPackage(p.name) && !wanted.has(p.name));
+  if (others.length > 0) return `it also runs ${others.map((p) => p.name).join(", ")}`;
+  if (workspace.registries.length > 0) {
+    const foreign = state.packages.filter(
+      (p) => wanted.has(p.name) && p.registry && !workspace.registries.some((r) => sameRegistry(r, p.registry)),
+    );
+    if (foreign.length > 0) return `${foreign.map((p) => p.name).join(", ")} comes from another registry`;
+  }
+  return null;
+}
+
 /**
  * The owner's environments that run any of the workspace's packages: never
- * the Studio itself or another Studio, never one that is gone. Throws when
- * the cloud can't be read (not signed in, offline): the caller decides later.
+ * the Studio itself or another Studio, never one that is gone. One that also
+ * runs other packages, or the workspace's from another registry, is listed
+ * with its `mismatch` (it makes the choice ambiguous). An environment whose
+ * state can't be loaded is skipped. Throws when the list itself can't be read
+ * (not signed in, offline): the caller decides later.
  */
 export async function findOwnerEnvironmentsRunning(
   ctx: UpgradeContext,
-  packageNames: string[],
+  workspace: WorkspacePackages,
 ): Promise<LiveCandidate[]> {
-  if (packageNames.length === 0) return [];
+  if (workspace.names.length === 0) return [];
   const read = ctx as unknown as ReadContext;
-  const wanted = new Set(packageNames);
+  const wanted = new Set(workspace.names);
   const studioId = ctx.config.environmentId?.trim() ?? null;
   const out: LiveCandidate[] = [];
   for (const env of await listMyEnvironments(read, "MINE")) {
     if (env.id === studioId) continue;
     if (env.status && GONE_STATUSES.has(env.status)) continue;
-    const state = await loadEnvironmentState(read, env.id);
+    let state: VetraCloudEnvironmentGlobalState;
+    try {
+      state = await loadEnvironmentState(read, env.id);
+    } catch (err) {
+      ctx.log?.warn?.(`${TAG} skipped environment ${env.id}: its state couldn't be read (${message(err)})`);
+      continue;
+    }
     if (GONE_STATUSES.has(state.status)) continue;
     const installed = state.packages.map((p) => p.name);
     if (isStudioEnvironment(installed)) continue;
     if (!installed.some((n) => wanted.has(n))) continue;
     const url = environmentUrl(state);
-    if (url) out.push({ environmentId: env.id, url });
+    if (!url) continue;
+    const mismatch = mismatchOf(state, workspace);
+    out.push(mismatch ? { environmentId: env.id, url, mismatch } : { environmentId: env.id, url });
   }
   return out;
 }
@@ -376,66 +423,40 @@ type LiveFinding =
   | { check: "none" }
   | { check: "many"; ids: string[] };
 
-async function findLive(ctx: UpgradeContext, projects: string[]): Promise<LiveFinding> {
-  const names = workspacePackages(ctx.workdir, projects);
-  const found = await depsOf(ctx).findLiveEnvironments(ctx, names);
-  if (found.length === 1) return { check: "one", env: found[0] };
-  if (found.length === 0) return { check: "none" };
-  return { check: "many", ids: found.map((e) => e.environmentId) };
-}
-
-/* ------------------------------------------------------------------------ */
-/* Registry (Ruling R25)                                                     */
-/* ------------------------------------------------------------------------ */
-
-/** The registry of the Studio's stack, or null when the stack isn't known. */
-export function stackRegistry(config: UpgradeContext["config"]): string | null {
-  const url = config.cloudSwitchboardUrl?.trim();
-  if (!url) return null;
-  try {
-    return STACK_REGISTRIES[new URL(url).hostname] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Give every project the registry the launch publishes to when nothing names
- * one (flag, PH_REGISTRY_URL or its powerhouse.config.json): adds
- * `packageRegistryUrl` to that project's config, nothing else. Returns the
- * projects it set.
- */
-export function ensureLaunchRegistry(ctx: UpgradeContext, projects: string[]): string[] {
-  const set: string[] = [];
-  const missing = projects.filter(
-    (p) =>
-      !findRegistryUrl({
-        registry: ctx.config.registryUrl,
-        projectPath: path.join(ctx.workdir, p),
-        env: ctx.env,
-      }),
-  );
-  if (missing.length === 0) return set;
-  const registry = stackRegistry(ctx.config);
-  if (!registry) {
-    ctx.log?.warn?.(
-      `${TAG} no package registry is set for ${missing.join(", ")} and this Studio's stack has no known one; the first launch will say so`,
-    );
-    return set;
-  }
-  for (const p of missing) {
-    const file = path.join(ctx.workdir, p, "powerhouse.config.json");
+/** Where each project publishes at launch, when that can be told now. */
+function workspaceRegistries(ctx: UpgradeContext, projects: string[]): string[] {
+  const out = new Set<string>();
+  for (const p of projects) {
     try {
-      const config = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>;
-      config.packageRegistryUrl = registry;
-      fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
-      set.push(p);
-    } catch (err) {
-      ctx.log?.warn?.(`${TAG} couldn't set the package registry for ${p}: ${message(err)}`);
+      out.add(
+        resolveLaunchRegistryUrl({
+          registry: ctx.config.registryUrl,
+          projectPath: path.join(ctx.workdir, p),
+          env: ctx.env,
+          environmentId: ctx.config.environmentId,
+          cloudSwitchboardUrl: ctx.config.cloudSwitchboardUrl,
+        }),
+      );
+    } catch {
+      // Not determinable: the registry isn't compared.
     }
   }
-  if (set.length > 0) ctx.log?.info?.(`${TAG} package registry ${registry} set for ${set.join(", ")}`);
-  return set;
+  return [...out];
+}
+
+async function findLive(ctx: UpgradeContext, projects: string[]): Promise<LiveFinding> {
+  const workspace = {
+    names: workspacePackages(ctx.workdir, projects),
+    registries: workspaceRegistries(ctx, projects),
+  };
+  const found = await depsOf(ctx).findLiveEnvironments(ctx, workspace);
+  for (const e of found) {
+    if (e.mismatch) ctx.log?.info?.(`${TAG} environment ${e.environmentId} isn't adopted as it is: ${e.mismatch}`);
+  }
+  if (found.length === 0) return { check: "none" };
+  // Exactly one, running only this workspace: anything else is ambiguous (E10).
+  if (found.length === 1 && !found[0].mismatch) return { check: "one", env: found[0] };
+  return { check: "many", ids: found.map((e) => e.environmentId) };
 }
 
 /* ------------------------------------------------------------------------ */
@@ -454,7 +475,7 @@ function logLive(ctx: UpgradeContext, live: LiveFinding | null): void {
     );
   } else if (live.check === "many") {
     ctx.log?.info?.(
-      `${TAG} several environments run this workspace (${live.ids.join(", ")}); Version 1 gets a new address and they stay as they are`,
+      `${TAG} no single environment runs only this workspace (${live.ids.join(", ")}); Version 1 gets a new address and they stay as they are`,
     );
   }
 }
@@ -494,8 +515,7 @@ export async function adoptExisting(ctx: UpgradeContext): Promise<"created" | "s
   if (projects.length === 0 && projectDocuments === 0 && sessions.length === 0) return "skipped";
 
   // Everything the launch needs first; a failure here leaves today's view.
-  await d.ensureWorkspaceRepo(ctx.workdir);
-  ensureLaunchRegistry(ctx, projects);
+  await d.ensureWorkspaceRepo(ctx.workdir, { log: ctx.log });
 
   let live: LiveFinding | null = null;
   try {
@@ -530,11 +550,19 @@ export async function adoptExisting(ctx: UpgradeContext): Promise<"created" | "s
 
   let productId = productNode?.id;
   if (!productId) {
+    // Created under a marker name: until its operations are in, the page
+    // keeps today's view for it (vetra-app `ideaStartStatus`).
     const doc = withSignaturePolicy(StudioProductV1.utils.createDocument(), "legacy");
-    doc.header.name = name;
+    doc.header.name = UPGRADING_PRODUCT_NAME;
     productId = (await client.createDocumentInDrive(drive.driveId, doc)).header.id;
   }
   await dispatchProduct(ctx, actions);
+  try {
+    const { updateNode } = await import("@powerhousedao/shared/document-drive");
+    await client.execute(drive.driveId, "main", [updateNode({ id: productId, name })]);
+  } catch (err) {
+    ctx.log?.warn?.(`${TAG} the product file keeps its upgrade name: ${message(err)}`);
+  }
 
   writeUpgradeRecord(ctx, {
     productId,
@@ -566,7 +594,7 @@ function preflight(actions: Action[], initialised: boolean): string | null {
 }
 
 /** True for a product made by `adoptExisting` that has no version yet. */
-function adoptedWithoutVersions(state: StudioProductState): boolean {
+export function adoptedWithoutVersions(state: StudioProductState): boolean {
   return (
     state.liveVersion == null &&
     state.versions.length === 0 &&
@@ -618,11 +646,12 @@ export async function adoptionFor(
   try {
     live = await findLive(ctx, await depsOf(ctx).listProjects(ctx.workdir));
   } catch (err) {
-    throw new LaunchError(
-      "CLOUD_UNAVAILABLE",
-      REASONS.ensureStudioProduct,
-      `checking which environment runs this workspace: ${message(err)}`,
-    );
+    const detail = `checking which environment runs this workspace: ${message(err)}`;
+    // Not signed in: the owner's OK is missing (F7), not a cloud outage.
+    if (message(err) === NOT_AUTHENTICATED) {
+      throw new LaunchError("DELEGATION_MISSING", "your Studio needs your OK to publish", detail);
+    }
+    throw new LaunchError("CLOUD_UNAVAILABLE", REASONS.ensureStudioProduct, detail);
   }
   logLive(ctx, live);
   if (live.check !== "one") return null;
@@ -724,8 +753,9 @@ export const existingStudioUpgradeTrigger = defineTrigger<UpgradeState>({
   async poll(tctx) {
     const state = tctx.state;
     const ctx = tctx.commandContext as unknown as UpgradeContext;
-    // Only with a running reactor (never boots one on a one-shot run).
-    if (!ctx.folders || state.running) return null;
+    // Only in a Studio (an environment id), with a running reactor (never
+    // boots one on a one-shot run).
+    if (!ctx.folders || !ctx.config?.environmentId || state.running) return null;
     const nowMs = Date.now();
     if (state.started && nowMs - state.lastLiveTryAt < LIVE_RETRY_MS) return null;
     const first = !state.started;

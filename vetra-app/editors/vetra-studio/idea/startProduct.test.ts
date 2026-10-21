@@ -7,6 +7,7 @@ import {
   startProduct,
   type StartProductDeps,
   type StartProductDrive,
+  UPGRADING_PRODUCT_NAME,
 } from "./startProduct.js";
 
 const PRODUCT_TYPE = "vetra/studio-product";
@@ -299,6 +300,16 @@ describe("ideaStartStatus", () => {
     fresh.add("s", CHAT_TYPE, { messages: [] });
     fresh.add("p", PRODUCT_TYPE, { changes: [] });
     expect(ideaStartStatus(fresh.drive, fresh.documents())).toBe("idea");
+    // A workspace-only Studio (nothing older in the drive): the upgrade's
+    // file name keeps today's page.
+    const workspaceOnly = store();
+    workspaceOnly.add("p", PRODUCT_TYPE, { changes: [] });
+    workspaceOnly.drive.state.global.nodes.forEach((n) => {
+      if (n.id === "p") (n as { name: string }).name = UPGRADING_PRODUCT_NAME;
+    });
+    expect(
+      ideaStartStatus(workspaceOnly.drive, workspaceOnly.documents()),
+    ).toBe("legacy");
     // Once adopted, the product page.
     s.docs.set("p", {
       idea: "old work",

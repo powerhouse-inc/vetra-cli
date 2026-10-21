@@ -133,7 +133,10 @@ async function absorbProjectRepos(workdir: string): Promise<void> {
  * guessed at. A git that can't read the repository at all fails with its own
  * error, not as a wrong branch.
  */
-export async function ensureWorkspaceRepo(workdir: string): Promise<void> {
+export async function ensureWorkspaceRepo(
+  workdir: string,
+  opts: { log?: { info?: (msg: string) => void } } = {},
+): Promise<void> {
   if (!fs.existsSync(path.join(workdir, ".git"))) {
     await git(workdir, ["init", "-q", "-b", MAIN_BRANCH]);
   }
@@ -149,6 +152,7 @@ export async function ensureWorkspaceRepo(workdir: string): Promise<void> {
   if (current && !mainExists) {
     if (await headSha(workdir)) {
       await git(workdir, ["branch", "-m", current, MAIN_BRANCH]);
+      opts.log?.info?.(`[git] workspace branch "${current}" renamed to "${MAIN_BRANCH}"`);
     } else {
       await git(workdir, ["symbolic-ref", "HEAD", `refs/heads/${MAIN_BRANCH}`]);
     }

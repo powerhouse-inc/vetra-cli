@@ -205,7 +205,11 @@ export function StoryPane({
       </div>
       {change.status === "CLOSED" && onStartChange ? (
         <div className="shrink-0 border-t border-border bg-card px-3 py-2">
-          <ChangeRequest product={product} onStart={onStartChange} />
+          <ChangeRequest
+            product={product}
+            onStart={onStartChange}
+            prefill={null}
+          />
         </div>
       ) : (
         <SteerBox
