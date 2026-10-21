@@ -50,14 +50,15 @@ export function PublishPermissionModal({
   studioId: string;
 }) {
   const signIn = useStudioSignIn();
-  const { state, delegated, pending, waiting, allow, reopen } =
+  const { state, delegated, pending, waiting, allow, reopen, dismiss } =
     usePublishPermission(productId);
   const [asked, setAsked] = useState(() => askedBefore(studioId));
 
   const close = useCallback(() => {
+    dismiss();
     markAsked(studioId);
     setAsked(true);
-  }, [studioId]);
+  }, [studioId, dismiss]);
 
   // Approved (now or before this visit): the ask is done for this Studio.
   useEffect(() => {

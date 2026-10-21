@@ -17,6 +17,7 @@ const hoisted = vi.hoisted(() => ({
     waiting: false,
     allow: vi.fn(() => Promise.resolve(true)),
     reopen: vi.fn(() => Promise.resolve()),
+    dismiss: vi.fn(),
   },
 }));
 
@@ -46,6 +47,7 @@ beforeEach(() => {
     waiting: false,
     allow: vi.fn(() => Promise.resolve(true)),
     reopen: vi.fn(() => Promise.resolve()),
+    dismiss: vi.fn(),
   };
 });
 
@@ -140,6 +142,8 @@ describe("PublishPermissionModal", () => {
 
     click(button(container, "Not now"));
     expect(dialog(container)).toBeNull();
+    // A later approval is not recorded as this answer.
+    expect(hoisted.permission.dismiss).toHaveBeenCalledTimes(1);
   });
 
   it("keeps Allow disabled while a confirmation is being recorded", () => {

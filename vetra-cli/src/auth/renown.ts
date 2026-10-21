@@ -33,9 +33,18 @@ interface PendingLogin {
   startedAt: number;
 }
 
-/** The pending login as the Studio sees it (the session id stays here). */
-function shownLogin(pending: PendingLogin): { loginUrl: string; startedAt: number } {
-  return { loginUrl: pending.loginUrl, startedAt: pending.startedAt };
+/** The pending login as the Studio sees it (the session id stays here).
+ * `ageMs` is measured on this clock at response time, so the browser can
+ * compare it with the Renown lifetime whatever its own clock says. */
+function shownLogin(
+  pending: PendingLogin,
+  now = Date.now(),
+): { loginUrl: string; startedAt: number; ageMs: number } {
+  return {
+    loginUrl: pending.loginUrl,
+    startedAt: pending.startedAt,
+    ageMs: Math.max(0, now - pending.startedAt),
+  };
 }
 
 interface CloudAuthEntry {
@@ -102,9 +111,10 @@ export function getRenown(workdir: string, renownUrl: string): Promise<IRenown> 
 export interface AuthState {
   authenticated: boolean;
   address?: string;
-  /** Set while a console login is awaiting browser approval; `startedAt`
-   * (epoch ms) lets the Studio start a fresh one once Renown has dropped it. */
-  pending?: { loginUrl: string; startedAt: number };
+  /** Set while a console login is awaiting browser approval. `startedAt` is
+   * epoch ms on the daemon's clock; `ageMs` (how long ago, at response time)
+   * lets the Studio start a fresh login once Renown has dropped this one. */
+  pending?: { loginUrl: string; startedAt: number; ageMs: number };
   /** Why the last login was refused (e.g. `not-owner`). */
   error?: string;
 }
@@ -123,8 +133,9 @@ export async function startAuth(
     return { authenticated: true, address: renown.user.address };
   }
   const { url, sessionId } = startLogin(renown);
-  entry.pending = { sessionId, loginUrl: url, startedAt: Date.now() };
-  return { authenticated: false, pending: shownLogin(entry.pending) };
+  const startedAt = Date.now();
+  entry.pending = { sessionId, loginUrl: url, startedAt };
+  return { authenticated: false, pending: shownLogin(entry.pending, startedAt) };
 }
 
 /** Current auth + pending-login snapshot for the studio panel. */

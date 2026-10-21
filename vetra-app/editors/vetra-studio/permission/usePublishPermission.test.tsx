@@ -11,6 +11,7 @@ import {
 const hoisted = vi.hoisted(() => ({
   auth: {} as AgentAuth,
   dispatchActions: vi.fn(() => Promise.resolve()),
+  launchPermission: null as string | null,
 }));
 
 vi.mock("../hooks/useAgentAuth.js", () => ({
@@ -19,7 +20,15 @@ vi.mock("../hooks/useAgentAuth.js", () => ({
 
 vi.mock("@powerhousedao/reactor-browser", () => ({
   dispatchActions: hoisted.dispatchActions,
-  useDocumentSafe: () => ({ status: "loading" }),
+  useDocumentSafe: () =>
+    hoisted.launchPermission === null
+      ? { status: "loading" }
+      : {
+          status: "success",
+          data: {
+            state: { global: { launchPermission: hoisted.launchPermission } },
+          },
+        },
 }));
 
 vi.mock("document-models/studio-product", () => ({
@@ -29,7 +38,7 @@ vi.mock("document-models/studio-product", () => ({
       input,
     }),
   },
-  isStudioProductDocument: () => false,
+  isStudioProductDocument: () => true,
 }));
 
 function authWith(patch: Partial<AgentAuth>): AgentAuth {
@@ -54,6 +63,7 @@ function Probe() {
 beforeEach(() => {
   permission = undefined;
   hoisted.dispatchActions.mockClear();
+  hoisted.launchPermission = null;
 });
 
 describe("usePublishPermission waiting", () => {
@@ -88,5 +98,46 @@ describe("usePublishPermission waiting", () => {
       { type: "SET_LAUNCH_PERMISSION", input: { state: "GRANTED" } },
       "product-1",
     );
+  });
+
+  it("records the OK once when an UNKNOWN product is approved after reopen", async () => {
+    hoisted.launchPermission = "UNKNOWN";
+    hoisted.auth = authWith({ pending: true });
+    const container = render(<Probe />);
+
+    await act(async () => {
+      await permission?.reopen();
+    });
+
+    hoisted.auth = authWith({ authenticated: true });
+    rerender(container, <Probe />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rerender(container, <Probe />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.dispatchActions).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not record an approval that lands after Not now", async () => {
+    hoisted.launchPermission = "MISSING";
+    hoisted.auth = authWith({ pending: true });
+    const container = render(<Probe />);
+
+    await act(async () => {
+      await permission?.reopen();
+    });
+    act(() => permission?.dismiss());
+
+    hoisted.auth = authWith({ authenticated: true });
+    rerender(container, <Probe />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.dispatchActions).not.toHaveBeenCalled();
   });
 });

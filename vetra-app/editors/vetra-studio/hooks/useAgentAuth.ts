@@ -26,17 +26,14 @@ import {
 export const RENOWN_LOGIN_LIFETIME_MS = 5 * 60 * 1000;
 
 /** The daemon's pending login, unless it is older than the Renown lifetime.
- * A daemon that doesn't report `startedAt` keeps its login as current. */
+ * The age is the daemon's own measure (`ageMs`), never this browser's clock;
+ * a daemon that doesn't report it keeps its login as current. */
 function currentLogin(
   state: AuthState | null,
-  now: number,
 ): { loginUrl: string } | undefined {
   const pending = state?.pending;
   if (!pending || state.authenticated) return undefined;
-  if (
-    pending.startedAt !== undefined &&
-    now - pending.startedAt > RENOWN_LOGIN_LIFETIME_MS
-  ) {
+  if (pending.ageMs !== undefined && pending.ageMs > RENOWN_LOGIN_LIFETIME_MS) {
     return undefined;
   }
   return pending;
@@ -73,7 +70,7 @@ export function useAgentAuth(): AgentAuth {
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const apply = (next: AuthState) => {
-      pendingRef.current = Boolean(currentLogin(next, Date.now()));
+      pendingRef.current = Boolean(currentLogin(next));
       if (!signal.aborted) setState(next);
     };
 
@@ -100,7 +97,7 @@ export function useAgentAuth(): AgentAuth {
   }, []);
 
   const apply = (next: AuthState) => {
-    pendingRef.current = Boolean(currentLogin(next, Date.now()));
+    pendingRef.current = Boolean(currentLogin(next));
     setState(next);
   };
 
@@ -130,7 +127,7 @@ export function useAgentAuth(): AgentAuth {
   };
 
   const reopen = async () => {
-    const login = currentLogin(state, Date.now());
+    const login = currentLogin(state);
     if (!login) return authorize();
     // Inside the click gesture, like `authorize`, so it isn't popup-blocked.
     window.open(login.loginUrl, "_blank", "noopener,noreferrer");
@@ -152,7 +149,7 @@ export function useAgentAuth(): AgentAuth {
     state,
     busy,
     authenticated: state?.authenticated ?? false,
-    pending: Boolean(currentLogin(state, Date.now())),
+    pending: Boolean(currentLogin(state)),
     authorize,
     reopen,
     disconnect,

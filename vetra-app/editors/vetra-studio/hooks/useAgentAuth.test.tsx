@@ -50,7 +50,7 @@ beforeEach(() => {
   hoisted.status = { authenticated: false };
   hoisted.started = {
     authenticated: false,
-    pending: { loginUrl: FRESH_URL, startedAt: Date.now() },
+    pending: { loginUrl: FRESH_URL, startedAt: Date.now(), ageMs: 0 },
   };
   hoisted.startAuth.mockReset();
   hoisted.startAuth.mockImplementation(() => Promise.resolve(hoisted.started));
@@ -66,7 +66,7 @@ describe("useAgentAuth reopen", () => {
   it("reopens the pending Renown login without starting a new one", async () => {
     hoisted.status = {
       authenticated: false,
-      pending: { loginUrl: PENDING_URL, startedAt: Date.now() },
+      pending: { loginUrl: PENDING_URL, startedAt: Date.now(), ageMs: 2000 },
     };
     const current = await mount();
     expect(current.pending).toBe(true);
@@ -100,7 +100,8 @@ describe("useAgentAuth reopen", () => {
       authenticated: false,
       pending: {
         loginUrl: PENDING_URL,
-        startedAt: Date.now() - RENOWN_LOGIN_LIFETIME_MS - 1000,
+        startedAt: Date.now(),
+        ageMs: RENOWN_LOGIN_LIFETIME_MS + 1000,
       },
     };
     const current = await mount();
@@ -112,5 +113,28 @@ describe("useAgentAuth reopen", () => {
 
     expect(hoisted.startAuth).toHaveBeenCalledTimes(1);
     expect(popup.location.href).toBe(FRESH_URL);
+  });
+
+  it("judges the age by the daemon, not by a skewed browser clock", async () => {
+    const daemonNow = Date.now();
+    hoisted.status = {
+      authenticated: false,
+      pending: { loginUrl: PENDING_URL, startedAt: daemonNow, ageMs: 2000 },
+    };
+    // The browser runs an hour ahead of the daemon.
+    vi.spyOn(Date, "now").mockReturnValue(daemonNow + 60 * 60 * 1000);
+    const current = await mount();
+    expect(current.pending).toBe(true);
+
+    await act(async () => {
+      await current.reopen();
+    });
+
+    expect(window.open).toHaveBeenCalledWith(
+      PENDING_URL,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(hoisted.startAuth).not.toHaveBeenCalled();
   });
 });

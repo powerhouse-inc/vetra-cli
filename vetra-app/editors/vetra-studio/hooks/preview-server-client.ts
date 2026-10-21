@@ -509,12 +509,13 @@ export async function fetchExportStatus(
 }
 
 /** Renown auth state served by the daemon's /auth endpoints. `pending`
- * is set while a Renown console login is awaiting browser approval;
- * `startedAt` (epoch ms) is when the daemon started it (older daemons omit it). */
+ * is set while a Renown console login is awaiting browser approval; `ageMs`
+ * is how old it is by the daemon's clock at response time (older daemons
+ * omit it, and `startedAt`, epoch ms on the daemon's clock). */
 export type AuthState = {
   authenticated: boolean;
   address?: string;
-  pending?: { loginUrl: string; startedAt?: number };
+  pending?: { loginUrl: string; startedAt?: number; ageMs?: number };
 };
 
 /** Current Renown auth state (read-only; does not advance the login). */
