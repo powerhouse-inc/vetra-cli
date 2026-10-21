@@ -2,7 +2,14 @@
  * The account menu, top right of the Studio page (spec §5.3, §5.6): who is
  * signed in, Settings, and sign in / sign out.
  */
+import { useT } from "../i18n/useT.js";
 import { useEffect, useRef, useState } from "react";
+
+/** Labels are always in their own language. */
+const LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "de", label: "Deutsch" },
+] as const;
 
 export function AccountMenu({
   name,
@@ -17,6 +24,7 @@ export function AccountMenu({
   onSignOut: () => void;
   onOpenSettings: () => void;
 }) {
+  const { t, language, setLanguage } = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -49,7 +57,7 @@ export function AccountMenu({
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        aria-label="Account"
+        aria-label={t("account.label")}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
@@ -62,21 +70,48 @@ export function AccountMenu({
           {initial || "·"}
         </span>
         <span className="max-w-[10rem] truncate">
-          {hasUser && name ? name : "Account"}
+          {hasUser && name ? name : t("account.label")}
         </span>
       </button>
       {open ? (
         <div
           role="menu"
-          aria-label="Account"
+          aria-label={t("account.label")}
           className="absolute right-0 top-full z-40 mt-1 min-w-[10rem] rounded-lg border border-border bg-card py-1 text-sm shadow-lg"
         >
-          <MenuItem onSelect={() => choose(onOpenSettings)}>Settings</MenuItem>
+          <MenuItem onSelect={() => choose(onOpenSettings)}>
+            {t("account.settings")}
+          </MenuItem>
           {hasUser ? (
-            <MenuItem onSelect={() => choose(onSignOut)}>Sign out</MenuItem>
+            <MenuItem onSelect={() => choose(onSignOut)}>
+              {t("account.signOut")}
+            </MenuItem>
           ) : (
-            <MenuItem onSelect={() => choose(onSignIn)}>Sign in</MenuItem>
+            <MenuItem onSelect={() => choose(onSignIn)}>
+              {t("account.signIn")}
+            </MenuItem>
           )}
+          <div
+            role="group"
+            aria-label={t("account.language")}
+            className="mt-1 border-t border-border pt-1"
+          >
+            <div className="px-3 py-1 text-xs text-muted-foreground">
+              {t("account.language")}
+            </div>
+            {LANGUAGES.map(({ code, label }) => (
+              <button
+                key={code}
+                type="button"
+                role="menuitemradio"
+                aria-checked={language === code}
+                onClick={() => choose(() => setLanguage(code))}
+                className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-accent"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
