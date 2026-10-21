@@ -1,4 +1,7 @@
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { MemoryKeyStorage, RenownCryptoBuilder } from "@renown/sdk/node";
 
@@ -139,7 +142,11 @@ describe("bearer is bound to this Studio (aud)", () => {
   it("caps Renown lookups per minute; a flood of fresh tokens is refused", async () => {
     let t = 1_000_000;
     const delegation = jest.fn(async () => true);
-    const authorize = authorizer(delegation, { lookupsPerMinute: 2, now: () => t });
+    const authorize = authorizer(delegation, {
+      lookupsPerMinute: 2,
+      lookupsPerClientPerMinute: 2,
+      now: () => t,
+    });
     const tokens = await Promise.all([mintToken(OWNER), mintToken(OWNER), mintToken(OWNER)]);
     const results = [];
     for (const tok of tokens) results.push(await authorize(req({ authorization: `Bearer ${tok}` }), null));
@@ -251,5 +258,148 @@ describe("isLocalRequest", () => {
     expect(isLocalRequest(req({ origin: "http://localhost:8090" }))).toBe(true);
     expect(isLocalRequest(req({ origin: "https://evil.example" }))).toBe(false);
     expect(isLocalRequest(req({ origin: "null" }))).toBe(false);
+  });
+});
+
+describe("trusted keys: kept across restarts, per-client lookup shares, evicted on refusal", () => {
+  const saved = process.env.ADMINS;
+  let errorSpy: ReturnType<typeof jest.spyOn>;
+  let dir: string;
+  let store: string;
+  beforeEach(() => {
+    process.env.ADMINS = OWNER;
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    dir = mkdtempSync(join(tmpdir(), "vetra-trusted-"));
+    store = join(dir, ".ph", "preview-trusted-keys.json");
+  });
+  afterEach(() => {
+    errorSpy.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+    if (saved === undefined) delete process.env.ADMINS;
+    else process.env.ADMINS = saved;
+  });
+
+  async function keyFor(address: string) {
+    const crypto = await new RenownCryptoBuilder()
+      .withKeyPairStorage(new MemoryKeyStorage())
+      .build();
+    return { did: crypto.did, mint: () => crypto.getBearerToken(address, { expiresIn: 600, aud: STUDIO }) };
+  }
+
+  /** A request through the embedded proxy from `client`. */
+  function from(client: string, token: string, spoofed?: string): IncomingMessage {
+    return req({
+      authorization: `Bearer ${token}`,
+      "x-forwarded-for": spoofed ? `${spoofed}, ${client}` : client,
+    });
+  }
+
+  async function flood(authorize: ReturnType<typeof authorizer>, client: string, n: number) {
+    for (let i = 0; i < n; i++) {
+      const forged = await (await keyFor(OWNER)).mint();
+      expect((await authorize(from(client, forged), null)).ok).toBe(false);
+    }
+  }
+
+  it("a restart keeps the owner's verified key (mode 600, no tokens stored)", async () => {
+    let t = 1_000_000;
+    const owner = await keyFor(OWNER);
+    const ownerTokens = new Set<string>();
+    const delegation = jest.fn(async (jwt: string) => ownerTokens.has(jwt));
+    const first = await owner.mint();
+    ownerTokens.add(first);
+    const before = authorizer(delegation, { now: () => t, trustedStorePath: store });
+    expect((await before(from("198.51.100.7", first), null)).ok).toBe(true);
+
+    expect(statSync(store).mode & 0o777).toBe(0o600);
+    const saved = readFileSync(store, "utf-8");
+    expect(saved).toContain(owner.did);
+    expect(saved).toContain(OWNER.toLowerCase());
+    expect(saved).not.toContain(first);
+    expect(saved).not.toMatch(/eyJ/);
+
+    // Restart: a fresh authorizer, attackers from many clients spend the cap.
+    t += 6 * 60_000;
+    const after = authorizer(delegation, { now: () => t, trustedStorePath: store });
+    for (let c = 1; c <= 4; c++) await flood(after, `203.0.113.${c}`, 12);
+    const again = await owner.mint();
+    ownerTokens.add(again);
+    expect(await after(from("198.51.100.7", again), null)).toMatchObject({ ok: true, via: "owner" });
+  });
+
+  it("drops stored keys past their trust window, and ignores an unreadable store", async () => {
+    let t = 1_000_000;
+    const owner = await keyFor(OWNER);
+    const ownerTokens = new Set<string>();
+    const mint = async () => {
+      const tok = await owner.mint();
+      ownerTokens.add(tok);
+      return tok;
+    };
+    const delegation = jest.fn(async (jwt: string) => ownerTokens.has(jwt));
+    const a = authorizer(delegation, { now: () => t, trustedStorePath: store });
+    expect((await a(from("198.51.100.7", await mint()), null)).ok).toBe(true);
+
+    t += 25 * 60 * 60_000;
+    const b = authorizer(delegation, { now: () => t, trustedStorePath: store, lookupsPerMinute: 1 });
+    await flood(b, "203.0.113.1", 1);
+    // Not trusted any more: capped like any unknown key.
+    expect((await b(from("198.51.100.7", await mint()), null)).ok).toBe(false);
+
+    writeFileSync(store, "{not json");
+    const c = authorizer(delegation, { now: () => t, trustedStorePath: store });
+    expect((await c(from("198.51.100.7", await mint()), null)).ok).toBe(true);
+  });
+
+  it("one client can't spend the whole lookup cap; spoofed forwarded hops don't add shares", async () => {
+    const t = 1_000_000;
+    const delegation = jest.fn(async () => false);
+    const authorize = authorizer(delegation, { now: () => t });
+    for (let i = 0; i < 40; i++) {
+      const forged = await (await keyFor(OWNER)).mint();
+      await authorize(from("203.0.113.9", forged, `10.0.${i}.1`), null);
+    }
+    // Default cap 30 a minute, a third of it per client.
+    expect(delegation).toHaveBeenCalledTimes(10);
+
+    // The owner's new device, from another client, still gets a lookup.
+    const owner = await keyFor(OWNER);
+    delegation.mockImplementation(async () => true);
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
+  });
+
+  it("a key that fails verification later loses its trust (and the stored entry)", async () => {
+    let t = 1_000_000;
+    const owner = await keyFor(OWNER);
+    let answer: boolean | Error = true;
+    const delegation = jest.fn(async () => {
+      if (answer instanceof Error) throw answer;
+      return answer;
+    });
+    const authorize = authorizer(delegation, { now: () => t, trustedStorePath: store, lookupsPerMinute: 3 });
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
+
+    // A lookup that can't run (network) keeps the trust...
+    t += 6 * 60_000;
+    answer = new Error("fetch failed");
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(false);
+    t += 31_000;
+    for (let c = 1; c <= 3; c++) await flood(authorize, `203.0.113.${c}`, 1);
+    answer = true;
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
+
+    // ...a refusal evicts it: once the cap is spent the key is capped again.
+    t += 6 * 60_000;
+    answer = false;
+    expect(await authorize(from("198.51.100.7", await owner.mint()), null)).toEqual({
+      ok: false,
+      status: 401,
+      error: "unauthorized",
+    });
+    expect(readFileSync(store, "utf-8")).not.toContain(owner.did);
+    t += 31_000;
+    for (let c = 1; c <= 3; c++) await flood(authorize, `203.0.113.${c}`, 1);
+    answer = true;
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(false);
   });
 });
