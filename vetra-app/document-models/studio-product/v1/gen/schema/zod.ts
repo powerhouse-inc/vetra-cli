@@ -54,6 +54,8 @@ import type {
   ResumeChangeInput,
   SetAccessInput,
   SetChangeTitleInput,
+  SetExternalChangesInput,
+  SetGithubInput,
   SetHealthInput,
   SetLaunchLineInput,
   SetLaunchPermissionInput,
@@ -615,6 +617,24 @@ export function SetChangeTitleInputSchema(): z.ZodObject<
   return z.object({
     changeId: z.string(),
     title: z.string(),
+  });
+}
+
+export function SetExternalChangesInputSchema(): z.ZodObject<
+  Properties<SetExternalChangesInput>
+> {
+  return z.object({
+    sha: z.string().nullish(),
+  });
+}
+
+export function SetGithubInputSchema(): z.ZodObject<
+  Properties<SetGithubInput>
+> {
+  return z.object({
+    lastError: z.string().nullish(),
+    repoFullName: z.string().nullish(),
+    status: GithubStatusSchema,
   });
 }
 

@@ -558,3 +558,15 @@ input UseSuggestionInput {
 input DismissSuggestionInput {
   id: OID!
 }
+
+# github
+
+input SetGithubInput {
+  status: GithubStatus!
+  repoFullName: String
+  lastError: String
+}
+
+input SetExternalChangesInput {
+  sha: String
+}

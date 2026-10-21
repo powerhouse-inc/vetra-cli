@@ -1,7 +1,14 @@
-import { actions } from "document-models/studio-product";
+import {
+  actions,
+  type StudioProductState,
+} from "document-models/studio-product";
 import { describe, expect, it } from "vitest";
 import { at, productDoc } from "../test-utils/studioFixtures.js";
-import { showsFirstVersionBar } from "./firstVersion.js";
+import {
+  adoptedWithoutVersions,
+  showsFirstVersionBar,
+} from "./firstVersion.js";
+import shared from "./adoptedWithoutVersions.cases.json" with { type: "json" };
 import { readProduct } from "./useStudioState.js";
 
 const adopted = [
@@ -59,5 +66,15 @@ describe("showsFirstVersionBar (X33)", () => {
       showsFirstVersionBar(fresh, { ...fresh.changes[0], status: "READY" }),
     ).toBe(false);
     expect(showsFirstVersionBar(null, null)).toBe(false);
+  });
+});
+
+// The same cases run against vetra-cli's twin (src/product/upgrade-existing.ts,
+// tests/product/adopted-without-versions.test.ts).
+describe("adoptedWithoutVersions (shared cases with vetra-cli)", () => {
+  it.each(shared.cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(
+      adoptedWithoutVersions(c.state as unknown as StudioProductState),
+    ).toBe(c.expected);
   });
 });

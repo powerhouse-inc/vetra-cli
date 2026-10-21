@@ -16,7 +16,7 @@
 import { CLOUD_BASE_DOMAIN } from "@powerhousedao/vetra-cloud-client";
 import type { Config } from "../framework.js";
 import { getBearerToken } from "../auth/renown.js";
-import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from "../cloud/config.js";
+import { resolveCloudConfig, resolveVetraAppsEndpoint } from "../cloud/config.js";
 import { LaunchError } from "./errors.js";
 
 export const STUDIO_SECRET_HEADER = "x-vetra-studio-secret";
@@ -49,6 +49,10 @@ export const REASONS = {
   studioDeployment: "the new version didn't start",
   studioProduct: "your live product couldn't be checked",
   setStudioProductDrive: "your live address couldn't open your product",
+  studioPushToken: "GitHub didn't let Vetra in",
+  recordStudioMirror: "Vetra didn't answer",
+  clearExternalChanges: "Vetra didn't answer",
+  studioExternalChanges: "Vetra didn't answer",
 } as const;
 
 export type StudioOperation = keyof typeof REASONS;
@@ -77,6 +81,9 @@ export function isSecretPending(err: unknown): boolean {
   return err instanceof LaunchError && err.code === SECRET_PENDING_CODE;
 }
 
+/** GraphQL's words for a field, argument or type the server doesn't have. */
+const UNSUPPORTED_TEXT = /Cannot query field|Unknown argument|Unknown type/;
+
 /** Replace every occurrence of the given secrets in `text`. */
 export function redact(text: string, secrets: (string | null | undefined)[]): string {
   let out = text;
@@ -89,7 +96,11 @@ interface GqlError {
   extensions?: { code?: string };
 }
 
-/** One GraphQL call on the agent's Studio path; throws `LaunchError` with the cloud's code. */
+/**
+ * One GraphQL call on the agent's Studio path; throws `LaunchError` with the cloud's code.
+ * Posts to the `vetra-apps` subgraph directly: the gateway at `/graphql` drops
+ * the secret header before it reaches the subgraph.
+ */
 export async function studioGql<T>(
   ctx: CloudContext,
   operation: StudioOperation,
@@ -97,7 +108,7 @@ export async function studioGql<T>(
   variables: Record<string, unknown>,
 ): Promise<T> {
   const secret = studioSecret(ctx);
-  const endpoint = resolveCloudGraphqlEndpoint(ctx.config);
+  const endpoint = resolveVetraAppsEndpoint(ctx.config);
   const token = await (ctx.bearerToken
     ? ctx.bearerToken()
     : getBearerToken(ctx.workdir, resolveCloudConfig(ctx.config).renownUrl));
@@ -140,7 +151,9 @@ export async function studioGql<T>(
   if (first) {
     const code = first.extensions?.code ?? "CLOUD_ERROR";
     const detail = redact(first.message ?? "GraphQL error", secrets);
-    ctx.log?.warn?.(`[launch] ${operation} refused (${code}): ${detail}`);
+    // An older cloud that doesn't know the call yet is not a refusal (debug).
+    const level = code === "GRAPHQL_VALIDATION_FAILED" || UNSUPPORTED_TEXT.test(detail) ? "debug" : "warn";
+    ctx.log?.[level]?.(`[launch] ${operation} refused (${code}): ${detail}`);
     const permission = code === "DELEGATION_EXPIRED" || code === "DELEGATION_MISSING";
     throw new LaunchError(
       code,
@@ -314,4 +327,106 @@ export async function cloudSetProductDrive(
       { appId, driveId },
     ),
   );
+}
+
+/* ------------------------------------------------------------------------ */
+/* GitHub (Task 4.4)                                                         */
+/* ------------------------------------------------------------------------ */
+
+/** The App has no GitHub repository, or it was disconnected (Task 4.1). */
+export const GITHUB_NOT_CONNECTED_CODE = "GITHUB_NOT_CONNECTED";
+
+/**
+ * True when the cloud doesn't know the field or mutation yet (an older
+ * `vetra-apps`): GraphQL refuses the query before running it.
+ */
+export function isUnsupported(err: unknown): boolean {
+  if (!(err instanceof LaunchError)) return false;
+  return err.code === "GRAPHQL_VALIDATION_FAILED" || UNSUPPORTED_TEXT.test(err.message);
+}
+
+export interface PushToken {
+  /** Short-lived; never logged, written or put on a command line. */
+  token: string;
+  expiresAt: string;
+  /** `https://github.com/<owner>/<name>.git`, without credentials. */
+  remoteUrl: string;
+}
+
+/** A push token for the product's repository (`studioPushToken`, Studio binding). */
+export async function cloudPushToken(ctx: CloudContext, appId: string): Promise<PushToken> {
+  const data = await studioGql<{ studioPushToken: PushToken }>(
+    ctx,
+    "studioPushToken",
+    `mutation StudioPushToken($appId: ID!) {
+      studioPushToken(appId: $appId) { token expiresAt remoteUrl }
+    }`,
+    { appId },
+  );
+  return data.studioPushToken;
+}
+
+/**
+ * Tell the cloud a commit is the Studio's own mirror push, so the push
+ * webhook doesn't flag it as a change made on GitHub. Called before the push
+ * (F25b). Returns false when the cloud doesn't know the mutation yet.
+ */
+export async function cloudRecordMirror(ctx: CloudContext, appId: string, sha: string): Promise<boolean> {
+  try {
+    await studioGql<{ recordStudioMirror: boolean }>(
+      ctx,
+      "recordStudioMirror",
+      `mutation RecordStudioMirror($appId: ID!, $sha: String!) {
+        recordStudioMirror(appId: $appId, sha: $sha)
+      }`,
+      { appId, sha },
+    );
+    return true;
+  } catch (err) {
+    if (isUnsupported(err)) return false;
+    throw err;
+  }
+}
+
+/** The changes made on GitHub were brought in (`clearExternalChanges`); false when unsupported. */
+export async function cloudClearExternalChanges(ctx: CloudContext, appId: string): Promise<boolean> {
+  try {
+    await studioGql<{ clearExternalChanges: boolean }>(
+      ctx,
+      "clearExternalChanges",
+      `mutation ClearExternalChanges($appId: ID!) {
+        clearExternalChanges(appId: $appId)
+      }`,
+      { appId },
+    );
+    return true;
+  } catch (err) {
+    if (isUnsupported(err)) return false;
+    throw err;
+  }
+}
+
+/**
+ * The latest commit pushed to the repository's main branch from outside the
+ * Studio (`App.externalChangesSha`), null when none; `undefined` when the
+ * cloud doesn't know the field yet.
+ */
+export async function cloudExternalChanges(
+  ctx: CloudContext,
+  studioEnvironmentId: string,
+): Promise<string | null | undefined> {
+  try {
+    const data = await studioGql<{ studioProduct: { externalChangesSha?: string | null } | null }>(
+      ctx,
+      "studioExternalChanges",
+      `query StudioExternalChanges($studioEnvironmentId: String!) {
+        studioProduct(studioEnvironmentId: $studioEnvironmentId) { id externalChangesSha }
+      }`,
+      { studioEnvironmentId },
+    );
+    return data.studioProduct?.externalChangesSha ?? null;
+  } catch (err) {
+    if (isUnsupported(err)) return undefined;
+    throw err;
+  }
 }

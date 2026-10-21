@@ -15,7 +15,12 @@ import {
 } from "../test-utils/previewFixtures.js";
 import { button, click, render } from "../test-utils/render.js";
 import { at, buildingOps, productDoc } from "../test-utils/studioFixtures.js";
-import { FOLLOWING_CHIP, PreviewPane, restartPreview } from "./PreviewPane.js";
+import {
+  EARLY_PREVIEW_NOTE,
+  FOLLOWING_CHIP,
+  PreviewPane,
+  restartPreview,
+} from "./PreviewPane.js";
 
 const hoisted = vi.hoisted(() => ({
   resolve: (_target: PreviewTarget | undefined): ResolvedPreview => ({
@@ -160,6 +165,36 @@ describe("PreviewPane", () => {
       shared.container.querySelector("iframe")?.getAttribute("src"),
     ).toContain("breakfast-for-2");
     expect(hoisted.autoStart.at(-1)).toBe(true);
+  });
+
+  it("says over the early drive view that screens appear as they're built", () => {
+    hoisted.resolve = ready;
+    const { container } = mount({
+      change: null,
+      documents: [],
+      session: session([PROJECT_STARTED]),
+    });
+    act(() => {
+      container.querySelector("iframe")?.dispatchEvent(new Event("load"));
+    });
+    expect(container.textContent).toContain(EARLY_PREVIEW_NOTE);
+    expect(EARLY_PREVIEW_NOTE).toBe(
+      "Your project is running — screens appear here as they're built",
+    );
+    expectNoForbiddenWords(container);
+
+    // Gone once the agent shares a screen.
+    const shared = mount({
+      change: null,
+      documents: [],
+      session: session([PROJECT_STARTED, ...AGENT_SHOWS_ORDER]),
+    });
+    act(() => {
+      shared.container
+        .querySelector("iframe")
+        ?.dispatchEvent(new Event("load"));
+    });
+    expect(shared.container.textContent).not.toContain(EARLY_PREVIEW_NOTE);
   });
 
   it("keeps the skeleton while the started project isn't up yet", () => {

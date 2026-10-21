@@ -7,7 +7,9 @@ import {
   isSecretPending,
   STUDIO_SECRET_ENV,
   STUDIO_SECRET_HEADER,
+  studioGql,
   type CloudContext,
+  type StudioOperation,
 } from "../../src/launch/cloud-launch.js";
 import { isPermissionError, LaunchError } from "../../src/launch/errors.js";
 
@@ -74,7 +76,7 @@ describe("cloudLaunch", () => {
 
     expect(out).toEqual({ deploymentId: "dep-9", status: "PENDING" });
     expect(h.calls).toHaveLength(1);
-    expect(h.calls[0].url).toBe(`${SWITCHBOARD}/graphql`);
+    expect(h.calls[0].url).toBe(`${SWITCHBOARD}/graphql/vetra-apps`);
     expect(h.calls[0].headers[STUDIO_SECRET_HEADER]).toBe(h.secret);
     expect(h.calls[0].headers.authorization).toBe(`Bearer ${h.bearer}`);
     expect(h.calls[0].body.variables).toEqual({ input });
@@ -261,5 +263,46 @@ describe("ensureProduct", () => {
     const h = harness(() => ({ json: {} }));
     h.ctx.config = { cloudSwitchboardUrl: SWITCHBOARD };
     await expect(ensureProduct(h.ctx, "x")).rejects.toMatchObject({ code: "NO_STUDIO" });
+  });
+});
+
+describe("studio endpoint", () => {
+  // The gateway at /graphql forwards only `authorization` to subgraphs, so the
+  // Studio's secret header must go straight to the vetra-apps subgraph.
+  const operations: StudioOperation[] = [
+    "ensureStudioProduct",
+    "launchStudioVersion",
+    "rollbackStudioVersion",
+    "studioDeployment",
+    "studioProduct",
+    "setStudioProductDrive",
+    "studioPushToken",
+    "recordStudioMirror",
+    "clearExternalChanges",
+    "studioExternalChanges",
+  ];
+
+  it.each([SWITCHBOARD, `${SWITCHBOARD}/`, `${SWITCHBOARD}/graphql`, `${SWITCHBOARD}/graphql/`])(
+    "every Studio call posts to /graphql/vetra-apps with the secret (config %p)",
+    async (configured) => {
+      const h = harness(() => ({ json: { data: { ok: true } } }));
+      h.ctx.config = { ...h.ctx.config, cloudSwitchboardUrl: configured };
+      for (const op of operations) await studioGql(h.ctx, op, "query { ok }", {});
+
+      expect(h.calls).toHaveLength(operations.length);
+      for (const c of h.calls) {
+        expect(c.url).toBe(`${SWITCHBOARD}/graphql/vetra-apps`);
+        expect(c.headers[STUDIO_SECRET_HEADER]).toBe(h.secret);
+        expect(c.headers.authorization).toBe(`Bearer ${h.bearer}`);
+      }
+    },
+  );
+
+  it("rollback goes to the subgraph too", async () => {
+    const h = harness(() => ({ json: { data: { rollbackStudioVersion: { id: "dep-2", status: "PENDING" } } } }));
+    h.ctx.config = { ...h.ctx.config, cloudSwitchboardUrl: `${SWITCHBOARD}/graphql` };
+    await cloudRollback(h.ctx, "dep-1");
+    expect(h.calls.map((c) => c.url)).toEqual([`${SWITCHBOARD}/graphql/vetra-apps`]);
+    expect(h.calls[0].headers[STUDIO_SECRET_HEADER]).toBe(h.secret);
   });
 });

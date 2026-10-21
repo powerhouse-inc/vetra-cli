@@ -19,8 +19,13 @@
  *             launch the product drive (create + seed), `setStudioProductDrive`
  *             and `SET_PRODUCT_DRIVE`
  *   VERIFY    "Checking it's up"           HTTP check of the live address
- *   MIRROR    SKIPPED until GitHub arrives (M4)
- * then `COMPLETE_LAUNCH`. On a failure the running line is FAILED and
+ *   MIRROR    "Saving to GitHub"           push `main` + the version tags when the
+ *             product has a repository (mirror.ts; detail: sha). SKIPPED
+ *             without one; FAILED with the plain reason when the push fails —
+ *             never a failed launch ("Couldn't save to GitHub (<reason>). Will
+ *             retry with the next launch."). Runs right after
+ *             `COMPLETE_LAUNCH`, so the version is live before GitHub answers.
+ * VERIFY is followed by `COMPLETE_LAUNCH`. On a failure the running line is FAILED and
  * `FAIL_LAUNCH` records the plain reason (F39); a missing or expired permission
  * (F7) is the exception: the Version stays LAUNCHING, its running line goes
  * back to WAITING and `SET_LAUNCH_PERMISSION` records what the owner must do.
@@ -83,6 +88,8 @@ import { awaitRollbackSettle } from "../triggers/live-health.js";
 import { askForSuggestions, chatBudgetUsedUp, hasSuggestionsFor } from "./suggestions.js";
 import { checkLive, waitForDeployment } from "./verify.js";
 import { adoptedWithoutVersions, ensureProductTarget } from "../product/upgrade-existing.js";
+import { isBringIn } from "../product/changes.js";
+import { launchedTags, mirror, pushFullHistory, type MirrorContext } from "./mirror.js";
 
 /* ------------------------------------------------------------------------ */
 /* Words and small rules                                                     */
@@ -176,6 +183,8 @@ export function autoLaunchCandidate(state: StudioProductState): Change | null {
       (c) =>
         c.status === "READY" &&
         c.kind !== "BEFORE_VERSIONS" &&
+        // D15: changes made on GitHub go live only when the customer says so.
+        !isBringIn(c) &&
         !state.versions.some((v) => v.changeId === c.id),
     ) ?? null
   );
@@ -249,6 +258,10 @@ export interface LaunchDeps {
   countDriveDocuments?: typeof countDriveDocuments;
   /** F26: which earlier versions the data can't go back to, after each launch. */
   refreshRollbackBlocks?: typeof refreshRollbackBlocks;
+  /** The GitHub mirror after VERIFY (never fails the launch). */
+  mirror?: typeof mirror;
+  /** Connect / Retry now: `main` and every launched version's tag. */
+  pushFullHistory?: typeof pushFullHistory;
 }
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -275,9 +288,14 @@ const defaultDeps: LaunchDeps = {
   refreshRollbackBlocks,
   afterLaunch: askForSuggestions,
   budgetUsedUp: chatBudgetUsedUp,
+  mirror,
+  pushFullHistory,
 };
 
-export interface OrchestratorContext extends ProductContext, ProductDriveContext {
+export interface OrchestratorContext
+  extends ProductContext,
+    ProductDriveContext,
+    Pick<MirrorContext, "mirrorDeps"> {
   workdir: string;
   config: Pick<Config, "cloudSwitchboardUrl" | "cloudRenownUrl" | "environmentId" | "registryUrl">;
   log?: {
@@ -577,10 +595,7 @@ async function runLaunch(
       await setLine(current, "DONE");
     }
 
-    // MIRROR: GitHub arrives in M4.
     current = null;
-    if (line("MIRROR")?.status !== "SKIPPED") await setLine("MIRROR", "SKIPPED");
-
     let files: string[] = [];
     try {
       files = d.changedFiles(ctx.workdir, live?.gitTag ?? null, sha);
@@ -606,6 +621,8 @@ async function runLaunch(
     // A later launch settles any Go back still waiting on the cloud.
     awaitRollbackSettle(null);
     ctx.log?.info?.(`[launch] Version ${number} is live at ${liveUrl}`);
+    // MIRROR after COMPLETE_LAUNCH: the version is live whatever GitHub says.
+    if (line("MIRROR")?.status !== "DONE") await mirrorLine(ctx, number, state, gitTag, setLine);
     // F26: the earlier versions' Go back is worked out again, in the
     // background (it reads the live drive; never throws).
     void (d.refreshRollbackBlocks ?? refreshRollbackBlocks)(ctx);
@@ -665,6 +682,49 @@ async function runLaunch(
     }
   }
   return { status: "LIVE", number };
+}
+
+/**
+ * The MIRROR line: push `main` and every launched version's tag plus this
+ * one (a push missed earlier is retried here). Never throws.
+ */
+async function mirrorLine(
+  ctx: OrchestratorContext,
+  number: number,
+  state: StudioProductState,
+  gitTag: string,
+  setLine: (kind: LaunchLineKind, status: LineStatus, detail?: string | null) => Promise<unknown>,
+): Promise<void> {
+  const d = depsOf(ctx);
+  try {
+    await setLine("MIRROR", "RUNNING");
+    const result = await (d.mirror ?? mirror)(ctx, { tags: [...launchedTags(state), gitTag] });
+    if ("sha" in result) await setLine("MIRROR", "DONE", result.sha);
+    else if ("failed" in result) await setLine("MIRROR", "FAILED", result.failed);
+    else await setLine("MIRROR", "SKIPPED");
+  } catch (err) {
+    ctx.log?.warn?.(`[launch] Version ${number}: the GitHub line couldn't be recorded: ${message(err)}`);
+  }
+}
+
+/**
+ * Connect GitHub / Retry now (the MIRROR request, F40): the whole history,
+ * then the request is cleared — or, when nothing could be saved, recorded as
+ * failed with the plain reason (X28).
+ */
+export async function mirrorRequest(ctx: OrchestratorContext): Promise<RequestOutcome> {
+  const result = await (depsOf(ctx).pushFullHistory ?? pushFullHistory)(ctx);
+  if ("sha" in result) {
+    try {
+      await dispatchProduct(ctx, [a.clearRequest({})]);
+    } catch (err) {
+      ctx.log?.error?.(`[launch] MIRROR request not cleared: ${message(err)}`);
+    }
+    return { status: "DONE" };
+  }
+  const reason = "failed" in result ? result.failed : result.skipped;
+  await recordRequestFailure(ctx, "MIRROR", reason);
+  return { status: "FAILED", reason };
 }
 
 /** D6: the launch would break live documents; the agent is told after FAIL_LAUNCH is recorded. */

@@ -788,6 +788,72 @@
               "scope": "global"
             }
           ]
+        },
+        {
+          "id": "mod-github",
+          "name": "github",
+          "description": "The product's copy on GitHub: the link's status and changes made there.",
+          "operations": [
+            {
+              "id": "op-set-github",
+              "name": "SET_GITHUB",
+              "description": "Record the GitHub link: connected to a repository, disconnected, or its last push failed (with the plain reason). NOT_CONNECTED clears the link.",
+              "schema": "input SetGithubInput {\n  status: GithubStatus!\n  repoFullName: String\n  lastError: String\n}",
+              "template": "Record the GitHub link: connected to a repository, disconnected, or its last push failed (with the plain reason). NOT_CONNECTED clears the link.",
+              "reducer": "",
+              "errors": [
+                {
+                  "id": "err-missing-repo",
+                  "name": "MissingRepoError",
+                  "code": "MISSING_REPO",
+                  "description": "A connected, disconnected or failing GitHub link needs the repository's owner/name.",
+                  "template": ""
+                },
+                {
+                  "id": "err-invalid-repo-name",
+                  "name": "InvalidRepoNameError",
+                  "code": "INVALID_REPO_NAME",
+                  "description": "The repository name is not of the form owner/name.",
+                  "template": ""
+                },
+                {
+                  "id": "err-missing-reason",
+                  "name": "MissingReasonError",
+                  "code": "MISSING_REASON",
+                  "description": "A failed push needs its plain reason.",
+                  "template": ""
+                }
+              ],
+              "examples": [],
+              "scope": "global"
+            },
+            {
+              "id": "op-set-external-changes",
+              "name": "SET_EXTERNAL_CHANGES",
+              "description": "Record the latest commit pushed to the repository's main branch from outside the Studio (shown as changes on GitHub to bring in), or clear it with null.",
+              "schema": "input SetExternalChangesInput {\n  sha: String\n}",
+              "template": "Record the latest commit pushed to the repository's main branch from outside the Studio (shown as changes on GitHub to bring in), or clear it with null.",
+              "reducer": "",
+              "errors": [
+                {
+                  "id": "err-github-not-connected",
+                  "name": "GithubNotConnectedError",
+                  "code": "GITHUB_NOT_CONNECTED",
+                  "description": "Changes on GitHub can only be recorded while a repository is linked.",
+                  "template": ""
+                },
+                {
+                  "id": "err-invalid-sha",
+                  "name": "InvalidShaError",
+                  "code": "INVALID_SHA",
+                  "description": "The commit sha is not a hexadecimal git object id.",
+                  "template": ""
+                }
+              ],
+              "examples": [],
+              "scope": "global"
+            }
+          ]
         }
       ]
     }

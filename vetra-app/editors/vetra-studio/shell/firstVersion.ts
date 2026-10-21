@@ -3,7 +3,9 @@
  * gets Version 1 only on the customer's Make it live — the agent never
  * launches it by itself (vetra-cli `autoLaunchCandidate`), whether or not the
  * address it ran on before versions is known yet. Same rule as vetra-cli's
- * `adoptedWithoutVersions`.
+ * `adoptedWithoutVersions` (src/product/upgrade-existing.ts), which can't
+ * import this file: change both together. adoptedWithoutVersions.cases.json
+ * holds the cases both run.
  */
 import type {
   Change,
@@ -12,7 +14,8 @@ import type {
 
 export function adoptedWithoutVersions(product: StudioProductState): boolean {
   return (
-    product.liveVersion === null &&
+    // `== null`: an older document may have no liveVersion at all.
+    product.liveVersion == null &&
     product.versions.length === 0 &&
     product.changes.some((c) => c.kind === "BEFORE_VERSIONS")
   );
