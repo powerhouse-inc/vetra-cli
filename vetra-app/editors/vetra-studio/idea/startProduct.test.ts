@@ -7,6 +7,7 @@ import {
   startProduct,
   type StartProductDeps,
   type StartProductDrive,
+  UPGRADING_PRODUCT_NAME,
 } from "./startProduct.js";
 
 const PRODUCT_TYPE = "vetra/studio-product";
@@ -286,6 +287,35 @@ describe("ideaStartStatus", () => {
     const unloaded = store();
     unloaded.add("s", CHAT_TYPE, {});
     expect(ideaStartStatus(unloaded.drive, [])).toBe("legacy");
+  });
+
+  it("keeps today's page while an older Studio's upgrade is half-done", () => {
+    // The upgrade created the product but stopped before INIT/ADOPT.
+    const s = store();
+    s.add("s", CHAT_TYPE, { messages: [{ role: "USER" }] });
+    s.add("p", PRODUCT_TYPE, { changes: [] });
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("legacy");
+    // A new Studio's own start that stopped there still offers the idea box.
+    const fresh = store();
+    fresh.add("s", CHAT_TYPE, { messages: [] });
+    fresh.add("p", PRODUCT_TYPE, { changes: [] });
+    expect(ideaStartStatus(fresh.drive, fresh.documents())).toBe("idea");
+    // A workspace-only Studio (nothing older in the drive): the upgrade's
+    // file name keeps today's page.
+    const workspaceOnly = store();
+    workspaceOnly.add("p", PRODUCT_TYPE, { changes: [] });
+    workspaceOnly.drive.state.global.nodes.forEach((n) => {
+      if (n.id === "p") (n as { name: string }).name = UPGRADING_PRODUCT_NAME;
+    });
+    expect(
+      ideaStartStatus(workspaceOnly.drive, workspaceOnly.documents()),
+    ).toBe("legacy");
+    // Once adopted, the product page.
+    s.docs.set("p", {
+      idea: "old work",
+      changes: [{ kind: "BEFORE_VERSIONS", status: "CLOSED" }],
+    });
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
   });
 
   it("never offers a second first message while documents are syncing", () => {

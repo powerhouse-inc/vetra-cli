@@ -18,6 +18,7 @@ import {
   ReopenStepInputSchema,
   ResumeChangeInputSchema,
   SetChangeTitleInputSchema,
+  SetLiveBeforeVersionsInputSchema,
   SetStepAttentionInputSchema,
   StartChangeInputSchema,
   StartStepInputSchema,
@@ -38,6 +39,7 @@ import type {
   ReopenStepInput,
   ResumeChangeInput,
   SetChangeTitleInput,
+  SetLiveBeforeVersionsInput,
   SetStepAttentionInput,
   StartChangeInput,
   StartStepInput,
@@ -58,6 +60,7 @@ import type {
   ReopenStepAction,
   ResumeChangeAction,
   SetChangeTitleAction,
+  SetLiveBeforeVersionsAction,
   SetStepAttentionAction,
   StartChangeAction,
   StartStepAction,
@@ -79,6 +82,15 @@ export const adoptExisting = (input: AdoptExistingInput) =>
     { ...input },
     undefined,
     AdoptExistingInputSchema,
+    "global",
+  );
+
+export const setLiveBeforeVersions = (input: SetLiveBeforeVersionsInput) =>
+  createAction<SetLiveBeforeVersionsAction>(
+    "SET_LIVE_BEFORE_VERSIONS",
+    { ...input },
+    undefined,
+    SetLiveBeforeVersionsInputSchema,
     "global",
   );
 

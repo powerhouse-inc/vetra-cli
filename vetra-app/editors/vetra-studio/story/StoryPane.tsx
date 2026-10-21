@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from "react";
 import { RawDetail } from "../ChatPane.js";
+import { ChangeRequest } from "../change/ChangeDrawer.js";
 import {
   FailureActions,
   FailureLine,
@@ -100,6 +101,9 @@ export type StoryPaneProps = {
   /** Fixed time (tests); the pane ticks on its own otherwise. */
   now?: Date;
   failureContext?: StoryFailureContext;
+  /** Starts a new change; asked for under a closed change (an existing
+   *  Studio's work before versions, spec §6.6) instead of steering it. */
+  onStartChange?: (request: string) => Promise<unknown>;
 };
 
 export function StoryPane({
@@ -110,6 +114,7 @@ export function StoryPane({
   productId,
   now: fixedNow,
   failureContext = NO_FAILURE_CONTEXT,
+  onStartChange,
 }: StoryPaneProps) {
   const ticking = useNow(5_000);
   const now = fixedNow ?? ticking;
@@ -198,15 +203,25 @@ export function StoryPane({
           ) : null}
         </ol>
       </div>
-      <SteerBox
-        sessionId={sessionId}
-        productId={productId}
-        changeId={change.id}
-        paused={change.status === "PAUSED"}
-        messages={messages ?? []}
-        now={now}
-        inputRef={steerRef}
-      />
+      {change.status === "CLOSED" && onStartChange ? (
+        <div className="shrink-0 border-t border-border bg-card px-3 py-2">
+          <ChangeRequest
+            product={product}
+            onStart={onStartChange}
+            prefill={null}
+          />
+        </div>
+      ) : (
+        <SteerBox
+          sessionId={sessionId}
+          productId={productId}
+          changeId={change.id}
+          paused={change.status === "PAUSED"}
+          messages={messages ?? []}
+          now={now}
+          inputRef={steerRef}
+        />
+      )}
     </div>
   );
 }

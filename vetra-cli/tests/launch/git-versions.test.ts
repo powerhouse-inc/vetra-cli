@@ -63,6 +63,21 @@ describe("ensureWorkspaceRepo", () => {
     await ensureWorkspaceRepo(workdir);
     expect(git("symbolic-ref", "--short", "HEAD")).toBe("main");
   });
+
+  it("says so at info when it renames a branch with history to main", async () => {
+    execFileSync("git", ["init", "-q", "-b", "master"], { cwd: workdir });
+    fs.writeFileSync(path.join(workdir, "a.txt"), "a");
+    execFileSync("git", ["add", "a.txt"], { cwd: workdir });
+    execFileSync(
+      "git",
+      ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "a"],
+      { cwd: workdir },
+    );
+    const infos: string[] = [];
+    await ensureWorkspaceRepo(workdir, { log: { info: (m) => infos.push(m) } });
+    expect(git("symbolic-ref", "--short", "HEAD")).toBe("main");
+    expect(infos).toEqual(['[git] workspace branch "master" renamed to "main"']);
+  });
 });
 
 /**

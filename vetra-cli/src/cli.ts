@@ -42,6 +42,7 @@ import { studioRedirectTrigger } from './triggers/studio-redirect.js';
 import { productSupervisorTrigger } from './product/supervisor.js';
 import { productRequestsTrigger } from './triggers/product-requests.js';
 import { liveHealthTrigger } from './triggers/live-health.js';
+import { existingStudioUpgradeTrigger } from './product/upgrade-existing.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
 import { createClaudeAuthCommands } from '@powerhousedao/ph-clint-claude-subscription';
@@ -97,6 +98,8 @@ export const cli = defineCli({
     productSupervisorTrigger,
     productRequestsTrigger,
     liveHealthTrigger,
+    // Existing Studios open in the product page: once per start, detached.
+    existingStudioUpgradeTrigger,
   ],
   // @clint:end triggers
 

@@ -38,6 +38,8 @@ import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
 import { LiveSurface } from "../change/LiveSurface.js";
+import { ReadyBar } from "../change/ReadyBar.js";
+import { startChange } from "../change/startChange.js";
 import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
 import { usePublishPermission } from "../permission/usePublishPermission.js";
 import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
@@ -53,6 +55,7 @@ import { openChange, stripChange, stripModel } from "../strip/stripModel.js";
 import { PHASE_AVERAGES } from "../strip/timeLeft.js";
 import { useVersionsPanel } from "../versions/VersionsPanel.js";
 import { VetraStudio } from "../VetraStudio.js";
+import { showsFirstVersionBar } from "./firstVersion.js";
 import { useStudioState } from "./useStudioState.js";
 
 const STORY_WIDTH_STORAGE_KEY = "vetra-studio:story-width";
@@ -313,6 +316,31 @@ function StudioPage({
     />
   );
 
+  // An existing Studio's work before versions is closed: the next request
+  // starts a change, which becomes Version 1 (spec §6.6).
+  const startNextChange = useCallback(
+    (request: string) =>
+      productId
+        ? startChange({ drive, productId, request, kind: "CHANGE" })
+        : Promise.reject(
+            new Error("Your product is still loading. Try again in a moment."),
+          ),
+    [drive, productId],
+  );
+
+  // X33: an existing Studio's product gets Version 1 only on the customer's
+  // Make it live (no automatic first launch).
+  const firstVersionBar =
+    product && change && showsFirstVersionBar(product, change) ? (
+      <ReadyBar
+        product={product}
+        productId={productId}
+        change={change}
+        requestedBy={signIn.name ?? "you"}
+        onKeepChanging={NO_FOCUS}
+      />
+    ) : null;
+
   const story =
     product && change ? (
       <StoryPane
@@ -330,6 +358,7 @@ function StudioPage({
           requestedBy: signIn.name ?? "you",
           allowPublish: permission.allow,
         }}
+        onStartChange={productId ? startNextChange : undefined}
       />
     ) : sessionId ? (
       /* No readable product yet: the conversation as it is. */
@@ -440,6 +469,11 @@ function StudioPage({
                 <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
                   {detail}
                 </div>
+              </div>
+            ) : firstVersionBar ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                {firstVersionBar}
+                {previewPane}
               </div>
             ) : (
               previewPane

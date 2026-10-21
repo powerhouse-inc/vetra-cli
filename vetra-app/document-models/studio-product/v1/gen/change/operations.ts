@@ -19,6 +19,7 @@ import type {
   ReopenStepAction,
   ResumeChangeAction,
   SetChangeTitleAction,
+  SetLiveBeforeVersionsAction,
   SetStepAttentionAction,
   StartChangeAction,
   StartStepAction,
@@ -34,6 +35,11 @@ export interface StudioProductChangeOperations {
   adoptExistingOperation: (
     state: StudioProductGlobalState,
     action: AdoptExistingAction,
+    dispatch?: SignalDispatch,
+  ) => void;
+  setLiveBeforeVersionsOperation: (
+    state: StudioProductGlobalState,
+    action: SetLiveBeforeVersionsAction,
     dispatch?: SignalDispatch,
   ) => void;
   planStepsOperation: (

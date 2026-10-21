@@ -108,7 +108,7 @@ export function ChangeDrawer({
 }
 
 /** "What should change?" with the agent's suggestions under it. */
-function ChangeRequest({
+export function ChangeRequest({
   product,
   onStart,
   onDismiss,

@@ -39,6 +39,7 @@ export function normalizeProduct(
   s.launchPermission ??= "UNKNOWN";
   s.suggestions ??= [];
   s.github = normalizeGithub(s.github);
+  s.liveBeforeVersions ??= null;
   s.changes ??= [];
   s.changes.forEach(normalizeChange);
   s.versions ??= [];

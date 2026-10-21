@@ -28,6 +28,7 @@ import type {
   LaunchLine,
   LaunchLineKind,
   LineStatus,
+  LiveBeforeVersions,
   LiveHealth,
   MarkStuckInput,
   Milestone,
@@ -56,6 +57,7 @@ import type {
   SetHealthInput,
   SetLaunchLineInput,
   SetLaunchPermissionInput,
+  SetLiveBeforeVersionsInput,
   SetLiveTargetInput,
   SetLiveVersionInput,
   SetProductDriveInput,
@@ -397,6 +399,17 @@ export function LaunchLineSchema(): z.ZodObject<Properties<LaunchLine>> {
   });
 }
 
+export function LiveBeforeVersionsSchema(): z.ZodObject<
+  Properties<LiveBeforeVersions>
+> {
+  return z.object({
+    __typename: z.literal("LiveBeforeVersions").optional(),
+    at: z.iso.datetime(),
+    environmentId: z.string(),
+    url: z.url(),
+  });
+}
+
 export function MarkStuckInputSchema(): z.ZodObject<
   Properties<MarkStuckInput>
 > {
@@ -633,6 +646,16 @@ export function SetLaunchPermissionInputSchema(): z.ZodObject<
   });
 }
 
+export function SetLiveBeforeVersionsInputSchema(): z.ZodObject<
+  Properties<SetLiveBeforeVersionsInput>
+> {
+  return z.object({
+    at: z.iso.datetime(),
+    environmentId: z.string(),
+    url: z.url(),
+  });
+}
+
 export function SetLiveTargetInputSchema(): z.ZodObject<
   Properties<SetLiveTargetInput>
 > {
@@ -759,6 +782,7 @@ export function StudioProductStateSchema(): z.ZodObject<
     idea: z.string().nullish(),
     lastRequestFailure: z.lazy(() => RequestFailureSchema().nullish()),
     launchPermission: PermissionStateSchema,
+    liveBeforeVersions: z.lazy(() => LiveBeforeVersionsSchema().nullish()),
     liveDeploymentId: z.string().nullish(),
     liveSince: z.iso.datetime().nullish(),
     liveUrl: z.url().nullish(),
