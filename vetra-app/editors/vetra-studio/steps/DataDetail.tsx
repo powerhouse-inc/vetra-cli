@@ -1,15 +1,48 @@
-import { useState } from "react";
-import type { PlainModel } from "./plainModel.js";
+import type { PHDocument } from "document-model";
+import { useMemo, useState } from "react";
+import { plainModel, type ModelSpec, type PlainModel } from "./plainModel.js";
+
+export const DOCUMENT_MODEL_TYPE = "powerhouse/document-model";
+
+function modelSpecOf(doc: PHDocument): { key: object; spec: ModelSpec } {
+  const global = (doc.state as { global?: unknown }).global;
+  return global && typeof global === "object"
+    ? { key: global, spec: global }
+    : { key: doc, spec: {} };
+}
+
+/* One parse per model revision: a document's global state is a new object
+ * after each change to it, and the same object otherwise. */
+const parsed = new WeakMap<object, PlainModel>();
+
+/** The plain-words view of each model document (memoised per revision). */
+export function plainModels(
+  documents: readonly PHDocument[],
+): { id: string; model: PlainModel }[] {
+  return documents
+    .filter((d) => d.header.documentType === DOCUMENT_MODEL_TYPE)
+    .map((d) => {
+      const { key, spec } = modelSpecOf(d);
+      let model = parsed.get(key);
+      if (!model) {
+        model = plainModel(spec);
+        parsed.set(key, model);
+      }
+      return { id: d.header.id, model };
+    });
+}
 
 /**
  * Data step detail (spec §5.2): each data model in plain words, what you can
  * do with it, and its schema behind "Show schema".
  */
 export function DataDetail({
-  models,
+  documents,
 }: {
-  models: readonly { id: string; model: PlainModel }[];
+  /** The drive's documents; only data models are read. */
+  documents: readonly PHDocument[];
 }) {
+  const models = useMemo(() => plainModels(documents), [documents]);
   if (models.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">

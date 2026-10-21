@@ -49,3 +49,24 @@ export function button(
       (b.getAttribute("aria-label") ?? "").includes(text),
   );
 }
+
+/** Types `value` into an input the way React sees it. */
+export function typeInto(
+  input: Element | null | undefined,
+  value: string,
+): void {
+  if (!(input instanceof HTMLInputElement)) throw new Error("not an input");
+  act(() => {
+    // The prototype setter, so React notices the change.
+    Reflect.set(HTMLInputElement.prototype, "value", value, input);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+export function pressKey(target: Element | Window, key: string): void {
+  act(() => {
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+    );
+  });
+}

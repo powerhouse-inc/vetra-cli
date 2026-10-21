@@ -7,7 +7,15 @@ import type { PHDocument } from "document-model";
 import { actions } from "document-models/studio-product";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
-import { button, click, render } from "../test-utils/render.js";
+import {
+  button,
+  click,
+  pressKey,
+  render,
+  typeInto,
+} from "../test-utils/render.js";
+import { plainModel } from "../steps/plainModel.js";
+import type * as PlainModelModule from "../steps/plainModel.js";
 import {
   PRODUCT_ID,
   SESSION_ID,
@@ -21,7 +29,13 @@ import { StudioShell } from "./StudioShell.js";
 
 const hoisted = vi.hoisted(() => ({
   documents: undefined as PHDocument[] | undefined,
+  dispatched: [] as { action: unknown; id: string }[],
 }));
+
+vi.mock("../steps/plainModel.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof PlainModelModule>();
+  return { ...actual, plainModel: vi.fn(actual.plainModel) };
+});
 
 vi.mock("../hooks/useDriveDocuments.js", () => ({
   useDriveDocuments: () => hoisted.documents,
@@ -74,6 +88,11 @@ vi.mock("../ideation/DocumentHost.js", () => ({
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useDocumentSafe: () => ({ status: "loading" }),
+  usePHToast: () => undefined,
+  dispatchActions: (action: unknown, id: string) => {
+    hoisted.dispatched.push({ action, id });
+    return Promise.resolve(undefined);
+  },
 }));
 
 function driveDoc(nodes: Node[]): DocumentDriveDocument {
@@ -131,6 +150,8 @@ function building() {
 
 beforeEach(() => {
   hoisted.documents = undefined;
+  hoisted.dispatched = [];
+  vi.mocked(plainModel).mockClear();
 });
 
 describe("StudioShell", () => {
@@ -176,6 +197,7 @@ describe("StudioShell", () => {
       "EDITORS",
       "TESTS",
       "LIVE",
+      "Rename",
       "Settings",
       "Versions",
     ]);
@@ -198,8 +220,11 @@ describe("StudioShell", () => {
 
   it("a step opens its detail and the chip returns to the build", () => {
     const container = building();
+    // Models are read only for the Data step, not on every drive change.
+    expect(plainModel).not.toHaveBeenCalled();
     click(container.querySelector('button[data-step="DATA"]'));
     expect(container.textContent).toContain("A Task board has tasks");
+    expect(plainModel).toHaveBeenCalledTimes(1);
     expect(container.textContent).not.toContain("Preview pane");
     expectNoForbiddenWords(container);
 
@@ -208,6 +233,30 @@ describe("StudioShell", () => {
 
     click(button(container, "Back to the build"));
     expect(container.textContent).toContain("Preview pane");
+  });
+
+  it("the product name renames in place; Escape cancels", () => {
+    const container = building();
+    click(button(container, "Rename"));
+    const input = container.querySelector('input[aria-label="Product name"]');
+    typeInto(input, "Team tasks");
+    pressKey(input!, "Escape");
+    expect(hoisted.dispatched).toEqual([]);
+    expect(container.textContent).toContain("Task board");
+
+    click(button(container, "Rename"));
+    const again = container.querySelector('input[aria-label="Product name"]');
+    typeInto(again, "Team tasks");
+    pressKey(again!, "Enter");
+    expect(hoisted.dispatched).toMatchObject([
+      {
+        action: { type: "RENAME_PRODUCT", input: { name: "Team tasks" } },
+        id: PRODUCT_ID,
+      },
+    ]);
+    expect(
+      container.querySelector('input[aria-label="Product name"]'),
+    ).toBeNull();
   });
 
   it("Settings opens the settings dialog", () => {

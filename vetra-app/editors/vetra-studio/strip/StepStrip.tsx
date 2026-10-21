@@ -1,18 +1,25 @@
 import type { StepKind } from "document-models/studio-product";
+import { useRef, useState } from "react";
 import type { StepIcon, StripStep, StripView } from "./stripModel.js";
 
-function tone(icon: StepIcon): string {
+/**
+ * Step colours (spec §5.2, mockup): ✓ done green, ◐ working yellow
+ * (mockup #f0c75e), ! needs you amber (filled, so it never reads as
+ * working), ✕ stopped red, ● Live solid green, ○ grey. Never colour alone:
+ * every pill also carries its glyph and state word.
+ */
+export function tone(icon: StepIcon): string {
   switch (icon) {
     case "✓":
       return "border-success/40 bg-success/10 text-success";
     case "◐":
-      return "border-warning/30 bg-warning/10 text-warning";
+      return "border-yellow-500/40 bg-yellow-400/15 text-yellow-600";
     case "!":
-      return "border-warning/30 bg-warning/10 text-warning";
+      return "border-warning bg-warning text-white";
     case "✕":
       return "border-destructive/30 bg-destructive/10 text-destructive";
     case "●":
-      return "border-vetra-primary/40 bg-vetra-primary/10 text-vetra-primary";
+      return "border-success bg-success text-white";
     case "○":
       return "border-border bg-card text-muted-foreground";
   }
@@ -77,6 +84,75 @@ function GearIcon() {
   );
 }
 
+/**
+ * The product name, editable in place ("Name ✎", spec §5.1): Enter or
+ * leaving the field saves, Escape cancels. Renaming never changes the web
+ * address.
+ */
+function ProductName({
+  name,
+  onRename,
+}: {
+  name: string;
+  onRename?: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  // Set once the edit ends, so a blur after Enter/Escape doesn't save again.
+  const closed = useRef(false);
+  const nameClass = "max-w-64 truncate text-sm font-semibold text-foreground";
+  if (!onRename) return <span className={nameClass}>{name}</span>;
+
+  if (draft === null) {
+    return (
+      <button
+        type="button"
+        aria-label="Rename"
+        title="Rename"
+        onClick={() => {
+          closed.current = false;
+          setDraft(name);
+        }}
+        className={`${nameClass} rounded px-1 hover:bg-accent`}
+      >
+        {name}{" "}
+        <span aria-hidden className="text-muted-foreground">
+          ✎
+        </span>
+      </button>
+    );
+  }
+
+  function save() {
+    if (closed.current) return;
+    closed.current = true;
+    const next = (draft ?? "").trim();
+    setDraft(null);
+    if (onRename && next && next !== name) onRename(next);
+  }
+
+  return (
+    <input
+      aria-label="Product name"
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          save();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          closed.current = true;
+          setDraft(null);
+        }
+      }}
+      className="w-56 rounded border border-border bg-background px-1.5 py-0.5 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-vetra-primary"
+    />
+  );
+}
+
 /** The Settings control (account menu entry point). */
 export function SettingsButton({ onOpen }: { onOpen: () => void }) {
   return (
@@ -101,11 +177,14 @@ export function StepStrip({
   selected,
   onOpenStep,
   onOpenSettings,
+  onRename,
 }: {
   view: StripView;
   selected: StepKind | null;
   onOpenStep: (kind: StepKind) => void;
   onOpenSettings: () => void;
+  /** Renames the product; the name is read-only without it. */
+  onRename?: (name: string) => void;
 }) {
   const right = view.right;
   return (
@@ -113,9 +192,7 @@ export function StepStrip({
       aria-label="Steps"
       className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-card px-4 py-2"
     >
-      <span className="max-w-64 truncate text-sm font-semibold text-foreground">
-        {view.name}
-      </span>
+      <ProductName name={view.name} onRename={onRename} />
       <ol className="flex flex-wrap items-center gap-1.5">
         {view.steps.map((step) => (
           <li key={step.kind}>

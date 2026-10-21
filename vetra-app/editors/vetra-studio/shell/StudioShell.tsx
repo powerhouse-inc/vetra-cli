@@ -7,7 +7,9 @@
  */
 import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
+  dispatchActions,
   useDocumentSafe,
+  usePHToast,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
 import type {
@@ -15,11 +17,12 @@ import type {
   DocumentDriveDocument,
 } from "@powerhousedao/shared/document-drive";
 import type { PHDocument } from "document-model";
-import type {
-  StepKind,
-  StudioProductState,
+import {
+  actions as productActions,
+  type StepKind,
+  type StudioProductState,
 } from "document-models/studio-product";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StudioBudgetMeter } from "../budget/BudgetMeter.js";
 import { useStudioBudget } from "../budget/useStudioBudget.js";
 import { PreviewBody } from "../BuildSection.js";
@@ -36,14 +39,12 @@ import { DataDetail } from "../steps/DataDetail.js";
 import { LiveDetail } from "../steps/LiveDetail.js";
 import { PlanDetail } from "../steps/PlanDetail.js";
 import { planBrief } from "../steps/planBrief.js";
-import { plainModel, type ModelSpec } from "../steps/plainModel.js";
 import { TestsDetail } from "../steps/TestsDetail.js";
 import { StepStrip, SettingsButton } from "../strip/StepStrip.js";
 import { stripChange, stripModel } from "../strip/stripModel.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { useStudioState } from "./useStudioState.js";
 
-const DOCUMENT_MODEL_TYPE = "powerhouse/document-model";
 const STORY_WIDTH_STORAGE_KEY = "vetra-studio:story-width";
 const STORY_WIDTH_DEFAULT = 38;
 const STORY_WIDTH_MIN = 24;
@@ -86,6 +87,9 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
     }
   }, []);
 
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+
   if (status === "loading") return <ShellLoading />;
   if (status === "legacy") {
     return <VetraStudio document={document} dispatch={dispatch} />;
@@ -101,7 +105,7 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
         <IdeaView
           onStart={startFromIdea}
           onStarted={setStartedSession}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={openSettings}
         />
       ) : (
         <ProductView
@@ -110,14 +114,15 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
           product={product}
           live={status === "live"}
           fallbackSessionId={startedSession}
-          onOpenSettings={() => setSettingsOpen(true)}
+          productId={productId}
+          onOpenSettings={openSettings}
         />
       )}
       {settingsOpen ? (
         <SettingsDialog
           product={product}
           productId={productId}
-          onClose={() => setSettingsOpen(false)}
+          onClose={closeSettings}
         />
       ) : null}
       {showDebug ? <ProductDebugPanel drive={document} /> : null}
@@ -191,11 +196,6 @@ function writeStoryWidth(width: number): void {
   }
 }
 
-function modelSpecOf(doc: PHDocument): ModelSpec {
-  const global = (doc.state as { global?: unknown }).global;
-  return global && typeof global === "object" ? global : {};
-}
-
 /** States 1 and 2: the strip over the build (story | preview) or the live product. */
 function ProductView({
   drive,
@@ -203,6 +203,7 @@ function ProductView({
   product,
   live,
   fallbackSessionId,
+  productId,
   onOpenSettings,
 }: {
   drive: DocumentDriveDocument;
@@ -210,6 +211,7 @@ function ProductView({
   product: StudioProductState | null;
   live: boolean;
   fallbackSessionId: string | undefined;
+  productId: string | null;
   onOpenSettings: () => void;
 }) {
   const now = useNow(30_000);
@@ -234,12 +236,20 @@ function ProductView({
       : undefined;
   const preview = useResolvedPreview(useSessionPreviewTarget(sessionDocument));
 
-  const models = useMemo(
-    () =>
-      documents
-        .filter((d) => d.header.documentType === DOCUMENT_MODEL_TYPE)
-        .map((d) => ({ id: d.header.id, model: plainModel(modelSpecOf(d)) })),
-    [documents],
+  const toast = usePHToast();
+  const rename = useCallback(
+    (name: string) => {
+      if (!productId) return;
+      const failed = () =>
+        toast?.("Couldn't rename it. Try again.", { type: "error" });
+      // The name only: the web address (slug) is separate and never changes here.
+      dispatchActions(
+        productActions.renameProduct({ name }),
+        productId,
+        failed,
+      ).catch(failed);
+    },
+    [productId, toast],
   );
 
   const toggleStep = useCallback((kind: StepKind) => {
@@ -253,7 +263,6 @@ function ProductView({
       drive={drive}
       documents={documents}
       product={product}
-      models={models}
       now={now}
       preview={<PreviewBody preview={preview} />}
     />
@@ -266,6 +275,7 @@ function ProductView({
         selected={openStep}
         onOpenStep={toggleStep}
         onOpenSettings={onOpenSettings}
+        onRename={productId ? rename : undefined}
       />
       {live ? (
         <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
@@ -317,7 +327,6 @@ function StepDetail({
   drive,
   documents,
   product,
-  models,
   now,
   preview,
 }: {
@@ -325,7 +334,6 @@ function StepDetail({
   drive: DocumentDriveDocument;
   documents: readonly PHDocument[];
   product: StudioProductState | null;
-  models: readonly { id: string; model: ReturnType<typeof plainModel> }[];
   now: Date;
   preview: React.ReactNode;
 }) {
@@ -338,7 +346,7 @@ function StepDetail({
         />
       );
     case "DATA":
-      return <DataDetail models={models} />;
+      return <DataDetail documents={documents} />;
     case "EDITORS":
       return <div className="flex h-[70vh] flex-col">{preview}</div>;
     case "TESTS":
@@ -359,26 +367,43 @@ function BuildSplit({
   const [width, setWidth] = useState(readStoryWidth);
   const [dragging, setDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  /** Removes a drag's window listeners (on mouse up or unmount). */
+  const endDrag = useRef<(() => void) | null>(null);
 
-  useEffect(() => writeStoryWidth(width), [width]);
+  useEffect(() => () => endDrag.current?.(), []);
 
   function onMouseDown(event: React.MouseEvent<HTMLDivElement>) {
     event.preventDefault();
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0) return;
+    endDrag.current?.();
     setDragging(true);
+    let latest: number | null = null;
     function onMove(e: MouseEvent) {
       if (!rect) return;
       const percent = ((e.clientX - rect.left) / rect.width) * 100;
-      setWidth(clamp(percent, STORY_WIDTH_MIN, STORY_WIDTH_MAX));
+      latest = clamp(percent, STORY_WIDTH_MIN, STORY_WIDTH_MAX);
+      setWidth(latest);
     }
-    function onUp() {
-      setDragging(false);
+    function detach() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      endDrag.current = null;
+    }
+    function onUp() {
+      detach();
+      setDragging(false);
+      // Stored once per drag, when it ends.
+      if (latest !== null) writeStoryWidth(latest);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    endDrag.current = detach;
+  }
+
+  function resetWidth() {
+    setWidth(STORY_WIDTH_DEFAULT);
+    writeStoryWidth(STORY_WIDTH_DEFAULT);
   }
 
   return (
@@ -395,7 +420,7 @@ function BuildSplit({
         aria-orientation="vertical"
         aria-label="Resize"
         onMouseDown={onMouseDown}
-        onDoubleClick={() => setWidth(STORY_WIDTH_DEFAULT)}
+        onDoubleClick={resetWidth}
         className="w-1.5 shrink-0 cursor-col-resize border-x border-border bg-card hover:bg-accent"
       />
       <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">

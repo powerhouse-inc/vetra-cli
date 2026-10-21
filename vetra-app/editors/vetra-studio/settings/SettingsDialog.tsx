@@ -8,13 +8,22 @@ import {
   actions as productActions,
   type StudioProductState,
 } from "document-models/studio-product";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentAuthButton } from "../AgentAuthButton.js";
 import { StudioBudgetMeter } from "../budget/BudgetMeter.js";
 import { DeploySection } from "../DeploySection.js";
 import { githubText } from "../strip/stripModel.js";
 import { VersionBadge } from "../VersionBadge.js";
 import { WorkspaceExportButton } from "../WorkspaceExportButton.js";
+
+/** Whether a dialog other than `own` is open on the page. */
+function otherModalOpen(own: HTMLElement | null): boolean {
+  return Array.from(
+    window.document.querySelectorAll(
+      '[role="dialog"], [role="alertdialog"], [aria-modal="true"]',
+    ),
+  ).some((el) => el !== own);
+}
 
 export function SettingsDialog({
   product,
@@ -31,9 +40,14 @@ export function SettingsDialog({
   const [error, setError] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
 
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // A modal opened from inside (e.g. in Advanced) closes first.
+      if (otherModalOpen(dialogRef.current)) return;
+      onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -61,6 +75,7 @@ export function SettingsDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-6">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Settings"

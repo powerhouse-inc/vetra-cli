@@ -5,7 +5,7 @@ import { readProduct } from "../shell/useStudioState.js";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
 import { button, click, render } from "../test-utils/render.js";
 import { at, buildingOps, productDoc } from "../test-utils/studioFixtures.js";
-import { StepStrip } from "./StepStrip.js";
+import { StepStrip, tone } from "./StepStrip.js";
 import { stripModel, type StripView } from "./stripModel.js";
 
 function view(...ops: Parameters<typeof productDoc>): StripView {
@@ -88,5 +88,15 @@ describe("StepStrip", () => {
     expect(onOpenStep).toHaveBeenCalledWith("PLAN");
     click(button(container, "Settings"));
     expect(onOpenSettings).toHaveBeenCalled();
+  });
+
+  it("colours follow the spec: Live green, working and needs-you distinct", () => {
+    expect(tone("●")).toContain("bg-success");
+    expect(tone("✓")).toContain("text-success");
+    expect(tone("◐")).toContain("yellow");
+    expect(tone("!")).toContain("bg-warning");
+    expect(tone("✕")).toContain("destructive");
+    const all = (["○", "◐", "✓", "!", "✕", "●"] as const).map(tone);
+    expect(new Set(all).size).toBe(all.length);
   });
 });
