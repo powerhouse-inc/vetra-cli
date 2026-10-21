@@ -23,16 +23,16 @@ import {
   type StudioProductState,
 } from "document-models/studio-product";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StudioBudgetMeter } from "../budget/BudgetMeter.js";
 import { useStudioBudget } from "../budget/useStudioBudget.js";
 import { PreviewBody } from "../BuildSection.js";
-import { ConversationPane, IdeaStart } from "../ChatPane.js";
+import { ConversationPane } from "../ChatPane.js";
 import {
   ProductDebugPanel,
   isProductDebugEnabled,
 } from "../debug/ProductDebugPanel.js";
 import { useResolvedPreview } from "../hooks/useResolvedPreview.js";
 import { useSessionPreviewTarget } from "../hooks/useSessionPreviewTarget.js";
+import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
 import { DataDetail } from "../steps/DataDetail.js";
@@ -40,7 +40,7 @@ import { LiveDetail } from "../steps/LiveDetail.js";
 import { PlanDetail } from "../steps/PlanDetail.js";
 import { planBrief } from "../steps/planBrief.js";
 import { TestsDetail } from "../steps/TestsDetail.js";
-import { StepStrip, SettingsButton } from "../strip/StepStrip.js";
+import { StepStrip } from "../strip/StepStrip.js";
 import { stripChange, stripModel } from "../strip/stripModel.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { useStudioState } from "./useStudioState.js";
@@ -102,7 +102,7 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-background">
       {status === "idea" ? (
-        <IdeaView
+        <IdeaScreen
           onStart={startFromIdea}
           onStarted={setStartedSession}
           onOpenSettings={openSettings}
@@ -138,31 +138,6 @@ function ShellLoading() {
     >
       Opening your Studio…
     </div>
-  );
-}
-
-/** State 0 until the idea screen (Task 1.5) replaces the box. */
-function IdeaView({
-  onStart,
-  onStarted,
-  onOpenSettings,
-}: {
-  onStart: (idea: string) => Promise<string | undefined>;
-  onStarted: (sessionId: string) => void;
-  onOpenSettings: () => void;
-}) {
-  return (
-    <>
-      <div className="flex shrink-0 items-center justify-end gap-3 px-4 py-2">
-        <StudioBudgetMeter />
-        <SettingsButton onOpen={onOpenSettings} />
-      </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-        <div className="flex w-full max-w-xl flex-col">
-          <IdeaStart onStart={onStart} onStarted={onStarted} />
-        </div>
-      </div>
-    </>
   );
 }
 

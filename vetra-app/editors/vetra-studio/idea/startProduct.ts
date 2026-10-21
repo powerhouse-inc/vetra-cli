@@ -225,6 +225,11 @@ export function ideaStartStatus(
   return usedSession ? "legacy" : "idea";
 }
 
+/** The story's first line for a new product (spec §5.3). */
+export function firstStoryLine(title: string): string {
+  return `Got it — planning ${title}.`;
+}
+
 /** The conversation to open after a start, or undefined for none ("" is
  *  returned when the product's conversation is no longer in the drive). */
 export function sessionToOpen(result: StartProductResult): string | undefined {
@@ -315,13 +320,21 @@ async function run(
     );
   }
   if (!product?.hasChanges) {
+    const changeId = deps.newId();
     productOps.push(
       productActions.startChange({
-        id: deps.newId(),
+        id: changeId,
         kind: "FIRST_BUILD",
         request: text,
         chatSessionId: sessionId,
         startedAt: at,
+      }),
+      // The story's first line, there before the agent's first step (§5.3).
+      productActions.addMilestone({
+        changeId,
+        id: deps.newId(),
+        text: firstStoryLine(productName),
+        at,
       }),
     );
   }
