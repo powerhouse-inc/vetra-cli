@@ -27,6 +27,8 @@ export type { Language } from "./understand-prompt.js";
 export const UNDERSTAND_MAX_INPUTS = 6;
 export const UNDERSTAND_MAX_OUTPUT_TOKENS = 4096;
 export const UNDERSTAND_TIMEOUT_MS = 75_000;
+/** A reply that isn't a draft (or a transient provider error) gets one more call. */
+export const UNDERSTAND_ATTEMPTS = 2;
 /** Characters of a text material sent to the model. */
 export const TEXT_MATERIAL_MAX_CHARS = 20_000;
 
@@ -243,21 +245,37 @@ export async function understand(
 
   const outcomes = await Promise.allSettled(
     inputs.map(async (inp, i) => {
-      const abortSignal = AbortSignal.timeout(UNDERSTAND_TIMEOUT_MS);
-      const content = await inp.content();
-      const result = await raceAbort(
-        deps.generate({
-          system,
-          messages: [{ role: "user", content }],
-          maxOutputTokens: UNDERSTAND_MAX_OUTPUT_TOKENS,
-          abortSignal,
-        }),
-        abortSignal,
-      );
-      const cost = callCostUsd(result) ?? 0;
-      // A diagram may yield roles/steps but no things; that is still a read.
-      const draft = parseDraft(result.text, ids, { requireThings: false });
-      return { draft: draft && namespaceIds(pinSources(draft, inp.material), `i${i}-`), cost };
+      let cost = 0;
+      let last: unknown;
+      for (let attempt = 1; attempt <= UNDERSTAND_ATTEMPTS; attempt++) {
+        const abortSignal = AbortSignal.timeout(UNDERSTAND_TIMEOUT_MS);
+        try {
+          const content = await inp.content();
+          const result = await raceAbort(
+            deps.generate({
+              system,
+              messages: [{ role: "user", content }],
+              maxOutputTokens: UNDERSTAND_MAX_OUTPUT_TOKENS,
+              abortSignal,
+            }),
+            abortSignal,
+          );
+          cost += callCostUsd(result) ?? 0;
+          // A diagram may yield roles/steps but no things; that is still a read.
+          const draft = parseDraft(result.text, ids, { requireThings: false });
+          if (draft) {
+            return {
+              draft: namespaceIds(pinSources(draft, inp.material), `i${i}-`),
+              cost,
+            };
+          }
+          last = new Error("unparseable reply");
+        } catch (err) {
+          if (isBudgetError(err) || abortSignal.aborted) throw err;
+          last = err;
+        }
+      }
+      throw last;
     }),
   );
 

@@ -185,6 +185,18 @@ describe("understand", () => {
     expect(en.calls[0].system).toContain("in English.");
   });
 
+  it("an unparseable reply is retried once", async () => {
+    let calls = 0;
+    const { deps } = fakeDeps(async () => {
+      calls++;
+      return calls === 1 ? { text: "not json" } : reply(thing("Mangel"));
+    });
+    const result = await understand(deps, { materials: [], text: "Prüfliste", language: "de" });
+    expect(calls).toBe(2);
+    expect(result.notes).toEqual([]);
+    expect(result.draft.things.map((t) => t.name)).toEqual(["Mangel"]);
+  });
+
   it("a diagram with steps but no things is still a read", async () => {
     const { deps } = fakeDeps(async () => ({
       text: JSON.stringify({
