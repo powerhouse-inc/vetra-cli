@@ -6,11 +6,10 @@
  * line expands to its raw detail (today's transcript, folded).
  */
 import type { ContentPart } from "@powerhousedao/clint-common/document-models/chat-session";
-import { dispatchActions, usePHToast } from "@powerhousedao/reactor-browser";
-import {
-  actions as productActions,
-  type Change,
-  type StudioProductState,
+import { usePHToast } from "@powerhousedao/reactor-browser";
+import type {
+  Change,
+  StudioProductState,
 } from "document-models/studio-product";
 import {
   useCallback,
@@ -38,7 +37,13 @@ import {
   type FailureBudget,
   type FailureHandlers,
 } from "../failures/failureStates.js";
-import { DELIVERY_TEXT, SteerBox, sendSteer } from "./SteerBox.js";
+import {
+  DELIVERY_TEXT,
+  SteerBox,
+  continueChange,
+  continueFailureText,
+  sendSteer,
+} from "./SteerBox.js";
 import {
   agentWorking,
   staleness,
@@ -143,16 +148,9 @@ export function StoryPane({
 
   function resume() {
     if (!productId) return;
-    const failed = () =>
-      toast?.("Couldn't continue. Try again.", { type: "error" });
-    dispatchActions(
-      productActions.resumeChange({
-        changeId: change.id,
-        at: new Date().toISOString(),
-      }),
-      productId,
-      failed,
-    ).catch(failed);
+    continueChange(productId, change.id, sessionId).catch((err) =>
+      toast?.(continueFailureText(err), { type: "error" }),
+    );
   }
 
   return (

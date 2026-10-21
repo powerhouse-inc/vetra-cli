@@ -11,7 +11,12 @@ import {
   user,
   atSec,
 } from "./storyFixtures.js";
-import { staleness, storyLines, type StoryLine } from "./storyModel.js";
+import {
+  CONTINUE_ID_PREFIX,
+  staleness,
+  storyLines,
+  type StoryLine,
+} from "./storyModel.js";
 
 function changeOf(product: ReturnType<typeof buildingProduct>) {
   const change = product.changes.find((c) => c.id === "c1");
@@ -265,6 +270,25 @@ describe("auto-continue", () => {
       new Date(at(4)),
     );
     expect(lines.filter((l) => l.kind === "steer")).toEqual([]);
+  });
+
+  it("Continue's message is not a steer, even after a message sent while paused", () => {
+    const product = buildingProduct();
+    const lines = storyLines(
+      product,
+      changeOf(product),
+      chat(
+        user("u0", "a task board", at(1), at(1)),
+        { ...reply("a1", "Working.", at(2), at(3)), finishReason: "stop" },
+        // Sent while paused: its turn stopped at its first step, no reply.
+        user("m1", "make the cards blue", atSec(3, 1), atSec(3, 2)),
+        user(`${CONTINUE_ID_PREFIX}1`, "continue", atSec(3, 5), atSec(3, 6)),
+      ),
+      new Date(at(4)),
+    );
+    expect(lines.flatMap((l) => (l.kind === "steer" ? [l.text] : []))).toEqual([
+      "make the cards blue",
+    ]);
   });
 
   it("the customer's own continue still shows", () => {

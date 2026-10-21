@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { TokenLimiterProcessor } from '@mastra/core/processors';
 import { MCPClient } from '@mastra/mcp';
+import { createSteerProcessor } from '@powerhousedao/clint-common/chat';
 import { createMastraHelpers } from '@powerhousedao/ph-clint/mastra';
 import { createWorkdirStore } from '@powerhousedao/ph-clint';
 import type { AgentSetupContext, AgentProvider } from '@powerhousedao/ph-clint';
@@ -12,6 +13,7 @@ import { INPUT_TOKEN_CAP, createLlmModels, resolveContextTokenLimit, resolveLlmS
 import { createNoModelAgent } from './no-model-agent.js';
 import { createReplayAgent } from './replay-agent.js';
 import { bindRecorderContext } from '../lifecycle/check-recorder.js';
+import { PauseProcessor, agentLogger } from './pause.js';
 import { PhaseToolsProcessor } from './phase-tools.js';
 
 /**
@@ -121,10 +123,21 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     workspace: await m.createWorkspace(),
     memory,
     agents: subAgents,
-    // Tool filter before the token count (F17b): the agent sees only the
-    // tools of the active change's current step.
-    inputProcessors: [new PhaseToolsProcessor(ctx.context), new TokenLimiterProcessor({ limit: mainLimit })],
+    // F17b: pause before steers are injected (a turn about to stop keeps its
+    // steers for the next turn); the tool filter (only the active change's
+    // current step's tools) before the token count. Steering is wired here
+    // only — a sub-agent would take the session's steers.
+    inputProcessors: [
+      new PauseProcessor(ctx.context),
+      createSteerProcessor(),
+      new PhaseToolsProcessor(ctx.context),
+      new TokenLimiterProcessor({ limit: mainLimit }),
+    ],
   });
+
+  // A pause aborts the turn through the processor workflow, which Mastra logs
+  // as a failed step; this logger drops that line (a pause is not an error).
+  main.__setLogger(agentLogger('Vetra Agent'));
 
   const store = createWorkdirStore(ctx.workdir, CLI_NAME);
   const wrapOpts: WrapAgentOptions = {

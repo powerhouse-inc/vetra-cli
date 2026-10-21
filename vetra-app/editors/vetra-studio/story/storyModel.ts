@@ -89,8 +89,10 @@ const WORKING_TEXT: Record<StepKind, string> = {
 };
 
 /** The supervisor's auto-continue after a step-capped turn (vetra-cli
- *  `CONTINUE_TEXT`); not the customer's words. */
+ *  `CONTINUE_TEXT`), or Continue's after a pause; not the customer's words. */
 export const AUTO_CONTINUE_TEXT = "continue";
+/** Id prefix of the `continue` message the Continue button sends. */
+export const CONTINUE_ID_PREFIX = "studio-continue-";
 const CAP_FINISH_REASONS = new Set(["tool-calls", "tool_calls"]);
 
 /** Check names in the story's compact check lines (spec §5.4 Tests step). */
@@ -204,9 +206,15 @@ export function lastToolCall(chat: StoryChat | null): ToolCallView | null {
   return null;
 }
 
-/** The supervisor's "continue" right after a turn that hit the step cap. */
+/**
+ * A "continue" that isn't the customer's words: the one the Continue button
+ * sends (its id), or the supervisor's right after a turn that hit the step
+ * cap.
+ */
 function isAutoContinue(messages: readonly Message[], index: number): boolean {
-  if (messageText(messages[index]) !== AUTO_CONTINUE_TEXT) return false;
+  const message = messages[index];
+  if (messageText(message) !== AUTO_CONTINUE_TEXT) return false;
+  if (message.id.startsWith(CONTINUE_ID_PREFIX)) return true;
   for (let i = index - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role === "USER") return false;
