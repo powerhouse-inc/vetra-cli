@@ -82,7 +82,7 @@ import { publishAll, type LiveRelease, type PublishedPackage } from "./publish-a
 import { awaitRollbackSettle } from "../triggers/live-health.js";
 import { askForSuggestions, chatBudgetUsedUp, hasSuggestionsFor } from "./suggestions.js";
 import { checkLive, waitForDeployment } from "./verify.js";
-import { ensureProductTarget } from "../product/upgrade-existing.js";
+import { adoptedWithoutVersions, ensureProductTarget } from "../product/upgrade-existing.js";
 
 /* ------------------------------------------------------------------------ */
 /* Words and small rules                                                     */
@@ -166,9 +166,10 @@ export function nextVersionNumber(state: StudioProductState): { number: number; 
  */
 export function autoLaunchCandidate(state: StudioProductState): Change | null {
   if (state.liveVersion != null) return null;
-  // X33: an existing Studio's address that was live before versions only
-  // gets Version 1 when the customer says Make it live.
-  if (state.liveBeforeVersions && state.versions.length === 0) return null;
+  // X33: an existing Studio's product gets Version 1 only when the customer
+  // says Make it live — also while its live check is still pending, since an
+  // environment found at launch time would be adopted.
+  if (adoptedWithoutVersions(state)) return null;
   if (state.versions.some((v) => v.status === "LAUNCHING")) return null;
   return (
     state.changes.find(

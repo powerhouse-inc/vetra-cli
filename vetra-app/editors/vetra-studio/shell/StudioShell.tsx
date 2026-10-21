@@ -55,6 +55,7 @@ import { openChange, stripChange, stripModel } from "../strip/stripModel.js";
 import { PHASE_AVERAGES } from "../strip/timeLeft.js";
 import { useVersionsPanel } from "../versions/VersionsPanel.js";
 import { VetraStudio } from "../VetraStudio.js";
+import { showsFirstVersionBar } from "./firstVersion.js";
 import { useStudioState } from "./useStudioState.js";
 
 const STORY_WIDTH_STORAGE_KEY = "vetra-studio:story-width";
@@ -327,13 +328,10 @@ function StudioPage({
     [drive, productId],
   );
 
-  // X33: an existing Studio's address from before versions gets Version 1
-  // only on the customer's Make it live (no automatic first launch).
+  // X33: an existing Studio's product gets Version 1 only on the customer's
+  // Make it live (no automatic first launch).
   const firstVersionBar =
-    product?.liveBeforeVersions &&
-    product.liveVersion === null &&
-    change &&
-    (change.status === "READY" || change.status === "LAUNCHING") ? (
+    product && change && showsFirstVersionBar(product, change) ? (
       <ReadyBar
         product={product}
         productId={productId}

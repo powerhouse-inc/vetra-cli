@@ -57,8 +57,10 @@ const STATES: Record<string, unknown> = {
     services: [],
   },
 };
+let failure = "";
 const loadEnvironmentState = jest.fn(async (_ctx: unknown, id: string) => {
-  if (id === "env-broken") throw new Error("document not found");
+  if (id === "env-broken") throw new Error("Document not found: env-broken");
+  if (id === "env-flaky") throw new Error(failure);
   return STATES[id];
 });
 
@@ -68,7 +70,7 @@ jest.unstable_mockModule("../../src/cloud/environments-read.js", () => ({
 }));
 jest.unstable_mockModule("../../src/cloud/environments-write.js", () => ({ loadEnvironmentState }));
 
-const { findOwnerEnvironmentsRunning } = await import("../../src/product/upgrade-existing.js");
+const { findOwnerEnvironmentsRunning, isGoneError } = await import("../../src/product/upgrade-existing.js");
 
 describe("findOwnerEnvironmentsRunning", () => {
   const ctx = { workdir: "/tmp/x", config: { environmentId: "studio-env" }, log: { warn: () => {} } } as never;
@@ -98,6 +100,26 @@ describe("findOwnerEnvironmentsRunning", () => {
     expect(byId["env-elsewhere"]).toMatch(/another registry/);
     // No registry recorded on the package: not compared.
     expect(byId["env-old"]).toBeUndefined();
+  });
+
+  it("any other read failure leaves the answer pending (throws), never a different choice", async () => {
+    for (failure of ["Not authorized", "fetch failed", "HTTP 503 Service Unavailable"]) {
+      listMyEnvironments.mockImplementationOnce(async () => [
+        { id: "env-old", status: "READY" },
+        { id: "env-flaky", status: "READY" },
+      ]);
+      await expect(
+        findOwnerEnvironmentsRunning(ctx, { names: ["@vetra-apps/todo"], registries: [] }),
+      ).rejects.toThrow(failure);
+    }
+  });
+
+  it("tells a gone environment from a passing failure", () => {
+    expect(isGoneError(new Error("Document not found: x"))).toBe(true);
+    expect(isGoneError(new Error("HTTP 404"))).toBe(true);
+    expect(isGoneError(new Error("fetch failed"))).toBe(false);
+    expect(isGoneError(new Error("HTTP 502 Bad Gateway"))).toBe(false);
+    expect(isGoneError(new Error("Not authorized — you can't act as the user"))).toBe(false);
   });
 
   it("asks nothing when the workspace has no packages", async () => {

@@ -4,8 +4,9 @@
  * A Studio made before the product page has conversations, maybe reactor
  * projects and maybe an environment it deployed to, but no product document,
  * so the page keeps today's view for it (`studioState` 'legacy', Ruling F4).
- * Once per Studio, at startup, `adoptExisting` gives it a product document
- * made from what is there:
+ * In a Studio only (an environment id is configured), once per start of the
+ * agent process, `adoptExisting` gives it a product document made from what
+ * is there (a Studio already upgraded is skipped):
  *
  * - name from the drive name (the old page's header);
  * - `INIT_PRODUCT`, then `ADOPT_EXISTING` (Ruling F5): one CLOSED
@@ -356,6 +357,13 @@ export function environmentUrl(state: VetraCloudEnvironmentGlobalState): string 
   return connect ? `https://${sub}-${connect.prefix}.${base}` : `https://${sub}.${base}`;
 }
 
+/** An error that says the environment document is gone (not a passing failure). */
+export function isGoneError(err: unknown): boolean {
+  return /not[ _-]?found|does not exist|doesn't exist|no such document|\b(404|410)\b|has been deleted/i.test(
+    message(err),
+  );
+}
+
 /** Packages the platform installs itself; they don't make an env someone else's. */
 function isSystemPackage(name: string): boolean {
   return name.startsWith("@powerhousedao/");
@@ -384,8 +392,9 @@ function mismatchOf(state: VetraCloudEnvironmentGlobalState, workspace: Workspac
  * the Studio itself or another Studio, never one that is gone. One that also
  * runs other packages, or the workspace's from another registry, is listed
  * with its `mismatch` (it makes the choice ambiguous). An environment whose
- * state can't be loaded is skipped. Throws when the list itself can't be read
- * (not signed in, offline): the caller decides later.
+ * document is clearly gone is skipped. Throws when the list or any other
+ * environment can't be read (not signed in, offline, 5xx): the caller treats
+ * the answer as pending and tries again later.
  */
 export async function findOwnerEnvironmentsRunning(
   ctx: UpgradeContext,
@@ -403,7 +412,11 @@ export async function findOwnerEnvironmentsRunning(
     try {
       state = await loadEnvironmentState(read, env.id);
     } catch (err) {
-      ctx.log?.warn?.(`${TAG} skipped environment ${env.id}: its state couldn't be read (${message(err)})`);
+      // Only an env that is clearly gone is left out; anything else (not
+      // signed in, network, 5xx) leaves the answer pending for a retry, so a
+      // half-read list never changes which env is adopted.
+      if (!isGoneError(err)) throw err;
+      ctx.log?.warn?.(`${TAG} skipped environment ${env.id}: it no longer exists (${message(err)})`);
       continue;
     }
     if (GONE_STATUSES.has(state.status)) continue;
@@ -502,7 +515,14 @@ export async function adoptExisting(ctx: UpgradeContext): Promise<"created" | "s
   if (productNode) {
     const existing = await getProductDoc(ctx);
     if (!existing) throw new Error("The product document couldn't be read.");
-    if (existing.state.changes.length > 0) return "skipped";
+    if (existing.state.changes.length > 0) {
+      // Already upgraded; a file that still carries the upgrade's name gets
+      // the product's.
+      if (productNode.name === UPGRADING_PRODUCT_NAME) {
+        await renameProductFile(ctx, client, drive.driveId, productNode.id, existing.state.name ?? null);
+      }
+      return "skipped";
+    }
     initialised = existing.state.createdAt !== null || existing.state.idea !== null;
   }
 
@@ -557,12 +577,7 @@ export async function adoptExisting(ctx: UpgradeContext): Promise<"created" | "s
     productId = (await client.createDocumentInDrive(drive.driveId, doc)).header.id;
   }
   await dispatchProduct(ctx, actions);
-  try {
-    const { updateNode } = await import("@powerhousedao/shared/document-drive");
-    await client.execute(drive.driveId, "main", [updateNode({ id: productId, name })]);
-  } catch (err) {
-    ctx.log?.warn?.(`${TAG} the product file keeps its upgrade name: ${message(err)}`);
-  }
+  await renameProductFile(ctx, client, drive.driveId, productId, name);
 
   writeUpgradeRecord(ctx, {
     productId,
@@ -591,6 +606,22 @@ function preflight(actions: Action[], initialised: boolean): string | null {
   for (const action of actions) doc = StudioProductV1.reducer(doc, action);
   const failed = doc.operations.global.slice(before).find((op) => op.error);
   return failed?.error ?? null;
+}
+
+/** Gives the product's drive file its name (best effort; logged on failure). */
+async function renameProductFile(
+  ctx: UpgradeContext,
+  client: UpgradeClient,
+  driveId: string,
+  productId: string,
+  name: string | null,
+): Promise<void> {
+  try {
+    const { updateNode } = await import("@powerhousedao/shared/document-drive");
+    await client.execute(driveId, "main", [updateNode({ id: productId, name: name?.trim() || FALLBACK_NAME })]);
+  } catch (err) {
+    ctx.log?.warn?.(`${TAG} the product file keeps its upgrade name: ${message(err)}`);
+  }
 }
 
 /** True for a product made by `adoptExisting` that has no version yet. */
@@ -740,7 +771,8 @@ export async function runUpgrade(ctx: UpgradeContext): Promise<"created" | "skip
 }
 
 /**
- * Runs the upgrade once per process, at the first poll, detached from the
+ * In a Studio only (`config.environmentId`), runs the upgrade once per
+ * process, at the first poll, detached from the
  * shared trigger loop so the agent's turn and the other triggers never wait
  * on it. A live check the upgrade couldn't run is tried again every
  * `LIVE_RETRY_MS`.

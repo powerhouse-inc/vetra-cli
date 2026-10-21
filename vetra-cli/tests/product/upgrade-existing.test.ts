@@ -22,6 +22,7 @@ import type { ProductTarget } from "../../src/launch/cloud-launch.js";
 import {
   BEFORE_VERSIONS_REQUEST,
   UPGRADE_RECORD,
+  UPGRADING_PRODUCT_NAME,
   adoptExisting,
   ensureProductTarget,
   environmentUrl,
@@ -335,6 +336,19 @@ describe("adoptExisting", () => {
     expect(await h.state()).toEqual(state);
   });
 
+  it("a skipped, already-upgraded Studio gets its product file name back", async () => {
+    h.project("todo-app");
+    await h.session(["build a todo app"]);
+    expect(await adoptExisting(h.ctx)).toBe("created");
+    const [id] = await h.products();
+    const { updateNode } = await import("@powerhousedao/shared/document-drive");
+    // As if the rename after the upgrade had failed.
+    await h.module.client.execute(h.driveId, "main", [updateNode({ id, name: UPGRADING_PRODUCT_NAME }) as never]);
+    expect(await adoptExisting(h.ctx)).toBe("skipped");
+    const d = (await h.module.client.get(h.driveId)) as { state: { global: { nodes: { id: string; name: string }[] } } };
+    expect(d.state.global.nodes.find((n) => n.id === id)?.name).toBe("Todo app");
+  });
+
   it("a new Studio, a Studio with a product and a one-shot run are left alone", async () => {
     // Nothing older: the idea screen stays.
     await h.session([]);
@@ -463,8 +477,22 @@ describe("before an explicit launch", () => {
       { ...ready.changes[0], id: "c1", kind: "CHANGE", status: "READY" },
     ];
     expect(autoLaunchCandidate(ready)).toBeNull();
-    // Without an address from before versions, the first launch stays automatic.
-    expect(autoLaunchCandidate({ ...ready, liveBeforeVersions: null })?.id).toBe("c1");
+    // Also while the live check is still pending: an env found at launch
+    // time would be adopted.
+    expect(autoLaunchCandidate({ ...ready, liveBeforeVersions: null })).toBeNull();
+    // A product without work from before versions keeps its automatic first launch.
+    const fresh = { ...ready, changes: ready.changes.filter((c) => c.kind !== "BEFORE_VERSIONS"), liveBeforeVersions: null };
+    expect(autoLaunchCandidate(fresh)?.id).toBe("c1");
+  });
+
+  it("a pending live check and a READY change: nothing launches", async () => {
+    h.project("todo-app");
+    await h.session(["build a todo app"]);
+    h.live = new Error("fetch failed");
+    await adoptExisting(h.ctx);
+    expect(readUpgradeRecord(h.workdir).live).toBe("pending");
+    const s = await h.state();
+    expect(autoLaunchCandidate({ ...s, changes: [...s.changes, { ...s.changes[0], id: "c1", kind: "CHANGE", status: "READY" }] })).toBeNull();
   });
 
   it("not signed in during the live check is the owner's missing OK, not an outage", async () => {
