@@ -230,6 +230,7 @@ async function commitTree(
   message: string,
   author: GitAuthor,
   ref = `refs/heads/${MAIN_BRANCH}`,
+  opts: { createOnly?: boolean } = {},
 ): Promise<string> {
   const head = await headSha(workdir);
   const args = ["commit-tree", tree, "-m", message];
@@ -242,7 +243,8 @@ async function commitTree(
       GIT_COMMITTER_EMAIL: author.email,
     },
   });
-  await git(workdir, ["update-ref", ref, sha]);
+  // `""` as the old value: create the ref, never move an existing one.
+  await git(workdir, ["update-ref", ref, sha, ...(opts.createOnly ? [""] : [])]);
   return sha;
 }
 
@@ -250,6 +252,8 @@ async function commitTree(
 export const UNSAVED_REF_PREFIX = "refs/vetra/unsaved/";
 /** Marks a change whose starting code was prepared (F19). */
 export const CHANGE_BASE_REF_PREFIX = "refs/vetra/change-base/";
+/** Marks a change a turn worked on before its starting code was prepared. */
+export const CHANGE_UNBASED_REF_PREFIX = "refs/vetra/change-unbased/";
 
 /** A ref-safe form of an id. */
 function refPart(id: string): string {
@@ -260,7 +264,9 @@ function refPart(id: string): string {
  * Keep the reactor projects' working tree (tracked and untracked, non-ignored
  * files; never `.ph/`) as a commit under `refs/vetra/unsaved/<label>-<ms>`,
  * parented on HEAD, without touching HEAD, the index or the files. Returns the
- * ref.
+ * ref (created, never overwritten: a taken name gets `-2`, `-3`, …). `dirs`
+ * that are neither on disk nor in HEAD (a project only the live tag has) are
+ * skipped: there is nothing of them to keep.
  */
 export async function saveUnsaved(
   workdir: string,
@@ -276,23 +282,49 @@ export async function saveUnsaved(
     const run = (args: string[]) => git(workdir, args, { env });
     if (head) await run(["read-tree", "HEAD"]);
     else await run(["read-tree", "--empty"]);
-    if (dirs.length > 0) {
-      await run(["add", "-A", "--", ...dirs]);
+    const inHead = head ? await projectDirs(workdir, "HEAD", { onDisk: false }) : [];
+    const present = dirs.filter((d) => inHead.includes(d) || fs.existsSync(path.join(workdir, d)));
+    if (present.length > 0) {
+      await run(["add", "-A", "--", ...present]);
       await run(["rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ".ph", "*/.ph/*"]);
     }
     tree = await run(["write-tree"]);
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
   }
-  const ref = `${UNSAVED_REF_PREFIX}${refPart(label)}-${(opts.now ?? Date.now)()}`;
-  await commitTree(workdir, tree, `Unsaved code before reset (${label})`, opts.author ?? DEFAULT_AUTHOR, ref);
+  const base = `${UNSAVED_REF_PREFIX}${refPart(label)}-${(opts.now ?? Date.now)()}`;
+  let ref = base;
+  for (let n = 2; await refExists(workdir, ref); n++) ref = `${base}-${n}`;
+  await commitTree(workdir, tree, `Unsaved code before reset (${label})`, opts.author ?? DEFAULT_AUTHOR, ref, {
+    createOnly: true,
+  });
   return ref;
+}
+
+async function refExists(workdir: string, ref: string): Promise<boolean> {
+  if (!fs.existsSync(path.join(workdir, ".git"))) return false;
+  return (await gitMaybe(workdir, ["rev-parse", "-q", "--verify", ref])) !== null;
+}
+
+/** Whether a turn already worked on the change before its base was prepared. */
+export async function hasChangeUnbased(workdir: string, changeId: string): Promise<boolean> {
+  return refExists(workdir, `${CHANGE_UNBASED_REF_PREFIX}${refPart(changeId)}`);
+}
+
+/**
+ * Record that a turn went on with the change before its base was prepared
+ * (points at HEAD); from then on the change's code is never reset to the live
+ * version. No-op without a commit.
+ */
+export async function markChangeUnbased(workdir: string, changeId: string): Promise<void> {
+  const head = await headSha(workdir);
+  if (!head) return;
+  await git(workdir, ["update-ref", `${CHANGE_UNBASED_REF_PREFIX}${refPart(changeId)}`, head]);
 }
 
 /** Whether the change's starting code was already prepared (F19). */
 export async function hasChangeBase(workdir: string, changeId: string): Promise<boolean> {
-  if (!fs.existsSync(path.join(workdir, ".git"))) return false;
-  return (await gitMaybe(workdir, ["rev-parse", "-q", "--verify", `${CHANGE_BASE_REF_PREFIX}${refPart(changeId)}`])) !== null;
+  return refExists(workdir, `${CHANGE_BASE_REF_PREFIX}${refPart(changeId)}`);
 }
 
 /** Record that the change's starting code is `tag`'s (F19); survives restarts. */

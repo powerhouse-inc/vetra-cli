@@ -8,10 +8,11 @@ import {
   discardDraft,
   draftMatches,
   hasChangeBase,
+  hasChangeUnbased,
   snapshot,
 } from "../../src/launch/git-versions.js";
 import { awaitsBase, liveTag, prepareChangeBase } from "../../src/product/changes.js";
-import { dispatchProduct } from "../../src/product/product-doc.js";
+import { dispatchProduct, getProductDoc } from "../../src/product/product-doc.js";
 import { newRequestsMemory, requestsPass } from "../../src/triggers/product-requests.js";
 import { AT, a, launchHarness, makeReady, type LaunchHarness } from "../launch/orchestrator-helpers.js";
 
@@ -179,16 +180,67 @@ describe("changes after launch", () => {
     await processor.processInputStep(step(0));
     expect(tries).toBe(2);
     expect(h.lines.filter((l) => l.includes("git broke"))).toHaveLength(1);
+    expect(await hasChangeUnbased(h.workdir, "change-2")).toBe(true);
   });
 
-  it("a product that can't be read never stops the turn", async () => {
+  it("a change a turn worked on without its base is never reset later", async () => {
     h = await liveStudio();
+    write(h.workdir, "todo/src/model.ts", "export const v = 99;\n");
+    await startChange(h, "change-2", "session-2");
+    let now = 1_000;
+    let failing = true;
     const processor = new ChangeBaseProcessor(h.octx, {
-      readProduct: async () => {
-        throw new Error("offline");
+      now: () => now,
+      prepare: (ctx, change, opts) => {
+        if (failing) return Promise.reject(new Error("git broke"));
+        return prepareChangeBase(ctx, change, opts);
       },
     });
+    await processor.processInputStep(step(0)); // fails: the turn goes on
+    expect(await hasChangeUnbased(h.workdir, "change-2")).toBe(true);
+    write(h.workdir, "todo/src/notes.ts", "agent edit\n");
+
+    failing = false;
+    now += CHANGE_BASE_RETRY_MS;
+    await processor.processInputStep(step(0));
+
+    expect(read(h.workdir, "todo/src/model.ts")).toBe("export const v = 99;\n");
+    expect(read(h.workdir, "todo/src/notes.ts")).toBe("agent edit\n");
+    expect(await hasChangeBase(h.workdir, "change-2")).toBe(true);
+    expect(refs(h.workdir, "refs/vetra/unsaved/")).toEqual([]);
+    expect(h.lines.some((l) => l.includes("keeps the code it started from"))).toBe(true);
+  });
+
+  it("a turn that couldn't read the product leaves the change unbased; reads back off", async () => {
+    h = await liveStudio();
+    write(h.workdir, "todo/src/model.ts", "export const v = 99;\n");
+    await startChange(h, "change-2", "session-2");
+    let now = 1_000;
+    let reads = 0;
+    let offline = true;
+    const processor = new ChangeBaseProcessor(h.octx, {
+      now: () => now,
+      readProduct: (ctx) => {
+        reads++;
+        return offline ? Promise.reject(new Error("offline")) : getProductDoc(ctx);
+      },
+    });
+    h.lines.length = 0;
     await expect(processor.processInputStep(step(0))).resolves.toBeUndefined();
+    await processor.processInputStep(step(0));
+    expect(reads).toBe(1);
+    expect(h.lines.filter((l) => l.includes("offline"))).toHaveLength(1);
+    write(h.workdir, "todo/src/notes.ts", "agent edit\n");
+
+    offline = false;
+    now += CHANGE_BASE_RETRY_MS;
+    await processor.processInputStep(step(0));
+
+    expect(reads).toBe(2);
+    expect(await hasChangeUnbased(h.workdir, "change-2")).toBe(true);
+    expect(await hasChangeBase(h.workdir, "change-2")).toBe(true);
+    expect(read(h.workdir, "todo/src/model.ts")).toBe("export const v = 99;\n");
+    expect(read(h.workdir, "todo/src/notes.ts")).toBe("agent edit\n");
   });
 
   it("never resets the code of a change the agent has planned", async () => {

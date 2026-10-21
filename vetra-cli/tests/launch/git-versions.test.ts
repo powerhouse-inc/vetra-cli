@@ -8,6 +8,7 @@ import {
   discardDraft,
   ensureWorkspaceRepo,
   restoreVersion,
+  saveUnsaved,
   snapshot,
 } from "../../src/launch/git-versions.js";
 import { LaunchError } from "../../src/launch/errors.js";
@@ -207,6 +208,33 @@ describe("discardDraft", () => {
     await snapshot(workdir, 1, "First");
     expect(await discardDraft(workdir, "v1")).toBeNull();
     expect(git("for-each-ref", "refs/vetra/")).toBe("");
+  });
+
+  it("brings back a project the live version has but HEAD and the disk lack", async () => {
+    write("second/powerhouse.config.json", "{}\n");
+    write("second/src/a.ts", "a\n");
+    await snapshot(workdir, 1, "First");
+    git("rm", "-r", "-q", "second");
+    git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "drop second");
+    write("todo/src/model.ts", "export const v = 5;\n");
+
+    const kept = await discardDraft(workdir, "v1", { label: "c1", now: () => 7 });
+
+    expect(kept).toBe("refs/vetra/unsaved/c1-7");
+    expect(git("show", `${kept}:todo/src/model.ts`)).toBe("export const v = 5;");
+    expect(read("second/src/a.ts")).toBe("a\n");
+    expect(read("todo/src/model.ts")).toBe("export const v = 1;\n");
+  });
+
+  it("never overwrites a kept snapshot", async () => {
+    await snapshot(workdir, 1, "First");
+    write("todo/src/model.ts", "export const v = 2;\n");
+    const first = await saveUnsaved(workdir, ["todo"], "c1", { now: () => 9 });
+    write("todo/src/model.ts", "export const v = 3;\n");
+    const second = await saveUnsaved(workdir, ["todo"], "c1", { now: () => 9 });
+    expect([first, second]).toEqual(["refs/vetra/unsaved/c1-9", "refs/vetra/unsaved/c1-9-2"]);
+    expect(git("show", `${first}:todo/src/model.ts`)).toBe("export const v = 2;");
+    expect(git("show", `${second}:todo/src/model.ts`)).toBe("export const v = 3;");
   });
 
   it("removes a reactor project the draft added", async () => {

@@ -19,7 +19,9 @@ import {
   discardDraft,
   draftMatches,
   hasChangeBase,
+  hasChangeUnbased,
   markChangeBase,
+  markChangeUnbased,
   versionTag,
 } from "../launch/git-versions.js";
 import { getProductDoc, type ProductContext } from "./product-doc.js";
@@ -27,7 +29,7 @@ import { getProductDoc, type ProductContext } from "./product-doc.js";
 const TAG = "[changes]";
 
 /** What `prepareChangeBase` did. */
-export type ChangeBaseOutcome = "restored" | "unchanged" | "already" | "skipped";
+export type ChangeBaseOutcome = "restored" | "unchanged" | "already" | "unbased" | "skipped";
 
 export interface ChangeBaseContext extends ProductContext {
   workdir: string;
@@ -43,9 +45,18 @@ export interface ChangeBaseDeps {
   discardDraft: typeof discardDraft;
   hasChangeBase: typeof hasChangeBase;
   markChangeBase: typeof markChangeBase;
+  hasChangeUnbased: typeof hasChangeUnbased;
+  markChangeUnbased: typeof markChangeUnbased;
 }
 
-const defaultDeps: ChangeBaseDeps = { draftMatches, discardDraft, hasChangeBase, markChangeBase };
+const defaultDeps: ChangeBaseDeps = {
+  draftMatches,
+  discardDraft,
+  hasChangeBase,
+  markChangeBase,
+  hasChangeUnbased,
+  markChangeUnbased,
+};
 
 /** The live version's git tag, or null when nothing is live. */
 export function liveTag(state: StudioProductState): string | null {
@@ -73,8 +84,10 @@ export function awaitsBase(change: Change): boolean {
  * (`refs/vetra/change-base/<id>`) and the reactor projects aren't the live
  * tag's, keep them under `refs/vetra/unsaved/<id>-<ms>` and restore the live
  * code with `discardDraft`; then mark the change prepared. `opts.state` is the
- * product state when the caller has it (else it is read). Throws when git
- * fails (nothing is marked, so a later turn tries again).
+ * product state when the caller has it (else it is read). A change a turn
+ * already worked on without its base (`refs/vetra/change-unbased/<id>`) is
+ * never reset: it is marked prepared as it is (`unbased`). Throws when git
+ * fails (nothing is marked).
  */
 export async function prepareChangeBase(
   ctx: ChangeBaseContext,
@@ -87,6 +100,14 @@ export async function prepareChangeBase(
   const tag = state ? liveTag(state) : null;
   if (!tag) return "skipped";
   if (await d.hasChangeBase(ctx.workdir, change.id)) return "already";
+  if (await d.hasChangeUnbased(ctx.workdir, change.id)) {
+    // A turn already worked on this change: its edits stand, never reverted.
+    ctx.log?.warn?.(
+      `${TAG} change ${change.id} went on before its code was set to ${tag}; it keeps the code it started from`,
+    );
+    await d.markChangeBase(ctx.workdir, change.id, tag);
+    return "unbased";
+  }
   let outcome: ChangeBaseOutcome = "unchanged";
   if (!(await d.draftMatches(ctx.workdir, tag))) {
     const unsaved = await d.discardDraft(ctx.workdir, tag, { label: change.id });
