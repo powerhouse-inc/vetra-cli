@@ -55,6 +55,10 @@ export type StoryLine =
       detail: Message[];
       /** The live "doing now" sub-line (only on the active line). */
       doingNow: string | null;
+      /** The milestone in the customer's words, when the agent wrote one. */
+      outcome: string | null;
+      /** One line of what the agent did (filled by `layerLines`). */
+      summary: string;
     }
   | { kind: "reply"; id: string; at: string; text: string; question: boolean }
   | { kind: "steer"; id: string; at: string; text: string; delivery: Delivery }
@@ -235,7 +239,7 @@ function isAutoContinue(messages: readonly Message[], index: number): boolean {
 
 /** One line per check run: "Type check ✓ · Lint ✓ · …", failures counted
  *  ("2 checks failed — fixing" while the agent still builds). */
-function checkLines(change: Change): StoryLine[] {
+export function checkLines(change: Change): StoryLine[] {
   const runs = [...change.checkRuns].sort((a, b) => time(a.at) - time(b.at));
   return runs.map((run, i) => {
     const results = [...run.results].sort(
@@ -301,6 +305,8 @@ export function storyLines(
       text: m.text,
       detail: [],
       doingNow: null,
+      outcome: m.outcome ?? null,
+      summary: "",
     }));
 
   // The line for what's in progress: the working step (or the agent's turn).
@@ -321,6 +327,8 @@ export function storyLines(
             : "Working on it",
           detail: [],
           doingNow: working ? doingNow(lastToolCall(chat)) : null,
+          outcome: null,
+          summary: "",
         }
       : null;
 
