@@ -9,6 +9,7 @@ import {
 } from "../../helpers/project-checks.js";
 import { resolveReactorProjectPath } from "../../helpers/project.js";
 import { attachCheckResults, type ObservedCheck } from "../../product/check-results.js";
+import { missingMarkers } from "../../product/marker-check.js";
 import { runSmoke } from "../../product/smoke.js";
 import { getProductDoc, type ProductContext } from "../../product/product-doc.js";
 import { phBuildNodeOptions } from "../../helpers/node-memory.js";
@@ -120,6 +121,8 @@ export const reactorProjectCheck = defineCommand({
         }),
       );
     }
+    const unmarked = missingMarkers(base);
+    if (unmarked.length > 0) notes.push(`Add data-vetra-component to: ${unmarked.join(", ")}`);
     const summary = summarizeDiagnostics(diagnostics);
 
     const header =
