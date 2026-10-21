@@ -37,6 +37,11 @@
       "browser": "./dist/browser/editors/*/editor.js",
       "node": "./dist/node/editors/*/editor.mjs"
     },
+    "./studio-team": {
+      "types": "./dist/types/editors/vetra-studio/index.d.ts",
+      "browser": "./dist/browser/editors/vetra-studio/index.js",
+      "node": "./dist/node/editors/vetra-studio/index.mjs"
+    },
     "./subgraphs": {
       "types": "./dist/types/subgraphs/index.d.ts",
       "browser": "./dist/browser/subgraphs/index.js",
