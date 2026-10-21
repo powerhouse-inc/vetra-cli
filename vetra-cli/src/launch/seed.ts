@@ -303,11 +303,16 @@ export function validateSeeds(projectPath: string): SeedValidation {
 }
 
 /**
- * The SMOKE part for the starter set: a failing check when a seed file
- * doesn't fit the models (the reason names the document) or when the project
- * defines document types but has no example documents; null when fine.
+ * The SMOKE part for the starter set. `check` is a failing SMOKE result when
+ * a seed file doesn't fit the models (the reason names the document), or when
+ * examples are required (`requireExamples`: the workspace has a product
+ * document, Ruling X27) and the project defines document types but has none.
+ * Without that requirement, missing examples only give a `note`.
  */
-export function seedCheck(projectPath: string): ObservedCheck | null {
+export function seedCheck(
+  projectPath: string,
+  opts: { requireExamples?: boolean } = {},
+): { check: ObservedCheck | null; note?: string } {
   const { documents, problems, modelTypes } = validateSeeds(projectPath);
   if (problems.length > 0) {
     const first = problems[0];
@@ -321,19 +326,25 @@ export function seedCheck(projectPath: string): ObservedCheck | null {
       .map((p) => `${p.file}${p.document ? ` "${p.document}"` : ""}: ${p.message}`)
       .join("; ");
     return {
-      kind: "SMOKE",
-      passed: false,
-      reason: capReason(reason, { base: projectPath }),
-      detail: `Example documents (${SEED_DIR}/*.json) don't fit the document models — ${detail}`,
+      check: {
+        kind: "SMOKE",
+        passed: false,
+        reason: capReason(reason, { base: projectPath }),
+        detail: `Example documents (${SEED_DIR}/*.json) don't fit the document models — ${detail}`,
+      },
     };
   }
   if (modelTypes.length > 0 && documents.length === 0) {
+    const hint = `write ${SEED_DIR}/<document-type>.json (load the example-data skill).`;
+    if (!opts.requireExamples) return { check: null, note: `no example documents yet: ${hint}` };
     return {
-      kind: "SMOKE",
-      passed: false,
-      reason: "There are no example documents yet.",
-      detail: `No example documents: write ${SEED_DIR}/<document-type>.json (load the example-data skill).`,
+      check: {
+        kind: "SMOKE",
+        passed: false,
+        reason: "There are no example documents yet.",
+        detail: `No example documents: ${hint}`,
+      },
     };
   }
-  return null;
+  return { check: null };
 }

@@ -13,11 +13,15 @@
  * (create + seed; the models are installed by then) → the orchestrator calls
  * `cloudSetProductDrive` and dispatches `SET_PRODUCT_DRIVE` → VERIFY.
  *
- * Once only: when the product already has a drive (`knownDriveId`, from the
- * product document) nothing is called. A small marker in the workdir records
- * the drive and the example documents already written, so a launch that was
- * interrupted after the drive existed resumes on that drive and never makes a
- * second one.
+ * Once only, even when a response or the workdir is lost:
+ * - the product document's `productDriveId` (`knownDriveId`) short-circuits;
+ * - the drive carries the stable slug `product-<appId>`; before creating, the
+ *   live server is asked for a drive with that slug and a hit is adopted;
+ * - a marker in the workdir records the drive, whether the default access was
+ *   applied, and each example's document id (written before its operations),
+ *   so a retry resumes on the same documents. An adopted drive's examples are
+ *   found again by name. Operations already on a document (its revision) are
+ *   not sent again.
  *
  * Access (Q3 default `SIGNED_IN`): the drive is left unprotected, so any
  * signed-in Renown user can open and write it; `setAccess(…, 'OWNER_ONLY')`
@@ -25,12 +29,11 @@
  * anonymous visitors read an unprotected drive is the switchboard's policy.
  *
  * Live verification (Task 2.6 Step 1, run on a staging production env): see
- * the task report — drive creation, a second identity writing an unprotected
- * drive, and `setDocumentProtection` by the delegated identity.
+ * the task report.
  */
 import fs from "node:fs";
-import type { ISigner } from "document-model";
 import path from "node:path";
+import type { Action, ISigner } from "document-model";
 import { getBearerToken, getRenown } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
 import { redact, type CloudContext } from "./cloud-launch.js";
@@ -48,17 +51,32 @@ export const DRIVE_REASONS = {
   access: "who can use your product couldn't be changed",
 } as const;
 
+/** The drive's stable slug: one per App, so a lost answer or workdir never leads to a second drive. */
+export function productDriveSlug(appId: string): string {
+  return `product-${appId}`;
+}
+
+export interface FoundDocument {
+  id: string;
+  name: string;
+  documentType: string;
+}
+
 /** The calls on the live server, as the owner's delegated identity. */
 export interface ProductDriveClient {
-  /** Create an empty drive; returns its id. Kept to one request so a retry can't leave a half-made second drive. */
-  createDrive(): Promise<string>;
-  /** Name the drive and, when given, open it in the product's app view. Safe to repeat. */
-  configureDrive(driveId: string, input: { name: string; preferredEditor?: string }): Promise<void>;
-  /** Create one document in the drive, named `name`, and apply `actions` to it in order. */
-  addDocument(
-    driveId: string,
-    doc: { documentType: string; name: string; actions: SeedAction[] },
-  ): Promise<string>;
+  /** The drive with this slug, or null. */
+  findDrive(slug: string): Promise<string | null>;
+  /** Create the drive in one request (slug, name and app view set at creation); returns its id. */
+  createDrive(input: { slug: string; name: string; preferredEditor?: string }): Promise<string>;
+  /** The documents already in the drive. */
+  listDocuments(driveId: string): Promise<FoundDocument[]>;
+  /** Create one empty document in the drive, named `name`; returns its id. */
+  createDocument(driveId: string, input: { documentType: string; name: string }): Promise<string>;
+  /**
+   * Apply `actions` in order. Actions the document already has (per scope,
+   * by its revision) are not sent again, so a retry never repeats one.
+   */
+  applyActions(documentId: string, actions: SeedAction[]): Promise<void>;
   /** `setDocumentProtection(documentIdOrSlug, protected)`. */
   setProtection(driveId: string, isProtected: boolean): Promise<void>;
 }
@@ -69,6 +87,8 @@ export interface ProductDriveContext extends CloudContext {
 }
 
 export interface EnsureProductDriveOptions {
+  /** The product's App (its id makes the drive's stable slug). */
+  appId: string;
   /** The product's live server (base URL or its `/graphql` endpoint). */
   switchboardUrl: string;
   /** The product's name — the drive's name. */
@@ -77,17 +97,37 @@ export interface EnsureProductDriveOptions {
   appEditorId?: string | null;
   /** The reactor project(s) holding `seed/*.json` (a workspace's projects ship as one product); no seeding when absent. */
   projectPath?: string | string[] | null;
-  /** The product document's `productDriveId`: when set, nothing is created. */
+  /** The product document's `productDriveId`: when set, nothing is created or called. */
   knownDriveId?: string | null;
+}
+
+export interface ProductDriveResult {
+  driveId: string;
+  /**
+   * The default access (Q3) is in place. False when the server refused it:
+   * the requests trigger (2.7) applies it again with `setAccess`. Null when
+   * not known here (`knownDriveId` without a local record).
+   */
+  accessApplied: boolean | null;
+  /** Example documents the server refused (names); they are not retried. */
+  failedExamples: string[];
+}
+
+type ExampleStatus = "created" | "done" | "failed";
+
+interface ExampleRecord {
+  key: string;
+  docId: string | null;
+  status: ExampleStatus;
+  name: string;
+  error?: string;
 }
 
 interface Marker {
   switchboardUrl: string;
   driveId: string;
-  /** Named, editor set and default access applied. */
-  configured: boolean;
-  /** Seed document keys already written. */
-  seeded: string[];
+  accessApplied: boolean;
+  examples: ExampleRecord[];
   done: boolean;
 }
 
@@ -97,15 +137,15 @@ function markerPath(workdir: string): string {
   return path.join(workdir, MARKER_FILE);
 }
 
-function readMarker(workdir: string, switchboardUrl: string): Marker | null {
+function readMarker(workdir: string): Marker | null {
   try {
     const m = JSON.parse(fs.readFileSync(markerPath(workdir), "utf-8")) as Partial<Marker>;
-    if (typeof m.driveId !== "string" || m.switchboardUrl !== switchboardUrl) return null;
+    if (typeof m.driveId !== "string" || typeof m.switchboardUrl !== "string") return null;
     return {
-      switchboardUrl,
+      switchboardUrl: m.switchboardUrl,
       driveId: m.driveId,
-      configured: m.configured === true,
-      seeded: Array.isArray(m.seeded) ? m.seeded.filter((k): k is string => typeof k === "string") : [],
+      accessApplied: m.accessApplied === true,
+      examples: Array.isArray(m.examples) ? m.examples : [],
       done: m.done === true,
     };
   } catch {
@@ -119,6 +159,14 @@ function writeMarker(workdir: string, marker: Marker): void {
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(marker, null, 2));
   fs.renameSync(tmp, file);
+}
+
+function resultOf(marker: Marker): ProductDriveResult {
+  return {
+    driveId: marker.driveId,
+    accessApplied: marker.accessApplied,
+    failedExamples: marker.examples.filter((e) => e.status === "failed").map((e) => e.name),
+  };
 }
 
 /** `https://x.vetra.io` or `…/graphql` → the GraphQL endpoint. */
@@ -140,23 +188,40 @@ async function clientFor(ctx: ProductDriveContext, switchboardUrl: string): Prom
   return ctx.driveClient ? ctx.driveClient(switchboardUrl) : createDriveClient(ctx, switchboardUrl);
 }
 
+/** The example documents of every project; schema-invalid ones are logged and left out. */
+function loadExamples(ctx: ProductDriveContext, projectPath: EnsureProductDriveOptions["projectPath"]): SeedDocument[] {
+  const projects = projectPath ? [projectPath].flat() : [];
+  return projects.flatMap((p, i) => {
+    const { documents, problems } = validateSeeds(p);
+    for (const pr of problems) {
+      ctx.log?.warn?.(
+        `[launch] product drive: example left out (${pr.file}${pr.document ? ` "${pr.document}"` : ""}): ${pr.message}`,
+      );
+    }
+    // Keys are per project, so two projects' `seed/x.json` never collide.
+    return documents.map((d) => (i === 0 ? d : { ...d, key: `${path.basename(p)}/${d.key}` }));
+  });
+}
+
 /**
  * Create the product drive once and seed it with the example documents.
- * Returns the drive id. Never creates a second drive for the same product:
- * `knownDriveId` short-circuits, and an interrupted run resumes on the drive
- * it already created.
+ * Never creates a second drive for the same App (see the module comment).
  */
 export async function ensureProductDrive(
   ctx: ProductDriveContext,
   opts: EnsureProductDriveOptions,
-): Promise<string> {
-  if (opts.knownDriveId) return opts.knownDriveId;
+): Promise<ProductDriveResult> {
   const endpoint = switchboardGraphqlEndpoint(opts.switchboardUrl);
-  let marker = readMarker(ctx.workdir, endpoint);
-  if (marker?.done) return marker.driveId;
+  let marker = readMarker(ctx.workdir);
+  if (marker && marker.switchboardUrl !== endpoint) marker = null;
+  if (opts.knownDriveId) {
+    return marker?.driveId === opts.knownDriveId
+      ? resultOf(marker)
+      : { driveId: opts.knownDriveId, accessApplied: null, failedExamples: [] };
+  }
+  if (marker?.done) return resultOf(marker);
 
   const client = await clientFor(ctx, endpoint);
-
   const step = async <T>(what: string, call: () => Promise<T>): Promise<T> => {
     try {
       return await call();
@@ -172,60 +237,92 @@ export async function ensureProductDrive(
     }
   };
 
+  let adopted = false;
   if (!marker) {
-    const driveId = await step("createDrive", () => client.createDrive());
-    marker = { switchboardUrl: endpoint, driveId, configured: false, seeded: [], done: false };
-    writeMarker(ctx.workdir, marker);
-    ctx.log?.info?.(`[launch] product drive ${driveId} created`);
-  }
-
-  if (!marker.configured) {
-    const driveId = marker.driveId;
-    await step("configureDrive", () =>
-      client.configureDrive(driveId, {
-        name: opts.name,
-        ...(opts.appEditorId ? { preferredEditor: opts.appEditorId } : {}),
-      }),
-    );
-    // Q3 default: open to signed-in users. A server without document
-    // permissions is open to signed-in users anyway, so a refusal here only warns.
-    try {
-      await client.setProtection(driveId, DEFAULT_ACCESS === "OWNER_ONLY");
-    } catch (err) {
-      ctx.log?.warn?.(`[launch] product drive: default access not set: ${message(err)}`);
+    const slug = productDriveSlug(opts.appId);
+    let driveId = await step("findDrive", () => client.findDrive(slug));
+    if (driveId) {
+      adopted = true;
+      ctx.log?.info?.(`[launch] product drive ${driveId} found by its slug; using it`);
+    } else {
+      driveId = await step("createDrive", () =>
+        client.createDrive({
+          slug,
+          name: opts.name,
+          ...(opts.appEditorId ? { preferredEditor: opts.appEditorId } : {}),
+        }),
+      );
+      ctx.log?.info?.(`[launch] product drive ${driveId} created`);
     }
-    marker.configured = true;
+    marker = { switchboardUrl: endpoint, driveId, accessApplied: false, examples: [], done: false };
     writeMarker(ctx.workdir, marker);
   }
+  const m: Marker = marker;
 
-  const projects = opts.projectPath ? [opts.projectPath].flat() : [];
-  // Keys are per project, so two projects' `seed/x.json` never collide.
-  const seeds: SeedDocument[] = projects.flatMap((p, i) =>
-    validateSeeds(p).documents.map((d) => (i === 0 ? d : { ...d, key: `${path.basename(p)}/${d.key}` })),
-  );
-  for (const doc of seeds) {
-    if (marker.seeded.includes(doc.key)) continue;
+  if (!m.accessApplied) {
+    // Q3 default: open to signed-in users. A refusal doesn't stop the launch;
+    // it is reported (`accessApplied: false`) so the requests trigger retries.
     try {
-      await client.addDocument(marker.driveId, {
-        documentType: doc.documentType,
-        name: doc.name,
-        actions: doc.actions,
-      });
+      await client.setProtection(m.driveId, DEFAULT_ACCESS === "OWNER_ONLY");
+      m.accessApplied = true;
+    } catch (err) {
+      ctx.log?.warn?.(`[launch] product drive: default access not applied: ${message(err)}`);
+    }
+    writeMarker(ctx.workdir, m);
+  }
+
+  const examples = loadExamples(ctx, opts.projectPath);
+  // Documents already in the drive, read at most once: an adopted drive (lost
+  // workdir) or a creation whose answer was lost may hold an example already.
+  let existing: FoundDocument[] | null = null;
+  const findExisting = async (doc: SeedDocument): Promise<string | null> => {
+    existing ??= await step("listDocuments", () => client.listDocuments(m.driveId));
+    const claimed = new Set(m.examples.map((e) => e.docId));
+    return (
+      existing.find((e) => e.name === doc.name && e.documentType === doc.documentType && !claimed.has(e.id))?.id ??
+      null
+    );
+  };
+
+  for (const doc of examples) {
+    let rec = m.examples.find((e) => e.key === doc.key);
+    if (rec && rec.status !== "created") continue;
+    if (rec && !rec.docId) rec.docId = await findExisting(doc); // an earlier creation's answer was lost
+    if (!rec) {
+      rec = { key: doc.key, docId: adopted ? await findExisting(doc) : null, status: "created", name: doc.name };
+      m.examples.push(rec);
+      // Recorded before the creation, so a lost answer is looked up on the retry.
+      writeMarker(ctx.workdir, m);
+    }
+    const record = rec;
+    try {
+      if (!record.docId) {
+        record.docId = await client.createDocument(m.driveId, {
+          documentType: doc.documentType,
+          name: doc.name,
+        });
+        // Recorded before any operation, so a retry resumes on this document.
+        writeMarker(ctx.workdir, m);
+      }
+      await client.applyActions(record.docId, doc.actions);
+      record.status = "done";
     } catch (err) {
       if (!serverAnswered(err)) {
+        writeMarker(ctx.workdir, m);
         ctx.log?.warn?.(`[launch] product drive: seeding stopped: ${message(err)}`);
-        throw new LaunchError("CLOUD_UNAVAILABLE", DRIVE_REASONS.create, `addDocument: ${message(err)}`);
+        throw new LaunchError("CLOUD_UNAVAILABLE", DRIVE_REASONS.create, `seed "${doc.name}": ${message(err)}`);
       }
-      // The server refused this example: skip it rather than block the launch.
-      ctx.log?.warn?.(`[launch] product drive: example "${doc.name}" skipped: ${message(err)}`);
+      // The server refused this example: recorded and reported, the launch goes on.
+      record.status = "failed";
+      record.error = message(err);
+      ctx.log?.warn?.(`[launch] product drive: example "${doc.name}" refused: ${record.error}`);
     }
-    marker.seeded.push(doc.key);
-    writeMarker(ctx.workdir, marker);
+    writeMarker(ctx.workdir, m);
   }
 
-  marker.done = true;
-  writeMarker(ctx.workdir, marker);
-  return marker.driveId;
+  m.done = true;
+  writeMarker(ctx.workdir, m);
+  return resultOf(m);
 }
 
 /**
@@ -239,7 +336,8 @@ export async function setAccess(
   access: ProductAccess,
   target: { switchboardUrl: string; driveId: string },
 ): Promise<void> {
-  const client = await clientFor(ctx, switchboardGraphqlEndpoint(target.switchboardUrl));
+  const endpoint = switchboardGraphqlEndpoint(target.switchboardUrl);
+  const client = await clientFor(ctx, endpoint);
   try {
     await client.setProtection(target.driveId, access === "OWNER_ONLY");
   } catch (err) {
@@ -251,6 +349,11 @@ export async function setAccess(
       `setDocumentProtection: ${message(err)}`,
     );
   }
+  const marker = readMarker(ctx.workdir);
+  if (marker && marker.driveId === target.driveId && marker.switchboardUrl === endpoint && !marker.accessApplied) {
+    marker.accessApplied = true;
+    writeMarker(ctx.workdir, marker);
+  }
 }
 
 /* ------------------------------------------------------------------------ */
@@ -258,18 +361,11 @@ export async function setAccess(
 /* ------------------------------------------------------------------------ */
 
 const DRIVE_TYPE = "powerhouse/document-drive";
+const PAGE = 100;
 
 const SET_PROTECTION = `mutation SetDocumentProtection($documentIdOrSlug: String!, $protected: Boolean!) {
   setDocumentProtection(documentIdOrSlug: $documentIdOrSlug, protected: $protected) { documentId protected }
 }`;
-
-/** The drive's `global.name` as the server has it, if any. */
-function driveName(state: unknown): string | undefined {
-  if (typeof state !== "object" || state === null || !("global" in state)) return undefined;
-  const global: unknown = state.global;
-  if (typeof global !== "object" || global === null || !("name" in global)) return undefined;
-  return typeof global.name === "string" ? global.name : undefined;
-}
 
 /**
  * The real client: the agent's Renown bearer on every request and its signer
@@ -304,86 +400,83 @@ export async function createDriveClient(
   let token: string | null = null;
   const bearer = ctx.bearerToken ?? (() => getBearerToken(ctx.workdir, renownUrl));
   const client = createReactorClient(endpoint, async () => (token = await bearer()));
-  const scrub = (err: unknown): Error => {
-    const e = err instanceof Error ? err : new Error(String(err));
-    e.message = redact(e.message, [token]);
-    return e;
+  const scrubbed = async <T>(call: () => Promise<T>): Promise<T> => {
+    try {
+      return await call();
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      e.message = redact(e.message, [token]);
+      throw e;
+    }
   };
 
-  const newAction = (type: string, input: unknown, scope: string) =>
-    ({
-      id: dm.generateId(),
-      type,
-      input,
-      scope,
-      timestampUtcMs: new Date().toISOString(),
-    }) as Parameters<typeof rb.stampAction>[0];
-
-  async function apply(documentId: string, actions: ReturnType<typeof newAction>[]): Promise<void> {
-    for (const action of actions) {
-      const got = await client.GetDocument({ identifier: documentId });
-      if (!got.document) throw new Error(`Document ${documentId} not found after creating it.`);
-      const snapshot = rb.phDocumentFromGetDocument(got.document.document);
-      const [signed] = await rb.prepareSignedActions([action], snapshot, actionSigner);
-      await client.MutateDocument({
-        documentIdentifier: documentId,
-        actions: [dm.toTransportAction(signed)],
-      });
+  /** Every page of a `findDocuments` search. */
+  async function find(search: { type?: string; parentId?: string }) {
+    const items: Array<{ id: string; slug?: string | null; name: string; documentType: string }> = [];
+    let cursor: string | null | undefined;
+    for (let page = 0; page < 20; page++) {
+      const res = await client.FindDocuments({ search, paging: { limit: PAGE, ...(cursor ? { cursor } : {}) } });
+      items.push(...res.findDocuments.items);
+      if (!res.findDocuments.hasNextPage || !res.findDocuments.cursor) break;
+      cursor = res.findDocuments.cursor;
     }
+    return items;
   }
 
   return {
-    async createDrive() {
-      try {
-        const created = await client.CreateEmptyDocument({ documentType: DRIVE_TYPE });
-        return created.createEmptyDocument.id;
-      } catch (err) {
-        throw scrub(err);
-      }
-    },
-    async configureDrive(id, { name, preferredEditor }) {
-      try {
-        await client.RenameDocument({ documentIdentifier: id, name });
-        const got = await client.GetDocument({ identifier: id });
-        const current = driveName(got.document?.document.state);
-        if (current !== name) {
-          await apply(id, [newAction(drive.setDriveName({ name }).type, { name }, "global")]);
-        }
-        if (preferredEditor) {
-          await client.SetPreferredEditor({ documentIdentifier: id, preferredEditor });
-        }
-      } catch (err) {
-        throw scrub(err);
-      }
-    },
-    async addDocument(driveId, doc) {
-      try {
-        const created = await client.CreateEmptyDocument({
-          documentType: doc.documentType,
-          parentIdentifier: driveId,
-        });
-        const id = created.createEmptyDocument.id;
-        await client.RenameDocument({ documentIdentifier: id, name: doc.name });
-        await apply(
-          id,
-          doc.actions.map((a) => newAction(a.type, a.input, a.scope)),
+    findDrive: (slug) =>
+      scrubbed(async () => (await find({ type: DRIVE_TYPE })).find((d) => d.slug === slug)?.id ?? null),
+    createDrive: ({ slug, name, preferredEditor }) =>
+      scrubbed(async () => {
+        const doc = dm.withSignaturePolicy(
+          drive.driveCreateDocument({ global: { name, icon: null, nodes: [] } }),
+          dm.DEFAULT_SIGNATURE_POLICY,
         );
+        doc.header.slug = slug;
+        doc.header.name = name;
+        if (preferredEditor) doc.header.meta = { ...doc.header.meta, preferredEditor };
+        const created = await client.CreateDocument({ document: doc });
+        return created.createDocument.id;
+      }),
+    listDocuments: (driveId) =>
+      scrubbed(async () =>
+        (await find({ parentId: driveId })).map((d) => ({ id: d.id, name: d.name, documentType: d.documentType })),
+      ),
+    createDocument: (driveId, { documentType, name }) =>
+      scrubbed(async () => {
+        const created = await client.CreateEmptyDocument({ documentType, parentIdentifier: driveId });
+        const id = created.createEmptyDocument.id;
+        await client.RenameDocument({ documentIdentifier: id, name });
         return id;
-      } catch (err) {
-        throw scrub(err);
-      }
-    },
-    async setProtection(driveId, isProtected) {
-      try {
+      }),
+    applyActions: (documentId, actions) =>
+      scrubbed(async () => {
+        const seen: Record<string, number> = {};
+        for (const a of actions) {
+          const index = seen[a.scope] ?? 0;
+          seen[a.scope] = index + 1;
+          const got = await client.GetDocument({ identifier: documentId });
+          if (!got.document) throw new Error(`Document ${documentId} not found.`);
+          const revision = got.document.document.revisionsList.find((r) => r.scope === a.scope)?.revision ?? 0;
+          // Already applied by an earlier try whose answer was lost.
+          if (revision > index) continue;
+          const action: Action = dm.createAction(a.type, a.input, undefined, undefined, a.scope);
+          const snapshot = rb.phDocumentFromGetDocument(got.document.document);
+          const [signed] = await rb.prepareSignedActions([action], snapshot, actionSigner);
+          await client.MutateDocument({
+            documentIdentifier: documentId,
+            actions: [dm.toTransportAction(signed)],
+          });
+        }
+      }),
+    setProtection: (driveId, isProtected) =>
+      scrubbed(async () => {
         await client.RunDocument({
           operationName: "SetDocumentProtection",
           operationType: "mutation",
           document: SET_PROTECTION,
           variables: { documentIdOrSlug: driveId, protected: isProtected },
         });
-      } catch (err) {
-        throw scrub(err);
-      }
-    },
+      }),
   };
 }

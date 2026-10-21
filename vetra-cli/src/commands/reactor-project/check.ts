@@ -10,7 +10,29 @@ import {
 import { resolveReactorProjectPath } from "../../helpers/project.js";
 import { attachCheckResults, type ObservedCheck } from "../../product/check-results.js";
 import { runSmoke } from "../../product/smoke.js";
+import { getProductDoc, type ProductContext } from "../../product/product-doc.js";
 import { phBuildNodeOptions } from "../../helpers/node-memory.js";
+
+/* A stalled reactor must not hang the check. */
+const PRODUCT_LOOKUP_TIMEOUT_MS = 5_000;
+
+/**
+ * Ruling X27: examples are required only in a Studio product workspace (one
+ * with a product document). A lookup that fails or stalls counts as none.
+ */
+export async function hasProductDoc(ctx: ProductContext): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), PRODUCT_LOOKUP_TIMEOUT_MS);
+    });
+    return (await Promise.race([getProductDoc(ctx), timeout])) !== null;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const inputSchema = z.object({
   name: z
@@ -48,8 +70,9 @@ export const reactorProjectCheck = defineCommand({
   inputSchema,
   execute: async (
     { name, scope, skipLint, skipTypecheck, tests },
-    { workdir, runProcess, services },
+    context,
   ) => {
+    const { workdir, runProcess, services } = context;
     const base = await resolveReactorProjectPath(workdir, name);
     const resolvedScope: CheckScope = scope ?? "all";
 
@@ -69,6 +92,8 @@ export const reactorProjectCheck = defineCommand({
         .find((i) => i.workdir === base && i.status === "ready");
       observed.push(
         await runSmoke(base, {
+          requireExamples: await hasProductDoc(context),
+          notes,
           previewUrl: preview?.endpoints?.["vetra-studio"],
           build: (projectPath) =>
             runProcess("ph build", {
