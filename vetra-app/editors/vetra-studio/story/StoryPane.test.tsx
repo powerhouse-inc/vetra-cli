@@ -267,3 +267,81 @@ describe("StoryPane", () => {
     });
   });
 });
+
+describe("StoryPane layers", () => {
+  function pane(props: Partial<Parameters<typeof StoryPane>[0]> = {}) {
+    const product = buildingProduct();
+    return (
+      <StoryPane
+        product={product}
+        change={changeOf(product)}
+        chat={chat(
+          user("u0", "a task board for my team", at(1), at(1)),
+          toolCall("a1", "spec-create", { name: "task" }, at(2)),
+          reply("a2", "Got it — planning Task board.", at(2)),
+          toolCall("a3", "Write", { path: "src/QueueBoard.tsx" }, at(7)),
+        )}
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        now={new Date(atSec(7, 10))}
+        {...props}
+      />
+    );
+  }
+
+  it("defaults to Activity", () => {
+    const container = render(pane());
+    expect(
+      container
+        .querySelector("[data-story-layer]")
+        ?.getAttribute("data-story-layer"),
+    ).toBe("activity");
+    expect(
+      container.querySelector('[role="tab"][aria-selected="true"]')
+        ?.textContent,
+    ).toBe("Activity");
+    expectNoForbiddenWords(container);
+  });
+
+  it("switching to Raw shows every tool call", () => {
+    const container = render(pane());
+    expect(container.textContent).not.toContain("spec-create");
+    click(button(container, "Raw"));
+    const list = container.querySelector("[data-story-layer]");
+    expect(list?.getAttribute("data-story-layer")).toBe("raw");
+    expect(container.querySelectorAll("[data-story-layer]")).toHaveLength(1);
+    expect(container.textContent).toContain("spec-create");
+    expect(container.textContent).toContain("QueueBoard.tsx");
+  });
+
+  it("Outcome shows one sentence per milestone", () => {
+    const container = render(pane({ layer: "outcome" }));
+    const lines = container.querySelectorAll("[data-story-line]");
+    const text = container.textContent;
+    expect(
+      container
+        .querySelector("[data-story-layer]")
+        ?.getAttribute("data-story-layer"),
+    ).toBe("outcome");
+    expect(text).toContain("Planned 1 app · 7 features");
+    expect(text).not.toContain("Got it — planning");
+    expect(lines.length).toBeLessThanOrEqual(4);
+    expectNoForbiddenWords(container);
+  });
+
+  it("is controlled when a layer is given and reports changes", () => {
+    const onLayerChange = vi.fn();
+    const container = render(pane({ layer: "outcome", onLayerChange }));
+    click(button(container, "Activity"));
+    expect(onLayerChange).toHaveBeenCalledWith("activity");
+  });
+
+  it("Copy all is only in Raw", () => {
+    const container = render(pane());
+    expect(button(container, "Copy all")).toBeUndefined();
+    click(button(container, "Outcome"));
+    expect(button(container, "Copy all")).toBeUndefined();
+    click(button(container, "Raw"));
+    expect(button(container, "Copy all")).toBeDefined();
+  });
+});

@@ -219,9 +219,11 @@ describe("StudioShell", () => {
 
   it("no route other than strip steps, Settings and Versions", () => {
     const container = building();
-    expect(
+    // Only the story's layer switch (Task 1.4) is a tablist; it is not a route.
+    const tabs = Array.from(
       container.querySelectorAll('[role="tab"], [role="tablist"]'),
-    ).toHaveLength(0);
+    ).filter((el) => !el.closest('[aria-label="Story detail"]'));
+    expect(tabs).toHaveLength(0);
     const names = Array.from(container.querySelectorAll("button, a")).map(
       (el) =>
         el.getAttribute("data-step") ??
@@ -240,6 +242,10 @@ describe("StudioShell", () => {
       // The steer box's actions (Task 1.6), not routes.
       "Send",
       "Pause",
+      // The story's layer switch (Task 1.4).
+      "Outcome",
+      "Activity",
+      "Raw",
     ]);
     expect(names.filter((n) => !allowed.has(n))).toEqual([]);
     expect(names).toContain("Settings");
