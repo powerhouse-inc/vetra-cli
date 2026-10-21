@@ -339,6 +339,7 @@ function StudioPage({
         chat={chat}
         sessionId={sessionId ?? null}
         productId={productId}
+        studioId={drive.header.id}
         failureContext={{
           budget: failureBudget,
           requestBudget: budget.request,

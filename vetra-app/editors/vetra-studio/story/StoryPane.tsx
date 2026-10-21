@@ -46,6 +46,7 @@ import {
   continueFailureText,
   sendSteer,
 } from "./SteerBox.js";
+import { AwayCard } from "./AwayCard.js";
 import { LayerSwitch } from "./LayerSwitch.js";
 import { copyAllText } from "./copyAll.js";
 import { DEFAULT_LAYER, layerLines, type StoryLayer } from "./storyLayers.js";
@@ -103,6 +104,8 @@ export type StoryPaneProps = {
   chat: StoryChat | null;
   sessionId: string | null;
   productId: string | null;
+  /** The Studio's id: keys the "while you were away" visit time. */
+  studioId?: string;
   /** Fixed time (tests); the pane ticks on its own otherwise. */
   now?: Date;
   failureContext?: StoryFailureContext;
@@ -120,6 +123,7 @@ export function StoryPane({
   chat,
   sessionId,
   productId,
+  studioId,
   now: fixedNow,
   failureContext = NO_FAILURE_CONTEXT,
   onStartChange,
@@ -135,6 +139,10 @@ export function StoryPane({
   const ticking = useNow(5_000);
   const now = fixedNow ?? ticking;
   const lines = storyLines(product, change, chat, now);
+  const openQuestion = lines.find(
+    (l): l is Extract<StoryLine, { kind: "reply" }> =>
+      l.kind === "reply" && l.question,
+  )?.text;
   const working = agentWorking(chat) && change.status === "BUILDING";
   // When the shown story last changed (G3 counts quiet time from that).
   const changeRef = useRef<StoryChange | null>(null);
@@ -225,6 +233,13 @@ export function StoryPane({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
+        {studioId ? (
+          <AwayCard
+            studioId={studioId}
+            product={product}
+            question={openQuestion}
+          />
+        ) : null}
         <ol data-story-layer={layer} className="flex flex-col gap-2">
           {shown.map((line) => (
             <li key={line.id} data-line={line.kind} data-story-line>
