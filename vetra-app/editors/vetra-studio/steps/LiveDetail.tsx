@@ -1,5 +1,11 @@
+import type { DocumentDriveDocument } from "@powerhousedao/shared/document-drive";
 import type { StudioProductState } from "document-models/studio-product";
-import { deployedAgo, githubText } from "../strip/stripModel.js";
+import { GithubStatusLine } from "../github/GithubStatusLine.js";
+import { deployedAgo } from "../strip/stripModel.js";
+
+/** Where the code is saved (spec §5.2, Task 4.5). */
+export const LIVE_GITHUB_TEXT =
+  "Keep a copy of your code in your own GitHub account. Every launch becomes a commit you can see.";
 
 /**
  * Live step detail (spec §5.2): the live address, the last launch, the
@@ -7,9 +13,13 @@ import { deployedAgo, githubText } from "../strip/stripModel.js";
  */
 export function LiveDetail({
   product,
+  productId,
+  drive,
   now,
 }: {
   product: StudioProductState | null;
+  productId?: string | null;
+  drive?: DocumentDriveDocument;
   now: Date;
 }) {
   const live =
@@ -45,8 +55,17 @@ export function LiveDetail({
           </a>
         ) : null}
         <p className="text-sm text-muted-foreground">
-          Version {live.number} · {deployedAgo(live.launchedAt ?? null, now)} ·{" "}
-          {githubText(product.github.status)}
+          Version {live.number} · {deployedAgo(live.launchedAt ?? null, now)}
+        </p>
+      </div>
+      <div className="flex flex-col gap-1 text-sm">
+        <p className="text-muted-foreground">{LIVE_GITHUB_TEXT}</p>
+        <p className="text-muted-foreground">
+          <GithubStatusLine
+            product={product}
+            productId={productId ?? null}
+            drive={drive}
+          />
         </p>
       </div>
       <div>

@@ -112,6 +112,8 @@ export async function gql<T>(
   data: T | null;
   errorMessage: string | null;
   errorReason?: string | null;
+  /** The error's human message (the cloud's plain reason), when there is one. */
+  errorText?: string | null;
 }> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -131,6 +133,7 @@ export async function gql<T>(
       data: json.data ?? null,
       errorMessage: err?.extensions?.code ?? err?.message ?? null,
       errorReason: err?.extensions?.reason ?? null,
+      errorText: err?.message ?? null,
     };
   } catch {
     return { data: null, errorMessage: "NETWORK_ERROR" };

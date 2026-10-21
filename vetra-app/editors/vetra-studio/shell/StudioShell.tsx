@@ -34,6 +34,7 @@ import {
 import { SignInModal, useFailureHandlers } from "../failures/FailureLine.js";
 import { failureFor, withFailure } from "../failures/failureStates.js";
 import { useStudioRestarting } from "../failures/useStudioRestarting.js";
+import { GithubStatusLine } from "../github/GithubStatusLine.js";
 import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
@@ -150,6 +151,7 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
         <SettingsDialog
           product={product}
           productId={productId}
+          drive={document}
           initialSection={settingsOnAccess ? "access" : undefined}
           onClose={closeSettings}
         />
@@ -402,6 +404,7 @@ function StudioPage({
       drive={drive}
       documents={documents}
       product={product}
+      productId={productId}
       now={now}
       preview={previewPane}
     />
@@ -419,6 +422,16 @@ function StudioPage({
           product?.liveVersion != null
             ? { live: product.liveVersion, onOpen: versions.openPanel }
             : undefined
+        }
+        github={
+          "liveUrl" in right && product ? (
+            <GithubStatusLine
+              product={product}
+              productId={productId}
+              drive={drive}
+              requestedBy={signIn.name ?? "you"}
+            />
+          ) : undefined
         }
         budget={
           "budget" in right && (right.budget || budgetLevel === "exhausted") ? (
@@ -495,6 +508,7 @@ function StepDetail({
   drive,
   documents,
   product,
+  productId,
   now,
   preview,
 }: {
@@ -502,6 +516,7 @@ function StepDetail({
   drive: DocumentDriveDocument;
   documents: readonly PHDocument[];
   product: StudioProductState | null;
+  productId: string | null;
   now: Date;
   preview: React.ReactNode;
 }) {
@@ -520,7 +535,14 @@ function StepDetail({
     case "TESTS":
       return <TestsDetail change={product ? stripChange(product) : null} />;
     case "LIVE":
-      return <LiveDetail product={product} now={now} />;
+      return (
+        <LiveDetail
+          product={product}
+          productId={productId}
+          drive={drive}
+          now={now}
+        />
+      );
   }
 }
 
