@@ -7,6 +7,11 @@
  * (triggers/product-requests.ts) calls these from the agent process.
  *
  * Launch of Version n (spec §6.5, Ruling F7b), each a line on the Version:
+ * Before SNAPSHOT, while a version is live, the data-compatibility gate (D6,
+ * compat-launch.ts) compares the document models with the live version's: a
+ * change that would break live documents stops here with `FAIL_LAUNCH` (no
+ * line runs) and the agent is told, in the change's conversation, to make it
+ * additive.
  *   SNAPSHOT  "Saving version <n>"         commit + tag `v<n>` (detail: sha)
  *   PUBLISH   "Publishing your product"    packages (detail: name@version …)
  *   DEPLOY    "Starting your live app at <slug>.vetra.io"
@@ -54,6 +59,13 @@ import {
   ensureProduct,
   isSecretPending,
 } from "./cloud-launch.js";
+import {
+  agentMessage,
+  breakingReason,
+  checkLaunchCompat,
+  messageAgent,
+  type Breaking,
+} from "./compat-launch.js";
 import { LaunchError, launchPermissionState } from "./errors.js";
 import { changedFiles, discardDraft, restoreVersion, snapshot } from "./git-versions.js";
 import {
@@ -218,6 +230,10 @@ export interface LaunchDeps {
   afterLaunch?: (ctx: OrchestratorContext, number: number) => Promise<void>;
   /** True when this month's budget is used up: the suggestions step is skipped. */
   budgetUsedUp?: () => Promise<boolean>;
+  /** The data-compatibility gate (D6): the working tree against the live tag. */
+  checkCompat?: typeof checkLaunchCompat;
+  /** Writes a message into a change's conversation for the agent. */
+  messageAgent?: typeof messageAgent;
 }
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -238,6 +254,8 @@ const defaultDeps: LaunchDeps = {
   changedFiles,
   listProjects: listReactorProjects,
   sleep: realSleep,
+  checkCompat: checkLaunchCompat,
+  messageAgent,
 };
 
 export interface OrchestratorContext extends ProductContext, ProductDriveContext {
@@ -466,6 +484,11 @@ async function runLaunch(
       throw new LaunchError("NO_LIVE_TARGET", LAUNCH_REASONS.noLiveAddress, "No live target after ensureLiveTarget.");
     }
 
+    // The data-compatibility gate (D6): only while a version is live, and
+    // only before the snapshot (a resumed launch past it already passed).
+    const liveTag = state.versions.find((v) => v.number === state?.liveVersion)?.gitTag ?? null;
+    if (liveTag && !isDone("SNAPSHOT")) await compatGate(ctx, number, liveTag, change?.chatSessionId ?? null);
+
     // SNAPSHOT
     let sha: string;
     let gitTag = version.gitTag;
@@ -607,6 +630,43 @@ async function runLaunch(
     }
   }
   return { status: "LIVE", number };
+}
+
+/**
+ * D6 at launch: throws a `LaunchError` (→ FAIL_LAUNCH with the plain reason)
+ * when the change would break documents of the live version, after telling
+ * the agent in the change's conversation. A check that can't run (git can't
+ * read the models) lets the launch go on and is logged at error.
+ */
+async function compatGate(
+  ctx: OrchestratorContext,
+  number: number,
+  liveTag: string,
+  chatSessionId: string | null,
+): Promise<void> {
+  const d = depsOf(ctx);
+  let breaking: Breaking[];
+  try {
+    ({ breaking } = await (d.checkCompat ?? checkLaunchCompat)(ctx.workdir, liveTag));
+  } catch (err) {
+    ctx.log?.error?.(`[launch] Version ${number}: data compatibility not checked: ${message(err)}`);
+    return;
+  }
+  if (breaking.length === 0) return;
+  const reason = breakingReason(breaking);
+  ctx.log?.warn?.(
+    `[launch] Version ${number} stopped: ${breaking.map((b) => `${b.model}: ${b.what}`).join("; ")}`,
+  );
+  if (chatSessionId) {
+    try {
+      await (d.messageAgent ?? messageAgent)(ctx, chatSessionId, agentMessage(breaking), nowIso(ctx));
+    } catch (err) {
+      ctx.log?.warn?.(`[launch] Version ${number}: the agent couldn't be told: ${message(err)}`);
+    }
+  } else {
+    ctx.log?.warn?.(`[launch] Version ${number}: the change has no conversation to tell the agent in`);
+  }
+  throw new LaunchError("BREAKING_CHANGE", reason, `Version ${number} would break live documents.`);
 }
 
 /**

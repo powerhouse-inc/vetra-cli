@@ -88,6 +88,10 @@ export async function launchHarness(
     sleep: async (ms) => {
       sleeps.push(ms);
     },
+    checkCompat: async () => ({ breaking: [] }),
+    messageAgent: async (_ctx, chatSessionId, text) => {
+      calls.push(`message ${chatSessionId} ${text.split("\n")[0]}`);
+    },
     ...over,
   };
   const log = (msg: string) => {
