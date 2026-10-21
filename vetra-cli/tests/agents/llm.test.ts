@@ -276,18 +276,32 @@ describe("model factory and settings", () => {
     const direct = captureFetch();
     await createModel(settings, { modelId: settings.model, maxOutputTokens: MAIN_MAX_OUTPUT_TOKENS, fetch: direct.fetchImpl }).doGenerate({ prompt: PROMPT });
     expect(direct.calls[0].body).toStrictEqual(calls[0].body);
-    // Full request bodies as they were before the factory (provider privacy, fallbacks, caching, usage, cap).
-    const common = { messages: [{ role: "user", content: "hi" }], provider: { data_collection: "deny" }, usage: { include: true } };
-    expect(calls[0].body).toMatchObject({ ...common, model: "anthropic/claude-sonnet-4.6", max_tokens: MAIN_MAX_OUTPUT_TOKENS, models: ["anthropic/claude-sonnet-4.6", "openai/gpt-5"], cache_control: { type: "ephemeral" } });
-    expect(calls[1].body).toMatchObject({ ...common, model: "openai/gpt-5", max_tokens: SUBAGENT_MAX_OUTPUT_TOKENS });
-    expect(calls[1].body).not.toHaveProperty("models");
-    expect(calls[1].body).not.toHaveProperty("cache_control");
-    expect(calls[2].body).toMatchObject({ ...common, model: "anthropic/claude-haiku-4.5", max_tokens: MEMORY_MAX_OUTPUT_TOKENS, models: ["anthropic/claude-haiku-4.5", "openai/gpt-5"], cache_control: { type: "ephemeral" } });
-    expect(calls[0].body).toMatchObject({
-      provider: { data_collection: "deny" },
+    // Literal request bodies, exactly what the pre-factory code sent for this probe call.
+    const messages = [{ role: "user", content: "hi" }];
+    expect(calls[0].body).toStrictEqual({
+      model: "anthropic/claude-sonnet-4.6",
       models: ["anthropic/claude-sonnet-4.6", "openai/gpt-5"],
-      cache_control: { type: "ephemeral" },
+      max_tokens: 8192,
+      messages,
       usage: { include: true },
+      provider: { data_collection: "deny" },
+      cache_control: { type: "ephemeral" },
+    });
+    expect(calls[1].body).toStrictEqual({
+      model: "openai/gpt-5",
+      max_tokens: 16384,
+      messages,
+      usage: { include: true },
+      provider: { data_collection: "deny" },
+    });
+    expect(calls[2].body).toStrictEqual({
+      model: "anthropic/claude-haiku-4.5",
+      models: ["anthropic/claude-haiku-4.5", "openai/gpt-5"],
+      max_tokens: 4096,
+      messages,
+      usage: { include: true },
+      provider: { data_collection: "deny" },
+      cache_control: { type: "ephemeral" },
     });
   });
 
