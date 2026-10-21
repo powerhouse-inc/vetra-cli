@@ -65,10 +65,20 @@ export async function resolveReactorProjectPath(
   return base;
 }
 
-/** The workspace's project when it holds exactly one; null otherwise. */
+/**
+ * The workspace's project when it holds exactly one; null otherwise. A
+ * hand-written stub (a config but no `node_modules`, never set up by
+ * `reactor-project-init`) beside an installed project doesn't count, so the
+ * installed one stays the default.
+ */
 export async function soleReactorProject(workdir: string): Promise<string | null> {
   const projects = await listReactorProjects(workdir);
-  return projects.length === 1 ? path.join(workdir, projects[0]) : null;
+  if (projects.length === 1) return path.join(workdir, projects[0]);
+  const installed: string[] = [];
+  for (const name of projects) {
+    if (await pathExists(path.join(workdir, name, "node_modules"))) installed.push(name);
+  }
+  return installed.length === 1 ? path.join(workdir, installed[0]) : null;
 }
 
 /**
