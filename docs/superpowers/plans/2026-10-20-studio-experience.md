@@ -30,7 +30,7 @@
 - Every milestone ends with a staging release and a green acceptance run of the staging harness; the harness is the gate.
 - **Existing Studios and their data survive** every change: document-model changes are additive (new operations/optional fields), shipped with upgrades; nothing is migrated silently; the upgrade only *adds* the product document and git tags.
 - **Signatures:** cloud environment documents need v2 signatures and owner-only reducers stay owner-only; Studio-drive documents (product, chat, specs) use the legacy policy (R17). Any server-side launch path goes through `vetra-apps`' own authorised deploy path and never weakens env-document authorisation.
-- **Rollback never rewrites or deletes documents. Ever.** Nothing deletes versions, environments, repos or documents automatically.
+- **Rollback never rewrites or deletes documents. Ever.** Nothing deletes versions, environments, repos or documents automatically — one named exception (D8, F32, Task 2.2): a Studio product without GitHub that never went live (`launched_at` and `product_drive_id` null, no adopted env, no pending/under-way/READY deployment) is soft-deleted 14 days after creation and its production env terminated (env document kept), logged at info.
 - **No secrets** in output, logs, commits, test fixtures, the product document or the browser (push tokens stay short-lived and server-side).
 - **Public repos use neutral wording** (vetra-cli and ph-clint are public): no security language in commits/PRs.
 - **Commits:** conventional; **no `Co-Authored-By` / "Generated with" trailers**. Pushes touching `.github/workflows` go over SSH (`git push git@github.com:<org>/<repo>.git HEAD:<branch>`); never `gh auth refresh`. **Never `git stash`** (shared stack) — use a WIP commit.

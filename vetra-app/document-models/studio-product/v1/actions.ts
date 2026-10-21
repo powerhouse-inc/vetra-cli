@@ -5,6 +5,7 @@
 import { baseActions } from "document-model";
 import {
   studioProductChangeActions,
+  studioProductLaunchActions,
   studioProductProductActions,
 } from "./gen/creators.js";
 
@@ -14,4 +15,5 @@ export const actions = {
   ...baseActions,
   ...studioProductProductActions,
   ...studioProductChangeActions,
+  ...studioProductLaunchActions,
 };

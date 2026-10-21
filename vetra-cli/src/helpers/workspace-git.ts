@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const WORKSPACE_GITIGNORE_ENTRIES = ['.ph/', 'node_modules/'];
+// Secrets never go into a version: env files and npm credentials stay out too.
+const WORKSPACE_GITIGNORE_ENTRIES = ['.ph/', 'node_modules/', '.env*', '.npmrc'];
 
 /** Ensure the workspace repo's root `.gitignore` excludes the agent runtime
- * directory (`.ph/`, which holds the keypair and Renown credential) and
- * `node_modules/`. Idempotent. */
+ * directory (`.ph/`, which holds the keypair and Renown credential),
+ * `node_modules/`, env files and `.npmrc`. Idempotent. */
 export function ensureWorkspaceGitignore(workdir: string): void {
   const file = path.join(workdir, '.gitignore');
   const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';

@@ -1,6 +1,6 @@
 {
   "name": "vetra-app",
-  "version": "0.0.8-dev.9",
+  "version": "0.0.8-dev.10",
   "license": "AGPL-3.0-only",
   "publishConfig": {
     "access": "public",
@@ -112,6 +112,7 @@
     "globals": "^16.4.0",
     "graphql": "catalog:",
     "graphql-tag": "2.12.6",
+    "happy-dom": "20.0.10",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "tailwindcss": "^4.1.16",

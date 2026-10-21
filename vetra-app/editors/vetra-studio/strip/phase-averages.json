@@ -1,0 +1,50 @@
+{
+  "$comment": "Seconds per unit of planned work for the strip's time left (spec §5.2, D9). `averages` is what the Studio reads: model = one data model in the Data step, editor = one screen (editor or app) in the Editors step, check = one check in the Tests step. To update: add a row to `runs` (one fresh build each) and set each average to the mean of its per-unit seconds over the runs that measured it; note the source in `sources`.",
+  "averages": {
+    "model": 100,
+    "editor": 100,
+    "check": 10
+  },
+  "updatedAt": "2026-10-21",
+  "sources": {
+    "model": "local run (Task 0.6, full run): Plan done at ~100 s, Data done at ~200 s for 1 model -> ~100 s per model.",
+    "editor": "baseline (M0, staging): first preview at 300.7 s; minus Plan + Data (~200 s, Task 0.6) for 1 editor -> ~100 s per screen.",
+    "check": "baseline (M0, staging): working editor at 310.8 s, 10.1 s after the first preview; no per-check split measured -> 10 s per check (rough)."
+  },
+  "runs": [
+    {
+      "id": "m0-baseline",
+      "date": "2026-10-20",
+      "where": "staging, fresh Studio (pool dev.8)",
+      "prompt": "create todo app product",
+      "model": "Studio default",
+      "units": { "models": 1, "editors": 1, "checks": null },
+      "seconds": {
+        "planDone": null,
+        "dataDone": null,
+        "firstPreview": 300.7,
+        "workingEditor": 310.8
+      },
+      "toolCalls": 78,
+      "costUsd": 0.03,
+      "note": "No per-phase split; one build."
+    },
+    {
+      "id": "task-0.6-local-full-run",
+      "date": "2026-10-20",
+      "where": "local",
+      "prompt": "task app (Task 0.6 real run, product named TaskFlow)",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "units": { "models": 1, "editors": null, "checks": null },
+      "seconds": {
+        "planDone": 100,
+        "dataDone": 200,
+        "firstPreview": null,
+        "workingEditor": null
+      },
+      "toolCalls": null,
+      "costUsd": null,
+      "note": "Reached the step cap mid-Editors."
+    }
+  ]
+}

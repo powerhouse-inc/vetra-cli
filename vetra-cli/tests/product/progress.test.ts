@@ -95,8 +95,9 @@ describe("product-progress", () => {
     expect(await runProgress(h.ctx, { action: "milestone", text: "Tasks can be added" })).toBe(
       "Milestone recorded.",
     );
-    expect(await runProgress(h.ctx, { action: "back", step: "PLAN", reason: "Add due dates" })).toBe(
-      "Back to Plan.",
+    // Back from the finished change (LIVE tools) to PLAN: its tools return.
+    expect(await runProgress(h.ctx, { action: "back", step: "PLAN", reason: "Add due dates" })).toMatch(
+      /^Back to Plan\. Now available: spec-create, .*reactor-project-init/,
     );
     expect(
       await runProgress(h.ctx, { action: "stuck", reason: "Dates do not save", tried: ["a", "b", "c"] }),
@@ -130,6 +131,79 @@ describe("product-progress", () => {
     expect(state.changes[0]).toMatchObject({ title: null, milestones: [], stuck: null });
     expect(state.changes[0].steps[0]).toMatchObject({ status: "NOT_STARTED", label: null });
     expect(FORBIDDEN_WORDS).toContain("device code");
+  });
+
+  it("names every forbidden word in one refusal", async () => {
+    h = await productHarness();
+    expect(
+      await runProgress(h.ctx, {
+        action: "stuck",
+        reason: "The registry rejects the package",
+        tried: ["new environment", "another package"],
+      }),
+    ).toBe("Refused: Rephrase in the customer's words without: package, registry, environment.");
+    expect((await h.state()).changes[0].stuck).toBeNull();
+  });
+
+  it("start and done name the tools that just became available", async () => {
+    h = await productHarness();
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }, { kind: "DATA" }, { kind: "TESTS" }] });
+    // Already on the PLAN tools: nothing new.
+    expect(await runProgress(h.ctx, { action: "start", step: "PLAN" })).toBe("Plan started.");
+    await runProgress(h.ctx, { action: "name", text: "Team Tasks" });
+    await runProgress(h.ctx, { action: "title", text: "First version" });
+    const done = await runProgress(h.ctx, { action: "done", step: "PLAN" });
+    expect(done).toMatch(/^Plan done\. Now available: /);
+    for (const tool of ["mastra_workspace_write_file", "mastra_workspace_execute_command", "reactor-project-check"]) {
+      expect(done).toContain(tool);
+    }
+    // Tools PLAN already had are not repeated.
+    expect(done).not.toContain("reactor-project-init");
+    expect(done).not.toContain("spec-create");
+    const started = await runProgress(h.ctx, { action: "start", step: "DATA" });
+    expect(started).toBe("Data started.");
+  });
+
+  it("stuck is refused when the reason claims a tool this step has", async () => {
+    h = await productHarness();
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }, { kind: "DATA" }] });
+    await runProgress(h.ctx, { action: "start", step: "PLAN" });
+    // The staging wording: the init tool was in the tool list at the time.
+    expect(
+      await runProgress(h.ctx, {
+        action: "stuck",
+        reason: "no project-init/start tool is exposed in this session",
+        tried: ["a", "b", "c"],
+      }),
+    ).toBe("Refused: reactor-project-init is available in this step — use it.");
+    expect(
+      await runProgress(h.ctx, {
+        action: "stuck",
+        reason: "reactor-project-init is missing and there is no reactor-project-start tool",
+        tried: ["a"],
+      }),
+    ).toBe("Refused: reactor-project-init, reactor-project-start are available in this step — use them.");
+    expect(
+      await runProgress(h.ctx, { action: "stuck", reason: "there is no reactor-project-init tool", tried: ["a"] }),
+    ).toBe("Refused: reactor-project-init is available in this step — use it.");
+    expect((await h.state()).changes[0].stuck).toBeNull();
+    // The same reason again is accepted: the refusal never leaves the agent without a way out.
+    expect(
+      await runProgress(h.ctx, { action: "stuck", reason: "there is no reactor-project-init tool", tried: ["a"] }),
+    ).toBe("Marked as stuck; the customer will be asked for help.");
+  });
+
+  it("stuck accepts a real failure that names a tool", async () => {
+    h = await productHarness();
+    await runProgress(h.ctx, { action: "plan", steps: [{ kind: "PLAN" }] });
+    await runProgress(h.ctx, { action: "start", step: "PLAN" });
+    expect(
+      await runProgress(h.ctx, {
+        action: "stuck",
+        reason: "spec-generate keeps failing: missing type TodoItem in the model",
+        tried: ["a", "b", "c"],
+      }),
+    ).toBe("Marked as stuck; the customer will be asked for help.");
   });
 
   it("name is refused once the product has a live version", async () => {

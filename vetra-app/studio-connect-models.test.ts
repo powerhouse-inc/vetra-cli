@@ -42,12 +42,13 @@ describe("Studio Connect document models", () => {
   // The agent writes project specs (document-model, document-editor, app, …)
   // into the Studio drive. The outer Connect syncs that drive; a type it can't
   // load surfaces as "1 document type couldn't load (missing model)".
-  it("loads every spec type the agent writes into the Studio drive", async () => {
+  it("Studio Connect registers every document type it lists", async () => {
     const available = await studioConnectTypes();
     const missing = [
       ...listSpecDocumentTypes(),
       ...ids(vetraAppModels as readonly ModelModule[]),
     ].filter((type) => !available.has(type));
+    expect(listSpecDocumentTypes()).toContain("powerhouse/document-editor");
     expect(missing).toEqual([]);
   });
 });

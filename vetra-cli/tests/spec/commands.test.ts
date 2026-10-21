@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,7 +9,7 @@ import { specDelete } from "../../src/commands/spec/delete.js";
 import { specGenerate } from "../../src/commands/spec/generate.js";
 import { specGet } from "../../src/commands/spec/get.js";
 import { specList } from "../../src/commands/spec/list.js";
-import { specSchema } from "../../src/commands/spec/schema.js";
+import { enumValues, specSchema } from "../../src/commands/spec/schema.js";
 import { specSchemaList } from "../../src/commands/spec/schema-list.js";
 import { specUpdate } from "../../src/commands/spec/update.js";
 import { makeCtx, makeWorkdir } from "./_fixtures.js";
@@ -484,6 +484,33 @@ describe("spec-generate", () => {
   });
 });
 
+// M0: the agent hand-wrote powerhouse.config.json + package.json; spec-create
+// accepted the stub and spec-generate then failed fetching ph-cli (npm 404).
+describe("a hand-written (never installed) project", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vetra-stub-"));
+    mkdirSync(join(dir, "todo-app"));
+    writeFileSync(join(dir, "todo-app", "powerhouse.config.json"), "{}\n");
+    writeFileSync(join(dir, "todo-app", "package.json"), "{}\n");
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("spec-create and spec-generate refuse it and point at reactor-project-init", async () => {
+    const init = /"todo-app" is not an initialised project[\s\S]*reactor-project-init \{ name: "todo-app" \}/;
+    await expect(
+      specCreate.execute({ project: "todo-app", type: DOC_TYPE, name: "Todo", dryRun: false }, makeCtx(dir)),
+    ).rejects.toThrow(init);
+    await expect(
+      specGenerate.execute({ project: "todo-app", skipChecks: true }, makeCtx(dir)),
+    ).rejects.toThrow(init);
+    // Product specs need no project and are unaffected.
+    await expect(
+      specCreate.execute({ type: PRODUCT_TYPE, name: "Todo", dryRun: false }, makeCtx(dir)),
+    ).resolves.toMatchObject({ text: expect.stringContaining("Created") });
+  });
+});
+
 describe("spec-delete", () => {
   let workdir: string;
   let cleanup: () => void;
@@ -557,6 +584,41 @@ describe("spec-schema", () => {
     );
     expect(result.text).toMatch(/^input SetModelNameInput/);
     expect(result.text).toMatch(/name: String!/);
+  });
+
+  it("--action lists the values of the state enums its input uses", async () => {
+    const result = await specSchema.execute(
+      { type: "powerhouse/problem-sheet", action: "SET_CORE_JOB", state: false, full: false },
+      makeCtx(workdir),
+    );
+    expect(result.text).toMatch(/^input SetCoreJobInput/);
+    expect(result.text).toMatch(/\n\nEnum values:\n {2}Motivation: LOVE_TO \| WANT_TO \| NEED_TO \| HAVE_TO \| HATE_TO \| CANNOT$/);
+    // An input without enums, or a --format payload, gets no extra lines.
+    const plain = await specSchema.execute(
+      { type: DOC_TYPE, action: "SET_MODEL_NAME", state: false, full: false },
+      makeCtx(workdir),
+    );
+    expect(plain.text).not.toContain("Enum values");
+    const json = await specSchema.execute(
+      { type: "powerhouse/problem-sheet", action: "SET_CORE_JOB", state: false, full: false, format: "json" },
+      makeCtx(workdir),
+    );
+    expect(json.text).not.toContain("Enum values");
+  });
+
+  it("enum values skip descriptions, comments and directives", () => {
+    const schema = [
+      '"""Why: { the job } matters"""',
+      "enum Motivation {",
+      '  "loves it" LOVE_TO',
+      "  # legacy values below",
+      '  NEED_TO @deprecated(reason: "use HAVE_TO")',
+      "  HAVE_TO",
+      "}",
+    ].join("\n");
+    expect(enumValues({ state: { global: { schema } } })).toEqual(
+      new Map([["Motivation", ["LOVE_TO", "NEED_TO", "HAVE_TO"]]]),
+    );
   });
 
   it("--state returns the GraphQL state schema", async () => {

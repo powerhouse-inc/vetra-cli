@@ -253,6 +253,8 @@ type StudioProductState {
   changes: [Change!]!
   activeChangeId: OID
   liveVersion: Int
+  liveSince: DateTime
+  liveDeploymentId: String
   versions: [Version!]!
   health: LiveHealth!
   pendingRequest: PendingRequest
@@ -398,4 +400,103 @@ input SetChangeTitleInput {
 input WaiveLintInput {
   changeId: OID!
   at: DateTime!
+}
+
+# launch
+
+input SetLiveTargetInput {
+  appId: String!
+  productionEnvironmentId: String!
+  slug: String!
+  liveUrl: URL!
+}
+
+input SetProductDriveInput {
+  driveId: PHID!
+  liveUrl: URL
+}
+
+input RequestLaunchInput {
+  changeId: OID!
+  requestedAt: DateTime!
+  requestedBy: String!
+}
+
+input RequestRollbackInput {
+  versionNumber: Int!
+  requestedAt: DateTime!
+  requestedBy: String!
+}
+
+input RequestDiscardInput {
+  changeId: OID!
+  requestedAt: DateTime!
+  requestedBy: String!
+}
+
+input RequestRestartInput {
+  requestedAt: DateTime!
+  requestedBy: String!
+}
+
+input RequestMirrorInput {
+  requestedAt: DateTime!
+  requestedBy: String!
+}
+
+input ClearRequestInput {
+  _: Boolean
+}
+
+input StartLaunchInput {
+  number: Int!
+  changeId: OID!
+  at: DateTime!
+}
+
+input SetLaunchLineInput {
+  number: Int!
+  kind: LaunchLineKind!
+  status: LineStatus!
+  detail: String
+}
+
+input CompleteLaunchPackageInput {
+  name: String!
+  version: String!
+}
+
+input CompleteLaunchInput {
+  number: Int!
+  gitTag: String!
+  sha: String!
+  packages: [CompleteLaunchPackageInput!]!
+  deploymentId: String!
+  title: String!
+  summary: String
+  changedFiles: [String!]!
+  launchedBy: String!
+  trigger: String!
+  at: DateTime!
+}
+
+input FailLaunchInput {
+  number: Int!
+  reason: String!
+  at: DateTime!
+}
+
+input SetLiveVersionInput {
+  number: Int!
+  at: DateTime!
+  deploymentId: String
+}
+
+input SetHealthInput {
+  health: LiveHealth!
+  at: DateTime!
+}
+
+input SetLaunchPermissionInput {
+  state: PermissionState!
 }

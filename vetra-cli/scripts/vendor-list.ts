@@ -11,4 +11,8 @@ export const VENDOR = [
   // Required at runtime (createRequire) by @powerhousedao/shared's CLI helpers
   // (`semver/functions/*`), which tsdown leaves unbundled.
   "semver",
+  // Loaded by @mastra/core's LocalSandbox through `await import(mod)` with a
+  // variable specifier, so tsdown can't bundle it: without it the workspace
+  // shell (mastra_workspace_execute_command) fails in a global install.
+  "execa",
 ];

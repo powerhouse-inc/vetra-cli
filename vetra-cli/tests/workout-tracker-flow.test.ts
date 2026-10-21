@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,7 @@ describe("workout-tracker flow — agent foot-gun regressions", () => {
   async function setupProject(): Promise<string> {
     const workdir = mkdtempSync(join(tmpdir(), "vetra-flow-"));
     writeFileSync(join(workdir, "powerhouse.config.json"), "{}\n");
+    mkdirSync(join(workdir, "node_modules"));
     const r = await run(
       { workdir },
       "spec-create",

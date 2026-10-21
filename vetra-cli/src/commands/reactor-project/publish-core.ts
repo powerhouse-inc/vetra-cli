@@ -128,6 +128,10 @@ export async function publishReactorProject(opts: {
   registry?: string;
   /** Version to write before publishing; falls back to package.json's. */
   version?: string;
+  /** Package name to publish under instead of package.json's (written before the build). */
+  packageName?: string;
+  /** npm's per-request fetch timeout; set for large tarballs on slow uploads (no npm retries then). */
+  fetchTimeoutMs?: number;
   /** Precomputed content hash (skips recompute when the caller already has it). */
   contentHash?: string;
   tag?: string;
@@ -149,6 +153,7 @@ export async function publishReactorProject(opts: {
     version?: string;
     powerhouse?: Record<string, unknown>;
   };
+  if (opts.packageName) packageJson.name = opts.packageName;
   if (!packageJson.name) {
     return { kind: "no-package", error: 'package.json has no "name" field.' };
   }
@@ -192,6 +197,11 @@ export async function publishReactorProject(opts: {
   const extraArgs: string[] = [];
   if (opts.tag) extraArgs.push("--tag", opts.tag);
   if (opts.dryRun) extraArgs.push("--dry-run");
+  if (opts.fetchTimeoutMs) {
+    // A ~100 MB tarball uploads for many minutes into the cluster; npm's
+    // default timeout (and its retries of a half-sent body) would abort it.
+    extraArgs.push(`--fetch-timeout=${opts.fetchTimeoutMs}`, "--fetch-retries=0");
+  }
 
   let version = packageJson.version ?? "0.0.1";
   for (let attempt = 0; attempt < MAX_PUBLISH_ATTEMPTS; attempt++) {

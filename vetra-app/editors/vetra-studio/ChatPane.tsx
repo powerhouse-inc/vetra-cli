@@ -1,5 +1,7 @@
 import {
   isChatSessionDocument,
+  type ContentPart,
+  type Message,
   type TurnFailure,
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import {
@@ -31,6 +33,10 @@ import VetraMitosis from "./VetraMitosis.js";
 import { budgetFailureAction } from "./budget/BudgetFailureAction.js";
 import { useStudioBudget } from "./budget/useStudioBudget.js";
 import { vetraToolRenderers } from "./tool-renderers/index.js";
+import { CommandTool } from "./tool-renderers/shared/CommandTool.js";
+import type { ToolRenderProps } from "./tool-renderers/types.js";
+import { parseToolValue } from "./tool-renderers/shared/util.js";
+import { Wrench } from "lucide-react";
 
 const ChatSession = lazy(() =>
   import("@powerhousedao/clint-common/editors").then((m) => ({
@@ -79,27 +85,7 @@ export function ChatPane({
       (node as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
   );
 
-  const driveRemoteUrl = (
-    document.state.local as { remoteUrl?: string } | undefined
-  )?.remoteUrl;
-  const defaultDrivesUrl = useDefaultDrivesUrl();
-  const attachments = useMemo(() => {
-    // The transport appends `/attachments/<hash>` to remoteUrl verbatim.
-    // `source` is the proxied switchboard drive URL `…/switchboard/d/<id>`;
-    // keep everything up to and including `/switchboard` so attachment
-    // requests stay under the proxy base (`…/switchboard/attachments/<hash>`,
-    // which the proxy maps to switchboard `/attachments/<hash>`). Without a
-    // `/switchboard` segment (non-proxied switchboard), fall back to origin.
-    const source =
-      driveRemoteUrl ?? defaultDrivesUrl ?? DEFAULT_SWITCHBOARD_URL;
-    const url = new URL(source);
-    const sbEnd = url.pathname.indexOf("/switchboard");
-    const remoteUrl =
-      sbEnd === -1
-        ? url.origin
-        : url.origin + url.pathname.slice(0, sbEnd + "/switchboard".length);
-    return createRemoteAttachmentService({ remoteUrl });
-  }, [driveRemoteUrl, defaultDrivesUrl]);
+  const attachments = useDriveAttachments(document);
 
   const { creating, createSession } = useCreateSession(
     document.header.id,
@@ -166,6 +152,66 @@ export function ChatPane({
       sessions={sessions}
       onSelectSession={onSelectSession}
     />
+  );
+}
+
+/** The attachment service for the drive's conversations. */
+function useDriveAttachments(
+  document: DocumentDriveDocument,
+): IAttachmentService {
+  const driveRemoteUrl = (
+    document.state.local as { remoteUrl?: string } | undefined
+  )?.remoteUrl;
+  const defaultDrivesUrl = useDefaultDrivesUrl();
+  return useMemo(() => {
+    // The transport appends `/attachments/<hash>` to remoteUrl verbatim.
+    // `source` is the proxied switchboard drive URL `…/switchboard/d/<id>`;
+    // keep everything up to and including `/switchboard` so attachment
+    // requests stay under the proxy base (`…/switchboard/attachments/<hash>`,
+    // which the proxy maps to switchboard `/attachments/<hash>`). Without a
+    // `/switchboard` segment (non-proxied switchboard), fall back to origin.
+    const source =
+      driveRemoteUrl ?? defaultDrivesUrl ?? DEFAULT_SWITCHBOARD_URL;
+    const url = new URL(source);
+    const sbEnd = url.pathname.indexOf("/switchboard");
+    const remoteUrl =
+      sbEnd === -1
+        ? url.origin
+        : url.origin + url.pathname.slice(0, sbEnd + "/switchboard".length);
+    return createRemoteAttachmentService({ remoteUrl });
+  }, [driveRemoteUrl, defaultDrivesUrl]);
+}
+
+/**
+ * One conversation, without the session list or its navigation: the Studio
+ * shell's story pane while a product builds (spec §5.4).
+ */
+export function ConversationPane({
+  document,
+  sessionId,
+  driveLoaded,
+}: {
+  document: DocumentDriveDocument;
+  sessionId: string;
+  driveLoaded: boolean;
+}) {
+  const attachments = useDriveAttachments(document);
+  const knownInDrive = document.state.global.nodes.some(
+    (node) => node.kind === "file" && node.id === sessionId,
+  );
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex-1 overflow-hidden">
+        <Suspense fallback={<SessionLoading />}>
+          <SessionView
+            sessionId={sessionId}
+            knownInDrive={knownInDrive}
+            driveLoaded={driveLoaded}
+            attachments={attachments}
+          />
+        </Suspense>
+      </div>
+    </div>
   );
 }
 
@@ -342,7 +388,7 @@ function EmptyState({
 
 /** Temporary (M0) first conversation from the idea; M1 replaces it with the
  *  idea screen. */
-function IdeaStart({
+export function IdeaStart({
   onStart,
   onStarted,
 }: {
@@ -531,6 +577,102 @@ function SessionLoading() {
   return (
     <div className="flex h-full items-center justify-center">
       <VetraMitosis size={48} active={true} />
+    </div>
+  );
+}
+
+/** Tools without a Vetra renderer: name, arguments and result. */
+function FallbackTool(props: ToolRenderProps) {
+  return <CommandTool {...props} icon={Wrench} />;
+}
+
+function RawToolCall({
+  call,
+  result,
+}: {
+  call: ContentPart;
+  result: ContentPart | undefined;
+}) {
+  const toolName = call.toolName || "unknown";
+  const Renderer = vetraToolRenderers(toolName) ?? FallbackTool;
+  const isError = Boolean(result?.isError);
+  return (
+    <Renderer
+      toolName={toolName}
+      args={parseToolValue(call.args)}
+      result={parseToolValue(result?.result ?? result?.error)}
+      isError={isError}
+      hasResult={Boolean(result)}
+      state={
+        !result
+          ? "input-available"
+          : isError
+            ? "output-error"
+            : "output-available"
+      }
+      callPart={call}
+      resultPart={result}
+      Default={FallbackTool}
+    />
+  );
+}
+
+/**
+ * Raw detail of a story line (spec §5.4): the conversation's messages as
+ * today's transcript — the agent's words, its tool calls with the Vetra tool
+ * renderers, errors — folded under the line until expanded.
+ */
+export function RawDetail({
+  messages,
+  results,
+}: {
+  messages: readonly Message[];
+  /** Tool results of the whole conversation (a result can land after the
+   *  next milestone). */
+  results: ReadonlyMap<string, ContentPart>;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 text-sm">
+      {messages.map((message) => (
+        <div key={message.id} className="flex flex-col gap-1">
+          {message.content.map((part) => {
+            if (part.type === "TOOL_CALL") {
+              return (
+                <RawToolCall
+                  key={part.id}
+                  call={part}
+                  result={
+                    part.toolCallId ? results.get(part.toolCallId) : undefined
+                  }
+                />
+              );
+            }
+            if (part.type === "TEXT" && part.text) {
+              return (
+                <p
+                  key={part.id}
+                  className={
+                    "whitespace-pre-wrap " +
+                    (message.role === "USER"
+                      ? "text-foreground"
+                      : "text-muted-foreground")
+                  }
+                >
+                  {part.text}
+                </p>
+              );
+            }
+            if (part.type === "ERROR" && (part.error || part.text)) {
+              return (
+                <p key={part.id} className="text-destructive">
+                  {part.error ?? part.text}
+                </p>
+              );
+            }
+            return null;
+          })}
+        </div>
+      ))}
     </div>
   );
 }

@@ -22,8 +22,8 @@ you start it** and `skill_read` its references when it says to.
 
 | Step | Phases (skill) | Gate |
 | --- | --- | --- |
-| PLAN | product specs (`product-specs`), product name | brief written, named |
-| DATA | Bootstrap (`reactor-project-management`), Model (`document-modeling`) | `reactor-project-ps` shows it running; `spec-generate` clean; reducers in `v1/src/reducers/` |
+| PLAN | Bootstrap first (`reactor-project-management`): init + start the project, it installs while you write the product specs (`product-specs`); product name | project started; brief written, named |
+| DATA | Model (`document-modeling`) | `reactor-project-ps` shows it running; `spec-generate` clean; reducers in `v1/src/reducers/` |
 | EDITORS | Editor + Preview (`document-editor-creation`), App if asked (`drive-app-creation`) | `editor.tsx` dispatches the real operations; BUILD pane shows it with sample data |
 | TESTS | `reactor-project-check` with `tests: true` | `done TESTS` accepted |
 | LIVE | launches by itself | — |
@@ -34,6 +34,8 @@ what to fix. Once the brief exists: `plan` PLAN, DATA, EDITORS, TESTS, LIVE;
 `start`, `count`, `done`; `back` with a reason when returning to a finished
 step; a `milestone` for each finished thing, in the customer's words;
 `stuck` with what you tried after 3 failed attempts at the same thing.
+Your tools change with the step: after `start` or `done`, re-check the
+tool list before deciding a tool is missing.
 Names, titles, milestones, `start` labels and `back`/`stuck` reasons never
 contain: environment, package, registry, Harbor, image, workflow, device
 code, approve changes, switchboard.
@@ -45,7 +47,8 @@ never git commit/push, deploy or publish through it.
 Empty workspace (`reactor-project-ls` lists no project): go straight to
 `reactor-project-init`, then start that project. The workspace root is not a
 project (its `powerhouse.config.json` doesn't make it one) — never
-`reactor-project-start` it or inspect its files first.
+`reactor-project-start` it or inspect its files first. Never hand-write a
+project's files: only `reactor-project-init` makes one.
 
 Product specs live at the workspace root — `spec-create { type, name }` with
 no `project`. Only an explicit spec-only request skips the build; never

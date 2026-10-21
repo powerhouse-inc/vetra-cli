@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, beforeEach } from "@jest/globals";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveReactorProjectPath } from "../../src/helpers/project.js";
+import { assertProjectInstalled, resolveReactorProjectPath } from "../../src/helpers/project.js";
 
 function mkProject(parent: string, name: string): string {
   const dir = join(parent, name);
@@ -67,5 +67,43 @@ describe("resolveReactorProjectPath", () => {
     await expect(
       resolveReactorProjectPath(workdir, undefined),
     ).rejects.toThrow(/Available projects: alpha$/m);
+  });
+
+  // M0: the bare "not found" errors led the agent to hand-write a project.
+  it("points a missing project at reactor-project-init", async () => {
+    await expect(resolveReactorProjectPath(workdir, "todo-app")).rejects.toThrow(
+      /reactor-project-init \{ name: "todo-app" \}.*never hand-write/,
+    );
+    await expect(resolveReactorProjectPath(workdir, undefined)).rejects.toThrow(
+      /Create a project with `reactor-project-init/,
+    );
+    mkProject(workdir, "alpha");
+    await expect(resolveReactorProjectPath(workdir, "beta")).rejects.toThrow(
+      /Available projects: alpha\nCreate a project with `reactor-project-init \{ name: "beta" \}`/,
+    );
+  });
+});
+
+describe("assertProjectInstalled", () => {
+  let workdir: string;
+  beforeEach(() => {
+    workdir = mkdtempSync(join(tmpdir(), "vetra-project-"));
+  });
+  afterEach(() => {
+    rmSync(workdir, { recursive: true, force: true });
+  });
+
+  it("refuses a hand-written project with no install, pointing at reactor-project-init", async () => {
+    const dir = mkProject(workdir, "todo-app");
+    writeFileSync(join(dir, "package.json"), "{}", "utf8");
+    await expect(assertProjectInstalled(dir, "todo-app")).rejects.toThrow(
+      /"todo-app" is not an initialised project[\s\S]*reactor-project-init \{ name: "todo-app" \}/,
+    );
+  });
+
+  it("accepts an installed project", async () => {
+    const dir = mkProject(workdir, "todo-app");
+    mkdirSync(join(dir, "node_modules"));
+    await expect(assertProjectInstalled(dir, "todo-app")).resolves.toBeUndefined();
   });
 });

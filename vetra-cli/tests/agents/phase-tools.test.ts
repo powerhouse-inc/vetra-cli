@@ -1,9 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import type { ProcessInputStepArgs } from '@mastra/core/processors';
-import { LocalFilesystem, LocalSandbox, Workspace, createSkillTools, createWorkspaceTools } from '@mastra/core/workspace';
 import {
   ADVANCED_ONLY,
   ALWAYS_ON,
@@ -15,42 +11,7 @@ import { runProgress } from '../../src/commands/product/progress.js';
 import { PUSH_OFF_FOR_PRODUCT, githubPush } from '../../src/commands/github/push.js';
 import type { getProductDoc } from '../../src/product/product-doc.js';
 import { productHarness, type ProductHarness } from '../product/helpers.js';
-
-/**
- * The main agent's real tool names: the cli's commands (skills are served by
- * the skill tool, not as commands), the workspace and skill tools Mastra adds,
- * and one `agent-<key>` tool per sub-agent.
- */
-async function registeredToolNames(): Promise<string[]> {
-  const { cli } = await import('../../src/cli.js');
-  const { SUB_AGENT_KEYS } = await import('../../src/agents/agent.js');
-  const skillIds = new Set(Object.keys(cli.getMetadata().prompts?.skills ?? {}));
-  const commands = cli
-    .listCommands()
-    .map((c) => c.id)
-    .filter((id) => !skillIds.has(id));
-  const dir = mkdtempSync(path.join(tmpdir(), 'phase-tools-'));
-  try {
-    const workspace = new Workspace({
-      filesystem: new LocalFilesystem({ basePath: dir }),
-      sandbox: new LocalSandbox({ workingDirectory: dir }),
-    });
-    const workspaceTools = Object.keys(await createWorkspaceTools(workspace));
-    const skillTools = Object.keys(createSkillTools(undefined as never));
-    // The running project's reactor MCP tools are discovered at runtime as
-    // `${service.id}-mcp__<tool>`; one stands in for them here.
-    const mcpTools = ['reactor-project-mcp__addActions'];
-    return [
-      ...commands,
-      ...workspaceTools,
-      ...skillTools,
-      ...SUB_AGENT_KEYS.map((k) => `agent-${k}`),
-      ...mcpTools,
-    ];
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
+import { registeredToolNames } from './tool-names.js';
 
 let names: string[] = [];
 beforeAll(async () => {
@@ -148,10 +109,14 @@ describe('phase tool sets', () => {
   it('an active change between steps gets its next unfinished step, never deploy (F18)', async () => {
     h = await productHarness();
     await runProgress(h.ctx, { action: 'plan', steps: [{ kind: 'PLAN' }, { kind: 'DATA' }, { kind: 'EDITORS' }] });
-    // Not started: the plan step's tools.
+    // Not started: the plan step's tools, bootstrap included (M0: an empty
+    // workspace is initialised and started first, in PLAN).
     const tools = await visibleTools(h);
     expect(tools).toContain('spec-create');
-    expect(tools).not.toContain('reactor-project-init');
+    expect(tools).toContain('reactor-project-init');
+    expect(tools).toContain('reactor-project-start');
+    expect(tools).not.toContain('mastra_workspace_write_file');
+    expect(tools).not.toContain('mastra_workspace_execute_command');
     expect(tools).not.toContain('deploy-environment-list');
   });
 
@@ -199,7 +164,7 @@ describe('phase tool sets', () => {
     await runProgress(h.ctx, { action: 'start', step: 'PLAN' });
     await runProgress(h.ctx, { action: 'name', text: 'Team Tasks' });
     await runProgress(h.ctx, { action: 'title', text: 'First version' });
-    expect(await runProgress(h.ctx, { action: 'done', step: 'PLAN' })).toBe('Plan done.');
+    expect(await runProgress(h.ctx, { action: 'done', step: 'PLAN' })).toMatch(/^Plan done\. Now available: .*agent-agentEditor/);
     await runProgress(h.ctx, { action: 'start', step: 'EDITORS' });
     expect(await visibleTools(h)).toContain('agent-agentEditor');
     await runProgress(h.ctx, { action: 'back', step: 'PLAN', reason: 'new feature' });
@@ -278,14 +243,14 @@ describe('phase tool sets', () => {
     const args = (s: unknown[]) => stepArgs(state, s as Parameters<typeof stepArgs>[1]);
 
     let r = await processor.processInputStep(args([]));
-    expect(r?.activeTools).not.toContain('reactor-project-init');
+    expect(r?.activeTools).not.toContain('mastra_workspace_write_file');
     steps = [
       { kind: 'PLAN', status: 'DONE' },
       { kind: 'DATA', status: 'WORKING' },
     ];
     r = await processor.processInputStep(args([mastraStep('product-progress')]));
     expect(read).toHaveBeenCalledTimes(2);
-    expect(r?.activeTools).toContain('reactor-project-init');
+    expect(r?.activeTools).toContain('mastra_workspace_write_file');
     r = await processor.processInputStep(args([mastraStep('product-progress'), mastraStep('spec-generate')]));
     expect(read).toHaveBeenCalledTimes(2);
   });
