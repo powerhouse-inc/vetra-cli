@@ -6,9 +6,9 @@
  * LiveSurface; while a change is open it shows the Live | Preview split).
  */
 import { isChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
-import { useDocumentSafe } from "@powerhousedao/reactor-browser";
+import { useDocumentSafe, usePHToast } from "@powerhousedao/reactor-browser";
 import type { PHDocument } from "document-model";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type {
   Change,
   StudioProductState,
@@ -16,9 +16,16 @@ import type {
 import { ChangeBubble } from "../change/ChangeDrawer.js";
 import { FailureLine } from "../failures/FailureLine.js";
 import type { Failure } from "../failures/failureStates.js";
+import {
+  listImports,
+  runImport,
+  type ImportOffer,
+} from "../hooks/workshop-client.js";
+import { useT } from "../i18n/useT.js";
 import { PreviewPane } from "../preview/PreviewPane.js";
 import { LiveBanner } from "./LiveBanner.js";
 import { LiveEmbed } from "./LiveEmbed.js";
+import { RowImportCard } from "./RowImportCard.js";
 
 export function ProductView({
   product,
@@ -62,6 +69,42 @@ export function ProductView({
     isChatSessionDocument(sessionState.data)
       ? sessionState.data
       : undefined;
+  const toast = usePHToast();
+  const { t } = useT();
+  const [offers, setOffers] = useState<ImportOffer[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    listImports()
+      .then((next) => {
+        if (live) setOffers(next);
+      })
+      .catch(() => {
+        // No reactor or no imports: the card simply stays away.
+      });
+    return () => {
+      live = false;
+    };
+  }, [product.productDriveId]);
+
+  const offer = offers.find((o) => o.done < o.rows);
+
+  async function bringRows(
+    file: string,
+  ): Promise<{ imported: number; failed: number }> {
+    const result = await runImport(file);
+    const next = await listImports().catch(() => offers);
+    setOffers(next);
+    if (!result.failed && result.imported > 0) {
+      toast?.(
+        t("rowImport.done", {
+          rows: result.imported,
+          product: product.name ?? "",
+        }),
+      );
+    }
+    return result;
+  }
 
   if (version === undefined || version === null || !product.liveUrl) {
     return null;
@@ -83,6 +126,7 @@ export function ProductView({
         </div>
       ) : null}
       {suggestions}
+      {offer ? <RowImportCard offer={offer} onRun={bringRows} /> : null}
       <LiveEmbed
         liveUrl={product.liveUrl}
         version={version}

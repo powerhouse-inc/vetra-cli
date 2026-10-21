@@ -74,6 +74,16 @@ export const de: Record<MessageKey, string> = {
   "material.owner":
     "Melde dich als Besitzer des Studios an, um Dateien hinzuzufügen.",
   "material.signIn": "Melde dich an, um Dateien hinzuzufügen",
+  "rowImport.title": "Deine {rows} Zeilen aus {sheet} übernehmen",
+  "rowImport.titleOne": "Deine Zeile aus {sheet} übernehmen",
+  "rowImport.column": "Spalte",
+  "rowImport.field": "Feld",
+  "rowImport.run": "Übernehmen",
+  "rowImport.later": "Jetzt nicht",
+  "rowImport.progress": "{done} von {rows}",
+  "rowImport.done": "{rows} Zeilen sind in {product}.",
+  "rowImport.failed":
+    "Einige Zeilen konnten nicht übernommen werden. Versuch es noch einmal.",
   "account.label": "Konto",
   "account.settings": "Einstellungen",
   "account.signIn": "Anmelden",

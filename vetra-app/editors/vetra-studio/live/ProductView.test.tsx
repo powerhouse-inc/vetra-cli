@@ -22,6 +22,11 @@ const hoisted = vi.hoisted(() => ({ realEmbed: false }));
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useDocumentSafe: () => ({ status: "loading" }),
+  usePHToast: () => () => {},
+}));
+vi.mock("../hooks/workshop-client.js", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  listImports: () => Promise.resolve([]),
 }));
 
 // The frame itself is the fallback test's subject; the other tests only need

@@ -9,9 +9,17 @@
  *     402 { error: "budget" }  422 { error: "unreadable", notes }  503 { error: "no-model" }
  *   POST /workshop/snapshots?changeId=&at=   raw JPEG body (<= 400 KB) -> 201; 413 over.
  *   GET  /workshop/snapshots?changeId=       -> 200 { at, file }[] by time.
+ *   GET  /workshop/imports                   -> 200 ImportOffer[].
+ *   POST /workshop/imports/run { file }      -> 200 { imported, failed }.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { loadMaterial, saveMaterial, UnsupportedMaterialError, type MaterialInfo } from "../workshop/material.js";
+import {
+  ImportRowsError,
+  listImports,
+  runImport,
+  type ImportRowsContext,
+} from "../workshop/import-rows.js";
 import {
   InvalidSnapshotKeyError,
   listSnapshots,
@@ -33,6 +41,8 @@ export interface WorkshopRouteDeps {
   requireOwner: (req: IncomingMessage, res: ServerResponse, url: string) => Promise<boolean>;
   /** The understand pass's model access (the Studio's LLM settings); null = no model connected. */
   understandDeps?: () => UnderstandDeps | null;
+  /** The live product's row imports; undefined = no reactor/product yet. */
+  importRows?: ImportRowsContext;
   log?: { info: (m: string) => void; error: (m: string) => void };
 }
 
@@ -214,9 +224,69 @@ export function createWorkshopRoutes(deps: WorkshopRouteDeps): WorkshopRoutes {
     }
   }
 
+  async function importRowsRoute(
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: string,
+    method: string,
+  ): Promise<void> {
+    if (!(await deps.requireOwner(req, res, url))) return;
+    if (!deps.importRows) {
+      writeJson(res, 503, { error: "not-live" });
+      return;
+    }
+    if (method === "GET") {
+      writeJson(res, 200, await listImports(deps.importRows));
+      return;
+    }
+    let raw: Buffer;
+    try {
+      raw = await readBody(req, UNDERSTAND_BODY_MAX_BYTES);
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        writeJson(res, 413, { error: "too-large" }, { Connection: "close" });
+        return;
+      }
+      throw err;
+    }
+    let file: unknown;
+    try {
+      const body: unknown = JSON.parse(raw.toString("utf8"));
+      file =
+        body && typeof body === "object" && "file" in body
+          ? body.file
+          : undefined;
+    } catch {
+      file = undefined;
+    }
+    if (typeof file !== "string" || !file) {
+      writeJson(res, 400, { error: "invalid" });
+      return;
+    }
+    try {
+      writeJson(res, 200, await runImport(deps.importRows, file));
+    } catch (err) {
+      if (err instanceof ImportRowsError) {
+        writeJson(res, err.code === "unknown-file" ? 404 : 409, {
+          error: err.code,
+          reason: err.message,
+        });
+        return;
+      }
+      throw err;
+    }
+  }
+
   return {
     async handle(req, res, url, method) {
       const path = url.split("?")[0];
+      if (
+        (path === "/workshop/imports" && method === "GET") ||
+        (path === "/workshop/imports/run" && method === "POST")
+      ) {
+        await importRowsRoute(req, res, url, method);
+        return true;
+      }
       if (path === "/workshop/understand" && method === "POST") {
         await understandMaterial(req, res, url);
         return true;

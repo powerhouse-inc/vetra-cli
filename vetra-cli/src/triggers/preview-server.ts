@@ -87,6 +87,14 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
           const settings = resolveLlmSettings(ctx.context.config);
           return settings ? createUnderstandDeps(settings) : null;
         },
+        // Row imports write to the live product as the owner.
+        importRows: {
+          ...ctx.commandContext,
+          workdir,
+          config: ctx.context.config,
+          log: ctx.context.log,
+          env: process.env,
+        },
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),

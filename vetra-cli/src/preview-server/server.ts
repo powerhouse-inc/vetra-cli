@@ -38,6 +38,7 @@ import { createRequestAuthorizer, type RequestAuthorizer } from "./request-auth.
 import { buildSessionExport, listSessions } from "./session-export.js";
 import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-export.js";
 import { createWorkshopRoutes } from "./workshop-routes.js";
+import type { ImportRowsContext } from "../workshop/import-rows.js";
 import type { UnderstandDeps } from "../workshop/understand.js";
 import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
 import type { ProductContext } from "../product/product-doc.js";
@@ -79,6 +80,8 @@ interface PreviewServerDeps {
   getProxyPublicUrl?: () => string | undefined;
   /** Model access of the "What I understood" pass; null/undefined = no model connected. */
   understandDeps?: () => UnderstandDeps | null;
+  /** The live product's row imports (Task 1.8); undefined = no reactor yet. */
+  importRows?: ImportRowsContext;
   /** The command context the iterate routes reach the product and run checks through. */
   product?: ProductContext & { runProcess?: RunProcess };
   /** Owner gate override (tests); default `createRequestAuthorizer`. */
@@ -183,6 +186,7 @@ export async function startPreviewServer(
     workdir,
     requireOwner,
     understandDeps: deps.understandDeps,
+    importRows: deps.importRows,
     log,
   });
   const iterateRoutes = createIterateRoutes({

@@ -104,6 +104,35 @@ export async function requestUnderstanding(
   return (await res.json()) as UnderstandResult;
 }
 
+/** An import file the live product can take rows from. */
+export type ImportOffer = {
+  file: string;
+  materialName: string;
+  sheet: string;
+  documentType: string;
+  rows: number;
+  mapping: { column: string; field: string }[];
+  done: number;
+};
+
+/** The import files whose rows are not all in the product yet. */
+export async function listImports(): Promise<ImportOffer[]> {
+  const res = await send("/workshop/imports", { method: "GET" });
+  return (await res.json()) as ImportOffer[];
+}
+
+/** Copies the file's missing rows into the live product. */
+export async function runImport(
+  file: string,
+): Promise<{ imported: number; failed: number }> {
+  const res = await send("/workshop/imports/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file }),
+  });
+  return (await res.json()) as { imported: number; failed: number };
+}
+
 /** Uploads one preview snapshot (JPEG) of a change's build. */
 export async function uploadSnapshot(
   changeId: string,

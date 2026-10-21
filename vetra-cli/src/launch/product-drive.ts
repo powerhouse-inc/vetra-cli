@@ -162,6 +162,14 @@ function markerPath(workdir: string): string {
   return path.join(workdir, MARKER_FILE);
 }
 
+/** The product drive this Studio launched into, from the workdir marker. */
+export function storedProductDrive(
+  workdir: string,
+): { driveId: string; switchboardUrl: string } | null {
+  const m = readMarker(workdir);
+  return m ? { driveId: m.driveId, switchboardUrl: m.switchboardUrl } : null;
+}
+
 function readMarker(workdir: string): Marker | null {
   try {
     const m = JSON.parse(fs.readFileSync(markerPath(workdir), "utf-8")) as Partial<Marker>;
