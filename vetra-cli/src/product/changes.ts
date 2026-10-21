@@ -58,6 +58,9 @@ const defaultDeps: ChangeBaseDeps = {
   markChangeUnbased,
 };
 
+/** Statuses a forced base may be prepared in (never while going live). */
+const IN_PROGRESS_FOR_BASE: readonly string[] = ["BUILDING", "PAUSED", "READY"];
+
 /** The live version's git tag, or null when nothing is live. */
 export function liveTag(state: StudioProductState): string | null {
   if (state.liveVersion == null) return null;
@@ -92,10 +95,15 @@ export function awaitsBase(change: Change): boolean {
 export async function prepareChangeBase(
   ctx: ChangeBaseContext,
   change: Change,
-  opts: { state?: StudioProductState; deps?: Partial<ChangeBaseDeps> } = {},
+  opts: { state?: StudioProductState; deps?: Partial<ChangeBaseDeps>; force?: boolean } = {},
 ): Promise<ChangeBaseOutcome> {
   const d = { ...defaultDeps, ...opts.deps };
-  if (!awaitsBase(change)) return "skipped";
+  // `force`: a CHANGE/UNDO with steps planned that was never prepared (a Studio
+  // edit whose base failed); the refs below still guard work already done.
+  const eligible = opts.force
+    ? (change.kind === "CHANGE" || change.kind === "UNDO") && IN_PROGRESS_FOR_BASE.includes(change.status)
+    : awaitsBase(change);
+  if (!eligible) return "skipped";
   const state = opts.state ?? (await getProductDoc(ctx))?.state;
   const tag = state ? liveTag(state) : null;
   if (!tag) return "skipped";

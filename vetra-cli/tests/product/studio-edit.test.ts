@@ -349,4 +349,53 @@ describe("applyStudioEdit", () => {
       reason: "There's no generated code to check yet, so Tests can't be finished.",
     });
   });
+  it("an edit after a failed base retries the base before writing", async () => {
+    h = await liveStudio();
+    write(h.workdir, "todo/src/stray.ts", "export const stray = true;\n");
+    let fail = true;
+    const { ctx } = editContext(h, {
+      prepareChangeBase: async (c, change, o) => {
+        if (fail) throw new Error("git exploded");
+        return prepareChangeBase(c, change, o);
+      },
+    });
+    await expect(applyStudioEdit(ctx, edit(12))).rejects.toThrow(StudioEditRefusedError);
+    expect(fs.existsSync(path.join(h.workdir, "todo/src/stray.ts"))).toBe(true);
+
+    fail = false;
+    const result = await applyStudioEdit(ctx, edit(13));
+
+    // The retry put the live code back (the stray kept aside) before the edit was written.
+    expect(fs.existsSync(path.join(h.workdir, "todo/src/stray.ts"))).toBe(false);
+    expect(git(h.workdir, "for-each-ref", "--format=%(refname)", "refs/vetra/unsaved/")).not.toBe("");
+    expect(git(h.workdir, "for-each-ref", "--format=%(refname)", `refs/vetra/change-base/${result.changeId}`)).not.toBe("");
+    expect(git(h.workdir, "show", "--name-only", "--format=", "HEAD")).toBe("todo/src/model.ts");
+    const change = (await h.state()).changes.find((c) => c.id === result.changeId)!;
+    expect(change.status).toBe("READY");
+  });
+
+  it("a change that can't be set up refuses the edit", async () => {
+    h = await liveStudio();
+    const head = git(h.workdir, "rev-parse", "HEAD");
+    let wrote = false;
+    const { ctx } = editContext(h, {
+      // The change is thrown away meanwhile: Tests can no longer be planned on it.
+      prepareChangeBase: async (c, change) => {
+        await dispatchProduct(c, [a.discardChange({ changeId: change.id, at: AT })]);
+        return "unchanged";
+      },
+    });
+
+    await expect(
+      applyStudioEdit(ctx, {
+        ...edit(14),
+        async write() {
+          wrote = true;
+          return [];
+        },
+      }),
+    ).rejects.toThrow("The change couldn't be set up for this edit.");
+    expect(wrote).toBe(false);
+    expect(git(h.workdir, "rev-parse", "HEAD")).toBe(head);
+  });
 });

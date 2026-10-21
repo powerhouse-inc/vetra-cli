@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
-import { BodyError, errorResponse } from "../../src/preview-server/iterate-routes.js";
+import { BodyError, createIterateRoutes, errorResponse } from "../../src/preview-server/iterate-routes.js";
 import { StudioEditRefusedError } from "../../src/product/studio-edit.js";
 import { createRequestAuthorizer } from "../../src/preview-server/request-auth.js";
 import { startPreviewServer } from "../../src/preview-server/server.js";
@@ -85,5 +85,20 @@ describe("iterate routes", () => {
       body: { error: "body too large" },
     });
     expect(errorResponse(new Error("/secret/path failed"))).toEqual({ status: 500, body: { error: "internal" } });
+  });
+
+  it("a route that throws answers with a plain JSON error", async () => {
+    const answers: Array<[number, unknown]> = [];
+    const routes = createIterateRoutes({
+      requireOwner: async () => true,
+      writeJson: (_res, status, body) => {
+        if (status === 200) throw new Error("/secret/path: write failed");
+        answers.push([status, body]);
+      },
+      workdir: "/nowhere",
+    });
+    const res = { headersSent: false } as never;
+    expect(await routes.handle({} as never, res, "/iterate/healthz", "GET")).toBe(true);
+    expect(answers).toEqual([[500, { error: "internal" }]]);
   });
 });

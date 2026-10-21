@@ -31,6 +31,7 @@ import { messageAgent } from "../launch/compat-launch.js";
 import {
   commitPaths,
   DEFAULT_AUTHOR,
+  hasChangeBase,
   projectDirs,
   workingChanges,
   type GitAuthor,
@@ -298,11 +299,15 @@ async function runEdit(ctx: StudioEditContext, edit: StudioEdit): Promise<Studio
       await needsYou(ctx, id, "TESTS", reason, now());
       throw new StudioEditRefusedError(reason);
     }
-  } else if (awaitsBase(change)) {
-    // A change the agent hasn't started on yet: give it its base now, so the
-    // agent's own base step (idempotent) never resets this edit away.
+  } else if (
+    awaitsBase(change) ||
+    (studioShaped(change) && !(await hasChangeBase(ctx.workdir, change.id)))
+  ) {
+    // A change the agent hasn't started on yet, or a Studio change whose base
+    // failed earlier: give it its base now (idempotent), so neither the agent's
+    // base step nor a later retry ever resets this edit away.
     try {
-      await d.prepareChangeBase(ctx, change, { state });
+      await d.prepareChangeBase(ctx, change, { state, force: !awaitsBase(change) });
     } catch (err) {
       ctx.log?.warn?.(`${TAG} change ${change.id}: live code not restored: ${message(err)}`);
       throw new StudioEditRefusedError("The edit couldn't start from the live version's code.");

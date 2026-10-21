@@ -100,18 +100,37 @@ export function errorResponse(err: unknown): { status: number; body: { error: st
 }
 
 export function createIterateRoutes(deps: IterateRouteDeps): IterateRoutes {
+  /** The owner-gated routes; true when one answered. Errors become JSON in `handle`. */
+  async function route(
+    path: string,
+    method: string,
+    _req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<boolean> {
+    if (path === "/iterate/healthz" && method === "GET") {
+      deps.writeJson(res, 200, { ok: true });
+      return true;
+    }
+    return false;
+  }
+
   return {
     async handle(req, res, url, method) {
       const path = url.split("?")[0];
       if (!path.startsWith(PREFIX)) return false;
       if (!(await deps.requireOwner(req, res, url))) return true;
-
-      if (path === "/iterate/healthz" && method === "GET") {
-        deps.writeJson(res, 200, { ok: true });
+      try {
+        return await route(path, method, req, res);
+      } catch (err) {
+        const answer = errorResponse(err);
+        if (answer.status === 500) {
+          deps.log?.error?.(
+            `[iterate] ${method} ${path}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        if (!res.headersSent) deps.writeJson(res, answer.status, answer.body);
         return true;
       }
-
-      return false;
     },
   };
 }
