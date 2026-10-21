@@ -1,16 +1,20 @@
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { ObservedCheck } from "../../src/product/check-results.js";
 import { discardDraft, snapshot } from "../../src/launch/git-versions.js";
+import { prepareChangeBase } from "../../src/product/changes.js";
 import { dispatchProduct } from "../../src/product/product-doc.js";
 import {
   applyStudioEdit,
+  editTarget,
+  StudioEditRefusedError,
   type StudioEditContext,
   type StudioEditDeps,
 } from "../../src/product/studio-edit.js";
 import { newRequestsMemory, requestsPass } from "../../src/triggers/product-requests.js";
+import type { StudioProductState } from "vetra-app/document-models/studio-product";
 import { AT, a, launchHarness, makeReady, type LaunchHarness } from "../launch/orchestrator-helpers.js";
 
 function write(root: string, rel: string, content: string): void {
@@ -88,6 +92,9 @@ function edit(v: number, milestone = `Set the value to ${v}`) {
     },
   };
 }
+
+// Real git and an in-memory reactor per test: slower than the 5 s default under load.
+jest.setTimeout(30_000);
 
 describe("applyStudioEdit", () => {
   let h: LaunchHarness | undefined;
@@ -239,5 +246,107 @@ describe("applyStudioEdit", () => {
     expect(s.changes).toHaveLength(2);
     expect(s.changes[1].milestones.map((m) => m.text)).toEqual(["Set the value to 5", "Set the value to 6"]);
     expect(git(h.workdir, "log", "-2", "--format=%s")).toBe("Set the value to 6\nSet the value to 5");
+  });
+
+  it("joining a just-started change bases it first so the agent's base step keeps the edit", async () => {
+    h = await liveStudio();
+    write(h.workdir, "todo/src/stray.ts", "export const stray = true;\n");
+    // The browser started a change from the chat; the agent hasn't planned yet.
+    await dispatchProduct(h.ctx, [
+      a.startChange({ id: "change-2", kind: "CHANGE", request: "add tags", chatSessionId: "session-2", startedAt: AT }),
+    ]);
+    const { ctx } = editContext(h);
+
+    const result = await applyStudioEdit(ctx, edit(7));
+    expect(result.changeId).toBe("change-2");
+
+    // The agent's first step prepares the change's base, as ChangeBaseProcessor does.
+    const change = (await h.state()).changes.find((c) => c.id === "change-2")!;
+    expect(await prepareChangeBase({ ...h.ctx, workdir: h.workdir }, change)).toBe("already");
+    expect(git(h.workdir, "show", "HEAD:todo/src/model.ts")).toBe("export const v = 7;");
+    expect(fs.readFileSync(path.join(h.workdir, "todo/src/model.ts"), "utf8")).toBe("export const v = 7;\n");
+    expect(fs.existsSync(path.join(h.workdir, "todo/src/stray.ts"))).toBe(false);
+  });
+
+  it("joins only the active change; another change in progress refuses the edit", () => {
+    const change = (id: string, status: string) => ({ id, status, steps: [], checkRuns: [] });
+    const state = (active: string | null, ...changes: ReturnType<typeof change>[]) =>
+      ({ activeChangeId: active, changes }) as unknown as StudioProductState;
+
+    expect(editTarget(state(null, change("c1", "CLOSED")))).toBeNull();
+    expect(editTarget(state("c1", change("c1", "READY")))?.id).toBe("c1");
+    expect(() => editTarget(state(null, change("c1", "READY")))).toThrow(StudioEditRefusedError);
+    expect(() => editTarget(state("c0", change("c0", "CLOSED"), change("c1", "PAUSED")))).toThrow(
+      "Another change is in progress; finish or discard it first.",
+    );
+    expect(() => editTarget(state("c1", change("c1", "LAUNCHING")))).toThrow(
+      "A version is going live; try again once it is live.",
+    );
+  });
+
+  it("a passing edit after a failing one makes the change ready", async () => {
+    h = await liveStudio();
+    let pass = false;
+    const { ctx } = editContext(h, {
+      check: async () => (pass ? PASSING : [{ kind: "TYPECHECK", passed: false, reason: "1 type error." }]),
+    });
+
+    const failed = await applyStudioEdit(ctx, edit(8));
+    expect(failed.checksPassed).toBe(false);
+    let change = (await h.state()).changes.find((c) => c.id === failed.changeId)!;
+    expect(change.steps[0]).toMatchObject({ kind: "TESTS", status: "NEEDS_YOU" });
+
+    pass = true;
+    const fixed = await applyStudioEdit(ctx, edit(9));
+    expect(fixed.changeId).toBe(failed.changeId);
+    expect(fixed.checksPassed).toBe(true);
+    change = (await h.state()).changes.find((c) => c.id === failed.changeId)!;
+    expect(change.status).toBe("READY");
+    expect(change.steps[0]).toMatchObject({ kind: "TESTS", status: "DONE", reason: null });
+  });
+
+  it("a started change that can't get the live code shows it on Tests and refuses the edit", async () => {
+    h = await liveStudio();
+    const head = git(h.workdir, "rev-parse", "HEAD");
+    let wrote = false;
+    const { ctx } = editContext(h, {
+      prepareChangeBase: async () => {
+        throw new Error("git exploded");
+      },
+    });
+
+    await expect(
+      applyStudioEdit(ctx, {
+        ...edit(10),
+        async write() {
+          wrote = true;
+          return [];
+        },
+      }),
+    ).rejects.toThrow(StudioEditRefusedError);
+
+    expect(wrote).toBe(false);
+    expect(git(h.workdir, "rev-parse", "HEAD")).toBe(head);
+    const change = (await h.state()).changes.at(-1)!;
+    expect(change.steps[0]).toMatchObject({
+      kind: "TESTS",
+      status: "NEEDS_YOU",
+      reason: "The edit couldn't start from the live version's code.",
+    });
+  });
+
+  it("no code to generate is said plainly", async () => {
+    h = await liveStudio();
+    const { ctx } = editContext(h, { generate: async () => null });
+
+    const result = await applyStudioEdit(ctx, edit(11));
+
+    expect(result.checksPassed).toBe(false);
+    const change = (await h.state()).changes.find((c) => c.id === result.changeId)!;
+    expect(change.steps[0]).toMatchObject({
+      kind: "TESTS",
+      status: "NEEDS_YOU",
+      reason: "There's no generated code to check yet, so Tests can't be finished.",
+    });
   });
 });

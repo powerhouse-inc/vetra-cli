@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
+import { BodyError, errorResponse } from "../../src/preview-server/iterate-routes.js";
+import { StudioEditRefusedError } from "../../src/product/studio-edit.js";
 import { createRequestAuthorizer } from "../../src/preview-server/request-auth.js";
 import { startPreviewServer } from "../../src/preview-server/server.js";
 import { makeWorkdir } from "../spec/_fixtures.js";
@@ -71,5 +73,17 @@ describe("iterate routes", () => {
     // An iterate path no route answers is the server's 404, after the gate.
     const missing = await call("/iterate/nope", { authorization: "Bearer owner-token" });
     expect(missing.status).toBe(404);
+  });
+
+  it("route errors become plain JSON answers", () => {
+    expect(errorResponse(new StudioEditRefusedError("Another change is in progress."))).toEqual({
+      status: 409,
+      body: { error: "Another change is in progress." },
+    });
+    expect(errorResponse(new BodyError(413, "body too large"))).toEqual({
+      status: 413,
+      body: { error: "body too large" },
+    });
+    expect(errorResponse(new Error("/secret/path failed"))).toEqual({ status: 500, body: { error: "internal" } });
   });
 });

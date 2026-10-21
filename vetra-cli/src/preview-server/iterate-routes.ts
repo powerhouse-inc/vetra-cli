@@ -12,7 +12,11 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProductContext } from "../product/product-doc.js";
-import type { RunProcess, StudioEditContext } from "../product/studio-edit.js";
+import {
+  StudioEditRefusedError,
+  type RunProcess,
+  type StudioEditContext,
+} from "../product/studio-edit.js";
 
 export interface IterateRouteDeps {
   /** The server's owner gate: false (and the 401/403 written) when refused. */
@@ -82,6 +86,17 @@ export function studioEditContext(
     chatSessionId: opts.chatSessionId ?? null,
     previewUrl: deps.previewUrl,
   };
+}
+
+/**
+ * The JSON answer for an error an iterate route met: a refused edit is 409
+ * with its plain message, a bad body its own status; anything else is 500
+ * `internal` (logged, never echoed).
+ */
+export function errorResponse(err: unknown): { status: number; body: { error: string } } {
+  if (err instanceof StudioEditRefusedError) return { status: 409, body: { error: err.message } };
+  if (err instanceof BodyError) return { status: err.status, body: { error: err.message } };
+  return { status: 500, body: { error: "internal" } };
 }
 
 export function createIterateRoutes(deps: IterateRouteDeps): IterateRoutes {

@@ -12,7 +12,8 @@
  *   2. let the edit write its files, then commit exactly those (plus what
  *      codegen regenerated) as `<milestone>` by the Studio;
  *   3. add the milestone, run the checks and record them (`RECORD_CHECK_RUN`);
- *   4. a change it started whose checks pass completes Tests (→ READY); failing
+ *   4. a Studio-made change (one it started, or one whose only planned step is
+ *      Tests) whose checks pass (re)starts and completes Tests (→ READY); failing
  *      checks put the Tests step (or the change's latest planned step) on
  *      NEEDS_YOU with the first reason and ask the agent, in the change's
  *      conversation, to fix it.
@@ -42,11 +43,12 @@ import {
 } from "../helpers/project-checks.js";
 import { withProjectCodegenLock } from "../helpers/project-lock.js";
 import { recordCheckRun } from "../lifecycle/check-recorder.js";
-import { prepareChangeBase, type ChangeBaseContext } from "./changes.js";
+import { awaitsBase, prepareChangeBase, type ChangeBaseContext } from "./changes.js";
 import { readCheckResults, type ObservedCheck } from "./check-results.js";
 import {
   activeChange,
   dispatchProduct,
+  IN_PROGRESS,
   getProductDoc,
   productActions,
   ProductRefusedError,
@@ -207,15 +209,28 @@ async function readState(ctx: StudioEditContext): Promise<StudioProductState> {
   return product.state;
 }
 
-/** The change in progress an edit joins, or null when one must be started. */
-function openChange(state: StudioProductState): Change | null {
+/**
+ * The change an edit joins: the active change when it can be worked on; null
+ * when nothing is in progress (one is started). Any other change in progress
+ * (one going live, or one that isn't the active change, which the check runs
+ * couldn't be recorded on) refuses the edit.
+ */
+export function editTarget(state: StudioProductState): Change | null {
   const active = activeChange(state);
-  const open = active && JOINABLE.has(active.status) ? active : null;
-  if (open) return open;
-  if (state.changes.some((c) => c.status === "LAUNCHING")) {
-    throw new StudioEditRefusedError("A version is going live; try again once it is live.");
-  }
-  return state.changes.find((c) => JOINABLE.has(c.status)) ?? null;
+  if (active && JOINABLE.has(active.status)) return active;
+  const busy = state.changes.find((c) => IN_PROGRESS.includes(c.status));
+  if (!busy) return null;
+  throw new StudioEditRefusedError(
+    busy.status === "LAUNCHING"
+      ? "A version is going live; try again once it is live."
+      : "Another change is in progress; finish or discard it first.",
+  );
+}
+
+/** A change only the Studio worked on: Tests is its only planned step before Live. */
+function studioShaped(change: Change): boolean {
+  const work = change.steps.filter((s) => s.kind !== "LIVE");
+  return work.length === 1 && work[0].kind === "TESTS";
 }
 
 /** The step a failing check is shown on: Tests, else the latest planned step before Live. */
@@ -246,7 +261,7 @@ async function runEdit(ctx: StudioEditContext, edit: StudioEdit): Promise<Studio
 
   // 1. Join the change in progress, or start one from the live code.
   let state = await readState(ctx);
-  let change = openChange(state);
+  let change = editTarget(state);
   const started = change === null;
   if (!change) {
     const id = randomUUID();
@@ -261,12 +276,37 @@ async function runEdit(ctx: StudioEditContext, edit: StudioEdit): Promise<Studio
     ]);
     state = await readState(ctx);
     change = state.changes.find((c) => c.id === id)!;
-    await d.prepareChangeBase(ctx, change, { state });
+    let baseError: unknown = null;
+    try {
+      await d.prepareChangeBase(ctx, change, { state });
+    } catch (err) {
+      baseError = err;
+    }
     // Planned at once, so an agent turn on this change never resets its code.
-    await dispatchProduct(ctx, [
-      productActions.planSteps({ changeId: id, steps: [{ kind: "TESTS", total: null }] }),
-      productActions.startStep({ changeId: id, kind: "TESTS", at: now() }),
-    ]);
+    try {
+      await dispatchProduct(ctx, [
+        productActions.planSteps({ changeId: id, steps: [{ kind: "TESTS", total: null }] }),
+        productActions.startStep({ changeId: id, kind: "TESTS", at: now() }),
+      ]);
+    } catch (err) {
+      ctx.log?.warn?.(`${TAG} change ${id}: Tests not planned: ${message(err)}`);
+      throw new StudioEditRefusedError("The change couldn't be set up for this edit.");
+    }
+    if (baseError) {
+      ctx.log?.warn?.(`${TAG} change ${id}: live code not restored: ${message(baseError)}`);
+      const reason = "The edit couldn't start from the live version's code.";
+      await needsYou(ctx, id, "TESTS", reason, now());
+      throw new StudioEditRefusedError(reason);
+    }
+  } else if (awaitsBase(change)) {
+    // A change the agent hasn't started on yet: give it its base now, so the
+    // agent's own base step (idempotent) never resets this edit away.
+    try {
+      await d.prepareChangeBase(ctx, change, { state });
+    } catch (err) {
+      ctx.log?.warn?.(`${TAG} change ${change.id}: live code not restored: ${message(err)}`);
+      throw new StudioEditRefusedError("The edit couldn't start from the live version's code.");
+    }
   }
   const changeId = change.id;
 
@@ -284,7 +324,12 @@ async function runEdit(ctx: StudioEditContext, edit: StudioEdit): Promise<Studio
         const before = new Set(await workingChanges(ctx.workdir));
         const results: ObservedCheck[] = [];
         for (const base of bases) {
-          const r = await d.generate(base, ctx);
+          let r: ObservedCheck | null;
+          try {
+            r = await d.generate(base, ctx);
+          } catch (err) {
+            r = { kind: "GENERATE", passed: false, reason: "Code couldn't be generated.", detail: message(err) };
+          }
           if (r) results.push(r);
         }
         gen = results.length > 0 ? mergeResults(results)[0] : null;
@@ -320,15 +365,29 @@ async function runEdit(ctx: StudioEditContext, edit: StudioEdit): Promise<Studio
   const all = generated ? [generated, ...checks] : checks;
   let checksPassed = checks.length > 0 && all.every((r) => r.passed);
   let reason = firstReason(all);
+  // Like the agent's spec-generate (Ruling F1), no GENERATE is recorded when no
+  // spec has codegen; the Tests gate then can't be met, and that is said plainly.
+  const nothingGenerated = needsGenerate && generated === null;
+  if (checksPassed && nothingGenerated) {
+    checksPassed = false;
+    reason = "There's no generated code to check yet, so Tests can't be finished.";
+  }
 
   // 4. Ready, or needs-you and a note to the agent.
-  if (checksPassed && started) {
+  const current = (await readState(ctx)).changes.find((c) => c.id === changeId);
+  const studioMade = started || (current ? studioShaped(current) : false);
+  if (checksPassed && studioMade) {
     try {
-      await dispatchProduct(ctx, [productActions.completeStep({ changeId, kind: "TESTS", at: now() })]);
+      const at = now();
+      await dispatchProduct(ctx, [
+        // (Re)start first: an earlier failing edit may have left Tests on NEEDS_YOU.
+        productActions.startStep({ changeId, kind: "TESTS", at }),
+        productActions.completeStep({ changeId, kind: "TESTS", at }),
+      ]);
     } catch (err) {
       if (!(err instanceof ProductRefusedError)) throw err;
       checksPassed = false;
-      reason = "The checks couldn't be recorded.";
+      reason = "The check results couldn't be saved, so Tests can't be finished.";
       ctx.log?.warn?.(`${TAG} change ${changeId}: Tests not done: ${err.message}`);
     }
   }
