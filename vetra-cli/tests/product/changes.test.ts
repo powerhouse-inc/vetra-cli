@@ -200,6 +200,28 @@ describe("changes after launch", () => {
     expect(added).toEqual([["merged from GitHub", BRING_IN_TAG]]);
   });
 
+  it("later turns of a change get the Bring them in reminder, when there is one", async () => {
+    h = await liveStudio();
+    await startChange(h, "change-2", "session-2");
+    await makeReady(h, "change-2");
+    const added: [string, string | undefined][] = [];
+    let reminder: string | null = "conflicts left in todo/src/model.ts";
+    const processor = new ChangeBaseProcessor(h.octx, {
+      prepare: async () => {
+        throw new Error("not called once the change has steps");
+      },
+      remind: async () => reminder,
+    });
+    const args = {
+      stepNumber: 0,
+      messageList: { addSystem: (text: string, tag?: string) => added.push([text, tag]) },
+    } as unknown as ProcessInputStepArgs;
+    await processor.processInputStep(args);
+    reminder = null;
+    await processor.processInputStep(args);
+    expect(added).toEqual([["conflicts left in todo/src/model.ts", BRING_IN_TAG]]);
+  });
+
   it("a change a turn worked on without its base is never reset later", async () => {
     h = await liveStudio();
     write(h.workdir, "todo/src/model.ts", "export const v = 99;\n");

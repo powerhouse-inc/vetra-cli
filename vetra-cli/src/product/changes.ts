@@ -32,9 +32,9 @@ import {
   markChangeUnbased,
   versionTag,
 } from "../launch/git-versions.js";
-import { getProductDoc, type ProductContext } from "./product-doc.js";
+import { IN_PROGRESS, getProductDoc, type ProductContext } from "./product-doc.js";
 import { LaunchError } from "../launch/errors.js";
-import { DEFAULT_AUTHOR } from "../launch/git-versions.js";
+import { DEFAULT_AUTHOR, unfinishedMergePaths, workspaceGit } from "../launch/git-versions.js";
 import { MIRROR_REASONS, gitWithToken, mirrorDepsOf, type MirrorContext } from "../launch/mirror.js";
 
 const TAG = "[changes]";
@@ -133,7 +133,11 @@ export async function prepareChangeBase(
   const state = opts.state ?? (await getProductDoc(ctx))?.state;
   const tag = state ? liveTag(state) : null;
   if (!tag) return "skipped";
-  if (await d.hasChangeBase(ctx.workdir, change.id)) return "already";
+  if (await d.hasChangeBase(ctx.workdir, change.id)) {
+    const reminder = await bringInReminder(ctx, change);
+    if (reminder) opts.note?.(reminder);
+    return "already";
+  }
   if (await d.hasChangeUnbased(ctx.workdir, change.id)) {
     // A turn already worked on this change: its edits stand, never reverted.
     ctx.log?.warn?.(
@@ -226,6 +230,21 @@ export async function bringIn(ctx: ChangeBaseContext, state: StudioProductState)
     return notMerged(BRING_IN_REASONS.runtimeDir);
   }
   const short = sha.slice(0, 12);
+  // Already merged (a turn prepared again with the merge left in place).
+  let mergeHead: string | null = null;
+  try {
+    mergeHead = await git(["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+  } catch {
+    mergeHead = null;
+  }
+  if (mergeHead === sha) {
+    ctx.log?.info?.(`${TAG} GitHub's main (${short}) is already merged into the change`);
+    const open = await unfinishedMergePaths(ctx.workdir);
+    return open.length > 0
+      ? conflictNote(short, open)
+      : `Bring them in: the changes made on GitHub (commit ${short}) are already merged into this change's files and ` +
+          `the version you launch completes the merge; don't merge again. ${DONT_COMMIT}`;
+  }
   let inStudio = true;
   try {
     await git(["merge-base", "--is-ancestor", sha, "HEAD"]);
@@ -260,10 +279,31 @@ export async function bringIn(ctx: ChangeBaseContext, state: StudioProductState)
       return notMerged(reason);
     }
     ctx.log?.info?.(`${TAG} GitHub's main (${short}) merged with ${files.length} conflicting file(s)`);
-    return (
-      `Bring them in: the changes made on GitHub (commit ${short}) are merged into this change's files, but these files ` +
-      `conflict with the Studio's code: ${files.join(", ")}. Resolve each conflict (keep what both sides meant and remove the ` +
-      `conflict markers) and \`git add\` it, run the checks, then tell the customer in one or two sentences what came in. ${DONT_COMMIT}`
-    );
+    return conflictNote(short, files);
   }
+}
+
+function conflictNote(short: string, files: string[]): string {
+  return (
+    `Bring them in: the changes made on GitHub (commit ${short}) are merged into this change's files, but these files ` +
+    `conflict with the Studio's code: ${files.join(", ")}. Resolve each conflict (keep what both sides meant and remove the ` +
+    `conflict markers) and \`git add\` it, run the checks, then tell the customer in one or two sentences what came in. ${DONT_COMMIT}`
+  );
+}
+
+/**
+ * For later turns of an open Bring them in change: while its merge still has
+ * unmerged or conflict-marked files, the conflict note again (else null).
+ */
+export async function bringInReminder(ctx: Pick<ChangeBaseContext, "workdir">, change: Change): Promise<string | null> {
+  if (!isBringIn(change) || !IN_PROGRESS.includes(change.status)) return null;
+  const open = await unfinishedMergePaths(ctx.workdir);
+  if (open.length === 0) return null;
+  let sha = "";
+  try {
+    sha = await workspaceGit(ctx.workdir, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+  } catch {
+    return null;
+  }
+  return conflictNote(sha.slice(0, 12), open);
 }

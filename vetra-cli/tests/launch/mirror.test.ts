@@ -28,6 +28,8 @@ import {
 import { LAUNCH_TRIGGER, autoLaunchCandidate, launch } from "../../src/launch/orchestrator.js";
 import {
   BRING_IN_REASONS,
+  bringIn,
+  bringInReminder,
   BRING_IN_REQUEST,
   GITHUB_MAIN_REF,
   isBringIn,
@@ -535,6 +537,81 @@ describe("GitHub mirror", () => {
     expect(git(m.h.workdir, "status", "--porcelain")).toBe("M specs/product/idea.md");
     write(m.h.workdir, "specs/product/idea.md", "# Idea\n");
     await expect(restoreVersion(m.h.workdir, 1)).resolves.toBeDefined();
+  });
+
+  it("discarding a bring-in that brought an ignored file (.env.example) still succeeds", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    pushOnGithub(m.gh.bare, ".env.example", "API_URL=\n");
+    await bringInNow(m);
+    expect(fs.existsSync(path.join(m.h.workdir, ".env.example"))).toBe(true);
+
+    const kept = await discardDraft(m.h.workdir, "v1", { label: "bring-1" });
+
+    expect(git(m.h.workdir, "show", `${kept}:.env.example`)).toBe("API_URL=");
+    expect(mergeHead(m.h.workdir)).toBeNull();
+    expect(fs.existsSync(path.join(m.h.workdir, ".env.example"))).toBe(false);
+    expect(git(m.h.workdir, "status", "--porcelain")).toBe("");
+    await expect(restoreVersion(m.h.workdir, 1)).resolves.toBeDefined();
+  });
+
+  it("a discard that fails half-way keeps the merge, and trying again finishes it", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    const theirs = pushOnGithub(m.gh.bare, "README.md", "# From GitHub\n");
+    await bringInNow(m);
+    // The unsaved ref can't be written: the discard stops before resetting anything.
+    const refsDir = path.join(m.h.workdir, ".git", "refs", "vetra", "unsaved");
+    fs.mkdirSync(refsDir, { recursive: true });
+    fs.chmodSync(refsDir, 0o555);
+    try {
+      await expect(discardDraft(m.h.workdir, "v1", { label: "bring-1" })).rejects.toMatchObject({
+        code: "GIT_FAILED",
+      });
+    } finally {
+      fs.chmodSync(refsDir, 0o755);
+    }
+    expect(mergeHead(m.h.workdir)).toBe(theirs);
+
+    const kept = await discardDraft(m.h.workdir, "v1", { label: "bring-1" });
+    expect(git(m.h.workdir, "show", `${kept}:README.md`)).toBe("# From GitHub");
+    expect(mergeHead(m.h.workdir)).toBeNull();
+    expect(git(m.h.workdir, "status", "--porcelain")).toBe("");
+  });
+
+  it("a merge already in place is not merged again; open conflicts are told on later turns", async () => {
+    m = await studio();
+    await makeReady(m.h, "change-1");
+    await launchReady(m, "change-1");
+    pushOnGithub(m.gh.bare, "todo/src/model.ts", "export const v = 'github';\n");
+    await dispatchProduct(m.h.ctx, [
+      a.startChange({ id: "change-2", kind: "CHANGE", request: "count to two", startedAt: AT }),
+    ]);
+    write(m.h.workdir, "todo/src/model.ts", "export const v = 2;\n");
+    await makeReady(m.h, "change-2");
+    await launchReady(m, "change-2");
+    await bringInNow(m);
+    const s = await m.h.state();
+    const change = s.changes.find((c) => c.id === "bring-1")!;
+
+    // Prepared again with the merge left in place.
+    const again = await bringIn(m.h.octx, s);
+    expect(again).toContain("conflict with the Studio's code: todo/src/model.ts");
+    // A later turn: the base is marked, so prepareChangeBase only reminds.
+    const notes: string[] = [];
+    expect(await prepareChangeBase(m.h.octx, change, { state: s, note: (t) => notes.push(t) })).toBe("already");
+    expect(notes[0]).toContain("todo/src/model.ts");
+    expect(await bringInReminder(m.h.octx, change)).toContain("todo/src/model.ts");
+
+    // Resolved and staged: no reminder; a clean merge already in place says so.
+    write(m.h.workdir, "todo/src/model.ts", "export const v = 'both';\n");
+    git(m.h.workdir, "add", "todo/src/model.ts");
+    expect(await bringInReminder(m.h.octx, change)).toBeNull();
+    expect(await bringIn(m.h.octx, s)).toContain("already merged into this change's files");
+    // Not a bring-in change: never reminded.
+    expect(await bringInReminder(m.h.octx, { ...change, request: "something else" })).toBeNull();
   });
 
   it("bring in refuses code on GitHub that has a .ph folder", async () => {

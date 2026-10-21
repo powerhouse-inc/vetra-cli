@@ -3,6 +3,7 @@ import type { LifecycleHook } from "@powerhousedao/ph-clint";
 import {
   CHECKS_REFUSAL,
   GIT_REFUSAL,
+  MERGE_REFUSAL,
   extractCommand,
   refuseCommand,
   shellGuard,
@@ -48,6 +49,20 @@ describe("refuseCommand", () => {
     "refuses %s",
     (command) => {
       expect(refuseCommand(command)).toBe(GIT_REFUSAL);
+    },
+  );
+
+  it.each(["git merge --continue", "git -C todo merge --abort", "cd todo && git merge --quit"])(
+    "refuses %s (the launch finishes a merge from GitHub)",
+    (command) => {
+      expect(refuseCommand(command)).toBe(MERGE_REFUSAL);
+    },
+  );
+
+  it.each(["git add todo/src/model.ts", "git diff --cached --stat", "git merge-base HEAD main"])(
+    "allows %s while a merge is open",
+    (command) => {
+      expect(refuseCommand(command)).toBeNull();
     },
   );
 
