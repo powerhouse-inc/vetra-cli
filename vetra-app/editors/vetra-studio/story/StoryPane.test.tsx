@@ -27,13 +27,17 @@ import {
   user,
 } from "./storyFixtures.js";
 
+const toastSink = vi.hoisted(() => ({
+  fn: undefined as ((text: string) => void) | undefined,
+}));
+
 const hoisted = vi.hoisted(() => ({
   dispatched: [] as { action: { type: string }; id: string }[],
 }));
 
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  usePHToast: () => undefined,
+  usePHToast: () => toastSink.fn,
   dispatchActions: (action: { type: string }, id: string) => {
     hoisted.dispatched.push({ action, id });
     return Promise.resolve();
@@ -264,6 +268,181 @@ describe("StoryPane", () => {
     expect(hoisted.dispatched[1]).toMatchObject({
       id: PRODUCT_ID,
       action: { type: "RESUME_CHANGE" },
+    });
+  });
+});
+
+describe("StoryPane layers", () => {
+  function pane(props: Partial<Parameters<typeof StoryPane>[0]> = {}) {
+    const product = buildingProduct();
+    return (
+      <StoryPane
+        product={product}
+        change={changeOf(product)}
+        chat={chat(
+          user("u0", "a task board for my team", at(1), at(1)),
+          toolCall("a1", "spec-create", { name: "task" }, at(2)),
+          reply("a2", "Got it — planning Task board.", at(2)),
+          toolCall("a3", "Write", { path: "src/QueueBoard.tsx" }, at(7)),
+        )}
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        now={new Date(atSec(7, 10))}
+        {...props}
+      />
+    );
+  }
+
+  it("defaults to Activity", () => {
+    const container = render(pane());
+    expect(
+      container
+        .querySelector("[data-story-layer]")
+        ?.getAttribute("data-story-layer"),
+    ).toBe("activity");
+    expect(
+      container.querySelector('[role="tab"][aria-selected="true"]')
+        ?.textContent,
+    ).toBe("Activity");
+    expectNoForbiddenWords(container);
+  });
+
+  it("switching to Raw shows every tool call", () => {
+    const container = render(pane());
+    expect(container.textContent).not.toContain("spec-create");
+    click(button(container, "Raw"));
+    const list = container.querySelector("[data-story-layer]");
+    expect(list?.getAttribute("data-story-layer")).toBe("raw");
+    expect(container.querySelectorAll("[data-story-layer]")).toHaveLength(1);
+    expect(container.textContent).toContain("spec-create");
+    expect(container.textContent).toContain("QueueBoard.tsx");
+  });
+
+  it("Outcome shows one sentence per milestone", () => {
+    const container = render(pane({ layer: "outcome" }));
+    const lines = container.querySelectorAll("[data-story-line]");
+    const text = container.textContent;
+    expect(
+      container
+        .querySelector("[data-story-layer]")
+        ?.getAttribute("data-story-layer"),
+    ).toBe("outcome");
+    expect(text).toContain("Planned 1 app · 7 features");
+    expect(text).not.toContain("Got it — planning");
+    expect(lines.length).toBeLessThanOrEqual(4);
+    expectNoForbiddenWords(container);
+  });
+
+  it("is controlled when a layer is given and reports changes", () => {
+    const onLayerChange = vi.fn();
+    const container = render(pane({ layer: "outcome", onLayerChange }));
+    click(button(container, "Activity"));
+    expect(onLayerChange).toHaveBeenCalledWith("activity");
+  });
+
+  it("Copy all is only in Raw", () => {
+    const container = render(pane());
+    expect(button(container, "Copy all")).toBeUndefined();
+    click(button(container, "Outcome"));
+    expect(button(container, "Copy all")).toBeUndefined();
+    click(button(container, "Raw"));
+    expect(button(container, "Copy all")).toBeDefined();
+  });
+
+  it("a 60-step quiet change shows at most 12 story rows plus the waiting status", () => {
+    const ms = (id: string, minute: number, text: string) =>
+      actions.addMilestone({ changeId: "c1", id, text, at: at(minute) });
+    const product = readProduct(
+      productDoc(
+        ...buildingOps(),
+        actions.startStep({ changeId: "c1", kind: "DATA", at: at(2) }),
+        ms("m1", 2, "One"),
+        ms("m2", 4, "Two"),
+        ms("m3", 6, "Three"),
+        ms("m4", 8, "Four"),
+        ms("m5", 10, "Five"),
+      ).state.global,
+    );
+    const names = ["spec-create", "mastra_workspace_read_file", "Write"];
+    const msgs = [user("u0", "a task board", atSec(0, 30), atSec(0, 30))];
+    for (let i = 0; i < 60; i++) {
+      msgs.push(
+        toolCall(
+          `t${i}`,
+          names[i % 3],
+          { path: "a.ts" },
+          atSec(1 + Math.floor(i / 6), i % 6),
+        ),
+      );
+    }
+    for (let i = 0; i < 6; i++) {
+      msgs.push(reply(`r${i}`, `Progress ${i}.`, atSec(1 + i * 2, 30)));
+    }
+    const change = product.changes.find((c) => c.id === "c1");
+    if (!change) throw new Error("no change");
+    const container = render(
+      <StoryPane
+        product={product}
+        change={change}
+        chat={chat(...msgs)}
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        now={new Date(at(30))}
+      />,
+    );
+    expect(
+      container.querySelectorAll("[data-story-line]").length,
+    ).toBeLessThanOrEqual(12);
+    const status = container.querySelector('[data-line="waiting"]');
+    expect(status?.textContent).toContain("Still working on it");
+    expect(status?.hasAttribute("data-story-line")).toBe(false);
+    expect(status?.closest("[data-story-layer]")).toBeNull();
+  });
+
+  it("an Activity milestone shows its summary under the text", () => {
+    const product = buildingProduct();
+    const container = render(
+      pane({
+        chat: chat(
+          user("u0", "a task board", at(1), at(1)),
+          toolCall("a1", "Write", { path: "src/A.tsx" }, atSec(3, 30)),
+          toolCall("a2", "Write", { path: "src/B.tsx" }, atSec(3, 40)),
+        ),
+        product,
+        change: changeOf(product),
+      }),
+    );
+    const summary = container.querySelector(
+      '[data-line="milestone"] p.truncate',
+    );
+    expect(summary?.textContent).toMatch(/\S/);
+  });
+
+  describe("Copy all", () => {
+    function withClipboard(clipboard: unknown) {
+      Object.defineProperty(navigator, "clipboard", {
+        value: clipboard,
+        configurable: true,
+      });
+    }
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it("toasts Copied and Couldn't copy", async () => {
+      const toasts: string[] = [];
+      toastSink.fn = (text: string) => toasts.push(text);
+      const container = render(pane());
+      click(button(container, "Raw"));
+      withClipboard({ writeText: () => Promise.resolve() });
+      click(button(container, "Copy all"));
+      await flush();
+      withClipboard({ writeText: () => Promise.reject(new Error("no")) });
+      click(button(container, "Copy all"));
+      await flush();
+      withClipboard(undefined);
+      click(button(container, "Copy all"));
+      await flush();
+      toastSink.fn = undefined;
+      expect(toasts).toEqual(["Copied", "Couldn't copy", "Couldn't copy"]);
     });
   });
 });
