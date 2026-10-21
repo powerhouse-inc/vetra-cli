@@ -31,12 +31,18 @@ export function CommandBar({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seen = useRef(lastReply);
+  const field = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (lastReply === seen.current) return;
     seen.current = lastReply;
     if (lastReply) toast?.(lastReply, { type: "info" });
   }, [lastReply, toast]);
+
+  // After a failed send the input is enabled again: put the cursor back.
+  useEffect(() => {
+    if (error && !busy) field.current?.focus();
+  }, [error, busy]);
 
   if (!open) return null;
 
@@ -74,6 +80,7 @@ export function CommandBar({
         <input
           {...{ [COMMAND_INPUT_ATTR]: "" }}
           autoFocus
+          ref={field}
           aria-label="Ask for a change"
           placeholder={COMMAND_PLACEHOLDER}
           value={text}

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   button,
   click,
@@ -48,6 +48,8 @@ function ctrlK() {
 const input = (c: HTMLElement) => c.querySelector<HTMLInputElement>("input");
 const enter = (c: HTMLElement) => pressKey(input(c)!, "Enter");
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("command bar", () => {
   it("Ctrl-K opens the bar, plain K does not", () => {
     const c = render(layout());
@@ -73,7 +75,6 @@ describe("command bar", () => {
       );
     });
     expect(input(c)).not.toBeNull();
-    vi.restoreAllMocks();
   });
 
   it("Enter sends the text and closes", async () => {
@@ -96,6 +97,7 @@ describe("command bar", () => {
     await act(async () => {});
     expect(input(c)?.value).toBe("x");
     expect(c.querySelector("[role=alert]")?.textContent).toBe("Nope");
+    expect(document.activeElement).toBe(input(c));
   });
 
   it("the newest reply shows as a toast, even with the bar closed", () => {
@@ -110,6 +112,35 @@ describe("command bar", () => {
     expect(hoisted.toast).not.toHaveBeenCalled();
     rerender(c, <CommandBar {...props} lastReply="Done: blue" />);
     expect(hoisted.toast).toHaveBeenCalledWith("Done: blue", { type: "info" });
+  });
+
+  it("the bar opens from the visible trigger", () => {
+    const c = render(layout());
+    click(button(c, "Ask for a change…"));
+    expect(c.querySelector("[data-command-bar] input")).not.toBeNull();
+    expect(button(c, "Ask for a change…")?.textContent).toContain("Ctrl K");
+  });
+
+  it("Ctrl-K inside a same-origin product frame opens the bar", () => {
+    const frame = document.createElement("iframe");
+    const c = render(layout({ product: <div data-slot /> }));
+    c.querySelector("[data-demo-product]")!.appendChild(frame);
+    // Attach on load, like the preview's frame navigating.
+    act(() => {
+      frame.dispatchEvent(new Event("load"));
+    });
+    const win = frame.contentWindow;
+    expect(win).not.toBeNull();
+    act(() => {
+      win!.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "k",
+          ctrlKey: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(input(c)).not.toBeNull();
   });
 
   it("Open chat goes to Review", () => {

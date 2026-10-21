@@ -29,6 +29,8 @@ import {
   productDoc,
   withLiveVersion,
 } from "../test-utils/studioFixtures.js";
+import { startChange } from "../change/startChange.js";
+import type * as StartChangeModule from "../change/startChange.js";
 import { StudioShell } from "./StudioShell.js";
 
 const hoisted = vi.hoisted(() => ({
@@ -38,6 +40,12 @@ const hoisted = vi.hoisted(() => ({
   session: undefined as PHDocument | undefined,
 }));
 
+vi.mock("../change/startChange.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof StartChangeModule>()),
+  startChange: vi.fn(() =>
+    Promise.resolve({ changeId: "c1", sessionId: "s1", joined: true }),
+  ),
+}));
 vi.mock("../steps/plainModel.js", async (importOriginal) => {
   const actual = await importOriginal<typeof PlainModelModule>();
   return { ...actual, plainModel: vi.fn(actual.plainModel) };
@@ -319,6 +327,8 @@ describe("StudioShell", () => {
       "Demo",
       // Demo's thin bar returns to Review (Task 2.4).
       "Open chat",
+      // Demo's visible command-bar trigger (Task 2.4).
+      "Ask for a change…",
     ]);
     expect(names.filter((n) => !allowed.has(n))).toEqual([]);
     expect(names).toContain("Settings");
@@ -581,5 +591,51 @@ describe("StudioShell", () => {
       container.querySelector("[data-demo-question]")?.textContent,
     ).toContain("Should tasks have due dates?");
     expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+  });
+
+  function sendFromDemoBar(container: HTMLElement, text: string) {
+    click(button(container, "Demo"));
+    click(button(container, "Ask for a change…"));
+    const field = container.querySelector<HTMLInputElement>(
+      "[data-command-bar] input",
+    );
+    typeInto(field, text);
+    pressKey(field!, "Enter");
+  }
+
+  it("Enter in the bar sends into the open change", async () => {
+    vi.mocked(startChange).mockClear();
+    const container = building();
+    sendFromDemoBar(container, "make it blue");
+    await act(async () => {});
+    expect(startChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        productId: PRODUCT_ID,
+        request: "make it blue",
+        kind: "CHANGE",
+      }),
+    );
+  });
+
+  it("with no open change Enter starts a change", async () => {
+    vi.mocked(startChange).mockClear();
+    hoisted.documents = [
+      withLiveVersion(productDoc(...buildingOps())),
+      chatDoc(SESSION_ID, 1),
+    ];
+    const container = render(
+      <StudioShell
+        document={driveDoc([PRODUCT, SESSION])}
+        dispatch={() => {}}
+      />,
+    );
+    sendFromDemoBar(container, "add a dark theme");
+    await act(async () => {});
+    expect(startChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: "add a dark theme",
+        kind: "CHANGE",
+      }),
+    );
   });
 });

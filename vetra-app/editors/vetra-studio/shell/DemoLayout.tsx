@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CommandBar } from "./CommandBar.js";
-import { isCommandShortcut } from "./commandKeys.js";
+import { isCommandShortcut, isMacPlatform } from "./commandKeys.js";
 
 export type DemoLayoutProps = {
   /** The live view or the preview, full screen. */
@@ -32,15 +32,48 @@ export function DemoLayout({
   question,
 }: DemoLayoutProps) {
   const [open, setOpen] = useState(false);
+  const productRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const platform = navigator.platform;
     const onKey = (e: KeyboardEvent) => {
-      if (!isCommandShortcut(e, navigator.platform)) return;
+      if (!isCommandShortcut(e, platform)) return;
       e.preventDefault();
       setOpen((current) => !current);
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // A same-origin product frame (the preview) is its own document: its
+    // keys never reach this window, so listen on it too. A cross-origin
+    // frame (the live app) refuses access, and the visible trigger remains.
+    const hooked = new Map<HTMLIFrameElement, Window>();
+    const detach = (frame: HTMLIFrameElement) => {
+      hooked.get(frame)?.removeEventListener("keydown", onKey);
+      hooked.delete(frame);
+    };
+    const attach = (frame: HTMLIFrameElement) => {
+      detach(frame);
+      try {
+        const win = frame.contentWindow;
+        if (!win) return;
+        void win.document.body; // throws when cross-origin
+        win.addEventListener("keydown", onKey);
+        hooked.set(frame, win);
+      } catch {
+        /* cross-origin: nothing to listen on */
+      }
+    };
+    const root = productRef.current;
+    const onLoad = (e: Event) => {
+      if (e.target instanceof HTMLIFrameElement) attach(e.target);
+    };
+    root?.addEventListener("load", onLoad, true);
+    root?.querySelectorAll("iframe").forEach(attach);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      root?.removeEventListener("load", onLoad, true);
+      for (const frame of [...hooked.keys()]) detach(frame);
+    };
   }, []);
+  const hint = isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl K";
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -61,6 +94,14 @@ export function DemoLayout({
         <div className="ml-auto flex items-center gap-3">
           <button
             type="button"
+            onClick={() => setOpen(true)}
+            className="flex items-center gap-2 rounded-full border border-border px-3 py-0.5 text-xs text-muted-foreground hover:bg-accent"
+          >
+            <span>Ask for a change…</span>
+            <kbd className="rounded bg-muted px-1 text-[10px]">{hint}</kbd>
+          </button>
+          <button
+            type="button"
             onClick={onOpenChat}
             className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent"
           >
@@ -79,6 +120,7 @@ export function DemoLayout({
       ) : null}
       <div
         data-demo-product
+        ref={productRef}
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background"
       >
         {product}
