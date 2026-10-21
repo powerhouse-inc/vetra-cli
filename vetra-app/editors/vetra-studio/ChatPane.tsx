@@ -79,27 +79,7 @@ export function ChatPane({
       (node as FileNode).documentType === CHAT_SESSION_DOCUMENT_TYPE,
   );
 
-  const driveRemoteUrl = (
-    document.state.local as { remoteUrl?: string } | undefined
-  )?.remoteUrl;
-  const defaultDrivesUrl = useDefaultDrivesUrl();
-  const attachments = useMemo(() => {
-    // The transport appends `/attachments/<hash>` to remoteUrl verbatim.
-    // `source` is the proxied switchboard drive URL `…/switchboard/d/<id>`;
-    // keep everything up to and including `/switchboard` so attachment
-    // requests stay under the proxy base (`…/switchboard/attachments/<hash>`,
-    // which the proxy maps to switchboard `/attachments/<hash>`). Without a
-    // `/switchboard` segment (non-proxied switchboard), fall back to origin.
-    const source =
-      driveRemoteUrl ?? defaultDrivesUrl ?? DEFAULT_SWITCHBOARD_URL;
-    const url = new URL(source);
-    const sbEnd = url.pathname.indexOf("/switchboard");
-    const remoteUrl =
-      sbEnd === -1
-        ? url.origin
-        : url.origin + url.pathname.slice(0, sbEnd + "/switchboard".length);
-    return createRemoteAttachmentService({ remoteUrl });
-  }, [driveRemoteUrl, defaultDrivesUrl]);
+  const attachments = useDriveAttachments(document);
 
   const { creating, createSession } = useCreateSession(
     document.header.id,
@@ -166,6 +146,66 @@ export function ChatPane({
       sessions={sessions}
       onSelectSession={onSelectSession}
     />
+  );
+}
+
+/** The attachment service for the drive's conversations. */
+function useDriveAttachments(
+  document: DocumentDriveDocument,
+): IAttachmentService {
+  const driveRemoteUrl = (
+    document.state.local as { remoteUrl?: string } | undefined
+  )?.remoteUrl;
+  const defaultDrivesUrl = useDefaultDrivesUrl();
+  return useMemo(() => {
+    // The transport appends `/attachments/<hash>` to remoteUrl verbatim.
+    // `source` is the proxied switchboard drive URL `…/switchboard/d/<id>`;
+    // keep everything up to and including `/switchboard` so attachment
+    // requests stay under the proxy base (`…/switchboard/attachments/<hash>`,
+    // which the proxy maps to switchboard `/attachments/<hash>`). Without a
+    // `/switchboard` segment (non-proxied switchboard), fall back to origin.
+    const source =
+      driveRemoteUrl ?? defaultDrivesUrl ?? DEFAULT_SWITCHBOARD_URL;
+    const url = new URL(source);
+    const sbEnd = url.pathname.indexOf("/switchboard");
+    const remoteUrl =
+      sbEnd === -1
+        ? url.origin
+        : url.origin + url.pathname.slice(0, sbEnd + "/switchboard".length);
+    return createRemoteAttachmentService({ remoteUrl });
+  }, [driveRemoteUrl, defaultDrivesUrl]);
+}
+
+/**
+ * One conversation, without the session list or its navigation: the Studio
+ * shell's story pane while a product builds (spec §5.4).
+ */
+export function ConversationPane({
+  document,
+  sessionId,
+  driveLoaded,
+}: {
+  document: DocumentDriveDocument;
+  sessionId: string;
+  driveLoaded: boolean;
+}) {
+  const attachments = useDriveAttachments(document);
+  const knownInDrive = document.state.global.nodes.some(
+    (node) => node.kind === "file" && node.id === sessionId,
+  );
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex-1 overflow-hidden">
+        <Suspense fallback={<SessionLoading />}>
+          <SessionView
+            sessionId={sessionId}
+            knownInDrive={knownInDrive}
+            driveLoaded={driveLoaded}
+            attachments={attachments}
+          />
+        </Suspense>
+      </div>
+    </div>
   );
 }
 
@@ -342,7 +382,7 @@ function EmptyState({
 
 /** Temporary (M0) first conversation from the idea; M1 replaces it with the
  *  idea screen. */
-function IdeaStart({
+export function IdeaStart({
   onStart,
   onStarted,
 }: {

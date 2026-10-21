@@ -35,7 +35,7 @@ export function BuildSection({
   );
 }
 
-function PreviewBody({ preview }: { preview: ResolvedPreview }) {
+export function PreviewBody({ preview }: { preview: ResolvedPreview }) {
   const { theme } = useTheme();
   const url = preview.kind === "ready" ? preview.url : undefined;
 
