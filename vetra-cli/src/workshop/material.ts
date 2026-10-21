@@ -3,7 +3,7 @@
  * under `<workdir>/.ph/vetra/material/<id>/` next to a `meta.json`.
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { readSheets, type SheetTable } from "./sheets.js";
 
@@ -116,4 +116,29 @@ export async function saveMaterial(
     await rm(dir, { recursive: true, force: true });
     throw err;
   }
+}
+
+const MATERIAL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A stored material by id (from its `meta.json`); null when unknown. */
+export async function loadMaterial(workdir: string, id: string): Promise<MaterialInfo | null> {
+  if (!MATERIAL_ID.test(id)) return null;
+  const dir = join(materialDir(workdir), id);
+  let meta: Partial<MaterialInfo>;
+  try {
+    meta = JSON.parse(await readFile(join(dir, "meta.json"), "utf8")) as Partial<MaterialInfo>;
+  } catch {
+    return null;
+  }
+  const kinds: MaterialKind[] = ["PICTURE", "PDF", "SHEET", "TEXT"];
+  const kind = kinds.find((k) => k === meta.kind);
+  if (!kind || typeof meta.name !== "string" || safeFileName(meta.name) !== meta.name) return null;
+  return {
+    id,
+    name: meta.name,
+    kind,
+    bytes: typeof meta.bytes === "number" ? meta.bytes : 0,
+    path: join(dir, meta.name),
+    ...(Array.isArray(meta.sheets) && { sheets: meta.sheets }),
+  };
 }

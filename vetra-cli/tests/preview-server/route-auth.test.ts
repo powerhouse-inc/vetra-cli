@@ -23,6 +23,7 @@ const OWNER_ROUTES: Array<[method: string, path: string]> = [
   ["POST", "/auth/confirm?wait=0"],
   ["POST", "/auth/logout"],
   ["POST", "/workshop/material?name=a.txt&type=text%2Fplain"],
+  ["POST", "/workshop/understand"],
 ];
 const PUBLIC_ROUTES: Array<[method: string, path: string]> = [
   ["GET", "/healthz"],
