@@ -7,9 +7,17 @@
  *     200 UnderstandResult
  *     400 { error: "invalid" | "empty" | "too-many" }  404 { error: "unknown-material", id }
  *     402 { error: "budget" }  422 { error: "unreadable", notes }  503 { error: "no-model" }
+ *   POST /workshop/snapshots?changeId=&at=   raw JPEG body (<= 400 KB) -> 201; 413 over.
+ *   GET  /workshop/snapshots?changeId=       -> 200 { at, file }[] by time.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { loadMaterial, saveMaterial, UnsupportedMaterialError, type MaterialInfo } from "../workshop/material.js";
+import {
+  InvalidSnapshotKeyError,
+  listSnapshots,
+  saveSnapshot,
+  SNAPSHOT_MAX_BYTES,
+} from "../workshop/snapshots-store.js";
 import {
   understand,
   UnderstandBudgetError,
@@ -175,6 +183,37 @@ export function createWorkshopRoutes(deps: WorkshopRouteDeps): WorkshopRoutes {
     }
   }
 
+  async function snapshots(req: IncomingMessage, res: ServerResponse, url: string, method: string): Promise<void> {
+    if (!(await deps.requireOwner(req, res, url))) return;
+    const q = new URL(url, "http://localhost").searchParams;
+    const changeId = q.get("changeId") ?? "";
+    try {
+      if (method === "GET") {
+        writeJson(res, 200, await listSnapshots(deps.workdir, changeId));
+        return;
+      }
+      let bytes: Buffer;
+      try {
+        bytes = await readBody(req, SNAPSHOT_MAX_BYTES);
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) {
+          writeJson(res, 413, { error: "too-large" }, { Connection: "close" });
+          return;
+        }
+        throw err;
+      }
+      const file = await saveSnapshot(deps.workdir, changeId, q.get("at") ?? "", bytes);
+      writeJson(res, 201, { file });
+    } catch (err) {
+      if (err instanceof InvalidSnapshotKeyError) {
+        if (method === "POST") req.resume();
+        writeJson(res, 400, { error: "invalid-key" });
+        return;
+      }
+      throw err;
+    }
+  }
+
   return {
     async handle(req, res, url, method) {
       const path = url.split("?")[0];
@@ -184,6 +223,10 @@ export function createWorkshopRoutes(deps: WorkshopRouteDeps): WorkshopRoutes {
       }
       if (path === "/workshop/material" && method === "POST") {
         await uploadMaterial(req, res, url);
+        return true;
+      }
+      if (path === "/workshop/snapshots" && (method === "POST" || method === "GET")) {
+        await snapshots(req, res, url, method);
         return true;
       }
       return false;

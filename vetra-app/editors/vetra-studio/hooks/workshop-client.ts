@@ -103,3 +103,17 @@ export async function requestUnderstanding(
   });
   return (await res.json()) as UnderstandResult;
 }
+
+/** Uploads one preview snapshot (JPEG) of a change's build. */
+export async function uploadSnapshot(
+  changeId: string,
+  at: string,
+  blob: Blob,
+): Promise<void> {
+  const params = new URLSearchParams({ changeId, at });
+  await send(`/workshop/snapshots?${params}`, {
+    method: "POST",
+    headers: { "Content-Type": "image/jpeg" },
+    body: blob,
+  });
+}

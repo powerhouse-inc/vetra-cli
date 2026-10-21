@@ -10,7 +10,13 @@
 import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import type { PHDocument } from "document-model";
 import type { Change } from "document-models/studio-product";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type Ref,
+} from "react";
 import { PreviewBody, STARTING } from "../BuildSection.js";
 import { fetchRestart, fetchStart } from "../hooks/preview-server-client.js";
 import {
@@ -113,6 +119,7 @@ export function PreviewPane({
   change,
   documents,
   session,
+  frameRef,
 }: {
   /** The change being built (its Editors step marks the tab in progress). */
   change: Change | null;
@@ -120,6 +127,8 @@ export function PreviewPane({
   documents: readonly PHDocument[];
   /** The build's conversation, which says what the agent shows and edits. */
   session: ChatSessionDocument | undefined;
+  /** The preview frame, for snapshots of the build. */
+  frameRef?: Ref<HTMLIFrameElement>;
 }) {
   const screens = useMemo(() => previewScreens(documents), [documents]);
   const messages = session?.state.global.messages;
@@ -202,6 +211,7 @@ export function PreviewPane({
             : undefined)
         }
         note={building}
+        frameRef={frameRef}
       />
       {tabs.length > 0 ? (
         <TabBar tabs={tabs} selected={selected} onSelect={setPicked} />
