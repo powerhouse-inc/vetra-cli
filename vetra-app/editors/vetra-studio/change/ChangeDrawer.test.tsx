@@ -32,7 +32,12 @@ const hoisted = vi.hoisted(() => ({
 vi.mock("./startChange.js", () => ({
   startChange: (input: unknown) => {
     hoisted.started.push(input);
-    return Promise.resolve({ changeId: "c3", sessionId: "session-3" });
+    // Task 3.1's startChange also says whether the request joined a change.
+    return Promise.resolve({
+      changeId: "c3",
+      sessionId: "session-3",
+      joined: false,
+    });
   },
 }));
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
@@ -53,14 +58,14 @@ vi.mock("../preview/PreviewPane.js", () => ({
 const DRIVE = drive([]);
 const NOW = new Date(at(45));
 
-function surface(product = changing()) {
+function surface(product = changing(), failure: Failure | null = null) {
   return (
     <LiveSurface
       product={product}
       productId="product-1"
       drive={DRIVE}
       documents={[]}
-      failure={null as Failure | null}
+      failure={failure}
       now={NOW}
       story={<div data-story>Story of the change</div>}
       preview={<div data-preview>Preview of the change</div>}
@@ -140,6 +145,51 @@ describe("Live | Preview split (spec §5.7)", () => {
     expectNoForbiddenWords(container);
   });
 
+  it("a failed launch shows even with the drawer closed", () => {
+    const product = changing("READY");
+    const container = render(surface(product));
+    click(button(container, "Close"));
+    expect(container.querySelector('[data-drawer="change"]')).toBeNull();
+
+    // The launch fails: the drawer opens on the story, which shows it.
+    const failed: Failure = {
+      situation: "launch-failed",
+      stripStep: "LIVE",
+      stripIcon: "✕",
+      text: "Couldn't go live: your live app didn't answer. Your live app is still on Version 1.",
+      actions: [],
+    };
+    rerender(container, surface(product, failed));
+    expect(
+      container.querySelector('[data-drawer="change"] [data-story]'),
+    ).not.toBeNull();
+    expect(container.querySelector("[data-split-failure]")).toBeNull();
+
+    // Closed again while it lasts: the line sits over the preview.
+    click(button(container, "Close"));
+    rerender(container, surface(product, failed));
+    expect(container.querySelector('[data-drawer="change"]')).toBeNull();
+    expect(
+      container.querySelector('[data-pane="preview"] [data-split-failure]')
+        ?.textContent,
+    ).toContain("Couldn't go live: your live app didn't answer.");
+    expectNoForbiddenWords(container);
+  });
+
+  it("calm notices don't open the drawer", () => {
+    const container = render(surface());
+    click(button(container, "Close"));
+    rerender(
+      container,
+      surface(changing(), {
+        situation: "breather",
+        text: "Taking a short breather.",
+        actions: [],
+      }),
+    );
+    expect(container.querySelector('[data-drawer="change"]')).toBeNull();
+  });
+
   it("the bubble opens the drawer: past changes grouped by version", () => {
     const container = render(surface(readProduct(liveDoc().state.global)));
     expect(container.querySelector('[data-drawer="change"]')).toBeNull();
@@ -209,13 +259,16 @@ describe("ChangeDrawer (spec §5.6)", () => {
     ]);
   });
 
-  it("a change that couldn't start says so and keeps the text", async () => {
+  it("a change that couldn't start says so plainly and keeps the text", async () => {
+    let refusal = new Error(
+      "Your change is going live right now. Ask again once it's live.",
+    );
     const container = render(
       <ChangeDrawer
         product={readProduct(liveDoc().state.global)}
         story={null}
         launchedVersion={null}
-        onStart={() => Promise.reject(new Error("Try again in a moment."))}
+        onStart={() => Promise.reject(refusal)}
         onClose={() => {}}
       />,
     );
@@ -223,9 +276,17 @@ describe("ChangeDrawer (spec §5.6)", () => {
     click(button(container, "Send"));
     await flush();
     expect(container.querySelector('[role="alert"]')?.textContent).toBe(
-      "Try again in a moment.",
+      "Your change is going live right now. Ask again once it's live.",
     );
     expect(input(container).value).toBe("Add a notes field");
+
+    // A refusal from the document itself: a plain line instead.
+    refusal = new Error('Change "c2" is still in progress (BUILDING).');
+    click(button(container, "Send"));
+    await flush();
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+      "Couldn't send it. Try again.",
+    );
   });
 
   it("a discarded change stays in the story, marked discarded", () => {

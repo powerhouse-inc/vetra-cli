@@ -350,7 +350,9 @@ function StudioPage({
     setOpenStep((current) => (current === kind ? null : kind));
   }, []);
 
-  const following = openStep === null || (!stateTwo && openStep === "EDITORS");
+  // A change on a live product keeps its split: no step detail over it.
+  const following =
+    openStep === null || (!stateTwo && (liveView || openStep === "EDITORS"));
   const detail = following ? null : (
     <StepDetail
       kind={openStep}

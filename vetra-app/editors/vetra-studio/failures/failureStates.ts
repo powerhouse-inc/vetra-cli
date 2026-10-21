@@ -637,9 +637,11 @@ export function withFailure(
 ): StripView {
   if (!failure?.stripStep || !failure.stripIcon) return view;
   const { stripStep, stripIcon } = failure;
-  // A change on a live product: the pills are the live version's, so a
-  // build step's mark goes on the change's own line (§5.7); Live keeps its.
-  if (view.change && stripStep !== "LIVE") {
+  // A change on a live product: the pills are the live version's, so the
+  // change's own line carries every mark — a build step's, a failed launch
+  // (✕) and a needed OK (!) alike (§5.7). The live app's health has no
+  // strip step and stays on Live (stripModel).
+  if (view.change) {
     return { ...view, change: { ...view.change, icon: stripIcon } };
   }
   return {

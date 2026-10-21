@@ -340,6 +340,9 @@ describe("StudioShell", () => {
     ).toContain("Change: Plan");
     expect(container.textContent).toContain("task-board.vetra.io");
     expect(container.querySelector('[data-banner="live"]')).toBeNull();
+    // The live version's pills don't open a step detail over the split.
+    expect(container.querySelector('button[data-step="DATA"]')).toBeNull();
+    expect(container.querySelector("[data-split]")).not.toBeNull();
     expectNoForbiddenWords(container);
   });
 

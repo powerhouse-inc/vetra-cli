@@ -286,7 +286,8 @@ export function stripModel(
     : { name, steps, right };
 }
 
-/** The live version's strip while a change is open: its steps all done. */
+/** The live version's strip while a change is open: its steps all done,
+ *  not clickable — a step's detail would cover the Live | Preview split. */
 function liveModeStep(kind: StepKind, liveVersion: number): StripStep {
   const status: StepStatus = kind === "LIVE" ? "LIVE" : "DONE";
   return {
@@ -296,6 +297,6 @@ function liveModeStep(kind: StepKind, liveVersion: number): StripStep {
     label: STEP_LABELS[kind],
     stateText: STATUS_TEXT[status],
     ...(kind === "LIVE" ? { count: `· v${liveVersion}` } : {}),
-    clickable: true,
+    clickable: false,
   };
 }

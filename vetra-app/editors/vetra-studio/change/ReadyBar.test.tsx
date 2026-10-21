@@ -3,7 +3,7 @@ import type { StudioProductState } from "document-models/studio-product";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
-import { button, click, render } from "../test-utils/render.js";
+import { button, click, render, rerender } from "../test-utils/render.js";
 import { CHANGE_ID, changing } from "./changeFixtures.js";
 import { ReadyBar } from "./ReadyBar.js";
 
@@ -101,14 +101,47 @@ describe("ReadyBar (spec §5.7)", () => {
     expect(button(container, "Discard")?.disabled).toBe(true);
   });
 
+  it("any waiting request blocks Make it live and Throw it away", () => {
+    const product = changing("READY");
+    const change = product.changes.find((c) => c.id === CHANGE_ID)!;
+    const { container } = bar(product);
+    click(button(container, "Discard"));
+    expect(button(container, "Throw it away")?.disabled).toBe(false);
+
+    // A restart request turns up while the confirm is open.
+    product.pendingRequest = {
+      kind: "RESTART",
+      changeId: null,
+      targetVersion: null,
+      requestedAt: "2026-10-20T10:41:00.000Z",
+      requestedBy: "Ada",
+    };
+    rerender(
+      container,
+      <ReadyBar
+        product={product}
+        productId="product-1"
+        change={change}
+        requestedBy="Ada"
+        onKeepChanging={() => {}}
+      />,
+    );
+    expect(button(container, "Make it live")?.disabled).toBe(true);
+    expect(button(container, "Throw it away")?.disabled).toBe(true);
+    click(button(container, "Throw it away"));
+    expect(hoisted.dispatched).toEqual([]);
+  });
+
   it("a refused request says so and the choices come back", async () => {
     hoisted.refuse = true;
     const { container } = bar();
     click(button(container, "Make it live"));
     await flush();
+    // A plain line, not the refusal's own text.
     expect(container.querySelector('[role="alert"]')?.textContent).toBe(
       "Couldn't make it live. Try again.",
     );
+    expect(container.textContent).not.toContain("refused");
     expect(button(container, "Make it live")?.disabled).toBe(false);
   });
 

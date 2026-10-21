@@ -172,6 +172,8 @@ describe("stripModel", () => {
       failure: null,
       rollbackBlockedReason: null,
     });
+    // Version 1 is the first build's launch: no change is open.
+    product.changes[0].status = "LAUNCHED";
     const view = stripModel(product, INPUTS);
     expect(step(view, "LIVE")).toMatchObject({ icon: "●", clickable: true });
     expect(view.right).toEqual({
@@ -224,6 +226,14 @@ describe("stripModel", () => {
     });
     expect(marked.change?.icon).toBe("!");
     expect(step(marked, "EDITORS").icon).toBe("✓");
+    // The pills stand for the live version: no step detail over the split.
+    expect(view.steps.every((s) => !s.clickable)).toBe(true);
+    // The live app's health stays on Live while a change is open.
+    const sick = changing("BUILDING");
+    sick.health = "UNHEALTHY";
+    const sickView = stripModel(sick, INPUTS);
+    expect(step(sickView, "LIVE").icon).toBe("!");
+    expect(sickView.change?.icon).toBe("◐");
     // No change open: no progress next to Live.
     const live = readProduct(
       withLiveVersion(productDoc(...buildingOps())).state.global,

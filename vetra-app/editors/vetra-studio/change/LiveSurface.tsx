@@ -8,7 +8,8 @@
 import type { PHDocument } from "document-model";
 import type { StudioProductState } from "document-models/studio-product";
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import type { Failure } from "../failures/failureStates.js";
+import { FailureLine } from "../failures/FailureLine.js";
+import type { Failure, FailureSituation } from "../failures/failureStates.js";
 import type { StartProductDrive } from "../idea/startProduct.js";
 import { LiveEmbed } from "../live/LiveEmbed.js";
 import { ProductView } from "../live/ProductView.js";
@@ -18,6 +19,15 @@ import { OPEN_LIVE_APP, liveUnchanged } from "./changeCopy.js";
 import { ReadyBar } from "./ReadyBar.js";
 import { SplitView } from "./SplitView.js";
 import { startChange } from "./startChange.js";
+
+/** Notices that inform without needing the customer: no drawer for them. */
+const CALM: ReadonlySet<FailureSituation> = new Set<FailureSituation>([
+  "restarting",
+  "preview-slow",
+  "breather",
+  "budget-warning",
+  "retried",
+]);
 
 export function LiveSurface({
   product,
@@ -36,8 +46,9 @@ export function LiveSurface({
   productId: string | null;
   drive: StartProductDrive;
   documents: readonly PHDocument[];
-  /** The live failure to show above the app (state 2 only; the change's
-   *  story shows its own). */
+  /** What is wrong now: above the app in state 2; during a change the
+   *  drawer's story shows it (opened for a new one), or over the preview
+   *  while the drawer is closed. */
   failure: Failure | null;
   now: Date;
   /** The open change's story; null when no change is open. */
@@ -73,11 +84,25 @@ export function LiveSurface({
     }
   }
 
+  // A new failure during a change (a failed launch, a needed OK, a stuck
+  // build) opens the drawer, whose story shows it with its actions.
+  const failureKey =
+    change && failure && !CALM.has(failure.situation)
+      ? `${failure.situation}:${failure.text}`
+      : null;
+  const [seenFailureKey, setSeenFailureKey] = useState<string | null>(null);
+  if (failureKey !== seenFailureKey) {
+    setSeenFailureKey(failureKey);
+    if (failureKey !== null) setDrawerOpen(true);
+  }
+
   const onStart = useCallback(
     (request: string) =>
       productId
         ? startChange({ drive, productId, request, kind: "CHANGE" })
-        : Promise.reject(new Error("Your product is still loading.")),
+        : Promise.reject(
+            new Error("Your product is still loading. Try again in a moment."),
+          ),
     [drive, productId],
   );
 
@@ -136,15 +161,24 @@ export function LiveSurface({
             }
             preview={preview}
             bar={
-              keptChanging === readyKey && change.status === "READY" ? null : (
-                <ReadyBar
-                  product={product}
-                  productId={productId}
-                  change={change}
-                  requestedBy={requestedBy}
-                  onKeepChanging={keepChanging}
-                />
-              )
+              <>
+                {/* The drawer is closed: the failure still shows, over the preview. */}
+                {failure && !drawerOpen ? (
+                  <div data-split-failure className="shrink-0 px-4 py-2">
+                    <FailureLine failure={failure} />
+                  </div>
+                ) : null}
+                {keptChanging === readyKey &&
+                change.status === "READY" ? null : (
+                  <ReadyBar
+                    product={product}
+                    productId={productId}
+                    change={change}
+                    requestedBy={requestedBy}
+                    onKeepChanging={keepChanging}
+                  />
+                )}
+              </>
             }
           />
         ) : (

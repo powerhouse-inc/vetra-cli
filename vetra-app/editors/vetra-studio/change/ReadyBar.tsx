@@ -73,7 +73,8 @@ export function ReadyBar({
       ? product.pendingRequest.kind
       : null;
   const waiting = sent ?? pending;
-  const busy = waiting === "LAUNCH" || waiting === "DISCARD";
+  // Any waiting request blocks another one (F9: RequestPendingError).
+  const busy = sent !== null || product.pendingRequest !== null;
 
   function request(kind: "LAUNCH" | "DISCARD") {
     setError(null);
@@ -99,9 +100,12 @@ export function ReadyBar({
     ).then(
       // From here the document's pending request keeps the bar waiting.
       () => setSent(null),
-      (err: unknown) => {
+      () => {
+        // A plain line, never the refusal's own text.
         setSent(null);
-        setError(err instanceof Error ? err.message : LAUNCH_NOT_REQUESTED);
+        setError(
+          kind === "LAUNCH" ? LAUNCH_NOT_REQUESTED : DISCARD_NOT_REQUESTED,
+        );
       },
     );
   }
@@ -167,8 +171,9 @@ export function ReadyBar({
           <div className="ml-auto flex gap-2">
             <button
               type="button"
+              disabled={busy}
               onClick={() => request("DISCARD")}
-              className="rounded-full border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/20"
+              className="rounded-full border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/20 disabled:opacity-50"
             >
               {THROW_IT_AWAY}
             </button>

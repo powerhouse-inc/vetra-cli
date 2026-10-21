@@ -9,12 +9,12 @@
 import type { StudioProductState } from "document-models/studio-product";
 import { useRef, useState, type ReactNode, type RefObject } from "react";
 import {
-  CHANGE_NOT_SENT,
   CHANGE_SOMETHING,
   CLOSE,
   DISCARDED,
   SEND,
   WHAT_SHOULD_CHANGE,
+  startFailureText,
   versionIsLive,
 } from "./changeCopy.js";
 import { changeHistory, openSuggestions } from "./changeHistory.js";
@@ -106,9 +106,7 @@ function ChangeRequest({
       },
       (err: unknown) => {
         setSending(false);
-        setError(
-          err instanceof Error && err.message ? err.message : CHANGE_NOT_SENT,
-        );
+        setError(startFailureText(err));
       },
     );
   }

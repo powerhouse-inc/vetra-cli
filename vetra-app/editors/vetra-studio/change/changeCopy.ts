@@ -13,6 +13,25 @@ export const CLOSE = "Close";
 export const DISCARDED = "discarded";
 export const CHANGE_NOT_SENT = "Couldn't send it. Try again.";
 
+/**
+ * startChange's own plain refusals, shown as they are; anything else (a
+ * refused dispatch, a reducer error) shows CHANGE_NOT_SENT. Covers both the
+ * Task 3.1 and the Task 3.5 wording.
+ */
+const PLAIN_START_ERRORS: readonly string[] = [
+  "Describe what should change first.",
+  "Say what should change first.",
+  "Your change is going live right now. Ask again once it's live.",
+  "Your change is going live. Try again in a moment.",
+  "Your product is still loading. Try again in a moment.",
+];
+
+/** The line to show when a change couldn't start. */
+export function startFailureText(err: unknown): string {
+  const message = err instanceof Error ? err.message : "";
+  return PLAIN_START_ERRORS.includes(message) ? message : CHANGE_NOT_SENT;
+}
+
 /** A past-changes group heading: "Version 3 — Added a Ready column". */
 export function versionHeading(number: number, title: string): string {
   const plain = title.trim();
