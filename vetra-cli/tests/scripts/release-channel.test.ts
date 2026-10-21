@@ -35,6 +35,26 @@ describe('resolveReleaseChannel', () => {
     ).toThrow('version 0.0.9-dev.1 does not match the p4 channel (expected -p4.N)');
   });
 
+  it('p5 prerelease → p5 on registry.vetra.io only', () => {
+    expect(
+      resolveReleaseChannel({
+        branch: 'feat/first-minutes',
+        prereleaseTag: 'p5',
+        version: '0.0.9-p5.1',
+      }),
+    ).toEqual({ distTag: 'p5', registries: ['https://registry.vetra.io'] });
+  });
+
+  it('p5 tag refuses a version without -p5.', () => {
+    expect(() =>
+      resolveReleaseChannel({
+        branch: 'feat/first-minutes',
+        prereleaseTag: 'p5',
+        version: '0.0.9-p4.1',
+      }),
+    ).toThrow('version 0.0.9-p4.1 does not match the p5 channel (expected -p5.N)');
+  });
+
   it('prerelease tag dev or latest is refused', () => {
     for (const prereleaseTag of ['dev', 'latest']) {
       expect(() =>
