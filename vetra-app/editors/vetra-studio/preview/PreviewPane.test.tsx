@@ -64,7 +64,6 @@ function ready(target: PreviewTarget | undefined): ResolvedPreview {
   return {
     kind: "ready",
     project: target.project,
-    projectPath: `/w/${target.project}`,
     driveId: "d1",
     documentId: id,
     url: `about:blank#${id}`,
@@ -169,7 +168,6 @@ describe("PreviewPane", () => {
         ? {
             kind: "starting",
             project: "hotel",
-            projectPath: "/w/hotel",
             driveId: "d1",
           }
         : { kind: "no-target" };
@@ -196,7 +194,6 @@ describe("PreviewPane", () => {
     hoisted.resolve = () => ({
       kind: "starting",
       project: "hotel",
-      projectPath: "/w/hotel",
       driveId: "d1",
     });
     ({ container } = mount(props));

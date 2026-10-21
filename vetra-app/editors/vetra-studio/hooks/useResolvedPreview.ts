@@ -26,12 +26,11 @@ export type ResolvedPreview =
   | { kind: "no-target" }
   | { kind: "loading" }
   | { kind: "unknown-project"; project: string; error: string }
-  | { kind: "project-stopped"; project: string; projectPath: string }
-  | { kind: "starting"; project: string; projectPath: string; driveId: string }
+  | { kind: "project-stopped"; project: string }
+  | { kind: "starting"; project: string; driveId: string }
   | {
       kind: "ready";
       project: string;
-      projectPath: string;
       driveId: string;
       documentId: string;
       url: string;

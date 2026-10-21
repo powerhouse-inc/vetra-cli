@@ -19,32 +19,56 @@
  * many BUILD panes mount.
  *
  * Owner-only routes (everything but /healthz, /version, /resolve, /events and
- * /export/status) carry the signed-in user's Renown bearer — the same token
- * Connect sends to the switchboard. The daemon checks its wallet against the
- * Studio's owner (ADMINS); without it they answer 401/403.
+ * /export/status) carry the signed-in user's Renown bearer, minted for this
+ * Studio only: `aud` = the Studio's public origin, so a token is worthless at
+ * any other Studio (or the switchboard, which refuses `aud` tokens). The daemon
+ * checks the wallet against the Studio's owner (ADMINS); without it, 401.
+ * No bearer is sent until studio.config.json has named the Studio's origin
+ * (never to the 127.0.0.1 fallback).
  */
-import { ambientRenownTokenProvider } from "@powerhousedao/reactor-browser";
-
 const DIRECT_BASE = "http://127.0.0.1:5180";
 
-/** Mints the signed-in user's Renown bearer; undefined/null when signed out. */
-export type PreviewAuthTokenProvider = () => Promise<string | null | undefined>;
+/** Mints the signed-in user's Renown bearer bound to `aud`; undefined/null
+ *  when signed out. */
+export type PreviewAuthTokenProvider = (
+  aud: string,
+) => Promise<string | null | undefined>;
 
-let tokenProvider: PreviewAuthTokenProvider = ambientRenownTokenProvider;
+type RenownTokenSource = {
+  user?: unknown;
+  getBearerToken: (opts: { expiresIn: number; aud: string }) => Promise<string>;
+};
+
+// The Connect Renown session (window.ph.renown), with a Studio-bound `aud`.
+const ambientStudioToken: PreviewAuthTokenProvider = async (aud) => {
+  if (typeof window === "undefined") return undefined;
+  const renown = (window as unknown as { ph?: { renown?: RenownTokenSource } })
+    .ph?.renown;
+  if (!renown?.user || typeof renown.getBearerToken !== "function") {
+    return undefined;
+  }
+  return renown.getBearerToken({ expiresIn: 600, aud });
+};
+
+let tokenProvider: PreviewAuthTokenProvider = ambientStudioToken;
 
 /** Override where owner-route bearers come from (tests); null restores the
  *  ambient Connect Renown session. */
 export function setPreviewAuthTokenProvider(
   provider: PreviewAuthTokenProvider | null,
 ): void {
-  tokenProvider = provider ?? ambientRenownTokenProvider;
+  tokenProvider = provider ?? ambientStudioToken;
 }
 
-/** `Authorization` for an owner-only route; empty when signed out (the
- *  daemon then answers 401, which callers surface). */
+/** `Authorization` for an owner-only route; empty when signed out or when the
+ *  Studio's origin is unknown (the daemon then answers 401, which callers
+ *  surface). */
 async function ownerHeaders(): Promise<Record<string, string>> {
   try {
-    const token = await tokenProvider();
+    const config = await resolvePreviewConfig();
+    if (!config.loaded || config.base === DIRECT_BASE) return {};
+    const aud = new URL(config.base).origin;
+    const token = await tokenProvider(aud);
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};
@@ -60,7 +84,14 @@ function isRefused(status: number): boolean {
 
 // Vite dev serves the editor from source, where no daemon writes the config —
 // use the direct port. Safe access: package builds may lack import.meta.env.
-const isDev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+let devOverride: boolean | undefined;
+const isDev = () =>
+  devOverride ?? (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+
+/** Tests only: force the vite-dev (direct port) path on or off. */
+export function setPreviewDevModeForTests(dev: boolean | undefined): void {
+  devOverride = dev;
+}
 
 interface PreviewConfig {
   // Absolute preview-server base (proxied `<proxy>/preview`, or a direct URL).
@@ -122,7 +153,7 @@ export function memoizeUntilLoaded<T extends { loaded: boolean }>(
 const resolvePreviewConfig = memoizeUntilLoaded(loadPreviewConfig);
 
 async function loadPreviewConfig(): Promise<PreviewConfig> {
-  if (isDev) return { base: DIRECT_BASE, loaded: true };
+  if (isDev()) return { base: DIRECT_BASE, loaded: true };
   try {
     const res = await fetch(`${bundleBase()}studio.config.json`, {
       cache: "no-store",
@@ -194,12 +225,11 @@ export async function resolveStudioCloudSwitchboardUrl(): Promise<
 export type ResolveResult =
   | { kind: "no-target" }
   | { kind: "unknown-project"; project: string; error: string }
-  | { kind: "project-stopped"; project: string; projectPath: string }
-  | { kind: "starting"; project: string; projectPath: string; driveId: string }
+  | { kind: "project-stopped"; project: string }
+  | { kind: "starting"; project: string; driveId: string }
   | {
       kind: "ready";
       project: string;
-      projectPath: string;
       driveId: string;
       documentId: string;
       url: string;

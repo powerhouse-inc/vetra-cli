@@ -1,20 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  confirmAuth,
-  fetchAuthStatus,
-  fetchExportStatus,
-  fetchProjectPackage,
-  fetchReleaseStatus,
-  fetchResolve,
-  fetchStart,
-  fetchVersion,
-  fetchWorkspaceExport,
-  logoutAuth,
-  OWNER_REQUIRED,
-  publishProject,
-  setPreviewAuthTokenProvider,
-  startAuth,
-} from "./preview-server-client.js";
+import type * as ClientModule from "./preview-server-client.js";
+
+type Client = typeof ClientModule;
+
+/** A fresh client module (its studio.config.json memo starts empty). */
+async function loadClient(): Promise<Client> {
+  vi.resetModules();
+  const client = await import("./preview-server-client.js");
+  // Outside vite dev: the client reads studio.config.json (dev skips it).
+  client.setPreviewDevModeForTests(false);
+  return client;
+}
+
+const STUDIO = "https://studio-1.vetra.example";
+let config: unknown = { previewServerUrl: `${STUDIO}/preview` };
 
 type Call = { url: string; auth: string | null };
 let calls: Call[] = [];
@@ -25,7 +24,13 @@ function lastAuth(path: string): string | null | undefined {
   return calls.find((c) => c.url.includes(path))?.auth;
 }
 
-beforeEach(() => {
+let c: Client;
+let auds: string[] = [];
+
+beforeEach(async () => {
+  config = { previewServerUrl: `${STUDIO}/preview` };
+  auds = [];
+  c = await loadClient();
   calls = [];
   status = 200;
   body = { authenticated: false, kind: "ok" };
@@ -37,7 +42,11 @@ beforeEach(() => {
         auth: new Headers(init?.headers).get("Authorization"),
       });
       if (url.endsWith("studio.config.json")) {
-        return Promise.resolve(new Response("{}", { status: 404 }));
+        return Promise.resolve(
+          config === null
+            ? new Response("{}", { status: 404 })
+            : new Response(JSON.stringify(config), { status: 200 }),
+        );
       }
       return Promise.resolve(new Response(JSON.stringify(body), { status }));
     }),
@@ -46,50 +55,83 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  setPreviewAuthTokenProvider(null);
 });
+
+function signedIn(token = "tok-123") {
+  c.setPreviewAuthTokenProvider((aud) => {
+    auds.push(aud);
+    return Promise.resolve(token);
+  });
+}
 
 describe("owner-only preview-server calls carry the user's Renown bearer", () => {
   const ownerCalls: Array<[string, () => Promise<unknown>]> = [
-    ["/project-package", () => fetchProjectPackage({ project: "p" })],
-    ["/release-status", () => fetchReleaseStatus({ project: "p" })],
-    ["/publish", () => publishProject({ project: "p" })],
-    ["/start", () => fetchStart({ project: "p" })],
-    ["/export?workspace=1", () => fetchWorkspaceExport()],
-    ["/export/status", () => fetchExportStatus()],
-    ["/auth/status", () => fetchAuthStatus()],
-    ["/auth/start", () => startAuth()],
-    ["/auth/confirm", () => confirmAuth({ waitMs: 0 })],
-    ["/auth/logout", () => logoutAuth()],
+    ["/project-package", () => c.fetchProjectPackage({ project: "p" })],
+    ["/release-status", () => c.fetchReleaseStatus({ project: "p" })],
+    ["/publish", () => c.publishProject({ project: "p" })],
+    ["/start", () => c.fetchStart({ project: "p" })],
+    ["/export?workspace=1", () => c.fetchWorkspaceExport()],
+    ["/export/status", () => c.fetchExportStatus()],
+    ["/auth/status", () => c.fetchAuthStatus()],
+    ["/auth/start", () => c.startAuth()],
+    ["/auth/confirm", () => c.confirmAuth({ waitMs: 0 })],
+    ["/auth/logout", () => c.logoutAuth()],
   ];
 
   it.each(ownerCalls)("%s sends Authorization: Bearer", async (path, call) => {
-    setPreviewAuthTokenProvider(() => Promise.resolve("tok-123"));
+    signedIn();
     await call();
     expect(lastAuth(path)).toBe("Bearer tok-123");
+    // Bound to this Studio: the aud is its public origin.
+    expect(auds).toEqual([STUDIO]);
   });
 
   it.each(ownerCalls)(
     "%s sends no header when signed out",
     async (path, call) => {
-      setPreviewAuthTokenProvider(() => Promise.resolve(undefined));
+      c.setPreviewAuthTokenProvider(() => Promise.resolve(undefined));
       await call().catch(() => {});
       expect(lastAuth(path)).toBeNull();
     },
   );
 
   it("a failing token source still sends the request, unauthenticated", async () => {
-    setPreviewAuthTokenProvider(() => Promise.reject(new Error("no renown")));
-    await fetchAuthStatus();
+    c.setPreviewAuthTokenProvider(() => Promise.reject(new Error("no renown")));
+    await c.fetchAuthStatus();
     expect(lastAuth("/auth/status")).toBeNull();
   });
 
+  it("never sends a bearer when studio.config.json didn't load (127.0.0.1 fallback)", async () => {
+    config = null;
+    c = await loadClient();
+    signedIn();
+    await c.fetchAuthStatus();
+    expect(lastAuth("/auth/status")).toBeNull();
+    expect(calls.find((x) => x.url.includes("/auth/status"))?.url).toContain(
+      "127.0.0.1",
+    );
+    expect(auds).toEqual([]);
+  });
+
+  it("the ambient token is minted from the Connect session with the Studio aud", async () => {
+    const getBearerToken = vi.fn(() => Promise.resolve("amb-tok"));
+    vi.stubGlobal("window", {
+      ph: { renown: { user: { address: "0xa" }, getBearerToken } },
+    });
+    await c.fetchAuthStatus();
+    expect(getBearerToken).toHaveBeenCalledWith({
+      expiresIn: 600,
+      aud: STUDIO,
+    });
+    expect(lastAuth("/auth/status")).toBe("Bearer amb-tok");
+  });
+
   it("public routes don't need the bearer", async () => {
-    setPreviewAuthTokenProvider(() => Promise.resolve("tok-123"));
+    signedIn();
     body = { kind: "no-target" };
-    await fetchResolve({ project: "p", doc: "d" });
+    await c.fetchResolve({ project: "p", doc: "d" });
     body = { vetraCli: "1", ph: "2" };
-    await fetchVersion();
+    await c.fetchVersion();
     expect(lastAuth("/resolve")).toBeNull();
     expect(lastAuth("/version")).toBeNull();
   });
@@ -99,17 +141,17 @@ describe("a refused owner call reads as 'sign in as the owner'", () => {
   it("publish and start turn the gate's 401/403 into a failed result", async () => {
     status = 401;
     body = { error: "unauthorized" };
-    expect(await publishProject({ project: "p" })).toEqual({
+    expect(await c.publishProject({ project: "p" })).toEqual({
       kind: "failed",
       project: "p",
-      error: OWNER_REQUIRED,
+      error: c.OWNER_REQUIRED,
     });
     status = 403;
     body = { error: "forbidden" };
-    expect(await fetchStart({ project: "p" })).toEqual({
+    expect(await c.fetchStart({ project: "p" })).toEqual({
       kind: "failed",
       project: "p",
-      error: OWNER_REQUIRED,
+      error: c.OWNER_REQUIRED,
     });
   });
 
@@ -120,7 +162,7 @@ describe("a refused owner call reads as 'sign in as the owner'", () => {
       project: "p",
       error: "authorize the agent",
     };
-    expect(await publishProject({ project: "p" })).toMatchObject({
+    expect(await c.publishProject({ project: "p" })).toMatchObject({
       kind: "auth-required",
     });
   });
