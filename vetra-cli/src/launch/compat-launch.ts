@@ -40,6 +40,7 @@ import {
 import type { Action } from "document-model";
 import { actions as chatActions } from "@powerhousedao/clint-common/document-models/chat-session";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
+import { workspaceSafeDirectory } from "../helpers/workspace-git.js";
 import type { ProductContext } from "../product/product-doc.js";
 
 const execFileAsync = promisify(execFile);
@@ -294,11 +295,11 @@ export function toModelSpec(text: string): ModelSpec | null {
 }
 
 async function git(workdir: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", ["-c", "core.quotepath=false", ...args], {
-    cwd: workdir,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  const { stdout } = await execFileAsync(
+    "git",
+    ["-c", "core.quotepath=false", ...workspaceSafeDirectory(workdir), ...args],
+    { cwd: workdir, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, maxBuffer: 64 * 1024 * 1024 },
+  );
   return stdout;
 }
 
