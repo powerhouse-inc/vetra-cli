@@ -105,7 +105,10 @@ Builds on today's splitter (`StudioShell.tsx:528-603`, persisted `vetra-studio:s
 - **Remix** (default for "start from"): the Studio brings the package's source into a workspace project it owns, published as `@vetra-apps/<slug>`. *(Designer's call)* Source comes from, in order: (1) the package's public source repository — from its `repository` field, else a small curated map in the Studio (knowledge-note → `github.com/apeiron-M/bai-knowledge-note`, public, AGPL-3.0; the published tarballs carry no `repository` field and current dev builds no source maps); (2) else the `sourcesContent` of its source maps plus the document-model specifications embedded in `dist`; (3) else Remix is not offered (Compose only). The remix is done when it builds and its document models' generated reducer tests pass, plus the original's own tests when they came with the source; anything that couldn't be recovered is listed in the story, never dropped silently. Provenance (package, version, date) is recorded in the product document and a `REMIX.md`.
 - **Compose**: *(designer's call)* `ph install --local <pkg>` into the project so the dependency is **bundled into the one product package** — launch, versions and Go back keep pinning exactly one package, and a dependency bump is a rebuild + new version, not an environment change. New document models reference the package's documents by PHID. Used when the customer wants to keep getting the original's updates unchanged.
 - **Upstream updates**: the Studio checks the original's latest version on open (and daily for live products). For a remix it keeps the original version as an `upstream/<pkg>` git branch and offers "Bring in <pkg> <ver> changes" — a three-way merge run as a normal change; conflicts are resolved by the agent inside that change. For compose it offers a dependency bump as a change.
-- Remix/compose respects package licences: packages whose licence forbids modification are offered as Compose only (see Q1).
+- **Licences** (Frank, 2026-10-21: "all our packages are AGPL basically and need to be open source when the author goes public with it"):
+  - Remix is offered for any package whose licence allows modification (AGPL, GPL, MIT, Apache, …); others are Compose only.
+  - A remix keeps the original's licence (AGPL stays AGPL) and the original's notices; `REMIX.md` and the product's `LICENSE` record it.
+  - **Going public = source public.** Before the first Make it live of a product that contains AGPL code (remixed or composed), the Studio shows: "This product builds on <pkg> (AGPL). Going live makes its source public." Going live then requires a public source location: the product's GitHub repo set to public (M4 GitHub connection), or, when no GitHub is connected, a source archive of that version published by the Studio. The live product gets a small "Source" link to it (footer/about), satisfying AGPL §13. Owner-only products (ProductAccess OWNER_ONLY) are not public and skip this.
 
 ### 5.6 Two ways, side by side (G6)
 
@@ -146,5 +149,5 @@ Exact copy and visuals within the Studio's existing design language; the tool-na
 
 ## 8. Open questions for Frank
 
-- **Q1 Remixing other people's packages.** May a customer remix any package published on registry.vetra.io (copy and change its source), or only packages whose licence allows it / Powerhouse's own? *Default if unanswered:* remix allowed for MIT/Apache/AGPL-or-similar and Powerhouse packages; everything else Compose only.
-- **Q2 Notes from live — who can send.** Any signed-in visitor of the live product, or only people the owner invites? *Default:* any signed-in visitor, capped per day.
+- ~~Q1 Remixing other people's packages~~ — answered (§5.5 Licences).
+- **Q2 Notes from live — who can send.** Unanswered; *going with the default:* any signed-in visitor of the live product, capped per day. Revisit with Project 6.
