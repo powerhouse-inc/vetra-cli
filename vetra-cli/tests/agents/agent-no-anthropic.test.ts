@@ -117,4 +117,15 @@ describe("agent models with an OpenRouter key", () => {
     // one turn; 40 steps ran out before preview on staging.
     expect(wrapOpts?.maxSteps).toBe(80);
   });
+
+  it("an unknown provider is logged and refused at startup", async () => {
+    const error = jest.fn();
+    const ctx = {
+      config: { model: "m/x", memoryModel: "m/y", llmAllowDataCollection: false, agentLogging: false, llmProvider: "acme", openrouterApiKey: "k" },
+      context: { log: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error } },
+      workdir: "/tmp/vetra-no-anthropic-test",
+    };
+    await expect(createAgent(ctx as never)).rejects.toThrow('Unknown model provider "acme". This Studio supports: openrouter.');
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Unknown model provider "acme"'));
+  });
 });
