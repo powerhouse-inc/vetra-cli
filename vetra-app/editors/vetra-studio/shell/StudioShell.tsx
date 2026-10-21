@@ -59,19 +59,11 @@ import { VetraStudio } from "../VetraStudio.js";
 import { showsFirstVersionBar } from "./firstVersion.js";
 import { DemoLayout } from "./DemoLayout.js";
 import { DockSplit } from "./DockSplit.js";
+import { attentionItems, useAttentionToasts } from "./attention.js";
 import { ModeSwitch } from "./ModeSwitch.js";
 import { ReviewLayout, type ReviewStory } from "./ReviewLayout.js";
 import { useLayout } from "./useLayout.js";
 import { useStudioState } from "./useStudioState.js";
-
-/** Story lines that wait for the customer (counted on the mode switch). */
-function needsYou(line: StoryLine): boolean {
-  return (
-    line.kind === "stuck" ||
-    line.kind === "attention" ||
-    (line.kind === "reply" && line.question)
-  );
-}
 
 /** The live page's failure rows never focus the build's steer box. */
 const NO_FOCUS = () => {};
@@ -370,19 +362,28 @@ function StudioPage({
       </div>
     );
   const story = storyFor();
-  const waitingLines = useMemo(
-    () =>
-      product && change
-        ? storyLines(product, change, chat, now).filter(needsYou)
-        : [],
+  const allLines = useMemo(
+    () => (product && change ? storyLines(product, change, chat, now) : []),
     [product, change, chat, now],
   );
-  const question = waitingLines.find(
+  const waiting = useMemo(
+    () => attentionItems(allLines, failure),
+    [allLines, failure],
+  );
+  const question = allLines.find(
     (l): l is Extract<StoryLine, { kind: "reply" }> =>
       l.kind === "reply" && l.question,
   );
 
   const toast = usePHToast();
+  // The story is out of view in Build once live with no change open (Demo is
+  // always out of view); a new waiting item then toasts once.
+  useAttentionToasts(
+    waiting,
+    layout.mode,
+    layout.mode === "build" && liveView && !change,
+    toast,
+  );
   const rename = useCallback(
     (name: string) => {
       if (!productId) return;
@@ -490,7 +491,8 @@ function StudioPage({
       onMode={layout.setMode}
       dock={layout.dock}
       onDock={layout.setDock}
-      attention={waitingLines.length}
+      attention={waiting.length}
+      onAttention={() => layout.setMode("review")}
     />
   );
 

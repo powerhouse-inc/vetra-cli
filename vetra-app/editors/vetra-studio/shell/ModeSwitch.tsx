@@ -27,12 +27,15 @@ export function ModeSwitch({
   dock,
   onDock,
   attention,
+  onAttention,
 }: {
   mode: LayoutMode;
   onMode: (mode: LayoutMode) => void;
   dock: Dock;
   onDock: (dock: Dock) => void;
   attention: number;
+  /** The badge opens the chat where the waiting things are. */
+  onAttention?: () => void;
 }) {
   return (
     <div data-mode-switch className="flex items-center gap-2">
@@ -59,13 +62,16 @@ export function ModeSwitch({
         ))}
       </div>
       {attention > 0 ? (
-        <span
+        <button
+          type="button"
           data-attention
           title="Waiting for you"
+          aria-label={`Waiting for you: ${attention}`}
+          onClick={onAttention}
           className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-warning px-1.5 text-[11px] font-semibold tabular-nums text-white"
         >
           {attention}
-        </span>
+        </button>
       ) : null}
       {mode === "demo" ? null : (
         <select
