@@ -68,8 +68,12 @@ function store(driveId = "drive-1") {
         const input = a.input as Record<string, unknown>;
         if (a.type === "INIT_PRODUCT") Object.assign(g, input);
         if (a.type === "START_CHANGE") {
-          g.changes!.push({ ...input, status: "BUILDING" });
+          g.changes!.push({ ...input, status: "BUILDING", milestones: [] });
           g.activeChangeId = input.id;
+        }
+        if (a.type === "ADD_MILESTONE") {
+          const change = g.changes!.find((c) => c.id === input.changeId)!;
+          (change.milestones as unknown[]).push(input);
         }
         if (a.type === "ADD_USER_MESSAGE") {
           g.messages!.push({ ...input, role: "USER" });
@@ -113,7 +117,10 @@ describe("startProduct", () => {
     expect(result).toEqual({ productId: "product-2", sessionId: "session-1" });
     // Product first, then the message (which starts the agent).
     expect(s.dispatched).toEqual([
-      { id: "product-2", types: ["INIT_PRODUCT", "START_CHANGE"] },
+      {
+        id: "product-2",
+        types: ["INIT_PRODUCT", "START_CHANGE", "ADD_MILESTONE"],
+      },
       { id: "session-1", types: ["ADD_USER_MESSAGE"] },
     ]);
     const product = s.docs.get("product-2")!;
@@ -134,6 +141,23 @@ describe("startProduct", () => {
       createdAt: AT,
     });
     expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+  });
+
+  it("writes the first story line right after the change starts", async () => {
+    const s = store();
+    await startProduct(
+      { drive: s.drive, idea: "Hotel breakfast orders" },
+      s.deps,
+    );
+    const change = s.docs.get("product-2")!.changes![0];
+    expect(change.milestones).toEqual([
+      {
+        changeId: change.id,
+        id: "id-4",
+        text: "Got it — planning Hotel breakfast orders.",
+        at: AT,
+      },
+    ]);
   });
 
   it("uses the given name over the placeholder", async () => {
@@ -174,7 +198,7 @@ describe("startProduct", () => {
     expect(s.created.filter((c) => c.type === CHAT_TYPE)).toHaveLength(1);
     expect(result.sessionId).toBe("session-1");
     expect(s.dispatched.map((d) => d.types)).toEqual([
-      ["INIT_PRODUCT", "START_CHANGE"],
+      ["INIT_PRODUCT", "START_CHANGE", "ADD_MILESTONE"],
       ["ADD_USER_MESSAGE"],
     ]);
     expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
@@ -192,7 +216,7 @@ describe("startProduct", () => {
 
     expect(s.created).toHaveLength(2);
     expect(s.dispatched.map((d) => d.types)).toEqual([
-      ["INIT_PRODUCT", "START_CHANGE"],
+      ["INIT_PRODUCT", "START_CHANGE", "ADD_MILESTONE"],
       ["ADD_USER_MESSAGE"],
     ]);
     expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
@@ -211,7 +235,7 @@ describe("startProduct", () => {
 
     expect(result).toEqual({ productId: "product-2", sessionId: "session-1" });
     expect(s.dispatched.map((d) => d.types)).toEqual([
-      ["INIT_PRODUCT", "START_CHANGE"],
+      ["INIT_PRODUCT", "START_CHANGE", "ADD_MILESTONE"],
       ["ADD_USER_MESSAGE"],
     ]);
     expect(s.docs.get("session-1")!.messages![0]).toMatchObject({

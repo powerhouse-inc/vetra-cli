@@ -75,8 +75,9 @@ async function reactorProjectUp(baseUrl: string): Promise<boolean> {
 }
 
 /** Start the build the way a customer does. An empty Studio shows the idea
- * box: typing the idea there creates the product, the first conversation and
- * its first message, and opens that conversation. A drive that still shows
+ * screen ("What do you want to build?"): typing the idea there creates the
+ * product, the first conversation and its first message, and opens that
+ * conversation. A drive that still shows
  * the session list falls back to "New session" + the chat input. */
 async function startBuild(page: Page, prompt: string): Promise<void> {
   const idea = page.getByRole("textbox", { name: /your idea/i });
@@ -88,7 +89,10 @@ async function startBuild(page: Page, prompt: string): Promise<void> {
   await dismissCookieBanner(page); // in case it painted late, before the next click
 
   if (await idea.isVisible().catch(() => false)) {
-    console.log("[e2e] starting from the idea box");
+    console.log("[e2e] starting from the idea screen");
+    await expect(
+      page.getByRole("heading", { name: "What do you want to build?" }),
+    ).toBeVisible();
     await idea.fill(prompt);
     await page.getByRole("button", { name: /^build it$/i }).click();
     // The start opens the first conversation: the idea box gives way to the

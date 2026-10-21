@@ -47,7 +47,9 @@ vi.mock("../ChatPane.js", () => ({
   ConversationPane: ({ sessionId }: { sessionId: string }) => (
     <div>Conversation {sessionId}</div>
   ),
-  IdeaStart: () => <textarea aria-label="Your idea" />,
+}));
+vi.mock("../idea/IdeaScreen.js", () => ({
+  IdeaScreen: () => <textarea aria-label="Your idea" />,
 }));
 vi.mock("../BuildSection.js", () => ({
   PreviewBody: () => <div>Preview pane</div>,

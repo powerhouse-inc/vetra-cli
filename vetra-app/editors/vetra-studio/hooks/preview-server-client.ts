@@ -5,7 +5,8 @@
  * reached through the daemon's embedded proxy at `<proxy>/preview`. The
  * proxy URL isn't known at build time, so the daemon writes it into
  * `studio.config.json` (a sibling of `powerhouse.config.json`) on startup;
- * this module fetches that config once and caches it — no JS asset is mutated.
+ * this module fetches that config and caches it once read (a failed fetch is
+ * retried on the next call) — no JS asset is mutated.
  * A missing config (vite dev, or before the first write) falls back to the
  * preview-server's direct loopback port.
  *
@@ -37,6 +38,9 @@ interface PreviewConfig {
   // Cloud switchboard the Deploy view talks to; undefined outside a
   // provisioned studio (falls back to the shared client default).
   cloudSwitchboardUrl?: string;
+  // False when studio.config.json could not be fetched or read: what it would
+  // have said (e.g. the environment id) is unknown, not absent.
+  loaded: boolean;
 }
 
 // Origin+prefix for a proxied `/preview` mount (`https://host/x/preview` ->
@@ -59,39 +63,71 @@ function bundleBase(): string {
   return (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
 }
 
-let configPromise: Promise<PreviewConfig> | undefined;
+/** `load` memoized once it resolves with `loaded: true`; a result that
+ *  didn't load is not kept, so the next call loads again. Calls made while
+ *  a load is running share it. */
+export function memoizeUntilLoaded<T extends { loaded: boolean }>(
+  load: () => Promise<T>,
+): () => Promise<T> {
+  let pending: Promise<T> | undefined;
+  return () => {
+    pending ??= load().then((value) => {
+      if (!value.loaded) pending = undefined;
+      return value;
+    });
+    return pending;
+  };
+}
 
-// Resolve (once, memoized) the preview-server base from studio.config.json.
-function resolvePreviewConfig(): Promise<PreviewConfig> {
-  configPromise ??= (async (): Promise<PreviewConfig> => {
-    if (isDev) return { base: DIRECT_BASE };
-    try {
-      const res = await fetch(`${bundleBase()}studio.config.json`, {
-        cache: "no-store",
-      });
-      if (res.ok) {
-        const cfg = (await res.json()) as {
-          previewServerUrl?: string;
-          environmentId?: string;
-          packageRegistryUrl?: string;
-          cloudSwitchboardUrl?: string;
+// Resolve (memoized once it loads) the preview-server base from
+// studio.config.json. A failed fetch is not kept: the next call tries again.
+const resolvePreviewConfig = memoizeUntilLoaded(loadPreviewConfig);
+
+async function loadPreviewConfig(): Promise<PreviewConfig> {
+  if (isDev) return { base: DIRECT_BASE, loaded: true };
+  try {
+    const res = await fetch(`${bundleBase()}studio.config.json`, {
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const cfg = (await res.json()) as {
+        previewServerUrl?: string;
+        environmentId?: string;
+        packageRegistryUrl?: string;
+        cloudSwitchboardUrl?: string;
+      };
+      if (cfg.previewServerUrl) {
+        return {
+          base: cfg.previewServerUrl,
+          proxyBase: computeProxyBase(cfg.previewServerUrl),
+          environmentId: cfg.environmentId,
+          packageRegistryUrl: cfg.packageRegistryUrl,
+          cloudSwitchboardUrl: cfg.cloudSwitchboardUrl,
+          loaded: true,
         };
-        if (cfg.previewServerUrl) {
-          return {
-            base: cfg.previewServerUrl,
-            proxyBase: computeProxyBase(cfg.previewServerUrl),
-            environmentId: cfg.environmentId,
-            packageRegistryUrl: cfg.packageRegistryUrl,
-            cloudSwitchboardUrl: cfg.cloudSwitchboardUrl,
-          };
-        }
       }
-    } catch {
-      // fall through to the direct loopback base
+      return {
+        base: DIRECT_BASE,
+        environmentId: cfg.environmentId,
+        loaded: true,
+      };
     }
-    return { base: DIRECT_BASE };
-  })();
-  return configPromise;
+  } catch {
+    // fall through to the direct loopback base
+  }
+  return { base: DIRECT_BASE, loaded: false };
+}
+
+/** Whether studio.config.json was read, and the Studio's own cloud id in it. */
+export async function resolveStudioConfigLoad(): Promise<{
+  loaded: boolean;
+  environmentId: string | null;
+}> {
+  const config = await resolvePreviewConfig();
+  return {
+    loaded: config.loaded,
+    environmentId: config.environmentId ?? null,
+  };
 }
 
 /** The studio's cloud environment document id from `studio.config.json`, or
