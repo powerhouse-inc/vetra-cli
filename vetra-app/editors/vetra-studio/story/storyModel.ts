@@ -76,8 +76,12 @@ export type StoryLine =
 
 /** A message not seen by the agent after this long shows "Not delivered yet". */
 export const NOT_DELIVERED_AFTER_MS = 60_000;
-/** G3: the newest line is at most this old while the agent works. */
-export const STALE_AFTER_MS = 30_000;
+/**
+ * G3 allows no gap over 30 s in what the story shows while the agent works.
+ * The waiting line comes after 20 s of no visible change, so with the pane's
+ * 5 s tick it is up by 25 s at the latest.
+ */
+export const STALE_AFTER_MS = 20_000;
 
 /** The active step's line when the agent gave it no label. */
 const WORKING_TEXT: Record<StepKind, string> = {
@@ -413,17 +417,58 @@ export function storyLines(
 export type TurnState = { working: boolean };
 
 /**
- * G3: while the agent works, a line saying it is still on it when the
- * newest line is more than 30 s old; null otherwise.
+ * What the customer sees of the story, as one string: every line's visible
+ * content (text, mark, "doing now", delivery state, …) without its time and
+ * folded detail. A tool call moves the active line's `at` and adds to its
+ * detail without changing what it reads, so the waiting line must count quiet
+ * time from a change of this signature, not from the newest `at`.
+ */
+export function storySignature(lines: readonly StoryLine[]): string {
+  return lines
+    .filter((line) => line.kind !== "waiting")
+    .map((line) =>
+      JSON.stringify(line, (key, value: unknown) =>
+        key === "at" || key === "detail" ? undefined : value,
+      ),
+    )
+    .join("\n");
+}
+
+/** When the shown story last changed: its signature and that time (ms). */
+export type StoryChange = { signature: string; at: number };
+
+/**
+ * The next `StoryChange` for a render: unchanged while the signature is,
+ * `nowMs` when it changed, and — on the first render — the newest line's time
+ * (the story as loaded was last updated then).
+ */
+export function nextStoryChange(
+  previous: StoryChange | null,
+  lines: readonly StoryLine[],
+  nowMs: number,
+): StoryChange {
+  const signature = storySignature(lines);
+  if (previous?.signature === signature) return previous;
+  if (previous) return { signature, at: nowMs };
+  const newest = Math.max(0, ...lines.map((line) => time(line.at)));
+  return { signature, at: newest > 0 ? Math.min(newest, nowMs) : nowMs };
+}
+
+/**
+ * G3: while the agent works, a line saying it is still on it once the story
+ * hasn't visibly changed for `STALE_AFTER_MS`; null otherwise. `changedAt`
+ * (ms) is when the shown story last changed; without it, the newest line's
+ * time stands in.
  */
 export function staleness(
   lines: readonly StoryLine[],
   turnState: TurnState,
   now: Date,
+  changedAt?: number,
 ): Extract<StoryLine, { kind: "waiting" }> | null {
   if (!turnState.working || lines.length === 0) return null;
   const newest = Math.max(...lines.map((line) => time(line.at)));
-  const quiet = now.getTime() - newest;
+  const quiet = now.getTime() - (changedAt ?? newest);
   if (quiet <= STALE_AFTER_MS) return null;
   return {
     kind: "waiting",
