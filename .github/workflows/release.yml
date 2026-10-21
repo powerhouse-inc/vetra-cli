@@ -26,6 +26,11 @@ concurrency:
 
 env:
   REGISTRIES: https://registry.dev.vetra.io https://registry.vetra.io
+  # The vetra-app tarball is ~100 MB and uploads into the cluster can run well
+  # under 1 MB/s; npm's default 5-minute fetch timeout cut the upload and
+  # retried silently. Give each request 30 minutes and no silent retries.
+  NPM_CONFIG_FETCH_TIMEOUT: "1800000"
+  NPM_CONFIG_FETCH_RETRIES: "0"
 
 jobs:
   publish:
