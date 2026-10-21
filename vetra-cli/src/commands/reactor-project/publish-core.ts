@@ -112,6 +112,28 @@ function tailLines(output: string, n: number): string {
     .join("\n");
 }
 
+/** The Powerhouse package manifest; `ph build` requires its "name" to equal package.json's. */
+export const MANIFEST_FILE = "powerhouse.manifest.json";
+
+/**
+ * Give the project's manifest the name it publishes under, keeping every other
+ * field. No-op without a manifest, when the name already matches, or when the
+ * manifest is not valid JSON (the build reports that itself). The caller owns
+ * restoring the original bytes, as it does for package.json.
+ */
+function writeManifestName(projectPath: string, name: string): void {
+  const manifestPath = path.join(projectPath, MANIFEST_FILE);
+  if (!fs.existsSync(manifestPath)) return;
+  let manifest: Record<string, unknown>;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  if (!manifest || typeof manifest !== "object" || manifest.name === name) return;
+  fs.writeFileSync(manifestPath, JSON.stringify({ ...manifest, name }, null, 2) + "\n");
+}
+
 export type PublishCoreResult =
   | { kind: "ok"; packageName: string; version: string; registry: string }
   | { kind: "no-package"; error: string }
@@ -128,7 +150,8 @@ export async function publishReactorProject(opts: {
   registry?: string;
   /** Version to write before publishing; falls back to package.json's. */
   version?: string;
-  /** Package name to publish under instead of package.json's (written before the build). */
+  /** Package name to publish under instead of package.json's (written into package.json and
+   * powerhouse.manifest.json before the build; the caller restores both files). */
   packageName?: string;
   /** npm's per-request fetch timeout; set for large tarballs on slow uploads (no npm retries then). */
   fetchTimeoutMs?: number;
@@ -176,7 +199,11 @@ export async function publishReactorProject(opts: {
       packageJsonPath,
       JSON.stringify(packageJson, null, 2) + "\n",
     );
-  if (!opts.dryRun) writePackageJson();
+  if (!opts.dryRun) {
+    writePackageJson();
+    // `ph build` fails when the manifest's name differs from package.json's.
+    if (opts.packageName) writeManifestName(opts.projectPath, packageJson.name);
+  }
 
   if (!opts.skipBuild) {
     const build = await runBuild(opts.projectPath, opts.log);

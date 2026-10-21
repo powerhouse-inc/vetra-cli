@@ -9,6 +9,9 @@ jest.unstable_mockModule("@powerhousedao/shared/registry", () => ({ npmPublish }
 jest.unstable_mockModule("../../src/auth/renown.js", () => ({
   getRegistryToken: async () => "registry-token",
 }));
+type RunBuild = (projectPath: string) => Promise<{ success: boolean; output: string }>;
+const runBuild = jest.fn<RunBuild>(async () => ({ success: true, output: "" }));
+jest.unstable_mockModule("../../src/commands/reactor-project/build.js", () => ({ runBuild }));
 
 const { publishReactorProject } = await import(
   "../../src/commands/reactor-project/publish-core.js"
@@ -19,6 +22,7 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "vetra-publish-core-"));
   fs.writeFileSync(path.join(dir, "package.json"), '{"name":"todo","version":"1.0.0"}');
   npmPublish.mockClear();
+  runBuild.mockClear();
 });
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -51,5 +55,72 @@ describe("publishReactorProject", () => {
       skipBuild: true,
     });
     expect(npmPublish.mock.calls[0][0].args).toEqual([]);
+  });
+
+  describe("powerhouse.manifest.json", () => {
+    const manifestPath = () => path.join(dir, "powerhouse.manifest.json");
+    const readManifest = () => JSON.parse(fs.readFileSync(manifestPath(), "utf8"));
+    const base = {
+      projectPath: "",
+      workdir: "",
+      renownUrl: "https://renown.example.test",
+      registry: "https://registry.example.test",
+      contentHash: "hash",
+    };
+
+    it("builds and publishes with the manifest carrying the overriding package name", async () => {
+      fs.writeFileSync(
+        manifestPath(),
+        JSON.stringify({ name: "todo-list", apps: [{ id: "todo-app" }], documentModels: [] }),
+      );
+      const seen: { pkg?: string; manifest?: string } = {};
+      runBuild.mockImplementationOnce(async () => {
+        seen.pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).name;
+        seen.manifest = readManifest().name;
+        return { success: true, output: "" };
+      });
+      const result = await publishReactorProject({
+        ...base,
+        projectPath: dir,
+        workdir: dir,
+        packageName: "@vetra-apps/tack",
+        version: "1.0.0",
+      });
+      expect(result).toMatchObject({ kind: "ok", packageName: "@vetra-apps/tack" });
+      expect(seen).toEqual({ pkg: "@vetra-apps/tack", manifest: "@vetra-apps/tack" });
+      // Every other field is kept.
+      expect(readManifest()).toEqual({
+        name: "@vetra-apps/tack",
+        apps: [{ id: "todo-app" }],
+        documentModels: [],
+      });
+    });
+
+    it("leaves the manifest alone without a name override or on a dry run", async () => {
+      const original = '{"name":"todo-list","apps":[]}';
+      fs.writeFileSync(manifestPath(), original);
+      await publishReactorProject({ ...base, projectPath: dir, workdir: dir, skipBuild: true });
+      expect(fs.readFileSync(manifestPath(), "utf8")).toBe(original);
+      await publishReactorProject({
+        ...base,
+        projectPath: dir,
+        workdir: dir,
+        packageName: "@vetra-apps/tack",
+        skipBuild: true,
+        dryRun: true,
+      });
+      expect(fs.readFileSync(manifestPath(), "utf8")).toBe(original);
+    });
+
+    it("does not create a manifest for a project without one", async () => {
+      await publishReactorProject({
+        ...base,
+        projectPath: dir,
+        workdir: dir,
+        packageName: "@vetra-apps/tack",
+        skipBuild: true,
+      });
+      expect(fs.existsSync(manifestPath())).toBe(false);
+    });
   });
 });

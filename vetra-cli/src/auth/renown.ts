@@ -29,6 +29,22 @@ const APP_NAME = "vetra-cli";
 interface PendingLogin {
   sessionId: string;
   loginUrl: string;
+  /** When the login was started (epoch ms). */
+  startedAt: number;
+}
+
+/** The pending login as the Studio sees it (the session id stays here).
+ * `ageMs` is measured on this clock at response time, so the browser can
+ * compare it with the Renown lifetime whatever its own clock says. */
+function shownLogin(
+  pending: PendingLogin,
+  now = Date.now(),
+): { loginUrl: string; startedAt: number; ageMs: number } {
+  return {
+    loginUrl: pending.loginUrl,
+    startedAt: pending.startedAt,
+    ageMs: Math.max(0, now - pending.startedAt),
+  };
 }
 
 interface CloudAuthEntry {
@@ -95,8 +111,10 @@ export function getRenown(workdir: string, renownUrl: string): Promise<IRenown> 
 export interface AuthState {
   authenticated: boolean;
   address?: string;
-  /** Set while a console login is awaiting browser approval. */
-  pending?: { loginUrl: string };
+  /** Set while a console login is awaiting browser approval. `startedAt` is
+   * epoch ms on the daemon's clock; `ageMs` (how long ago, at response time)
+   * lets the Studio start a fresh login once Renown has dropped this one. */
+  pending?: { loginUrl: string; startedAt: number; ageMs: number };
   /** Why the last login was refused (e.g. `not-owner`). */
   error?: string;
 }
@@ -115,8 +133,9 @@ export async function startAuth(
     return { authenticated: true, address: renown.user.address };
   }
   const { url, sessionId } = startLogin(renown);
-  entry.pending = { sessionId, loginUrl: url };
-  return { authenticated: false, pending: { loginUrl: url } };
+  const startedAt = Date.now();
+  entry.pending = { sessionId, loginUrl: url, startedAt };
+  return { authenticated: false, pending: shownLogin(entry.pending, startedAt) };
 }
 
 /** Current auth + pending-login snapshot for the studio panel. */
@@ -131,7 +150,7 @@ export async function getAuthState(
   }
   return {
     authenticated: false,
-    ...(entry.pending ? { pending: { loginUrl: entry.pending.loginUrl } } : {}),
+    ...(entry.pending ? { pending: shownLogin(entry.pending) } : {}),
   };
 }
 
@@ -193,7 +212,7 @@ export async function confirmAuth(
   const user = currentUser(renown);
   if (user) return settle(user.address);
   const current = entry.pending ?? pending;
-  return { authenticated: false, pending: { loginUrl: current.loginUrl } };
+  return { authenticated: false, pending: shownLogin(current) };
 }
 
 /** Clear the stored credential and any pending login. The keypair (the agent's

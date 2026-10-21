@@ -28,11 +28,20 @@ export interface PublishPermission {
   /** A Renown confirmation is running: waiting for the owner, or recording it. */
   pending: boolean;
   /**
+   * The owner still has to approve in Renown (nothing is in flight here):
+   * the Renown tab can be opened again with `reopen`.
+   */
+  waiting: boolean;
+  /**
    * Runs the same Renown confirmation as the agent authorization. Resolves
    * true once the OK is recorded; false while the owner still has to approve
    * in the Renown console (the poll loop records it when they do).
    */
   allow: () => Promise<boolean>;
+  /** Open the waiting Renown approval again (or start a fresh one). */
+  reopen: () => Promise<void>;
+  /** The owner declined for now: forget the pending ask. */
+  dismiss: () => void;
 }
 
 export function usePublishPermission(
@@ -78,23 +87,23 @@ export function usePublishPermission(
     [productId],
   );
 
-  // A delegation that already exists is the owner's OK. Reconcile it into the
-  // product document only from UNKNOWN: a recorded MISSING/EXPIRED is the
-  // agent's finding and must not be papered over (that would resume a launch
-  // the cloud keeps refusing).
+  // Record GRANTED once per approval. Two reasons lead here, and with an
+  // UNKNOWN product both hold in the same pass, so one effect decides:
+  // - the owner pressed Allow / Open Renown again and Renown approved;
+  // - a delegation already exists: reconcile it into the product only from
+  //   UNKNOWN, since a recorded MISSING/EXPIRED is the agent's finding and
+  //   must not be papered over (that would resume a launch the cloud keeps
+  //   refusing).
   useEffect(() => {
-    if (!auth.authenticated || !productId || reconciled.current) return;
-    if (state !== "UNKNOWN") return;
+    if (!auth.authenticated) return;
+    const approvedAfterAsk = asked.current;
+    const reconcile =
+      !reconciled.current && productId !== null && state === "UNKNOWN";
+    if (!approvedAfterAsk && !reconcile) return;
+    asked.current = false;
     reconciled.current = true;
     void record("GRANTED");
   }, [auth.authenticated, productId, state, record]);
-
-  // Approved in Renown after Allow: record it.
-  useEffect(() => {
-    if (!auth.authenticated || !asked.current) return;
-    asked.current = false;
-    void record("GRANTED");
-  }, [auth.authenticated, record]);
 
   const allow = useCallback(async (): Promise<boolean> => {
     if (state === "GRANTED") return true;
@@ -105,10 +114,24 @@ export function usePublishPermission(
     return false;
   }, [state, auth.authenticated, auth.authorize, record]);
 
+  /** "Not now": an approval that lands later is not recorded as the answer. */
+  const dismiss = useCallback(() => {
+    asked.current = false;
+  }, []);
+
+  const reopen = useCallback(async (): Promise<void> => {
+    // Record the OK when Renown approves, also after a reload of the page.
+    asked.current = true;
+    await auth.reopen();
+  }, [auth.reopen]);
+
   return {
     state,
     delegated: auth.authenticated,
     pending: auth.busy || auth.pending || recorded,
+    waiting: auth.pending && !auth.busy && !recorded,
     allow,
+    reopen,
+    dismiss,
   };
 }

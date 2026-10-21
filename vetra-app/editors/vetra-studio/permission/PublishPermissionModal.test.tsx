@@ -14,7 +14,10 @@ const hoisted = vi.hoisted(() => ({
     state: "UNKNOWN",
     delegated: false,
     pending: false,
+    waiting: false,
     allow: vi.fn(() => Promise.resolve(true)),
+    reopen: vi.fn(() => Promise.resolve()),
+    dismiss: vi.fn(),
   },
 }));
 
@@ -41,7 +44,10 @@ beforeEach(() => {
     state: "UNKNOWN",
     delegated: false,
     pending: false,
+    waiting: false,
     allow: vi.fn(() => Promise.resolve(true)),
+    reopen: vi.fn(() => Promise.resolve()),
+    dismiss: vi.fn(),
   };
 });
 
@@ -109,5 +115,46 @@ describe("PublishPermissionModal", () => {
       state: "GRANTED",
     };
     expect(dialog(ask())).toBeNull();
+  });
+
+  it("offers to open Renown again while the approval is still waiting", () => {
+    hoisted.permission = {
+      ...hoisted.permission,
+      pending: true,
+      waiting: true,
+    };
+    const container = ask();
+
+    expect(container.textContent).toContain(
+      "Waiting for you to approve in Renown.",
+    );
+    expectNoForbiddenWords(container);
+    const again = button(container, "Open Renown again");
+    expect(again).toBeDefined();
+    expect(again?.disabled).toBe(false);
+    expect(button(container, "Allow")).toBeUndefined();
+
+    click(again);
+    expect(hoisted.permission.reopen).toHaveBeenCalledTimes(1);
+    expect(hoisted.permission.allow).not.toHaveBeenCalled();
+    // The ask stays open until Renown reports the approval.
+    expect(dialog(container)).not.toBeNull();
+
+    click(button(container, "Not now"));
+    expect(dialog(container)).toBeNull();
+    // A later approval is not recorded as this answer.
+    expect(hoisted.permission.dismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Allow disabled while a confirmation is being recorded", () => {
+    hoisted.permission = {
+      ...hoisted.permission,
+      pending: true,
+      waiting: false,
+    };
+    const container = ask();
+
+    expect(button(container, "Open Renown again")).toBeUndefined();
+    expect(button(container, "Waiting for Renown")?.disabled).toBe(true);
   });
 });
