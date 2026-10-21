@@ -269,8 +269,8 @@ so it gets the framework's `ServiceManager` + event-bus access via
 
 **Preview-server access gate** (`preview-server/request-auth.ts`,
 `createRequestAuthorizer`). Public routes: `/healthz`, `/version`,
-`/resolve`, `/events` (event types only — failure text is not forwarded) and
-`/export/status`. Every other route (`/project-package`, `/release-status`,
+`/resolve` (no absolute `projectPath`, no raw error text), `/events` (event
+types only — failure text is not forwarded) and `/export/status`. Every other route (`/project-package`, `/release-status`,
 `/publish`, `/start`, `/restart`, `/sessions*`, `/export`, `/auth/*`) is
 owner-only and checks **the request**, never the daemon's own Renown
 sign-in. It passes when the request carries:
@@ -278,24 +278,48 @@ sign-in. It passes when the request carries:
 1. the operator secret `VETRA_SESSION_EXPORT_SECRET` as
    `Authorization: Bearer <secret>` or `?token=` (sha256 + timingSafeEqual) —
    the support path, works through the proxy; or
-2. the signed-in user's Renown bearer (what Connect sends the switchboard):
-   `verifyAuthBearerToken` (signature + expiry), then the claimed wallet must
-   be in the pod's `ADMINS`, then `verifyAuthCredential` confirms on Renown
-   that the wallet delegated to the token's app key (a self-signed token
-   claiming the owner's address fails here). Delegation verdicts are cached
-   per token (5 min ok / 30 s refused); a non-owner wallet never costs a
-   lookup; or
+2. the signed-in user's Renown bearer, minted by the studio client **for this
+   Studio only**: `aud` = the Studio's public origin (origin of the proxy's
+   public URL; the client takes it from `previewServerUrl` in
+   `studio.config.json`). The gate requires that exact `aud` — a token with
+   no `aud` (e.g. one minted for the switchboard, which refuses `aud`
+   tokens) or another Studio's `aud` fails, so a token a malicious Studio
+   captures can't be replayed here. Then `verifyAuthBearerToken` (signature +
+   expiry), the claimed wallet must be in the pod's `ADMINS`, and
+   `verifyAuthCredential` confirms on Renown that the wallet delegated to the
+   token's app key (a self-signed token claiming the owner's address fails
+   here). Bearers are verified on the Renown the Studio's Connect logs in on
+   (`resolveStudioRenownUrl`). Delegation verdicts are cached per token
+   (5 min ok / 30 s refused), lookups are capped at 30/min, and a non-owner
+   wallet never costs a lookup; or
 3. local mode only — no studio environment id (`VETRA_ENVIRONMENT_ID`), no
    `ADMINS`, no secret: a request from a loopback socket whose every
    `x-forwarded-for` hop is loopback (the proxy appends the real client
-   address, so LAN clients of the `0.0.0.0` proxy are refused) and whose
-   `Origin`, if any, is loopback (blocks cross-site pages / DNS rebinding).
+   address, so LAN clients of the `0.0.0.0` proxy are refused), whose `Host`
+   and `x-forwarded-host` are loopback, and whose `Origin`, if any, is
+   loopback (blocks cross-site pages / DNS rebinding).
 
-A cloud Studio never takes path 3, and with `ADMINS` unset refuses every
-bearer (fail closed). No credential / bad token → 401; verified non-owner →
-403. The studio client (`vetra-app/.../hooks/preview-server-client.ts`)
-attaches the bearer from `ambientRenownTokenProvider` on every owner-only
-call. Sub-agent threads (resource `cli-user-<agentName>`) are not bundled in
+A cloud Studio never takes path 3, and with `ADMINS` unset (or no known
+public origin) refuses every bearer (fail closed). Every refusal is the same
+`401 {error:"unauthorized"}` — no oracle for which wallet is the owner. The
+studio client (`vetra-app/.../hooks/preview-server-client.ts`) mints the
+bearer from the Connect Renown session (`window.ph.renown`, `aud` = Studio
+origin) on every owner-only call, and sends none while `studio.config.json`
+hasn't loaded (the `127.0.0.1` fallback).
+
+`POST /auth/confirm` in a cloud Studio keeps a completed agent login only when
+its wallet is in `ADMINS`; any other wallet is logged straight back out
+(`error: "not-owner"`), so the agent can't be switched to another identity.
+
+Residual risks: (a) the owner's Renown session lives in Connect's origin; if
+the owner signs into Renown on an attacker's page (a malicious Studio or
+app), that page gets its own delegated app key for the owner's wallet and can
+mint `aud`-bound tokens for any Studio — `aud` binding stops replay of
+captured tokens, not a delegation the owner granted. Revoking the delegation
+on Renown is the remedy. (b) Local mode through the proxy can't see the
+browser's real `Host` (the proxy rewrites it; an existing `x-forwarded-host`
+is kept), so a DNS-rebinding page that sets its own `X-Forwarded-Host:
+localhost` header is not caught by the Host check. Sub-agent threads (resource `cli-user-<agentName>`) are not bundled in
 session exports — their per-delegation threadIds don't link back to a
 session.
 

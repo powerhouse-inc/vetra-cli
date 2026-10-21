@@ -6,13 +6,17 @@
  * sign-in. A request passes when it carries one of:
  *   1. the operator secret (`VETRA_SESSION_EXPORT_SECRET`) as
  *      `Authorization: Bearer <secret>` or `?token=` (constant-time compare);
- *   2. a Renown bearer token (the kind Connect sends to the switchboard) that
- *      verifies — JWT signature + expiry, then the wallet→app delegation
- *      credential on Renown — and whose wallet is in the pod's `ADMINS`;
+ *   2. a Renown bearer token minted for *this* Studio — `aud` must equal the
+ *      Studio's public origin (so a token captured by another Studio the owner
+ *      opens can't be replayed here) — that verifies: JWT signature + expiry,
+ *      then the wallet→app delegation credential on Renown, for a wallet in
+ *      the pod's `ADMINS`;
  *   3. local mode only (no studio environment id, no `ADMINS`, no secret):
- *      a direct-loopback request from a loopback browser origin.
+ *      a direct-loopback request with a loopback Host and browser origin.
  * A cloud Studio (environment id or `ADMINS` set) never takes path 3; with
- * `ADMINS` unset it refuses every bearer (fail closed).
+ * `ADMINS` unset, or no known public origin, it refuses every bearer (fail
+ * closed). Every bearer refusal is the same 401, so the gate is no oracle for
+ * which wallet is the owner.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
@@ -21,22 +25,29 @@ import { isAdminAddress } from "../auth/renown.js";
 
 export type OwnerCheck =
   | { ok: true; via: "operator" | "owner" | "local"; address?: string }
-  | { ok: false; status: 401 | 403; error: string };
+  | { ok: false; status: 401; error: string };
 
-/** A verified bearer's claimed identity (signature + expiry checked). */
+/** A verified bearer's claimed identity (signature, expiry, `aud` checked). */
 export interface BearerClaims {
   address: string;
   appDid: string;
 }
 
 export interface RequestAuthOptions {
-  renownUrl: string;
+  /** The Renown the Studio's Connect logs in on (`resolveStudioRenownUrl`);
+   *  undefined = the SDK default. */
+  renownUrl: string | undefined;
   /** Running as a cloud Studio (`config.environmentId` set). */
   cloud: boolean;
-  /** Local JWT check (signature + expiry). Default: `@renown/sdk`. */
-  verifyBearer?: (jwt: string) => Promise<BearerClaims | false>;
+  /** This Studio's public origin (the required `aud`), read per request;
+   *  undefined = not known yet, every bearer is refused. */
+  audience: () => string | undefined;
+  /** Local JWT check (signature + expiry + `aud`). Default: `@renown/sdk`. */
+  verifyBearer?: (jwt: string, audience: string) => Promise<BearerClaims | false>;
   /** Network check that the wallet delegated to the token's app key. */
-  verifyDelegation?: (jwt: string) => Promise<boolean>;
+  verifyDelegation?: (jwt: string, audience: string) => Promise<boolean>;
+  /** Max Renown delegation lookups per minute (default 30). */
+  lookupsPerMinute?: number;
   now?: () => number;
 }
 
@@ -76,11 +87,23 @@ function headerValue(req: IncomingMessage, name: string): string | undefined {
   return Array.isArray(v) ? v.join(",") : v;
 }
 
+function isLoopbackHost(host: string | undefined): boolean {
+  if (!host) return false;
+  try {
+    return isLoopbackAddress(new URL(`http://${host.trim()}`).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The request comes from this machine: a loopback socket, every
  * `x-forwarded-for` hop loopback (the embedded proxy listens on 0.0.0.0 and
- * appends the real client address, so a LAN or ingress hop shows up here), and
- * no cross-site browser origin (blocks a malicious page / DNS rebinding).
+ * appends the real client address, so a LAN or ingress hop shows up here), a
+ * loopback Host (the proxy rewrites Host, so through it the browser's Host is
+ * `x-forwarded-host`), and no cross-site browser origin. Host + Origin block
+ * DNS rebinding (a same-origin GET carries no Origin, but its Host is the
+ * attacker's name).
  */
 export function isLocalRequest(req: IncomingMessage): boolean {
   if (!isLoopbackAddress(req.socket?.remoteAddress)) return false;
@@ -88,8 +111,24 @@ export function isLocalRequest(req: IncomingMessage): boolean {
   if (xff !== undefined && !xff.split(",").every((h) => isLoopbackAddress(h))) {
     return false;
   }
+  if (!isLoopbackHost(headerValue(req, "host"))) return false;
+  const xfh = headerValue(req, "x-forwarded-host");
+  if (xfh !== undefined && !xfh.split(",").every((h) => isLoopbackHost(h))) {
+    return false;
+  }
   const origin = headerValue(req, "origin");
   return origin === undefined || isLoopbackOrigin(origin);
+}
+
+/** `https://host/x/y` → `https://host`; undefined when not a URL. */
+export function originOf(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const o = new URL(url).origin;
+    return o === "null" ? undefined : o;
+  } catch {
+    return undefined;
+  }
 }
 
 function bearerOf(req: IncomingMessage): string | undefined {
@@ -99,9 +138,20 @@ function bearerOf(req: IncomingMessage): string | undefined {
   return m ? m[1].trim() : undefined;
 }
 
-async function defaultVerifyBearer(jwt: string): Promise<BearerClaims | false> {
-  const verified = await verifyAuthBearerToken(jwt);
+// did-jwt only checks `aud` when the token carries one, so require it here:
+// a token without `aud` (e.g. one minted for the switchboard) never passes.
+function audMatches(aud: unknown, audience: string): boolean {
+  const list = Array.isArray(aud) ? aud : [aud];
+  return list.length === 1 && list[0] === audience;
+}
+
+async function defaultVerifyBearer(
+  jwt: string,
+  audience: string,
+): Promise<BearerClaims | false> {
+  const verified = await verifyAuthBearerToken(jwt, { audience });
   if (!verified) return false;
+  if (!audMatches(verified.payload.aud, audience)) return false;
   const address = verified.verifiableCredential.credentialSubject.address;
   const appDid = verified.issuer;
   if (typeof address !== "string" || !address || !appDid) return false;
@@ -117,19 +167,31 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
   const verifyBearer = opts.verifyBearer ?? defaultVerifyBearer;
   const verifyDelegation =
     opts.verifyDelegation ??
-    (async (jwt: string) =>
-      (await verifyAuthCredential(jwt, { renownUrl: opts.renownUrl })) !== undefined);
+    (async (jwt: string, audience: string) =>
+      (await verifyAuthCredential(jwt, { audience, renownUrl: opts.renownUrl })) !==
+      undefined);
+  const lookupsPerMinute = opts.lookupsPerMinute ?? 30;
   // Delegation verdicts per token (the network round-trip), bounded.
   const delegationCache = new Map<string, { ok: boolean; until: number }>();
+  let windowStart = 0;
+  let lookupsInWindow = 0;
 
-  async function delegated(jwt: string): Promise<boolean> {
+  async function delegated(jwt: string, audience: string): Promise<boolean> {
     const key = createHash("sha256").update(jwt).digest("hex");
     const t = now();
     const hit = delegationCache.get(key);
     if (hit && hit.until > t) return hit.ok;
+    // Fixed-window cap on Renown round-trips: a flood of fresh tokens is
+    // refused (not cached) rather than amplified into Renown traffic.
+    if (t - windowStart >= 60_000) {
+      windowStart = t;
+      lookupsInWindow = 0;
+    }
+    if (lookupsInWindow >= lookupsPerMinute) return false;
+    lookupsInWindow++;
     let ok = false;
     try {
-      ok = await verifyDelegation(jwt);
+      ok = await verifyDelegation(jwt, audience);
     } catch {
       ok = false;
     }
@@ -161,25 +223,23 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     const localMode = !opts.cloud && !hasAdmins && !secret;
     if (localMode && isLocalRequest(req)) return { ok: true, via: "local" };
 
-    if (!bearer) return { ok: false, status: 401, error: "unauthorized" };
+    const refused = { ok: false, status: 401, error: "unauthorized" } as const;
+    if (!bearer) return refused;
+    // Fail closed: no owner configured means nobody is the owner, and no known
+    // public origin means no token can be bound to this Studio.
+    const audience = originOf(opts.audience());
+    if (!hasAdmins || !audience) return refused;
 
     let claims: BearerClaims | false = false;
     try {
-      claims = await verifyBearer(bearer);
+      claims = await verifyBearer(bearer, audience);
     } catch {
       claims = false;
     }
-    if (!claims) return { ok: false, status: 401, error: "invalid-token" };
-
-    // Fail closed: no owner configured means nobody is the owner.
-    if (!hasAdmins) return { ok: false, status: 403, error: "no-owner-configured" };
+    if (!claims) return refused;
     // Address check before the network one: a non-owner never costs a lookup.
-    if (!isAdminAddress(claims.address, admins)) {
-      return { ok: false, status: 403, error: "forbidden" };
-    }
-    if (!(await delegated(bearer))) {
-      return { ok: false, status: 401, error: "invalid-credential" };
-    }
+    if (!isAdminAddress(claims.address, admins)) return refused;
+    if (!(await delegated(bearer, audience))) return refused;
     return { ok: true, via: "owner", address: claims.address };
   };
 }

@@ -70,6 +70,8 @@ export interface AuthState {
   address?: string;
   /** Set while a console login is awaiting browser approval. */
   pending?: { loginUrl: string };
+  /** Why the last login was refused (e.g. `not-owner`). */
+  error?: string;
 }
 
 /** Begin a console login: build the approval URL, open the browser on the host
@@ -133,12 +135,22 @@ export async function confirmAuth(
   workdir: string,
   renownUrl: string,
   timeoutMs: number,
+  opts: { requireAdmin?: boolean } = {},
 ): Promise<AuthState> {
   const entry = entryFor(workdir, renownUrl);
   const renown = await entry.renown;
-  if (renown.user) {
-    return { authenticated: true, address: renown.user.address };
-  }
+  // Cloud Studio: the agent may only hold the owner's (ADMINS) delegation. A
+  // login approved with any other wallet is logged out at once, so an
+  // attacker-approved console login can't become the agent's identity.
+  const settle = async (address: string): Promise<AuthState> => {
+    if (opts.requireAdmin && !isAdminAddress(address, process.env.ADMINS)) {
+      entry.pending = undefined;
+      await renown.logout();
+      return { authenticated: false, error: "not-owner" };
+    }
+    return { authenticated: true, address };
+  };
+  if (renown.user) return settle(renown.user.address);
   const pending = entry.pending;
   if (!pending) {
     return { authenticated: false };
@@ -146,14 +158,12 @@ export async function confirmAuth(
   const result = await pollLogin(renown, pending.sessionId, timeoutMs);
   if (result.status === "ready") {
     if (entry.pending === pending) entry.pending = undefined;
-    return { authenticated: true, address: result.user.address };
+    return settle(result.user.address);
   }
   // Concurrent confirms (several studio hooks poll at once): another call may
   // have completed this login, and cleared `entry.pending`, while we polled.
   const user = currentUser(renown);
-  if (user) {
-    return { authenticated: true, address: user.address };
-  }
+  if (user) return settle(user.address);
   const current = entry.pending ?? pending;
   return { authenticated: false, pending: { loginUrl: current.loginUrl } };
 }

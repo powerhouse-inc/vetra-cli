@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { request } from "node:http";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
@@ -32,13 +33,16 @@ const PUBLIC_ROUTES: Array<[method: string, path: string]> = [
 const OWNER = "0x00000000000000000000000000000000000000aa";
 const OTHER = "0x00000000000000000000000000000000000000bb";
 const PROXIED = { "x-forwarded-for": "203.0.113.9", "x-forwarded-prefix": "/preview" };
+const STUDIO = "https://studio-1.vetra.example";
 
 describe("preview-server route gate", () => {
   let workdir: string;
   let cleanup: () => void;
   let server: Awaited<ReturnType<typeof startPreviewServer>>;
   let start: jest.Mock<() => Promise<string>>;
-  let delegation: jest.Mock<(jwt: string) => Promise<boolean>>;
+  let delegation: jest.Mock<(jwt: string, audience: string) => Promise<boolean>>;
+  let publicUrl: string | undefined;
+  let audiences: string[];
   const saved = {
     secret: process.env.VETRA_SESSION_EXPORT_SECRET,
     admins: process.env.ADMINS,
@@ -51,6 +55,7 @@ describe("preview-server route gate", () => {
     writeFileSync(join(workdir, "README.md"), "hello\n");
     start = jest.fn(async () => "i-1");
     delegation = jest.fn(async () => true);
+    audiences = [];
     server = await startPreviewServer({
       services: { list: () => [], start, stop: jest.fn(async () => {}) } as never,
       subscribe: () => {},
@@ -61,12 +66,15 @@ describe("preview-server route gate", () => {
       authorizeRequest: createRequestAuthorizer({
         renownUrl: "http://renown.invalid",
         cloud,
-        verifyBearer: async (jwt) =>
-          jwt === "owner-token"
+        audience: () => publicUrl,
+        verifyBearer: async (jwt, audience) => {
+          audiences.push(audience);
+          return jwt === "owner-token"
             ? { address: OWNER, appDid: "did:key:z6MkOwner" }
             : jwt === "other-token"
               ? { address: OTHER, appDid: "did:key:z6MkOther" }
-              : false,
+              : false;
+        },
         verifyDelegation: delegation,
       }),
     });
@@ -79,6 +87,7 @@ describe("preview-server route gate", () => {
   beforeEach(() => {
     delete process.env.VETRA_SESSION_EXPORT_SECRET;
     process.env.ADMINS = OWNER;
+    publicUrl = STUDIO;
   });
 
   afterEach(async () => {
@@ -105,9 +114,10 @@ describe("preview-server route gate", () => {
       expect((await call(method, path)).status).toBe(401);
     });
 
-    it.each(OWNER_ROUTES)("%s %s: a non-owner wallet → 403", async (method, path) => {
+    it.each(OWNER_ROUTES)("%s %s: a non-owner wallet → 401 (same as no token: no owner oracle)", async (method, path) => {
       const res = await call(method, path, { ...PROXIED, authorization: "Bearer other-token" });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
     });
 
     it.each(OWNER_ROUTES)("%s %s: a forged / unverifiable bearer → 401", async (method, path) => {
@@ -132,6 +142,29 @@ describe("preview-server route gate", () => {
       expect(owner.status).toBe(200);
       expect(owner.headers.get("content-type")).toBe("application/zip");
       expect((await owner.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    });
+
+    it("owner tokens are checked against this Studio's public origin as aud", async () => {
+      publicUrl = `${STUDIO}/some/base`;
+      await call("GET", "/auth/status", { ...PROXIED, authorization: "Bearer owner-token" });
+      expect(audiences).toEqual([STUDIO]);
+    });
+
+    it("no known public origin: every bearer is refused", async () => {
+      publicUrl = undefined;
+      const res = await call("GET", "/auth/status", { ...PROXIED, authorization: "Bearer owner-token" });
+      expect(res.status).toBe(401);
+    });
+
+    it("/resolve leaks no absolute path or raw error text", async () => {
+      const res = await call("GET", "/resolve?project=nope&doc=x", PROXIED);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body).toEqual({ kind: "unknown-project", project: "nope", error: "unknown project" });
+      const stopped = await call("GET", "/resolve?project=demo&doc=x", PROXIED);
+      const s = (await stopped.json()) as Record<string, unknown>;
+      expect(s.kind).toBe("project-stopped");
+      expect(s).not.toHaveProperty("projectPath");
+      expect(JSON.stringify(s)).not.toContain(workdir);
     });
 
     it("an owner wallet whose delegation doesn't verify on Renown → 401", async () => {
@@ -167,7 +200,7 @@ describe("preview-server route gate", () => {
         ...PROXIED,
         authorization: "Bearer owner-token",
       });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(401);
       expect((await call("GET", "/export?workspace=1")).status).toBe(401);
     });
 
@@ -217,6 +250,32 @@ describe("preview-server route gate", () => {
         "x-forwarded-for": "127.0.0.1,192.168.1.20",
       });
       expect(spoofed.status).toBe(401);
+    });
+
+    it("a DNS-rebinding Host (no Origin) is refused", async () => {
+      // fetch won't send a custom Host; use node:http as a rebinding browser would.
+      const direct = await new Promise<number>((resolve, reject) => {
+        const r = request(
+          {
+            host: "127.0.0.1",
+            port: server.port,
+            path: "/auth/status",
+            headers: { host: "attacker.example:5180" },
+          },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          },
+        );
+        r.on("error", reject);
+        r.end();
+      });
+      expect(direct).toBe(401);
+      const proxied = await call("GET", "/auth/status", {
+        "x-forwarded-for": "127.0.0.1",
+        "x-forwarded-host": "attacker.example:8090",
+      });
+      expect(proxied.status).toBe(401);
     });
 
     it("a cross-site browser origin is refused", async () => {

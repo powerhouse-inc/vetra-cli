@@ -11,6 +11,7 @@ const OWNER = "0x00000000000000000000000000000000000000aa";
 const authorizeRequest = createRequestAuthorizer({
   renownUrl: "http://renown.invalid",
   cloud: false,
+  audience: () => "https://studio.example",
   verifyBearer: async (jwt) =>
     jwt === "owner-token" ? { address: OWNER, appDid: "did:key:z6Mk" } : false,
   verifyDelegation: async () => true,

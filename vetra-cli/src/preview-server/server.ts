@@ -25,7 +25,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
-import { PREVIEW_SERVER_HOST } from "./config.js";
+import { PREVIEW_SERVER_HOST, type ResolveResult } from "./config.js";
 import { createSseBroadcaster } from "./events.js";
 import { readProjectPackage } from "./package-info.js";
 import { publishProjectForDeploy } from "./publish-project.js";
@@ -64,6 +64,12 @@ interface PreviewServerDeps {
   agentLogging?: boolean;
   /** Running as a cloud Studio (`config.environmentId`): no loopback pass. */
   cloud?: boolean;
+  /** Renown the owner gate verifies bearers on (the Studio Connect's);
+   *  undefined = the SDK default. */
+  gateRenownUrl?: string;
+  /** Live public proxy URL; its origin is the `aud` owner bearers must carry.
+   *  Falls back to `proxyPublicUrl`. */
+  getProxyPublicUrl?: () => string | undefined;
   /** Owner gate override (tests); default `createRequestAuthorizer`. */
   authorizeRequest?: RequestAuthorizer;
   log?: {
@@ -99,6 +105,24 @@ function parseQuery(url: string): URLSearchParams {
   return new URLSearchParams(url.slice(idx + 1));
 }
 
+/** `/resolve` is public: drop the absolute project path and raw error text
+ * (filesystem paths, stack details) — the studio needs neither to render. */
+export function publicResolveResult(result: ResolveResult): PublicResolveResult {
+  if (result.kind === "no-target") return result;
+  if (result.kind === "unknown-project") {
+    return { kind: "unknown-project", project: result.project, error: "unknown project" };
+  }
+  const rest: Record<string, unknown> = { ...result };
+  delete rest.projectPath;
+  return rest as PublicResolveResult;
+}
+
+export type PublicResolveResult =
+  | Exclude<ResolveResult, { projectPath: string }>
+  | DistributiveOmit<Extract<ResolveResult, { projectPath: string }>, "projectPath">;
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
 function isTruthyParam(value: string | null): boolean {
   return value !== null && /^(1|true|yes)$/i.test(value);
 }
@@ -123,11 +147,13 @@ export async function startPreviewServer(
   // One workspace export at a time — each streams the whole workdir.
   let workspaceExportInFlight = false;
 
+  const cloud = deps.cloud ?? Boolean(process.env.VETRA_ENVIRONMENT_ID?.trim());
   const authorizeRequest =
     deps.authorizeRequest ??
     createRequestAuthorizer({
-      renownUrl,
-      cloud: deps.cloud ?? Boolean(process.env.VETRA_ENVIRONMENT_ID?.trim()),
+      renownUrl: deps.gateRenownUrl,
+      cloud,
+      audience: () => deps.getProxyPublicUrl?.() ?? proxyPublicUrl,
     });
 
   // Owner gate for a route: false (and the 401/403 written) when refused.
@@ -180,7 +206,7 @@ export async function startPreviewServer(
           home: q.get("home") === "1",
           proxyPublicUrl,
         });
-        writeJson(res, 200, result);
+        writeJson(res, 200, publicResolveResult(result));
         return;
       }
 
@@ -382,7 +408,11 @@ export async function startPreviewServer(
         if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
         const waitMs = Math.min(Math.max(Number(q.get("wait")) || 20000, 0), 60000);
-        const state = await confirmAuth(workdir, renownUrl, waitMs);
+        // A cloud Studio's agent may only act as the owner: a login approved
+        // with any other wallet is logged straight back out.
+        const state = await confirmAuth(workdir, renownUrl, waitMs, {
+          requireAdmin: cloud,
+        });
         writeJson(res, 200, state);
         return;
       }
