@@ -164,7 +164,7 @@ describe('phase tool sets', () => {
     await runProgress(h.ctx, { action: 'start', step: 'PLAN' });
     await runProgress(h.ctx, { action: 'name', text: 'Team Tasks' });
     await runProgress(h.ctx, { action: 'title', text: 'First version' });
-    expect(await runProgress(h.ctx, { action: 'done', step: 'PLAN' })).toBe('Plan done.');
+    expect(await runProgress(h.ctx, { action: 'done', step: 'PLAN' })).toMatch(/^Plan done\. Now available: .*agent-agentEditor/);
     await runProgress(h.ctx, { action: 'start', step: 'EDITORS' });
     expect(await visibleTools(h)).toContain('agent-agentEditor');
     await runProgress(h.ctx, { action: 'back', step: 'PLAN', reason: 'new feature' });

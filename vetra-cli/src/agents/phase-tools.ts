@@ -250,3 +250,48 @@ export class PhaseToolsProcessor implements Processor<'phase-tools'> {
     return { activeTools: selectTools(visible, phases) };
   }
 }
+
+/**
+ * The tool patterns a move from `before` to `after` adds (ALWAYS_ON aside),
+ * for the `product-progress` reply: the agent re-reads its tools instead of
+ * trusting what an earlier step lacked. Moving to NONE adds every tool.
+ */
+export function toolsGained(before: StepKind[] | null, after: StepKind[] | null): string[] {
+  if (!before) return [];
+  if (!after) return ['every tool'];
+  const had = new Set(phasePatterns(before));
+  return [...new Set(after.flatMap((p) => PHASE_TOOLS[p]))].filter((p) => !had.has(p));
+}
+
+/** Concrete (non-glob) tool names visible in `phases`; NONE → every named tool. */
+export function namedVisibleTools(phases: StepKind[] | null): string[] {
+  const patterns = phases
+    ? phasePatterns(phases)
+    : [...ALWAYS_ON, ...Object.values(PHASE_TOOLS).flat(), ...ADVANCED_ONLY];
+  return [...new Set(patterns.filter((p) => !p.includes('*')))];
+}
+
+/** Ways a reason refers to a tool: its name, without `reactor-`/`mastra_workspace_`, spaced. */
+function toolAliases(name: string): string[] {
+  const short = name.replace(/^reactor-/, '').replace(/^mastra_workspace_/, '');
+  return [...new Set([name, short, short.replace(/_/g, ' ')])].filter((a) => a.length > 4);
+}
+
+const MISSING_CLAIM =
+  /\b(?:missing|unavailable|not (?:available|exposed|listed|offered|present|provided|in (?:my|the|this))|(?:don'?t|do not|doesn'?t|does not) (?:have|expose|offer|list|provide)|lacks?|no\b[^.]{0,40}\btools?\b)/i;
+
+/**
+ * Tools visible in `phases` that `reason` claims are missing (the dev.9
+ * staging agent marked itself stuck on "no project-init tool is exposed"
+ * while reactor-project-init was in its tool list). Empty when the reason
+ * makes no such claim.
+ */
+export function claimedMissingTools(reason: string, phases: StepKind[] | null): string[] {
+  if (!MISSING_CLAIM.test(reason)) return [];
+  return namedVisibleTools(phases).filter((name) =>
+    toolAliases(name).some((alias) => {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, 'i').test(reason);
+    }),
+  );
+}

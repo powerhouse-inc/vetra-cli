@@ -11,7 +11,8 @@ import { z } from "zod";
 import { StudioProductV1 } from "vetra-app/document-models";
 import type { placeholderName as PlaceholderName } from "vetra-app/document-models/studio-product";
 import { defineCommand } from "../../framework.js";
-import { findForbiddenWord } from "../../product/forbidden-words.js";
+import { activePhases, claimedMissingTools, toolsGained } from "../../agents/phase-tools.js";
+import { findForbiddenWords } from "../../product/forbidden-words.js";
 import {
   ProductRefusedError,
   activeChange,
@@ -57,12 +58,20 @@ function missing(field: string, action: string): string {
   return `\`${field}\` is required for ${action}.`;
 }
 
+/** One refusal naming every forbidden word across `texts`, or null. */
 function rephrase(...texts: Array<string | undefined>): string | null {
-  for (const text of texts) {
-    const word = text ? findForbiddenWord(text) : null;
-    if (word) return `Rephrase in the customer's words without: ${word}.`;
-  }
-  return null;
+  const words = [...new Set(texts.flatMap((text) => (text ? findForbiddenWords(text) : [])))];
+  return words.length ? `Rephrase in the customer's words without: ${words.join(", ")}.` : null;
+}
+
+/** Actions that can change the step, so the reply names the tools it adds. */
+const MOVES_STEP = new Set<Input["action"]>(["start", "done", "back"]);
+const MAX_LISTED = 12;
+
+function gainedLine(gained: string[]): string {
+  if (gained.length === 0) return "";
+  const shown = gained.slice(0, MAX_LISTED).join(", ");
+  return ` Now available: ${shown}${gained.length > MAX_LISTED ? ", …" : ""}.`;
 }
 
 /** Validates the input and builds the actions, or returns why it is refused. */
@@ -135,6 +144,12 @@ function buildActions(
     case "stuck": {
       if (!input.reason) return { refused: missing("reason", "stuck") };
       const tried = input.tried ?? [];
+      const present = claimedMissingTools(input.reason, activePhases(state));
+      if (present.length) {
+        return {
+          refused: `${present.join(", ")} ${present.length > 1 ? "are" : "is"} available in this step — use ${present.length > 1 ? "them" : "it"}.`,
+        };
+      }
       const bad = rephrase(input.reason, ...tried);
       if (bad) return { refused: bad };
       return {
@@ -183,13 +198,16 @@ export async function runProgress(ctx: ProductContext, input: Input): Promise<st
     if (err instanceof ProductRefusedError) return `Refused: ${err.message}`;
     throw err;
   }
-  return built.ok;
+  if (!MOVES_STEP.has(input.action)) return built.ok;
+  const after = await getProductDoc(ctx);
+  if (!after) return built.ok;
+  return built.ok + gainedLine(toolsGained(activePhases(product.state), activePhases(after.state)));
 }
 
 export const productProgress = defineCommand({
   id: "product-progress",
   description:
-    "Record build progress on the Studio's product: plan the steps, start/count/finish a step, go back, add a milestone in the customer's words, report being stuck, name the product, title the change. `done` is refused until the step's checks pass; the reply says why.",
+    "Record build progress on the Studio's product: plan the steps, start/count/finish a step, go back, add a milestone in the customer's words, report being stuck, name the product, title the change. `done` is refused until the step's checks pass; the reply says why. `start`/`done`/`back` replies name the tools that just became available.",
   inputSchema,
   execute: async (input, ctx) => ({ text: await runProgress(ctx, input) }),
 });
