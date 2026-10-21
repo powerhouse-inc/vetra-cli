@@ -13,12 +13,15 @@ export function LiveEmbed({
   liveUrl,
   version,
   preview,
+  fallbackLabel,
 }: {
   liveUrl: string;
   /** The live version's number, for the fallback's label. */
   version: number;
   /** The Studio's preview of that version (the build surface's pane). */
   preview: ReactNode;
+  /** The fallback's link text; the version's preview label by default. */
+  fallbackLabel?: string;
 }) {
   const { failed, onLoad, onError } = useEmbedFallback(liveUrl);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -58,7 +61,7 @@ export function LiveEmbed({
               rel="noreferrer"
               className="text-xs font-medium text-vetra-primary hover:underline"
             >
-              {previewLabel(version)}
+              {fallbackLabel ?? previewLabel(version)}
             </a>
           </div>
           <div className="flex min-h-0 flex-1 flex-col">{preview}</div>

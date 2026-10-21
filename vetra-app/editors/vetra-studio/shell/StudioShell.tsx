@@ -37,7 +37,7 @@ import { useStudioRestarting } from "../failures/useStudioRestarting.js";
 import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
-import { ProductView as LiveProductView } from "../live/ProductView.js";
+import { LiveSurface } from "../change/LiveSurface.js";
 import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
 import { usePublishPermission } from "../permission/usePublishPermission.js";
 import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
@@ -301,9 +301,10 @@ function StudioPage({
     { now, handlers: liveHandlers },
   );
   const view = withFailure(plainView, failure);
-  // State 2 (spec §5.6): live, and no change in progress. While a change is
-  // open the page keeps the build surface (the Live | Preview split is 3.5).
-  const stateTwo = live && product !== null && openChange(product) === null;
+  // State 2 (spec §5.6): live, and no change in progress; a change on a live
+  // product shows the Live | Preview split (§5.7) on the same surface.
+  const liveView = live && product !== null;
+  const stateTwo = liveView && openChange(product) === null;
   const previewPane = (
     <PreviewPane
       change={change}
@@ -311,6 +312,37 @@ function StudioPage({
       session={sessionDocument}
     />
   );
+
+  const story =
+    product && change ? (
+      <StoryPane
+        product={product}
+        change={change}
+        chat={chat}
+        sessionId={sessionId ?? null}
+        productId={productId}
+        failureContext={{
+          budget: failureBudget,
+          requestBudget: budget.request,
+          studioRestarting,
+          restartPreview,
+          publish: permission.state ? { state: permission.state } : null,
+          requestedBy: signIn.name ?? "you",
+          allowPublish: permission.allow,
+        }}
+      />
+    ) : sessionId ? (
+      /* No readable product yet: the conversation as it is. */
+      <ConversationPane
+        document={drive}
+        sessionId={sessionId}
+        driveLoaded={true}
+      />
+    ) : (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Getting ready…
+      </div>
+    );
 
   const toast = usePHToast();
   const rename = useCallback(
@@ -332,7 +364,9 @@ function StudioPage({
     setOpenStep((current) => (current === kind ? null : kind));
   }, []);
 
-  const following = openStep === null || (!stateTwo && openStep === "EDITORS");
+  // A change on a live product keeps its split: no step detail over it.
+  const following =
+    openStep === null || (!stateTwo && (liveView || openStep === "EDITORS"));
   const detail = following ? null : (
     <StepDetail
       kind={openStep}
@@ -367,58 +401,30 @@ function StudioPage({
           ) : undefined
         }
       />
-      {stateTwo ? (
+      {liveView ? (
         detail ? (
           <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
             {detail}
           </main>
         ) : (
           <main className="flex min-h-0 flex-1 flex-col">
-            <LiveProductView
+            <LiveSurface
               product={product}
-              studioId={drive.header.id}
+              productId={productId}
+              drive={drive}
               documents={documents}
               failure={failure}
               now={now}
+              story={change ? story : null}
+              preview={previewPane}
+              requestedBy={signIn.name ?? "you"}
               onOpenAccess={onOpenAccess}
             />
           </main>
         )
       ) : (
         <BuildSplit
-          story={
-            product && change ? (
-              <StoryPane
-                product={product}
-                change={change}
-                chat={chat}
-                sessionId={sessionId ?? null}
-                productId={productId}
-                failureContext={{
-                  budget: failureBudget,
-                  requestBudget: budget.request,
-                  studioRestarting,
-                  restartPreview,
-                  publish: permission.state
-                    ? { state: permission.state }
-                    : null,
-                  requestedBy: signIn.name ?? "you",
-                  allowPublish: permission.allow,
-                }}
-              />
-            ) : sessionId ? (
-              /* No readable product yet: the conversation as it is. */
-              <ConversationPane
-                document={drive}
-                sessionId={sessionId}
-                driveLoaded={true}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Getting ready…
-              </div>
-            )
-          }
+          story={story}
           main={
             detail ? (
               <div className="flex min-h-0 flex-1 flex-col">

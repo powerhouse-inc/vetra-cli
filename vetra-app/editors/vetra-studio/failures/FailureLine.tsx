@@ -30,7 +30,7 @@ const ACTION_FAILED = "Couldn't do that. Try again.";
 const NO_ALLOW = () => Promise.resolve(false);
 
 /** Dispatches `action(s)` and rejects with `message` when it doesn't apply. */
-function dispatchOrFail(
+export function dispatchOrFail(
   action: Parameters<typeof dispatchActions>[0],
   documentId: string | null,
   message: string,
