@@ -27,13 +27,17 @@ import {
   user,
 } from "./storyFixtures.js";
 
+const toastSink = vi.hoisted(() => ({
+  fn: undefined as ((text: string) => void) | undefined,
+}));
+
 const hoisted = vi.hoisted(() => ({
   dispatched: [] as { action: { type: string }; id: string }[],
 }));
 
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  usePHToast: () => undefined,
+  usePHToast: () => toastSink.fn,
   dispatchActions: (action: { type: string }, id: string) => {
     hoisted.dispatched.push({ action, id });
     return Promise.resolve();
@@ -343,5 +347,102 @@ describe("StoryPane layers", () => {
     expect(button(container, "Copy all")).toBeUndefined();
     click(button(container, "Raw"));
     expect(button(container, "Copy all")).toBeDefined();
+  });
+
+  it("a 60-step quiet change shows at most 12 story rows plus the waiting status", () => {
+    const ms = (id: string, minute: number, text: string) =>
+      actions.addMilestone({ changeId: "c1", id, text, at: at(minute) });
+    const product = readProduct(
+      productDoc(
+        ...buildingOps(),
+        actions.startStep({ changeId: "c1", kind: "DATA", at: at(2) }),
+        ms("m1", 2, "One"),
+        ms("m2", 4, "Two"),
+        ms("m3", 6, "Three"),
+        ms("m4", 8, "Four"),
+        ms("m5", 10, "Five"),
+      ).state.global,
+    );
+    const names = ["spec-create", "mastra_workspace_read_file", "Write"];
+    const msgs = [user("u0", "a task board", atSec(0, 30), atSec(0, 30))];
+    for (let i = 0; i < 60; i++) {
+      msgs.push(
+        toolCall(
+          `t${i}`,
+          names[i % 3],
+          { path: "a.ts" },
+          atSec(1 + Math.floor(i / 6), i % 6),
+        ),
+      );
+    }
+    for (let i = 0; i < 6; i++) {
+      msgs.push(reply(`r${i}`, `Progress ${i}.`, atSec(1 + i * 2, 30)));
+    }
+    const change = product.changes.find((c) => c.id === "c1");
+    if (!change) throw new Error("no change");
+    const container = render(
+      <StoryPane
+        product={product}
+        change={change}
+        chat={chat(...msgs)}
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        now={new Date(at(30))}
+      />,
+    );
+    expect(
+      container.querySelectorAll("[data-story-line]").length,
+    ).toBeLessThanOrEqual(12);
+    const status = container.querySelector('[data-line="waiting"]');
+    expect(status?.textContent).toContain("Still working on it");
+    expect(status?.hasAttribute("data-story-line")).toBe(false);
+    expect(status?.closest("[data-story-layer]")).toBeNull();
+  });
+
+  it("an Activity milestone shows its summary under the text", () => {
+    const product = buildingProduct();
+    const container = render(
+      pane({
+        chat: chat(
+          user("u0", "a task board", at(1), at(1)),
+          toolCall("a1", "Write", { path: "src/A.tsx" }, atSec(3, 30)),
+          toolCall("a2", "Write", { path: "src/B.tsx" }, atSec(3, 40)),
+        ),
+        product,
+        change: changeOf(product),
+      }),
+    );
+    const summary = container.querySelector(
+      '[data-line="milestone"] p.truncate',
+    );
+    expect(summary?.textContent).toMatch(/\S/);
+  });
+
+  describe("Copy all", () => {
+    function withClipboard(clipboard: unknown) {
+      Object.defineProperty(navigator, "clipboard", {
+        value: clipboard,
+        configurable: true,
+      });
+    }
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it("toasts Copied and Couldn't copy", async () => {
+      const toasts: string[] = [];
+      toastSink.fn = (text: string) => toasts.push(text);
+      const container = render(pane());
+      click(button(container, "Raw"));
+      withClipboard({ writeText: () => Promise.resolve() });
+      click(button(container, "Copy all"));
+      await flush();
+      withClipboard({ writeText: () => Promise.reject(new Error("no")) });
+      click(button(container, "Copy all"));
+      await flush();
+      withClipboard(undefined);
+      click(button(container, "Copy all"));
+      await flush();
+      toastSink.fn = undefined;
+      expect(toasts).toEqual(["Copied", "Couldn't copy", "Couldn't copy"]);
+    });
   });
 });

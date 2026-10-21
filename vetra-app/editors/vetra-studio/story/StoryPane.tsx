@@ -145,7 +145,8 @@ export function StoryPane({
   );
   const waiting = staleness(lines, { working }, now, changeRef.current.at);
   const layered = layerLines(lines, change, layer);
-  const shown = waiting ? [...layered, waiting] : layered;
+  // The waiting line is a transient status below the story, not a story line.
+  const shown = layered;
   const messages = chat?.messages;
   const results = useMemo(() => toolResultsOf(messages ?? []), [messages]);
   const steerRef = useRef<HTMLInputElement | null>(null);
@@ -175,7 +176,7 @@ export function StoryPane({
   // Newest at the bottom; follow it unless the customer scrolled up.
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
-  const newestKey = `${shown.length}:${shown.at(-1)?.id}:${shown.at(-1)?.at}`;
+  const newestKey = `${shown.length}:${shown.at(-1)?.id}:${shown.at(-1)?.at}:${waiting?.id}`;
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && following.current) el.scrollTop = el.scrollHeight;
@@ -189,8 +190,13 @@ export function StoryPane({
   }
 
   function copyAll() {
-    navigator.clipboard
-      .writeText(copyAllText(lines, results))
+    const clipboard = (
+      navigator as { clipboard?: Navigator["clipboard"] | undefined }
+    ).clipboard;
+    (clipboard
+      ? clipboard.writeText(copyAllText(lines, results))
+      : Promise.reject(new Error("no clipboard"))
+    )
       .then(() => toast?.("Copied", { type: "success" }))
       .catch(() => toast?.("Couldn't copy", { type: "error" }));
   }
@@ -240,6 +246,14 @@ export function StoryPane({
             </li>
           ) : null}
         </ol>
+        {waiting ? (
+          <p
+            data-line="waiting"
+            className="mt-2 text-xs italic text-muted-foreground"
+          >
+            {waiting.text}
+          </p>
+        ) : null}
       </div>
       {change.status === "CLOSED" && onStartChange ? (
         <div className="shrink-0 border-t border-border bg-card px-3 py-2">
