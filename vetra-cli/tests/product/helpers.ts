@@ -1,7 +1,7 @@
 import { ReactorBuilder, ReactorClientBuilder, type ReactorClientModule } from "@powerhousedao/reactor";
 import { driveDocumentModelModule } from "@powerhousedao/shared/document-drive";
 import { withSignaturePolicy } from "document-model";
-import { StudioProductV1 } from "vetra-app/document-models";
+import { StudioProductV1, StudioTeamV1 } from "vetra-app/document-models";
 import type { StudioProductState } from "vetra-app/document-models/studio-product";
 import type { ProductContext } from "../../src/product/product-doc.js";
 
@@ -23,6 +23,7 @@ export async function productHarness(
   const builder = new ReactorBuilder().withDocumentModelSources([
     driveDocumentModelModule as never,
     StudioProductV1 as never,
+    StudioTeamV1 as never,
   ]);
   const module = await new ReactorClientBuilder()
     .withReactorBuilder(builder)

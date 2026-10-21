@@ -43,6 +43,7 @@ import { studioRedirectTrigger } from './triggers/studio-redirect.js';
 import { productSupervisorTrigger } from './product/supervisor.js';
 import { productRequestsTrigger } from './triggers/product-requests.js';
 import { liveHealthTrigger } from './triggers/live-health.js';
+import { teamDocTrigger } from './triggers/team-doc.js';
 import { existingStudioUpgradeTrigger } from './product/upgrade-existing.js';
 import { DocumentModelModule } from '@powerhousedao/shared/document-model';
 // @clint:end imports
@@ -101,6 +102,8 @@ export const cli = defineCli({
     liveHealthTrigger,
     // Existing Studios open in the product page: once per start, detached.
     existingStudioUpgradeTrigger,
+    // The team document, once per Studio drive.
+    teamDocTrigger,
   ],
   // @clint:end triggers
 
