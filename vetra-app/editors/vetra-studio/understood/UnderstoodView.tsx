@@ -242,9 +242,9 @@ export function UnderstoodView({
             {t("understood.stillOpen")}
           </h2>
           <ul className="flex flex-wrap gap-2">
-            {draft.questions.map((q) => (
+            {draft.questions.map((q, i) => (
               <li
-                key={q}
+                key={i}
                 className="rounded-lg border border-border bg-card px-3 py-1 text-xs text-foreground"
               >
                 {q}

@@ -15,7 +15,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import {
   DRAFT_FIELD_TYPES,
   fieldSources,
@@ -63,11 +63,16 @@ export function InlineName({
   label?: string;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
+  /** This edit already ended (Enter, Escape): a later blur does nothing. */
+  const doneRef = useRef(false);
   if (editing === null) {
     return (
       <button
         type="button"
-        onClick={() => setEditing(value)}
+        onClick={() => {
+          doneRef.current = false;
+          setEditing(value);
+        }}
         className={`min-w-0 truncate rounded px-0.5 text-left hover:bg-accent focus:outline-none focus:ring-2 focus:ring-vetra-primary ${className}`}
       >
         {value}
@@ -75,6 +80,8 @@ export function InlineName({
     );
   }
   function commit() {
+    if (doneRef.current) return;
+    doneRef.current = true;
     const name = (editing ?? "").trim();
     setEditing(null);
     if (name && name !== value) onRename(name);
@@ -85,6 +92,7 @@ export function InlineName({
       commit();
     } else if (e.key === "Escape") {
       e.preventDefault();
+      doneRef.current = true;
       setEditing(null);
     }
   }
