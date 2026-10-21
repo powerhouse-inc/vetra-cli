@@ -19,9 +19,14 @@
  *   live server is asked for a drive with that slug and a hit is adopted;
  * - a marker in the workdir records the drive, whether the default access was
  *   applied, and each example's document id (written before its operations),
- *   so a retry resumes on the same documents. An adopted drive's examples are
- *   found again by name. Operations already on a document (its revision) are
- *   not sent again.
+ *   so a retry resumes on the same documents. Operations already on a
+ *   document (its revision) are not sent again.
+ *
+ * An adopted drive is never changed: its current protection is read and
+ * reported, the default access is not applied, and examples are added only
+ * when the drive has never been changed since it was created (no operations,
+ * i.e. the answer to its creation was lost) — a customer who deleted the
+ * examples never gets them back.
  *
  * Access (Q3 default `SIGNED_IN`): the drive is left unprotected, so any
  * signed-in Renown user can open and write it; `setAccess(…, 'OWNER_ONLY')`
@@ -38,7 +43,7 @@ import { getBearerToken, getRenown } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
 import { redact, type CloudContext } from "./cloud-launch.js";
 import { LaunchError } from "./errors.js";
-import { validateSeeds, type SeedAction, type SeedDocument } from "./seed.js";
+import { EXAMPLE_PREFIX, validateSeeds, type SeedAction, type SeedDocument } from "./seed.js";
 
 export type ProductAccess = "OWNER_ONLY" | "SIGNED_IN";
 
@@ -64,8 +69,10 @@ export interface FoundDocument {
 
 /** The calls on the live server, as the owner's delegated identity. */
 export interface ProductDriveClient {
-  /** The drive with this slug, or null. */
-  findDrive(slug: string): Promise<string | null>;
+  /** The drive with this slug, or null; `untouched` when it has no operations yet (created, never changed). */
+  findDrive(slug: string): Promise<{ id: string; untouched: boolean } | null>;
+  /** Whether the drive is protected (`documentProtection`). */
+  getProtection(driveId: string): Promise<boolean>;
   /** Create the drive in one request (slug, name and app view set at creation); returns its id. */
   createDrive(input: { slug: string; name: string; preferredEditor?: string }): Promise<string>;
   /** The documents already in the drive. */
@@ -109,6 +116,11 @@ export interface ProductDriveResult {
    * not known here (`knownDriveId` without a local record).
    */
   accessApplied: boolean | null;
+  /**
+   * The drive's access as last applied or read. For an adopted drive it is
+   * the drive's current protection, left as it is; null when unknown.
+   */
+  access: ProductAccess | null;
   /** Example documents the server refused (names); they are not retried. */
   failedExamples: string[];
 }
@@ -126,7 +138,12 @@ interface ExampleRecord {
 interface Marker {
   switchboardUrl: string;
   driveId: string;
+  /** Found by its slug instead of created: never changed, its protection only read. */
+  adopted: boolean;
+  /** Examples may be added (a drive created here, or adopted untouched). */
+  seed: boolean;
   accessApplied: boolean;
+  access: ProductAccess | null;
   examples: ExampleRecord[];
   done: boolean;
 }
@@ -144,7 +161,10 @@ function readMarker(workdir: string): Marker | null {
     return {
       switchboardUrl: m.switchboardUrl,
       driveId: m.driveId,
+      adopted: m.adopted === true,
+      seed: m.seed !== false,
       accessApplied: m.accessApplied === true,
+      access: m.access === "OWNER_ONLY" || m.access === "SIGNED_IN" ? m.access : null,
       examples: Array.isArray(m.examples) ? m.examples : [],
       done: m.done === true,
     };
@@ -165,6 +185,7 @@ function resultOf(marker: Marker): ProductDriveResult {
   return {
     driveId: marker.driveId,
     accessApplied: marker.accessApplied,
+    access: marker.access,
     failedExamples: marker.examples.filter((e) => e.status === "failed").map((e) => e.name),
   };
 }
@@ -217,7 +238,7 @@ export async function ensureProductDrive(
   if (opts.knownDriveId) {
     return marker?.driveId === opts.knownDriveId
       ? resultOf(marker)
-      : { driveId: opts.knownDriveId, accessApplied: null, failedExamples: [] };
+      : { driveId: opts.knownDriveId, accessApplied: null, access: null, failedExamples: [] };
   }
   if (marker?.done) return resultOf(marker);
 
@@ -237,13 +258,15 @@ export async function ensureProductDrive(
     }
   };
 
-  let adopted = false;
   if (!marker) {
     const slug = productDriveSlug(opts.appId);
-    let driveId = await step("findDrive", () => client.findDrive(slug));
-    if (driveId) {
-      adopted = true;
-      ctx.log?.info?.(`[launch] product drive ${driveId} found by its slug; using it`);
+    const found = await step("findDrive", () => client.findDrive(slug));
+    let driveId: string;
+    if (found) {
+      driveId = found.id;
+      ctx.log?.info?.(
+        `[launch] product drive ${driveId} found by its slug; using it as it is${found.untouched ? "" : " (no examples added)"}`,
+      );
     } else {
       driveId = await step("createDrive", () =>
         client.createDrive({
@@ -254,24 +277,44 @@ export async function ensureProductDrive(
       );
       ctx.log?.info?.(`[launch] product drive ${driveId} created`);
     }
-    marker = { switchboardUrl: endpoint, driveId, accessApplied: false, examples: [], done: false };
+    marker = {
+      switchboardUrl: endpoint,
+      driveId,
+      adopted: found !== null,
+      seed: found === null || found.untouched,
+      accessApplied: false,
+      access: null,
+      examples: [],
+      done: false,
+    };
     writeMarker(ctx.workdir, marker);
   }
   const m: Marker = marker;
 
-  if (!m.accessApplied) {
+  if (m.adopted && !m.accessApplied) {
+    // Never change an adopted drive's access: read it and report it.
+    try {
+      const isProtected = await client.getProtection(m.driveId);
+      m.access = isProtected ? "OWNER_ONLY" : "SIGNED_IN";
+      m.accessApplied = true;
+    } catch (err) {
+      ctx.log?.warn?.(`[launch] product drive: current access not read: ${message(err)}`);
+    }
+    writeMarker(ctx.workdir, m);
+  } else if (!m.accessApplied) {
     // Q3 default: open to signed-in users. A refusal doesn't stop the launch;
     // it is reported (`accessApplied: false`) so the requests trigger retries.
     try {
       await client.setProtection(m.driveId, DEFAULT_ACCESS === "OWNER_ONLY");
       m.accessApplied = true;
+      m.access = DEFAULT_ACCESS;
     } catch (err) {
       ctx.log?.warn?.(`[launch] product drive: default access not applied: ${message(err)}`);
     }
     writeMarker(ctx.workdir, m);
   }
 
-  const examples = loadExamples(ctx, opts.projectPath);
+  const examples = m.seed ? loadExamples(ctx, opts.projectPath) : [];
   // Documents already in the drive, read at most once: an adopted drive (lost
   // workdir) or a creation whose answer was lost may hold an example already.
   let existing: FoundDocument[] | null = null;
@@ -279,8 +322,13 @@ export async function ensureProductDrive(
     existing ??= await step("listDocuments", () => client.listDocuments(m.driveId));
     const claimed = new Set(m.examples.map((e) => e.docId));
     return (
-      existing.find((e) => e.name === doc.name && e.documentType === doc.documentType && !claimed.has(e.id))?.id ??
-      null
+      existing.find(
+        (e) =>
+          e.name.startsWith(EXAMPLE_PREFIX) &&
+          e.name === doc.name &&
+          e.documentType === doc.documentType &&
+          !claimed.has(e.id),
+      )?.id ?? null
     );
   };
 
@@ -289,7 +337,7 @@ export async function ensureProductDrive(
     if (rec && rec.status !== "created") continue;
     if (rec && !rec.docId) rec.docId = await findExisting(doc); // an earlier creation's answer was lost
     if (!rec) {
-      rec = { key: doc.key, docId: adopted ? await findExisting(doc) : null, status: "created", name: doc.name };
+      rec = { key: doc.key, docId: m.adopted ? await findExisting(doc) : null, status: "created", name: doc.name };
       m.examples.push(rec);
       // Recorded before the creation, so a lost answer is looked up on the retry.
       writeMarker(ctx.workdir, m);
@@ -350,8 +398,9 @@ export async function setAccess(
     );
   }
   const marker = readMarker(ctx.workdir);
-  if (marker && marker.driveId === target.driveId && marker.switchboardUrl === endpoint && !marker.accessApplied) {
+  if (marker && marker.driveId === target.driveId && marker.switchboardUrl === endpoint) {
     marker.accessApplied = true;
+    marker.access = access;
     writeMarker(ctx.workdir, marker);
   }
 }
@@ -362,6 +411,10 @@ export async function setAccess(
 
 const DRIVE_TYPE = "powerhouse/document-drive";
 const PAGE = 100;
+
+const GET_PROTECTION = `query DocumentProtection($documentIdOrSlug: String!) {
+  documentProtection(documentIdOrSlug: $documentIdOrSlug) { documentId protected }
+}`;
 
 const SET_PROTECTION = `mutation SetDocumentProtection($documentIdOrSlug: String!, $protected: Boolean!) {
   setDocumentProtection(documentIdOrSlug: $documentIdOrSlug, protected: $protected) { documentId protected }
@@ -412,7 +465,13 @@ export async function createDriveClient(
 
   /** Every page of a `findDocuments` search. */
   async function find(search: { type?: string; parentId?: string }) {
-    const items: Array<{ id: string; slug?: string | null; name: string; documentType: string }> = [];
+    const items: Array<{
+      id: string;
+      slug?: string | null;
+      name: string;
+      documentType: string;
+      revisionsList: ReadonlyArray<{ scope: string; revision: number }>;
+    }> = [];
     let cursor: string | null | undefined;
     for (let page = 0; page < 20; page++) {
       const res = await client.FindDocuments({ search, paging: { limit: PAGE, ...(cursor ? { cursor } : {}) } });
@@ -425,7 +484,21 @@ export async function createDriveClient(
 
   return {
     findDrive: (slug) =>
-      scrubbed(async () => (await find({ type: DRIVE_TYPE })).find((d) => d.slug === slug)?.id ?? null),
+      scrubbed(async () => {
+        const hit = (await find({ type: DRIVE_TYPE })).find((d) => d.slug === slug);
+        if (!hit) return null;
+        // No operation in any scope: created and never changed since.
+        return { id: hit.id, untouched: hit.revisionsList.every((r) => r.revision === 0) };
+      }),
+    getProtection: (driveId) =>
+      scrubbed(async () => {
+        const data = await client.RunDocument<{ documentProtection: { protected: boolean } }>({
+          operationName: "DocumentProtection",
+          document: GET_PROTECTION,
+          variables: { documentIdOrSlug: driveId },
+        });
+        return data.documentProtection.protected;
+      }),
     createDrive: ({ slug, name, preferredEditor }) =>
       scrubbed(async () => {
         const doc = dm.withSignaturePolicy(

@@ -16,23 +16,37 @@ import { phBuildNodeOptions } from "../../helpers/node-memory.js";
 /* A stalled reactor must not hang the check. */
 const PRODUCT_LOOKUP_TIMEOUT_MS = 5_000;
 
+/** Workspaces known to hold a product document (a product document is never removed). */
+const productWorkspaces = new Set<string>();
+
 /**
  * Ruling X27: examples are required only in a Studio product workspace (one
- * with a product document). A lookup that fails or stalls counts as none.
+ * with a product document). A positive answer is kept per workdir for the
+ * process. A lookup that fails or stalls doesn't require examples this time,
+ * and says so in a note.
  */
-export async function hasProductDoc(ctx: ProductContext): Promise<boolean> {
+export async function examplesRequired(
+  ctx: ProductContext & { workdir?: string },
+): Promise<{ required: boolean; note?: string }> {
+  const key = ctx.workdir;
+  if (key && productWorkspaces.has(key)) return { required: true };
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const timeout = new Promise<null>((resolve) => {
-      timer = setTimeout(() => resolve(null), PRODUCT_LOOKUP_TIMEOUT_MS);
+    const timeout = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), PRODUCT_LOOKUP_TIMEOUT_MS);
     });
-    return (await Promise.race([getProductDoc(ctx), timeout])) !== null;
+    const found = await Promise.race([getProductDoc(ctx), timeout]);
+    if (found === "timeout") return { required: false, note: UNREADABLE_PRODUCT_NOTE };
+    if (found && key) productWorkspaces.add(key);
+    return { required: found !== null };
   } catch {
-    return false;
+    return { required: false, note: UNREADABLE_PRODUCT_NOTE };
   } finally {
     clearTimeout(timer);
   }
 }
+
+export const UNREADABLE_PRODUCT_NOTE = "couldn't read the product — examples not required this time";
 
 const inputSchema = z.object({
   name: z
@@ -84,6 +98,8 @@ export const reactorProjectCheck = defineCommand({
     const { diagnostics, notes } = outcome;
     const observed: ObservedCheck[] = checkResultsFromOutcome(outcome, base);
     if (tests) {
+      const examples = await examplesRequired(context);
+      if (examples.note) notes.push(examples.note);
       const reducerTests = await runReducerTests(base, runProcess);
       if (reducerTests) observed.push(reducerTests);
       else notes.push("reducer tests skipped: the project has no `test` script");
@@ -92,7 +108,7 @@ export const reactorProjectCheck = defineCommand({
         .find((i) => i.workdir === base && i.status === "ready");
       observed.push(
         await runSmoke(base, {
-          requireExamples: await hasProductDoc(context),
+          requireExamples: examples.required,
           notes,
           previewUrl: preview?.endpoints?.["vetra-studio"],
           build: (projectPath) =>

@@ -19,7 +19,7 @@ import { EXAMPLE_PREFIX, validateSeeds, type SeedAction } from "../../src/launch
 import { cloudSetProductDrive, STUDIO_SECRET_ENV } from "../../src/launch/cloud-launch.js";
 import { LaunchError } from "../../src/launch/errors.js";
 import { runSmoke } from "../../src/product/smoke.js";
-import { hasProductDoc } from "../../src/commands/reactor-project/check.js";
+import { examplesRequired, UNREADABLE_PRODUCT_NOTE } from "../../src/commands/reactor-project/check.js";
 import { productHarness } from "../product/helpers.js";
 
 const SWITCHBOARD = "https://switchboard.todo-app.vetra.io";
@@ -127,6 +127,9 @@ const refused = (msg: string) => Object.assign(new Error(msg), { response: { sta
 /** An in-memory live server; it outlives the clients made for it, like the real one. */
 function fakeServer(faults: Faults = {}) {
   const drives = new Map<string, { slug: string; name: string; preferredEditor?: string }>();
+  /** Operations on each drive (adding or deleting a file is one). */
+  const driveOps = new Map<string, number>();
+  const protectedDrives = new Set<string>();
   const docs = new Map<string, FakeDoc>();
   const protection: Array<{ driveId: string; isProtected: boolean }> = [];
   const endpoints: string[] = [];
@@ -136,7 +139,12 @@ function fakeServer(faults: Faults = {}) {
   const client: ProductDriveClient = {
     async findDrive(slug) {
       calls.push("findDrive");
-      return [...drives.entries()].find(([, d]) => d.slug === slug)?.[0] ?? null;
+      const id = [...drives.entries()].find(([, d]) => d.slug === slug)?.[0];
+      return id ? { id, untouched: (driveOps.get(id) ?? 0) === 0 } : null;
+    },
+    async getProtection(driveId) {
+      calls.push("getProtection");
+      return protectedDrives.has(driveId);
     },
     async createDrive(input) {
       calls.push("createDrive");
@@ -158,6 +166,7 @@ function fakeServer(faults: Faults = {}) {
       calls.push("createDocument");
       const id = `doc-${docs.size + 1}`;
       docs.set(id, { driveId, ...input, ops: [] });
+      driveOps.set(driveId, (driveOps.get(driveId) ?? 0) + 1);
       createdDocs++;
       if (faults.loseCreateDocumentAnswerAt === createdDocs) {
         faults.loseCreateDocumentAnswerAt = undefined;
@@ -186,12 +195,22 @@ function fakeServer(faults: Faults = {}) {
       calls.push("setProtection");
       if (faults.refuseProtection) throw refused("Forbidden: You must be an admin of this document");
       protection.push({ driveId, isProtected });
+      if (isProtected) protectedDrives.add(driveId);
+      else protectedDrives.delete(driveId);
     },
+  };
+  /** The customer deletes a document from the drive. */
+  const deleteDocument = (id: string) => {
+    const doc = docs.get(id)!;
+    docs.delete(id);
+    driveOps.set(doc.driveId, (driveOps.get(doc.driveId) ?? 0) + 1);
   };
   return {
     drives,
     docs,
     protection,
+    protectedDrives,
+    deleteDocument,
     endpoints,
     calls,
     faults,
@@ -236,7 +255,7 @@ describe("product drive (D21)", () => {
     const ctx = ctxWith(server.driveClient);
 
     const first = await ensureProductDrive(ctx, { ...base(), appEditorId: "todo-board" });
-    expect(first).toEqual({ driveId: "drive-1", accessApplied: true, failedExamples: [] });
+    expect(first).toEqual({ driveId: "drive-1", accessApplied: true, access: "SIGNED_IN", failedExamples: [] });
     expect(server.endpoints).toEqual([`${SWITCHBOARD}/graphql`]);
     expect([...server.drives.values()]).toEqual([
       { slug: productDriveSlug("app-1"), name: "Todo App", preferredEditor: "todo-board" },
@@ -290,17 +309,45 @@ describe("product drive (D21)", () => {
     expect(server.docs.size).toBe(2);
   });
 
-  it("a lost workdir adopts the drive by its slug and doesn't repeat its examples", async () => {
+  it("a lost workdir adopts the drive by its slug without touching it", async () => {
     const server = fakeServer();
     await ensureProductDrive(ctxWith(server.driveClient), base());
     await fs.rm(path.join(workdir, ".ph"), { recursive: true });
+    const before = server.calls.length;
 
     const again = await ensureProductDrive(ctxWith(server.driveClient), base());
-    expect(again.driveId).toBe("drive-1");
+    expect(again).toEqual({ driveId: "drive-1", accessApplied: true, access: "SIGNED_IN", failedExamples: [] });
     expect(server.drives.size).toBe(1);
     expect(server.docs.size).toBe(2);
-    expect([...server.docs.values()][0].ops).toHaveLength(3);
+    expect(server.calls.slice(before)).toEqual(["findDrive", "getProtection"]);
     expect(lines.some((l) => l.includes("found by its slug"))).toBe(true);
+  });
+
+  it("an adopted owner-only drive stays owner-only", async () => {
+    const server = fakeServer();
+    const ctx = ctxWith(server.driveClient);
+    await ensureProductDrive(ctx, base());
+    await setAccess(ctx, "OWNER_ONLY", { switchboardUrl: SWITCHBOARD, driveId: "drive-1" });
+    await fs.rm(path.join(workdir, ".ph"), { recursive: true });
+
+    const again = await ensureProductDrive(ctx, base());
+    expect(again.access).toBe("OWNER_ONLY");
+    expect(again.accessApplied).toBe(true);
+    expect(server.protectedDrives.has("drive-1")).toBe(true);
+    expect(server.protection.at(-1)).toEqual({ driveId: "drive-1", isProtected: true });
+  });
+
+  it("an adopted drive whose examples were deleted gets none back", async () => {
+    const server = fakeServer();
+    const ctx = ctxWith(server.driveClient);
+    await ensureProductDrive(ctx, base());
+    for (const id of [...server.docs.keys()]) server.deleteDocument(id);
+    await fs.rm(path.join(workdir, ".ph"), { recursive: true });
+
+    const again = await ensureProductDrive(ctx, base());
+    expect(again.driveId).toBe("drive-1");
+    expect(server.docs.size).toBe(0);
+    expect(lines.some((l) => l.includes("no examples added"))).toBe(true);
   });
 
   it("a lost answer mid-seed resumes on the same documents without repeating anything", async () => {
@@ -314,7 +361,7 @@ describe("product drive (D21)", () => {
     await expect(ensureProductDrive(ctx, base())).rejects.toBeInstanceOf(LaunchError);
 
     const result = await ensureProductDrive(ctx, base());
-    expect(result).toEqual({ driveId: "drive-1", accessApplied: true, failedExamples: [] });
+    expect(result).toEqual({ driveId: "drive-1", accessApplied: true, access: "SIGNED_IN", failedExamples: [] });
     expect(server.drives.size).toBe(1);
     const docs = [...server.docs.values()];
     expect(docs.map((d) => d.name)).toEqual(["Example — delete me: Weekend chores", "Example — delete me"]);
@@ -368,7 +415,7 @@ describe("product drive (D21)", () => {
     const server = fakeServer({ refuseProtection: true });
     const ctx = ctxWith(server.driveClient);
     const result = await ensureProductDrive(ctx, base());
-    expect(result).toEqual({ driveId: "drive-1", accessApplied: false, failedExamples: [] });
+    expect(result).toEqual({ driveId: "drive-1", accessApplied: false, access: null, failedExamples: [] });
     expect(server.docs.size).toBe(2); // the launch went on
     expect(lines.some((l) => l.includes("default access not applied"))).toBe(true);
     // Reported again until the requests trigger applies it.
@@ -548,14 +595,32 @@ describe("product drive (D21)", () => {
       const withProduct = await productHarness({ product: true });
       const without = await productHarness({ product: false });
       try {
-        expect(await hasProductDoc(withProduct.ctx)).toBe(true);
-        expect(await hasProductDoc(without.ctx)).toBe(false);
-        expect(await hasProductDoc({})).toBe(false); // one-shot CLI: no reactor
+        expect(await examplesRequired({ ...withProduct.ctx, workdir: "/ws/a" })).toEqual({ required: true });
+        expect(await examplesRequired({ ...without.ctx, workdir: "/ws/b" })).toEqual({ required: false });
+        expect(await examplesRequired({ workdir: "/ws/c" })).toEqual({ required: false }); // one-shot CLI: no reactor
+        // A positive answer is kept for the process: no lookup the next time.
+        expect(
+          await examplesRequired({
+            workdir: "/ws/a",
+            folders: {},
+            reactor: () => Promise.reject(new Error("must not be asked")),
+          }),
+        ).toEqual({ required: true });
       } finally {
         await withProduct.kill();
         await without.kill();
       }
     }, 30_000);
+
+    it("a product lookup that fails says so instead of silently dropping the requirement", async () => {
+      const r = await examplesRequired({
+        workdir: "/ws/broken",
+        folders: {},
+        reactor: () => Promise.reject(new Error("reactor down")),
+      });
+      expect(r).toEqual({ required: false, note: UNREADABLE_PRODUCT_NOTE });
+      expect(UNREADABLE_PRODUCT_NOTE).toBe("couldn't read the product — examples not required this time");
+    });
   });
 
   describe("the delegated-identity client", () => {
@@ -636,6 +701,8 @@ describe("product drive (D21)", () => {
                 revision: 0,
                 state: { global: {} },
               });
+              const parent = docs.get(String(v.parentIdentifier ?? ""));
+              if (parent) parent.revision += 1; // ADD_FILE on the drive
               data = { createEmptyDocument: fields(id) };
               break;
             }
@@ -651,6 +718,9 @@ describe("product drive (D21)", () => {
               data = { mutateDocument: fields(String(v.documentIdentifier)) };
               break;
             }
+            case "DocumentProtection":
+              data = { documentProtection: { documentId: v.documentIdOrSlug, protected: false } };
+              break;
             case "SetDocumentProtection":
               data = { setDocumentProtection: { documentId: v.documentIdOrSlug, protected: v.protected } };
               break;
@@ -686,7 +756,8 @@ describe("product drive (D21)", () => {
         const slug = productDriveSlug("app-1");
         expect(await client.findDrive(slug)).toBeNull();
         const driveId = await client.createDrive({ slug, name: "Todo App", preferredEditor: "todo-board" });
-        expect(await client.findDrive(slug)).toBe(driveId);
+        expect(await client.findDrive(slug)).toEqual({ id: driveId, untouched: true });
+        expect(await client.getProtection(driveId)).toBe(false);
         const drive = stub.docs.get(driveId)!;
         expect(drive).toMatchObject({
           slug,
@@ -700,6 +771,7 @@ describe("product drive (D21)", () => {
           documentType: "acme/todo-list",
           name: "Example — delete me: Weekend chores",
         });
+        expect(await client.findDrive(slug)).toEqual({ id: driveId, untouched: false });
         expect(await client.listDocuments(driveId)).toEqual([
           { id: docId, name: "Example — delete me: Weekend chores", documentType: "acme/todo-list" },
         ]);
