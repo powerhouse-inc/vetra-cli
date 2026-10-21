@@ -35,19 +35,45 @@ export type PreviewAuthTokenProvider = (
 ) => Promise<string | null | undefined>;
 
 type RenownTokenSource = {
-  user?: unknown;
+  user?: { address?: string } | null;
   getBearerToken: (opts: { expiresIn: number; aud: string }) => Promise<string>;
 };
 
+const TOKEN_TTL_S = 600;
+/** Re-mint this long before expiry, so a token never lapses mid-request. */
+const TOKEN_REFRESH_MARGIN_MS = 60_000;
+let cachedToken:
+  { address: string; aud: string; token: string; until: number } | undefined;
+
 // The Connect Renown session (window.ph.renown), with a Studio-bound `aud`.
+// One token is reused until near expiry (not minted per call); a sign-out or
+// a different wallet drops it.
 const ambientStudioToken: PreviewAuthTokenProvider = async (aud) => {
   if (typeof window === "undefined") return undefined;
   const renown = (window as unknown as { ph?: { renown?: RenownTokenSource } })
     .ph?.renown;
-  if (!renown?.user || typeof renown.getBearerToken !== "function") {
+  const address = renown?.user?.address;
+  if (!renown || !address || typeof renown.getBearerToken !== "function") {
+    cachedToken = undefined;
     return undefined;
   }
-  return renown.getBearerToken({ expiresIn: 600, aud });
+  const now = Date.now();
+  if (
+    cachedToken &&
+    cachedToken.address === address &&
+    cachedToken.aud === aud &&
+    cachedToken.until > now
+  ) {
+    return cachedToken.token;
+  }
+  const token = await renown.getBearerToken({ expiresIn: TOKEN_TTL_S, aud });
+  cachedToken = {
+    address,
+    aud,
+    token,
+    until: now + TOKEN_TTL_S * 1000 - TOKEN_REFRESH_MARGIN_MS,
+  };
+  return token;
 };
 
 let tokenProvider: PreviewAuthTokenProvider = ambientStudioToken;

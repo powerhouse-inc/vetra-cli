@@ -126,6 +126,37 @@ describe("owner-only preview-server calls carry the user's Renown bearer", () =>
     expect(lastAuth("/auth/status")).toBe("Bearer amb-tok");
   });
 
+  it("reuses one ambient token until near expiry; re-mints on a new wallet or sign-out", async () => {
+    const getBearerToken = vi.fn(() =>
+      Promise.resolve(`amb-${getBearerToken.mock.calls.length}`),
+    );
+    const renown: {
+      user: { address: string } | null;
+      getBearerToken: typeof getBearerToken;
+    } = {
+      user: { address: "0xa" },
+      getBearerToken,
+    };
+    vi.stubGlobal("window", { ph: { renown } });
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] });
+    try {
+      for (let i = 0; i < 20; i++) await c.fetchAuthStatus();
+      expect(getBearerToken).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(1_000_000 + 545_000); // inside the refresh margin
+      await c.fetchAuthStatus();
+      expect(getBearerToken).toHaveBeenCalledTimes(2);
+      renown.user = { address: "0xb" };
+      await c.fetchAuthStatus();
+      expect(getBearerToken).toHaveBeenCalledTimes(3);
+      renown.user = null;
+      calls = [];
+      await c.fetchAuthStatus();
+      expect(lastAuth("/auth/status")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("public routes don't need the bearer", async () => {
     signedIn();
     body = { kind: "no-target" };
