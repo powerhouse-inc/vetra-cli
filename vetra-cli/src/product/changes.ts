@@ -7,18 +7,27 @@
  * while a change is open joins that change instead). The agent's side is
  * this module: when a new CHANGE or UNDO becomes active, the reactor projects
  * must hold the live version's code, so a change never builds on leftovers
- * (a stray edit, an older draft). Discard (`discardChange` in the launch
- * orchestrator) puts the code back the same way and keeps the change in the
- * story, marked DISCARDED.
+ * (a stray edit, an older draft). It runs inside the agent's turn, before the
+ * model's first step (`ChangeBaseProcessor`), at most once per change (a git
+ * ref records it), and never destroys anything: code that isn't the live
+ * version's is first kept under `refs/vetra/unsaved/…`. Discard
+ * (`discardChange` in the launch orchestrator) puts the code back the same
+ * way and keeps the change in the story, marked DISCARDED.
  */
 import type { Change, StudioProductState } from "vetra-app/document-models/studio-product";
-import { discardDraft, draftMatches, versionTag } from "../launch/git-versions.js";
+import {
+  discardDraft,
+  draftMatches,
+  hasChangeBase,
+  markChangeBase,
+  versionTag,
+} from "../launch/git-versions.js";
 import { getProductDoc, type ProductContext } from "./product-doc.js";
 
 const TAG = "[changes]";
 
 /** What `prepareChangeBase` did. */
-export type ChangeBaseOutcome = "restored" | "unchanged" | "skipped";
+export type ChangeBaseOutcome = "restored" | "unchanged" | "already" | "skipped";
 
 export interface ChangeBaseContext extends ProductContext {
   workdir: string;
@@ -32,9 +41,11 @@ export interface ChangeBaseContext extends ProductContext {
 export interface ChangeBaseDeps {
   draftMatches: typeof draftMatches;
   discardDraft: typeof discardDraft;
+  hasChangeBase: typeof hasChangeBase;
+  markChangeBase: typeof markChangeBase;
 }
 
-const defaultDeps: ChangeBaseDeps = { draftMatches, discardDraft };
+const defaultDeps: ChangeBaseDeps = { draftMatches, discardDraft, hasChangeBase, markChangeBase };
 
 /** The live version's git tag, or null when nothing is live. */
 export function liveTag(state: StudioProductState): string | null {
@@ -45,9 +56,8 @@ export function liveTag(state: StudioProductState): string | null {
 
 /**
  * Whether `change` is a change after launch the agent hasn't started on yet:
- * a CHANGE or UNDO, BUILDING, with no step planned. Until the plan exists the
- * agent only has the plan's tools, so the project code is still untouched;
- * once it plans, the code is the change's and is never reset from here.
+ * a CHANGE or UNDO, BUILDING, with no step planned. Once it plans, the code
+ * is the change's and is never reset from here.
  */
 export function awaitsBase(change: Change): boolean {
   return (
@@ -58,12 +68,13 @@ export function awaitsBase(change: Change): boolean {
 }
 
 /**
- * Make a new change start from the live version's code (F19): when `change`
- * awaits its base and the reactor projects aren't the live tag's, restore
- * them with `discardDraft` (a `Discard change` commit when HEAD moved, else a
- * working-tree reset; product specs and chats are kept). `opts.state` is the
+ * Make a new change start from the live version's code (F19), once: when
+ * `change` awaits its base, nothing marks it prepared yet
+ * (`refs/vetra/change-base/<id>`) and the reactor projects aren't the live
+ * tag's, keep them under `refs/vetra/unsaved/<id>-<ms>` and restore the live
+ * code with `discardDraft`; then mark the change prepared. `opts.state` is the
  * product state when the caller has it (else it is read). Throws when git
- * fails, so the caller can retry on its next pass.
+ * fails (nothing is marked, so a later turn tries again).
  */
 export async function prepareChangeBase(
   ctx: ChangeBaseContext,
@@ -75,8 +86,15 @@ export async function prepareChangeBase(
   const state = opts.state ?? (await getProductDoc(ctx))?.state;
   const tag = state ? liveTag(state) : null;
   if (!tag) return "skipped";
-  if (await d.draftMatches(ctx.workdir, tag)) return "unchanged";
-  await d.discardDraft(ctx.workdir, tag);
-  ctx.log?.info?.(`${TAG} change ${change.id} starts from ${tag}; earlier unsaved code was put back`);
-  return "restored";
+  if (await d.hasChangeBase(ctx.workdir, change.id)) return "already";
+  let outcome: ChangeBaseOutcome = "unchanged";
+  if (!(await d.draftMatches(ctx.workdir, tag))) {
+    const unsaved = await d.discardDraft(ctx.workdir, tag, { label: change.id });
+    ctx.log?.info?.(
+      `${TAG} change ${change.id} starts from ${tag}; the code that was there is kept at ${unsaved ?? "(nothing to keep)"}`,
+    );
+    outcome = "restored";
+  }
+  await d.markChangeBase(ctx.workdir, change.id, tag);
+  return outcome;
 }

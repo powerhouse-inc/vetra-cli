@@ -55,6 +55,7 @@ interface ChangeView {
   id: string;
   status: string;
   chatSessionId: string | null;
+  chatSessionIds: string[];
 }
 
 function changesOf(doc: PHDocument | undefined): ChangeView[] {
@@ -64,6 +65,7 @@ function changesOf(doc: PHDocument | undefined): ChangeView[] {
           id?: string;
           status?: string;
           chatSessionId?: string | null;
+          chatSessionIds?: string[] | null;
         }[];
       }
     | undefined;
@@ -71,14 +73,25 @@ function changesOf(doc: PHDocument | undefined): ChangeView[] {
     .filter(
       (
         c,
-      ): c is { id: string; status?: string; chatSessionId?: string | null } =>
-        typeof c.id === "string",
+      ): c is {
+        id: string;
+        status?: string;
+        chatSessionId?: string | null;
+        chatSessionIds?: string[] | null;
+      } => typeof c.id === "string",
     )
     .map((c) => ({
       id: c.id,
       status: c.status ?? "BUILDING",
       chatSessionId: c.chatSessionId ?? null,
+      chatSessionIds: c.chatSessionIds ?? [],
     }));
+}
+
+function hasNoMessages(doc: PHDocument | undefined): boolean {
+  const global = (doc?.state as { global?: { messages?: unknown } } | undefined)
+    ?.global;
+  return Array.isArray(global?.messages) && global.messages.length === 0;
 }
 
 function sessionsIn(drive: StartProductDrive): FileNode[] {
@@ -128,14 +141,27 @@ async function run(
         createdAt: at,
       }),
     ]);
-  const newSession = async () =>
-    (
+  // A conversation no change uses and nobody wrote in (left by a start that
+  // failed half-way) is reused, so a retry doesn't leave empty ones behind.
+  const linked = new Set(
+    changes.flatMap((c) => [
+      ...c.chatSessionIds,
+      ...(c.chatSessionId ? [c.chatSessionId] : []),
+    ]),
+  );
+  const newSession = async () => {
+    for (const node of listed) {
+      if (linked.has(node.id)) continue;
+      if (hasNoMessages(await deps.getDocument(node.id))) return node.id;
+    }
+    return (
       await deps.addDocument(
         drive.header.id,
         `Session ${listed.length + 1}`,
         CHAT_SESSION_TYPE,
       )
     ).id;
+  };
 
   const open = changes.find((c) => JOINABLE.has(c.status));
   if (open) {
@@ -146,16 +172,16 @@ async function run(
     }
     // A change whose conversation is gone can't be relinked (no such
     // operation): the agent still works on the active change from any.
-    const linked =
+    const own =
       open.chatSessionId && listed.some((n) => n.id === open.chatSessionId)
         ? open.chatSessionId
         : null;
-    if (!linked) {
+    if (!own) {
       console.warn(
         `[startChange] change ${open.id}'s conversation ${open.chatSessionId ?? "(none)"} is not in the drive; using a new one`,
       );
     }
-    const sessionId = linked ?? (await newSession());
+    const sessionId = own ?? (await newSession());
     await message(sessionId);
     return { changeId: open.id, sessionId, joined: true };
   }

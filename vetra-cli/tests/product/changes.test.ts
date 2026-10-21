@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import type { ProcessInputStepArgs } from "@mastra/core/processors";
+import { CHANGE_BASE_RETRY_MS, ChangeBaseProcessor } from "../../src/agents/change-base.js";
 import {
   discardDraft,
   draftMatches,
+  hasChangeBase,
   snapshot,
 } from "../../src/launch/git-versions.js";
 import { awaitsBase, liveTag, prepareChangeBase } from "../../src/product/changes.js";
@@ -27,6 +30,15 @@ function read(root: string, rel: string): string | null {
 
 function git(root: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+}
+
+function refs(root: string, prefix: string): string[] {
+  return git(root, "for-each-ref", "--format=%(refname)", prefix).split("\n").filter(Boolean);
+}
+
+/** Step `n` of an agent turn, as the processor sees it. */
+function step(n: number): ProcessInputStepArgs {
+  return { stepNumber: n } as unknown as ProcessInputStepArgs;
 }
 
 /** A Studio whose launches commit and tag for real; Version 1 is live. */
@@ -89,6 +101,12 @@ describe("changes after launch", () => {
     expect(read(h.workdir, "todo/src/notes.ts")).toBeNull();
     expect(read(h.workdir, "specs/product/idea.md")).toBe("# Idea, with notes\n");
     expect(await draftMatches(h.workdir, "v1")).toBe(true);
+    // Discard snapshots first: the thrown-away code is still reachable.
+    const [kept] = refs(h.workdir, "refs/vetra/unsaved/");
+    expect(kept).toMatch(/^refs\/vetra\/unsaved\/change-2-\d+$/);
+    expect(git(h.workdir, "show", `${kept}:todo/src/notes.ts`)).toBe("export const notes = true;");
+    expect(git(h.workdir, "show", `${kept}:todo/src/model.ts`)).toBe("export const v = 2;");
+    expect(h.lines.some((l) => l.includes(kept))).toBe(true);
     const s = await h.state();
     const change = s.changes.find((c) => c.id === "change-2")!;
     expect(change.status).toBe("DISCARDED");
@@ -100,23 +118,77 @@ describe("changes after launch", () => {
     expect(s.liveVersion).toBe(1);
   });
 
-  it("a new change starts from the live version's code, once", async () => {
+  it("a new change starts from the live version's code, keeping what was there", async () => {
     h = await liveStudio();
     // Code left over after the launch (never part of a version).
     write(h.workdir, "todo/src/model.ts", "export const v = 99;\n");
     write(h.workdir, "todo/src/leftover.ts", "x\n");
     await startChange(h, "change-2", "session-2", "UNDO");
-    const memory = newRequestsMemory();
+    // The poll never touches the code; the agent's turn does.
+    expect(await requestsPass(h.octx, newRequestsMemory())).toBeNull();
+    expect(read(h.workdir, "todo/src/model.ts")).toBe("export const v = 99;\n");
 
-    expect(await requestsPass(h.octx, memory)).toBe("change-base");
+    const processor = new ChangeBaseProcessor(h.octx);
+    await processor.processInputStep(step(0));
+
     expect(read(h.workdir, "todo/src/model.ts")).toBe("export const v = 1;\n");
     expect(read(h.workdir, "todo/src/leftover.ts")).toBeNull();
     expect(read(h.workdir, "specs/product/idea.md")).toBe("# Idea\n");
+    const [kept] = refs(h.workdir, "refs/vetra/unsaved/");
+    expect(git(h.workdir, "show", `${kept}:todo/src/leftover.ts`)).toBe("x");
+    expect(git(h.workdir, "show", `${kept}:todo/src/model.ts`)).toBe("export const v = 99;");
+    expect(await hasChangeBase(h.workdir, "change-2")).toBe(true);
+  });
 
-    // Checked once per change: later edits (before the plan) aren't touched again.
-    write(h.workdir, "todo/src/model.ts", "export const v = 3;\n");
-    expect(await requestsPass(h.octx, memory)).toBeNull();
-    expect(read(h.workdir, "todo/src/model.ts")).toBe("export const v = 3;\n");
+  it("edits made before the first plan step survive later turns and a restart", async () => {
+    h = await liveStudio();
+    await startChange(h, "change-2", "session-2");
+    await new ChangeBaseProcessor(h.octx).processInputStep(step(0));
+    expect(refs(h.workdir, "refs/vetra/unsaved/")).toEqual([]); // nothing to keep
+
+    // The agent's first turn edits project specs before it plans.
+    write(h.workdir, "todo/specs/model.json", '{"field":"notes"}\n');
+    write(h.workdir, "todo/src/model.ts", "export const v = 2;\n");
+    const processor = new ChangeBaseProcessor(h.octx);
+    await processor.processInputStep(step(3)); // later step of the turn
+    await processor.processInputStep(step(0)); // next turn
+    await new ChangeBaseProcessor(h.octx).processInputStep(step(0)); // after a restart
+    expect(await prepareChangeBase(h.octx, (await h.state()).changes[1])).toBe("already");
+
+    expect(read(h.workdir, "todo/specs/model.json")).toBe('{"field":"notes"}\n');
+    expect(read(h.workdir, "todo/src/model.ts")).toBe("export const v = 2;\n");
+  });
+
+  it("a git failure is logged once and retried after a while", async () => {
+    h = await liveStudio();
+    await startChange(h, "change-2", "session-2");
+    let now = 1_000;
+    let tries = 0;
+    const processor = new ChangeBaseProcessor(h.octx, {
+      now: () => now,
+      prepare: async () => {
+        tries++;
+        throw new Error("git broke");
+      },
+    });
+    h.lines.length = 0;
+    await processor.processInputStep(step(0));
+    await processor.processInputStep(step(0));
+    expect(tries).toBe(1);
+    now += CHANGE_BASE_RETRY_MS;
+    await processor.processInputStep(step(0));
+    expect(tries).toBe(2);
+    expect(h.lines.filter((l) => l.includes("git broke"))).toHaveLength(1);
+  });
+
+  it("a product that can't be read never stops the turn", async () => {
+    h = await liveStudio();
+    const processor = new ChangeBaseProcessor(h.octx, {
+      readProduct: async () => {
+        throw new Error("offline");
+      },
+    });
+    await expect(processor.processInputStep(step(0))).resolves.toBeUndefined();
   });
 
   it("never resets the code of a change the agent has planned", async () => {
@@ -130,7 +202,7 @@ describe("changes after launch", () => {
     const change = s.changes.find((c) => c.id === "change-2")!;
     expect(awaitsBase(change)).toBe(false);
     expect(await prepareChangeBase(h.octx, change, { state: s })).toBe("skipped");
-    expect(await requestsPass(h.octx, newRequestsMemory())).toBeNull();
+    await new ChangeBaseProcessor(h.octx).processInputStep(step(0));
     expect(read(h.workdir, "todo/src/model.ts")).toBe("export const v = 2;\n");
   });
 

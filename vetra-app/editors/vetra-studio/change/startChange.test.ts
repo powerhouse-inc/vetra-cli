@@ -79,6 +79,7 @@ function studio(productId = "product-1") {
   const messages = new Map<string, string[]>([["session-1", ["todo app"]]]);
   const productDispatches: string[][] = [];
   let ids = 0;
+  let failNext = false;
   const deps: StartChangeDeps = {
     addDocument: vi.fn((_driveId: string, name: string, type: string) => {
       const id = `session-${nodes.length}`;
@@ -93,6 +94,10 @@ function studio(productId = "product-1") {
       return Promise.resolve({ id });
     }),
     dispatch: vi.fn((id: string, actions: Action[]) => {
+      if (failNext && id === productId) {
+        failNext = false;
+        return Promise.reject(new Error("dispatch failed"));
+      }
       if (id === productId) {
         productDispatches.push(actions.map((a) => a.type));
         apply(actions);
@@ -106,7 +111,14 @@ function studio(productId = "product-1") {
     }),
     getDocument: (id: string) =>
       Promise.resolve(
-        id === productId ? (product as unknown as PHDocument) : undefined,
+        id === productId
+          ? (product as unknown as PHDocument)
+          : messages.has(id)
+            ? ({
+                header: { id },
+                state: { global: { messages: messages.get(id) } },
+              } as unknown as PHDocument)
+            : undefined,
       ),
     now: () => AT,
     newId: () => `id-${++ids}`,
@@ -119,6 +131,9 @@ function studio(productId = "product-1") {
     productDispatches,
     state: () => product.state.global,
     apply,
+    failProductOnce: () => {
+      failNext = true;
+    },
   };
 }
 
@@ -390,6 +405,27 @@ describe("startChange", () => {
       ),
     ).rejects.toThrow("still loading");
     expect(s.deps.addDocument).not.toHaveBeenCalled();
+  });
+
+  it("a retry after a failed start reuses the empty conversation", async () => {
+    const s = studio();
+    goLive(s);
+    const input = {
+      drive: s.drive,
+      productId: s.productId,
+      request: "Add a notes field",
+      kind: "CHANGE" as const,
+    };
+    s.failProductOnce();
+    await expect(startChange(input, s.deps)).rejects.toThrow("dispatch failed");
+    expect(s.messages.get("session-2")).toEqual([]);
+
+    const result = await startChange(input, s.deps);
+
+    expect(result.sessionId).toBe("session-2");
+    expect(s.deps.addDocument).toHaveBeenCalledTimes(1);
+    expect(s.messages.get("session-2")).toEqual(["Add a notes field"]);
+    expect(s.state().changes[1].chatSessionId).toBe("session-2");
   });
 
   it("joins a double submit instead of starting twice", async () => {

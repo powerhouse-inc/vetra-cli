@@ -168,8 +168,13 @@ describe("discardDraft", () => {
     write("specs/product/idea.md", "# Idea, refined\n");
     write(".ph/vetra/.mastra/chat.db", "chat history + more");
 
-    await discardDraft(workdir, "v1");
+    const kept = await discardDraft(workdir, "v1", { label: "c 1", now: () => 42 });
 
+    // Snapshotted first, without moving main.
+    expect(kept).toBe("refs/vetra/unsaved/c_1-42");
+    expect(git("show", `${kept}:todo/src/draft.ts`)).toBe("export const draft = 1;");
+    expect(git("show", `${kept}:todo/src/model.ts`)).toBe("export const v = 99;");
+    expect(git("ls-tree", "-r", "--name-only", kept!)).not.toMatch(/\.ph\//);
     expect(read("todo/src/model.ts")).toBe("export const v = 1;\n");
     expect(read("todo/package.json")).toBe('{"name":"todo","version":"1.0.0"}\n');
     expect(read("todo/src/draft.ts")).toBeNull();
@@ -196,6 +201,12 @@ describe("discardDraft", () => {
     expect(git("show", "HEAD:specs/product/idea.md")).toBe("# Idea v2");
     expect(read("todo/src/stray.ts")).toBeNull();
     expect(git("status", "--porcelain")).toBe("");
+  });
+
+  it("keeps nothing when the code already is the live version's", async () => {
+    await snapshot(workdir, 1, "First");
+    expect(await discardDraft(workdir, "v1")).toBeNull();
+    expect(git("for-each-ref", "refs/vetra/")).toBe("");
   });
 
   it("removes a reactor project the draft added", async () => {
