@@ -185,6 +185,19 @@ describe("understand", () => {
     expect(en.calls[0].system).toContain("in English.");
   });
 
+  it("a diagram with steps but no things is still a read", async () => {
+    const { deps } = fakeDeps(async () => ({
+      text: JSON.stringify({
+        roles: [{ id: "r1", name: "Bauleitung" }],
+        steps: [{ id: "s1", name: "Prüfen", roleId: "r1", thingId: null }],
+      }),
+    }));
+    const result = await understand(deps, { materials: [photo], text: "", language: "de" });
+    expect(result.notes).toEqual([]);
+    expect(result.draft.things).toEqual([]);
+    expect(result.draft.steps.map((s) => s.name)).toEqual(["Prüfen"]);
+  });
+
   it("fenced JSON is accepted", async () => {
     const { deps } = fakeDeps(async () => ({
       text: "Here you go:\n```json\n" + JSON.stringify(thing("Übergabe")) + "\n```",

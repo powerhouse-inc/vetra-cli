@@ -255,7 +255,8 @@ export async function understand(
         abortSignal,
       );
       const cost = callCostUsd(result) ?? 0;
-      const draft = parseDraft(result.text, ids);
+      // A diagram may yield roles/steps but no things; that is still a read.
+      const draft = parseDraft(result.text, ids, { requireThings: false });
       return { draft: draft && namespaceIds(pinSources(draft, inp.material), `i${i}-`), cost };
     }),
   );

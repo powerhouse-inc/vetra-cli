@@ -179,6 +179,7 @@ function parseField(v: unknown, ids: () => string): DraftField | null {
 export function parseDraft(
   raw: string,
   ids: () => string,
+  { requireThings = true }: { requireThings?: boolean } = {},
 ): UnderstoodDraft | null {
   const json = extractJson(raw);
   if (!isRecord(json)) return null;
@@ -198,7 +199,6 @@ export function parseDraft(
       fields: fields.slice(0, DRAFT_LIMITS.fieldsPerThing),
     });
   }
-  if (things.length === 0) return null;
   const roles: DraftRole[] = [];
   for (const r of arr(json.roles)) {
     const name = isRecord(r) ? str(r.name, DRAFT_LIMITS.text) : "";
@@ -233,6 +233,15 @@ export function parseDraft(
     if (kind && id)
       materials.push({ id, name: str(m.name, DRAFT_LIMITS.text), kind });
   }
+  const summary = str(json.summary, DRAFT_LIMITS.summary);
+  // A diagram can carry roles and steps without things; every other
+  // caller keeps the strict "a draft has things" rule.
+  if (
+    things.length === 0 &&
+    (requireThings || (roles.length === 0 && steps.length === 0 && !summary))
+  ) {
+    return null;
+  }
   const keptThings = things.slice(0, DRAFT_LIMITS.things);
   const keptRoles = roles.slice(0, DRAFT_LIMITS.roles);
   const thingIds = new Set(keptThings.map((t) => t.id));
@@ -240,7 +249,7 @@ export function parseDraft(
   return {
     version: 1,
     language: json.language === "de" ? "de" : "en",
-    summary: str(json.summary, DRAFT_LIMITS.summary),
+    summary,
     things: keptThings,
     roles: keptRoles,
     steps: steps.slice(0, DRAFT_LIMITS.steps).map((s) => ({

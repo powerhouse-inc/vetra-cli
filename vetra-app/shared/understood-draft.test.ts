@@ -75,6 +75,18 @@ describe("parseDraft", () => {
     expect(parseDraft('{"things": []}', counter())).toBeNull();
   });
 
+  it("accepts a diagram's roles and steps without things when asked", () => {
+    const raw = JSON.stringify({
+      roles: [{ name: "Bauleitung" }],
+      steps: [{ name: "Prüfen", roleId: "r1" }],
+    });
+    expect(parseDraft(raw, counter())).toBeNull();
+    const d = parseDraft(raw, counter(), { requireThings: false });
+    expect(d?.things).toEqual([]);
+    expect(d?.roles.map((r) => r.name)).toEqual(["Bauleitung"]);
+    expect(d?.steps.map((s) => s.name)).toEqual(["Prüfen"]);
+  });
+
   it("limits are clamped", () => {
     const things = Array.from({ length: 30 }, (_, i) => ({
       id: `t${i}`,
