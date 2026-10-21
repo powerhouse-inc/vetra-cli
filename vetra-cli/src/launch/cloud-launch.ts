@@ -16,7 +16,7 @@
 import { CLOUD_BASE_DOMAIN } from "@powerhousedao/vetra-cloud-client";
 import type { Config } from "../framework.js";
 import { getBearerToken } from "../auth/renown.js";
-import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from "../cloud/config.js";
+import { resolveCloudConfig, resolveVetraAppsEndpoint } from "../cloud/config.js";
 import { LaunchError } from "./errors.js";
 
 export const STUDIO_SECRET_HEADER = "x-vetra-studio-secret";
@@ -89,7 +89,11 @@ interface GqlError {
   extensions?: { code?: string };
 }
 
-/** One GraphQL call on the agent's Studio path; throws `LaunchError` with the cloud's code. */
+/**
+ * One GraphQL call on the agent's Studio path; throws `LaunchError` with the cloud's code.
+ * Posts to the `vetra-apps` subgraph directly: the gateway at `/graphql` drops
+ * the secret header before it reaches the subgraph.
+ */
 export async function studioGql<T>(
   ctx: CloudContext,
   operation: StudioOperation,
@@ -97,7 +101,7 @@ export async function studioGql<T>(
   variables: Record<string, unknown>,
 ): Promise<T> {
   const secret = studioSecret(ctx);
-  const endpoint = resolveCloudGraphqlEndpoint(ctx.config);
+  const endpoint = resolveVetraAppsEndpoint(ctx.config);
   const token = await (ctx.bearerToken
     ? ctx.bearerToken()
     : getBearerToken(ctx.workdir, resolveCloudConfig(ctx.config).renownUrl));
