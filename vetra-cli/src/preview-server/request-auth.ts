@@ -82,6 +82,10 @@ export type MemberAuthorizer = (
 export interface MemberAuthOptions extends RequestAuthOptions {
   /** Who is a member of *this* Studio, in which role (team/membership.ts). */
   membership: { resolve(address: string): Promise<Member | null> };
+  /** Called with every member the gate admits (drive access sync, 1.10). */
+  onMember?: (member: Member) => void;
+  /** Called with an authenticated address that is not a member (revocation). */
+  onRefused?: (address: string) => void;
 }
 
 export type AcceptedMemberCheck = Extract<MemberCheck, { ok: true }>;
@@ -369,8 +373,12 @@ export function createMemberAuthorizer(opts: MemberAuthOptions): MemberAuthorize
     } catch {
       return { ok: false, status: 403, error: "access-unavailable" };
     }
-    if (!member) return { ok: false, status: 403, error: "forbidden" };
+    if (!member) {
+      opts.onRefused?.(out.claims.address);
+      return { ok: false, status: 403, error: "forbidden" };
+    }
     if (!(await out.delegated())) return refusedMember;
+    opts.onMember?.(member);
     return { ok: true, via: "member", member };
   };
 }
