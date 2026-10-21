@@ -38,6 +38,7 @@ import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
 import { LiveSurface } from "../change/LiveSurface.js";
+import { ChangeRequest } from "../change/ChangeDrawer.js";
 import { ReadyBar } from "../change/ReadyBar.js";
 import { startChange } from "../change/startChange.js";
 import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
@@ -49,16 +50,30 @@ import { LiveDetail } from "../steps/LiveDetail.js";
 import { PlanDetail } from "../steps/PlanDetail.js";
 import { planBrief } from "../steps/planBrief.js";
 import { TestsDetail } from "../steps/TestsDetail.js";
+import { SteerBox } from "../story/SteerBox.js";
 import { StoryPane } from "../story/StoryPane.js";
+import { storyLines, type StoryLine } from "../story/storyModel.js";
 import { StepStrip } from "../strip/StepStrip.js";
 import { openChange, stripChange, stripModel } from "../strip/stripModel.js";
 import { PHASE_AVERAGES } from "../strip/timeLeft.js";
 import { useVersionsPanel } from "../versions/VersionsPanel.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { showsFirstVersionBar } from "./firstVersion.js";
+import { DemoPlaceholder } from "./DemoPlaceholder.js";
 import { DockSplit } from "./DockSplit.js";
-import { effectiveDock, readLayout, writeLayout } from "./layoutPrefs.js";
+import { ModeSwitch } from "./ModeSwitch.js";
+import { ReviewLayout, type ReviewStory } from "./ReviewLayout.js";
+import { useLayout } from "./useLayout.js";
 import { useStudioState } from "./useStudioState.js";
+
+/** Story lines that wait for the customer (counted on the mode switch). */
+function needsYou(line: StoryLine): boolean {
+  return (
+    line.kind === "stuck" ||
+    line.kind === "attention" ||
+    (line.kind === "reply" && line.question)
+  );
+}
 
 /** The live page's failure rows never focus the build's steer box. */
 const NO_FOCUS = () => {};
@@ -234,17 +249,7 @@ function StudioPage({
   }, [change, right]);
   const [openStep, setOpenStep] = useState<StepKind | null>(null);
   const studioId = drive.header.id;
-  const [layout, setLayout] = useState(() => readLayout(studioId));
-  const onResizeSplit = useCallback(
-    (size: number) => {
-      setLayout((prev) => {
-        const next = { ...prev, size: Math.min(70, Math.max(20, size)) };
-        writeLayout(studioId, next);
-        return next;
-      });
-    },
-    [studioId],
-  );
+  const layout = useLayout(studioId, product?.liveVersion != null);
 
   const sessionId = change?.chatSessionId ?? fallbackSessionId;
   const sessionState = useDocumentSafe(sessionId ?? null);
@@ -331,7 +336,8 @@ function StudioPage({
       />
     ) : null;
 
-  const story =
+  // Review owns the story's layer (Outcome first); Build lets it keep its own.
+  const storyFor = (view?: ReviewStory) =>
     product && change ? (
       <StoryPane
         product={product}
@@ -349,6 +355,8 @@ function StudioPage({
           allowPublish: permission.allow,
         }}
         onStartChange={productId ? startNextChange : undefined}
+        layer={view?.layer}
+        onLayerChange={view?.onLayerChange}
       />
     ) : sessionId ? (
       /* No readable product yet: the conversation as it is. */
@@ -362,6 +370,18 @@ function StudioPage({
         Getting ready…
       </div>
     );
+  const story = storyFor();
+  const waitingLines = useMemo(
+    () =>
+      product && change
+        ? storyLines(product, change, chat, now).filter(needsYou)
+        : [],
+    [product, change, chat, now],
+  );
+  const question = waitingLines.find(
+    (l): l is Extract<StoryLine, { kind: "reply" }> =>
+      l.kind === "reply" && l.question,
+  );
 
   const toast = usePHToast();
   const rename = useCallback(
@@ -397,6 +417,129 @@ function StudioPage({
     />
   );
 
+  const detailView = detail ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 justify-end border-b border-border bg-card px-4 py-1.5">
+        <button
+          type="button"
+          onClick={() => setOpenStep(null)}
+          className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+        >
+          Following you · Back to the build
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">{detail}</div>
+    </div>
+  ) : null;
+
+  const liveSurface = liveView ? (
+    <LiveSurface
+      product={product}
+      productId={productId}
+      drive={drive}
+      documents={documents}
+      failure={failure}
+      now={now}
+      story={change ? story : null}
+      preview={previewPane}
+      requestedBy={signIn.name ?? "you"}
+      onOpenAccess={onOpenAccess}
+    />
+  ) : null;
+
+  // Review and Demo (spec G2): the live view once live with no change open,
+  // else the preview with its Ready bar.
+  const productNode =
+    detailView ??
+    (stateTwo ? (
+      liveSurface
+    ) : (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {liveView && change ? (
+          <ReadyBar
+            product={product}
+            productId={productId}
+            change={change}
+            requestedBy={signIn.name ?? "you"}
+            onKeepChanging={NO_FOCUS}
+          />
+        ) : (
+          firstVersionBar
+        )}
+        {previewPane}
+      </div>
+    ));
+
+  // Demo keeps a way to steer: the open change's steer box, or the next
+  // change's box for closed work before versions.
+  const demoSteer =
+    product && change && openChange(product) ? (
+      <SteerBox
+        sessionId={sessionId ?? null}
+        productId={productId}
+        changeId={change.id}
+        paused={change.status === "PAUSED"}
+        messages={chat?.messages ?? []}
+        now={now}
+      />
+    ) : product && change && !liveView && productId ? (
+      <div className="px-3 py-2">
+        <ChangeRequest
+          product={product}
+          onStart={startNextChange}
+          prefill={null}
+        />
+      </div>
+    ) : null;
+
+  let body: React.ReactNode;
+  if (layout.mode === "review") {
+    body = (
+      <ReviewLayout
+        dock={layout.dock}
+        size={layout.size}
+        onResize={layout.setSize}
+        product={productNode}
+        side={product && change ? storyFor : story}
+      />
+    );
+  } else if (layout.mode === "demo") {
+    body = (
+      <DemoPlaceholder
+        product={productNode}
+        steer={demoSteer}
+        question={question?.text ?? null}
+      />
+    );
+  } else if (liveView) {
+    body = detail ? (
+      <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">{detail}</main>
+    ) : (
+      <main className="flex min-h-0 flex-1 flex-col">{liveSurface}</main>
+    );
+  } else {
+    body = (
+      <DockSplit
+        dock={layout.dock}
+        size={layout.size}
+        onResize={layout.setSize}
+        sideLabel="Story"
+        side={story}
+        main={
+          detailView ??
+          (firstVersionBar ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {firstVersionBar}
+              {previewPane}
+            </div>
+          ) : (
+            previewPane
+          ))
+        }
+      />
+    );
+  }
+
   return (
     <>
       <StepStrip
@@ -405,6 +548,15 @@ function StudioPage({
         onOpenStep={toggleStep}
         onOpenSettings={onOpenSettings}
         onRename={productId ? rename : undefined}
+        modeSwitch={
+          <ModeSwitch
+            mode={layout.mode}
+            onMode={layout.setMode}
+            dock={layout.dock}
+            onDock={layout.setDock}
+            attention={waitingLines.length}
+          />
+        }
         versions={
           product?.liveVersion != null
             ? { live: product.liveVersion, onOpen: versions.openPanel }
@@ -420,61 +572,7 @@ function StudioPage({
           ) : undefined
         }
       />
-      {liveView ? (
-        detail ? (
-          <main className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-            {detail}
-          </main>
-        ) : (
-          <main className="flex min-h-0 flex-1 flex-col">
-            <LiveSurface
-              product={product}
-              productId={productId}
-              drive={drive}
-              documents={documents}
-              failure={failure}
-              now={now}
-              story={change ? story : null}
-              preview={previewPane}
-              requestedBy={signIn.name ?? "you"}
-              onOpenAccess={onOpenAccess}
-            />
-          </main>
-        )
-      ) : (
-        <DockSplit
-          dock={effectiveDock(layout, "build")}
-          size={layout.size}
-          onResize={onResizeSplit}
-          sideLabel="Story"
-          side={story}
-          main={
-            detail ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="flex shrink-0 justify-end border-b border-border bg-card px-4 py-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setOpenStep(null)}
-                    className="rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent"
-                  >
-                    Following you · Back to the build
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-                  {detail}
-                </div>
-              </div>
-            ) : firstVersionBar ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                {firstVersionBar}
-                {previewPane}
-              </div>
-            ) : (
-              previewPane
-            )
-          }
-        />
-      )}
+      {body}
       {signIn.status === "signed-out" ? (
         /* The session ended: sign in again over the page, which stays. */
         <SignInModal onSignIn={signIn.signIn} />
