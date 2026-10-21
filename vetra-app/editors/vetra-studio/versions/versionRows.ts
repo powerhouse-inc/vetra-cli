@@ -61,6 +61,9 @@ export interface VersionRow {
   action: VersionAction;
   /** Why Go back isn't offered (the agent's plain sentence, F26). */
   blockedReason?: string;
+  /** With a blocked row: the title of the version whose change added the
+   *  data in use — what Undo with the agent undoes (spec §5.7). */
+  undoTitle?: string;
   whatChanged: { summary: string; files: string[]; commitUrl?: string };
 }
 
@@ -147,9 +150,30 @@ export function goBackOffered(version: Version | undefined): boolean {
   );
 }
 
-function rowAction(version: Version): {
+/**
+ * The version whose change added the data that blocks going back to
+ * `version`: Version k from the agent's sentence ("Version <k> added data
+ * …", Task 3.3), else the one right after it.
+ */
+export function undoTarget(doc: StudioProductState, version: Version): Version {
+  const named = /Version (\d+) added data/.exec(
+    version.rollbackBlockedReason ?? "",
+  );
+  const k = named ? Number(named[1]) : version.number + 1;
+  return (
+    doc.versions.find((v) => v.number === k) ??
+    doc.versions.find((v) => v.number === version.number + 1) ??
+    version
+  );
+}
+
+function rowAction(
+  doc: StudioProductState,
+  version: Version,
+): {
   action: VersionAction;
   blockedReason?: string;
+  undoTitle?: string;
 } {
   if (version.status !== "PREVIOUS" || !version.deploymentId) {
     return { action: "none" };
@@ -158,6 +182,7 @@ function rowAction(version: Version): {
     return {
       action: "undo-with-agent",
       blockedReason: version.rollbackBlockedReason,
+      undoTitle: undoTarget(doc, version).title,
     };
   }
   return { action: "go-back" };
@@ -180,7 +205,7 @@ export function versionRows(doc: StudioProductState, now: Date): VersionRow[] {
         when: whenText(v.launchedAt ?? null, now),
         who: who(v),
         live: v.number === doc.liveVersion,
-        ...rowAction(v),
+        ...rowAction(doc, v),
         whatChanged: {
           summary: v.summary ?? "",
           files: [...v.changedFiles],
@@ -215,6 +240,8 @@ export function goBackDisabledReason(doc: StudioProductState): string | null {
 export function failedGoBack(doc: StudioProductState): string | null {
   const failed = doc.lastRequestFailure;
   if (!failed || failed.kind !== "ROLLBACK") return null;
+  // A new Go back is on its way: the older refusal no longer applies.
+  if (doc.pendingRequest?.kind === "ROLLBACK") return null;
   const since = doc.liveSince ? Date.parse(doc.liveSince) : 0;
   if (Date.parse(failed.at) <= since) return null;
   return requestFailureText(failed);

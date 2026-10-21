@@ -167,12 +167,12 @@ describe("VersionsPanel", () => {
 
   it("blocked row offers Undo with the agent", async () => {
     const p = product((g) => {
-      g.versions[2].rollbackBlockedReason = BLOCKED;
+      g.versions[1].rollbackBlockedReason = BLOCKED;
     });
     const onUndo = vi.fn(() => Promise.resolve());
     const onClose = vi.fn();
     const container = panel(p, { onUndo, onClose });
-    const row = rowOf(container, 3);
+    const row = rowOf(container, 2);
     expect(row.textContent).toContain(BLOCKED);
     // F26: never a plain Go back on a blocked row.
     expect(button(row, "Go back")).toBeUndefined();
@@ -186,15 +186,17 @@ describe("VersionsPanel", () => {
     const confirm = render(
       <GoBackConfirm
         product={p}
-        target={3}
+        target={2}
         onConfirm={() => {}}
         onUndo={onUndo}
         onCancel={() => {}}
       />,
     );
     expect(confirm.textContent).toContain(BLOCKED);
-    expect(confirm.textContent).not.toContain("Make Version 3 live again?");
-    expect(button(confirm, "Undo with the agent")).toBeDefined();
+    expect(confirm.textContent).not.toContain("Make Version 2 live again?");
+    click(button(confirm, "Undo with the agent"));
+    await settle();
+    expect(onUndo).toHaveBeenLastCalledWith("Ready column");
   });
 
   it("go back disabled during a change", () => {

@@ -34,7 +34,10 @@ import {
   launchFailedText,
 } from "../live/liveCopy.js";
 import { checkList, type CheckLine } from "../steps/checkList.js";
-import { requestFailureText } from "../versions/versionRows.js";
+import {
+  UNDO_WITH_THE_AGENT,
+  requestFailureText,
+} from "../versions/versionRows.js";
 import {
   agentWorking,
   deliveryOf,
@@ -386,11 +389,14 @@ function unhealthyLive(
   const actions: FailureAction[] = [
     { label: RESTART, run: () => handlers.requestRestart() },
   ];
-  // F26: a version the data can't go back to never gets a plain Go back.
-  const before = product.versions.find((v) => v.number === live - 1);
-  if (live > 1 && !before?.rollbackBlockedReason) {
+  if (live > 1) {
+    // F26: a version the data can't go back to never gets a plain Go back;
+    // the same confirm then shows why and offers Undo with the agent.
+    const before = product.versions.find((v) => v.number === live - 1);
     actions.push({
-      label: goBackLabel(live - 1),
+      label: before?.rollbackBlockedReason
+        ? UNDO_WITH_THE_AGENT
+        : goBackLabel(live - 1),
       run: () => handlers.requestRollback(live - 1),
     });
   }

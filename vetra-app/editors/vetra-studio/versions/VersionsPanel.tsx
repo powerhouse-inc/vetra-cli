@@ -132,7 +132,9 @@ export function GoBackConfirm({
       <button
         type="button"
         disabled={busy}
-        onClick={() => void perform(() => onUndo(version.title), onCancel)}
+        onClick={() =>
+          void perform(() => onUndo(row.undoTitle ?? version.title), onCancel)
+        }
         className={PILL}
       >
         {UNDO_WITH_THE_AGENT}
@@ -329,7 +331,9 @@ export function VersionsPanel({
             row={row}
             disabled={disabled}
             onGoBack={onGoBack}
-            onUndo={(r) => void perform(() => onUndo(r.title), onClose)}
+            onUndo={(r) =>
+              void perform(() => onUndo(r.undoTitle ?? r.title), onClose)
+            }
           />
         ))}
       </ol>

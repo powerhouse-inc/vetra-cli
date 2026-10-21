@@ -125,12 +125,22 @@ describe("versionRows", () => {
     expect(row).toMatchObject({
       action: "undo-with-agent",
       blockedReason: BLOCKED,
+      // Undo the change that added the data in use (Version 3), not Version 2.
+      undoTitle: "Ready column",
     });
     expect(goBackOffered(p.versions[1])).toBe(false);
     expect(goBackOffered(p.versions[0])).toBe(true);
-    expect(undoRequest("QR code on each table")).toBe(
-      "Undo 'QR code on each table' but keep existing data",
+    expect(undoRequest(row?.undoTitle ?? "")).toBe(
+      "Undo 'Ready column' but keep existing data",
     );
+    // A sentence without a version number: the version right after it.
+    const plain = product((g) => {
+      g.versions[0].rollbackBlockedReason = "Your users' data needs it.";
+    });
+    expect(versionRows(plain, NOW).find((r) => r.number === 1)).toMatchObject({
+      action: "undo-with-agent",
+      undoTitle: "QR code on each table",
+    });
   });
 
   it("go back disabled during a change", () => {
@@ -190,6 +200,22 @@ describe("versionRows", () => {
       };
     });
     expect(failedGoBack(draftOpen)).toBe(FINISH_YOUR_CHANGE_FIRST);
+    // A new Go back on its way hides the older refusal.
+    const retrying = product((g) => {
+      g.lastRequestFailure = {
+        kind: "ROLLBACK",
+        reason: "your change isn't finished",
+        at: local(21, 14, 40),
+      };
+      g.pendingRequest = {
+        kind: "ROLLBACK",
+        targetVersion: 2,
+        changeId: null,
+        requestedAt: local(21, 14, 50),
+        requestedBy: "frank",
+      };
+    });
+    expect(failedGoBack(retrying)).toBeNull();
     expect(
       requestFailureText({
         kind: "ROLLBACK",
