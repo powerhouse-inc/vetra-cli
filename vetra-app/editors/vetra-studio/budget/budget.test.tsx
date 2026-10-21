@@ -8,7 +8,7 @@ import {
   vi,
   type MockInstance,
 } from "vitest";
-import { BudgetMeter } from "./BudgetMeter.js";
+import { BudgetMeter, StripBudget } from "./BudgetMeter.js";
 import { budgetFailureAction } from "./BudgetFailureAction.js";
 import {
   fetchStudioLlmUsage,
@@ -104,6 +104,44 @@ describe("BudgetMeter", () => {
   it("shows only the spend when the budget is unlimited, and nothing without a key", () => {
     expect(meter(snapshot(usage(2, null)))).toContain("$2.00 used");
     expect(meter(snapshot(null))).toBe("");
+  });
+});
+
+function strip(text: string, s: BudgetSnapshot): string {
+  return renderToStaticMarkup(
+    <StripBudget
+      text={text}
+      view={budgetView(s)}
+      onRequest={() => undefined}
+    />,
+  );
+}
+
+describe("StripBudget", () => {
+  it("strip shows $0.31 of $10, amber from 80 percent", () => {
+    const ok = strip("$0.31 of $10", snapshot(usage(0.31, 10)));
+    expect(ok).toContain("$0.31 of $10");
+    expect(ok).toContain('data-level="ok"');
+    expect(ok).not.toContain("text-warning");
+
+    const amber = strip("$8.00 of $10", snapshot(usage(8, 10)));
+    expect(amber).toContain('data-level="warning"');
+    expect(amber).toContain("text-warning");
+    expect(amber).toContain("80% or more of this month");
+    expect(amber).not.toContain("Request more budget");
+  });
+
+  it("strip turns red with Request more budget at the limit", () => {
+    const red = strip("$10.00 of $10", snapshot(usage(10, 10)));
+    expect(red).toContain('data-level="exhausted"');
+    expect(red).toContain("text-destructive");
+    expect(red).toContain("$10.00 of $10");
+    expect(red).toContain("Request more budget");
+    // Used up by a failed turn before any usage arrived.
+    expect(strip("", snapshot(null, { exhaustedByFailure: true }))).toContain(
+      "Budget used up",
+    );
+    expect(strip("", snapshot(null))).toBe("");
   });
 });
 

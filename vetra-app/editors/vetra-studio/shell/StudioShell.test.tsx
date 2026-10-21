@@ -72,6 +72,7 @@ vi.mock("../budget/useStudioBudget.js", () => ({
 }));
 vi.mock("../budget/BudgetMeter.js", () => ({
   StudioBudgetMeter: () => <span>$0.31 of $10</span>,
+  StripBudget: ({ text }: { text: string }) => <span>{text}</span>,
 }));
 vi.mock("../hooks/useSessionPreviewTarget.js", () => ({
   useSessionPreviewTarget: () => undefined,
