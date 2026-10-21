@@ -1,6 +1,7 @@
 import type { Node } from "@powerhousedao/shared/document-drive";
 import type { Action, PHDocument } from "document-model";
 import { describe, expect, it, vi } from "vitest";
+import type { UnderstoodDraft } from "../../../shared/understood-draft.js";
 import {
   ideaStartStatus,
   sessionToOpen,
@@ -68,6 +69,7 @@ function store(driveId = "drive-1") {
       for (const a of actions) {
         const input = a.input as Record<string, unknown>;
         if (a.type === "INIT_PRODUCT") Object.assign(g, input);
+        if (a.type === "SET_UNDERSTOOD") g.understood = input;
         if (a.type === "START_CHANGE") {
           g.changes!.push({ ...input, status: "BUILDING", milestones: [] });
           g.activeChangeId = input.id;
@@ -260,6 +262,140 @@ describe("startProduct", () => {
       startProduct({ drive: s.drive, idea: "   " }, s.deps),
     ).rejects.toThrow("Describe your idea first.");
     expect(s.created).toHaveLength(0);
+  });
+});
+
+describe("starting from the corrected picture", () => {
+  const DRAFT: UnderstoodDraft = {
+    version: 1,
+    language: "de",
+    summary: "Mängel auf der Baustelle erfassen",
+    things: [
+      {
+        id: "t1",
+        name: "Mangel",
+        fields: [
+          {
+            id: "f1",
+            name: "Raum",
+            type: "text",
+            options: [],
+            source: { materialId: "mat-1", sheet: "Prüfliste", column: "Raum" },
+          },
+        ],
+      },
+    ],
+    roles: [{ id: "r1", name: "Bauleitung" }],
+    steps: [{ id: "s1", name: "Erfassen", roleId: "r1", thingId: "t1" }],
+    links: [],
+    questions: [],
+    materials: [{ id: "mat-1", name: "pruefliste.xlsx", kind: "SHEET" }],
+  };
+
+  it("stores the draft once and puts the brief and material paths in the first message", async () => {
+    const s = store("drive-draft");
+
+    await startProduct(
+      { drive: s.drive, idea: "", draft: DRAFT, language: "de" },
+      s.deps,
+    );
+
+    // Name from the first thing when the box was empty; idea from the summary.
+    expect(s.created).toEqual([
+      { name: "Session 1", type: CHAT_TYPE },
+      { name: "Mangel", type: PRODUCT_TYPE },
+    ]);
+    expect(s.docs.get("product-2")).toMatchObject({
+      name: "Mangel",
+      idea: "Mängel auf der Baustelle erfassen",
+      understood: {
+        json: JSON.stringify(DRAFT),
+        language: "de",
+        at: AT,
+        materials: [{ id: "mat-1", name: "pruefliste.xlsx", kind: "SHEET" }],
+      },
+    });
+    // The understanding is written after INIT_PRODUCT, before the change.
+    expect(s.dispatched[0].types).toEqual([
+      "INIT_PRODUCT",
+      "SET_UNDERSTOOD",
+      "START_CHANGE",
+      "ADD_MILESTONE",
+    ]);
+    const text = s.docs.get("session-1")!.messages![0].content as {
+      text: string;
+    }[];
+    expect(text[0].text).toContain("Mängel auf der Baustelle erfassen");
+    expect(text[0].text).toContain(
+      "[What we understood — confirmed by the customer]",
+    );
+    expect(text[0].text).toContain(
+      "- Mangel: Raum (text) [from Prüfliste › Raum]",
+    );
+    expect(text[0].text).toContain(
+      "Your material is in the workspace:\n- .ph/vetra/material/mat-1/pruefliste.xlsx",
+    );
+    expect(text[0].text).toContain("Studio language: German");
+  });
+
+  it("English starts do not add the German language hint", async () => {
+    const s = store("drive-en");
+    const en = { ...DRAFT, language: "en" as const };
+    await startProduct(
+      { drive: s.drive, idea: "Defect tracking", draft: en, language: "en" },
+      s.deps,
+    );
+    const text = s.docs.get("session-1")!.messages![0].content as {
+      text: string;
+    }[];
+    expect(text[0].text).not.toContain("Studio language");
+    expect(text[0].text).toContain("Defect tracking");
+  });
+
+  it("no draft keeps today's start and message", async () => {
+    const s = store("drive-plain");
+    await startProduct(
+      { drive: s.drive, idea: "hotel breakfast orders" },
+      s.deps,
+    );
+    expect(s.dispatched[0].types).toEqual([
+      "INIT_PRODUCT",
+      "START_CHANGE",
+      "ADD_MILESTONE",
+    ]);
+    const text = s.docs.get("session-1")!.messages![0].content as {
+      text: string;
+    }[];
+    expect(text[0].text).toBe("hotel breakfast orders");
+    expect(s.docs.get("product-2")).not.toHaveProperty("understood");
+  });
+
+  it("a retry after the first message failed does not store the draft twice", async () => {
+    const s = store("drive-retry");
+    s.failNext("ADD_USER_MESSAGE");
+    await expect(
+      startProduct(
+        { drive: s.drive, idea: "", draft: DRAFT, language: "de" },
+        s.deps,
+      ),
+    ).rejects.toThrow("failed");
+    expect(s.docs.get("product-2")).toHaveProperty("understood");
+
+    await startProduct(
+      { drive: s.drive, idea: "", draft: DRAFT, language: "de" },
+      s.deps,
+    );
+
+    expect(s.dispatched.map((d) => d.types)).toEqual([
+      ["INIT_PRODUCT", "SET_UNDERSTOOD", "START_CHANGE", "ADD_MILESTONE"],
+      ["ADD_USER_MESSAGE"],
+    ]);
+    const text = s.docs.get("session-1")!.messages![0].content as {
+      text: string;
+    }[];
+    expect(text[0].text).toContain(
+      "[What we understood — confirmed by the customer]",
+    );
   });
 });
 

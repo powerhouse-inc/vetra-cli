@@ -35,9 +35,14 @@ import {
 import { SignInModal, useFailureHandlers } from "../failures/FailureLine.js";
 import { failureFor, withFailure } from "../failures/failureStates.js";
 import { useStudioRestarting } from "../failures/useStudioRestarting.js";
+import { useT } from "../i18n/useT.js";
 import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
-import { sessionToOpen, startProduct } from "../idea/startProduct.js";
+import {
+  sessionToOpen,
+  startProduct,
+  type StartIdeaInput,
+} from "../idea/startProduct.js";
 import { LiveSurface } from "../change/LiveSurface.js";
 import { ReadyBar } from "../change/ReadyBar.js";
 import { startChange } from "../change/startChange.js";
@@ -97,17 +102,25 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
     }
   }, [result.status]);
 
-  const startFromIdea = useCallback(async (idea: string) => {
-    setStartInFlight(true);
-    try {
-      return sessionToOpen(
-        await startProduct({ drive: driveRef.current, idea }),
-      );
-    } catch (err) {
-      setStartInFlight(false);
-      throw err;
-    }
-  }, []);
+  const { language } = useT();
+  const startFromIdea = useCallback(
+    async (start: StartIdeaInput) => {
+      setStartInFlight(true);
+      try {
+        return sessionToOpen(
+          await startProduct({
+            drive: driveRef.current,
+            ...start,
+            language: start.language ?? language,
+          }),
+        );
+      } catch (err) {
+        setStartInFlight(false);
+        throw err;
+      }
+    },
+    [language],
+  );
 
   const openSettings = useCallback(() => {
     setSettingsOnAccess(false);
@@ -135,7 +148,8 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-background">
       {status === "idea" ? (
         <IdeaScreen
-          onStart={startFromIdea}
+          onStart={(idea) => startFromIdea({ idea })}
+          onBuildDraft={startFromIdea}
           onStarted={setStartedSession}
           onOpenSettings={openSettings}
         />

@@ -65,6 +65,8 @@ request runs that phase alone. A `spec-generate` schema error is almost
 always TypeScript instead of GraphQL SDL — fix the spec, never generated
 files.
 
+**When the first message has a `[What we understood — confirmed by the customer]` block, build exactly those things, fields, roles and steps — the customer already corrected them. Don't ask about them again. When a thing came from a sheet, also write `import/<document-type>.json` (see the example-data skill) with one document per sheet row, so the customer's real rows can be brought in after the product is live. Example data for the preview stays in `seed/` as usual.**
+
 **Changes** after launch: `plan` only the steps the change touches, then
 TESTS and LIVE. A request while a change is open joins it: reply
 `I'll include that in this change`.

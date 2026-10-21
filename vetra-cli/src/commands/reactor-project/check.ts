@@ -13,6 +13,7 @@ import { missingMarkers } from "../../product/marker-check.js";
 import { runSmoke } from "../../product/smoke.js";
 import { getProductDoc, type ProductContext } from "../../product/product-doc.js";
 import { phBuildNodeOptions } from "../../helpers/node-memory.js";
+import { validateImports } from "../../workshop/import-files.js";
 
 /* A stalled reactor must not hang the check. */
 const PRODUCT_LOOKUP_TIMEOUT_MS = 5_000;
@@ -97,6 +98,10 @@ export const reactorProjectCheck = defineCommand({
       skipTypecheck,
     });
     const { diagnostics, notes } = outcome;
+    // Import files are a note: the agent fixes them, the customer isn't blocked.
+    for (const file of validateImports(base)) {
+      if (!file.ok) notes.push(`${file.file}: ${file.reason ?? "invalid"}`);
+    }
     const observed: ObservedCheck[] = checkResultsFromOutcome(outcome, base);
     if (tests) {
       const examples = await examplesRequired(context);

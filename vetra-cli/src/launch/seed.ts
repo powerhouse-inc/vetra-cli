@@ -74,12 +74,12 @@ export interface SeedValidation {
   modelTypes: string[];
 }
 
-interface OperationInfo {
+export interface OperationInfo {
   scope: string;
   inputType: string | null;
 }
 
-interface ModelInfo {
+export interface ModelInfo {
   documentType: string;
   operations: Map<string, OperationInfo>;
   /** Null when the model's SDL couldn't be assembled; inputs are then not checked. */
@@ -186,12 +186,12 @@ export function loadProjectModels(projectPath: string): Map<string, ModelInfo> {
   return models;
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /** Check one action's input against the operation's input type; returns the first problem. */
-function inputProblem(model: ModelInfo, op: OperationInfo, input: unknown): string | null {
+export function inputProblem(model: ModelInfo, op: OperationInfo, input: unknown): string | null {
   if (!model.schema || !op.inputType) return null;
   const type = model.schema.getType(op.inputType);
   if (!type || !isInputObjectType(type)) return null;

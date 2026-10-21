@@ -20,7 +20,13 @@ import {
   placeholderName,
   studioProductDocumentType,
 } from "document-models/studio-product";
+import {
+  draftToBrief,
+  type DraftMaterial,
+  type UnderstoodDraft,
+} from "../../../shared/understood-draft.js";
 import { addAgentWritableDocument } from "../addAgentWritableDocument.js";
+import { languageHint, type Language } from "../i18n/language.js";
 import { SPECIFY_TYPES } from "../specify/projects.js";
 
 export const CHAT_SESSION_TYPE = "powerhouse/chat-session";
@@ -44,7 +50,17 @@ export interface StartProductInput {
   idea: string;
   /** Product name; defaults to the first words of the idea until the agent renames it. */
   name?: string;
+  /** The picture the customer corrected; stored on the product and sent as a brief. */
+  draft?: UnderstoodDraft;
+  /** The Studio's language; German adds the hint the agent writes in German. */
+  language?: Language;
 }
+
+/** What the idea screen hands the shell when it starts a build. */
+export type StartIdeaInput = Pick<
+  StartProductInput,
+  "idea" | "name" | "draft" | "language"
+>;
 
 export interface StartProductResult {
   productId: string;
@@ -108,6 +124,8 @@ interface ProductView {
   firstBuildStatus: string | null;
   /** The first build's conversation, when it has one. */
   firstBuildSessionId: string | null;
+  /** The product already stores an understanding (set once per product). */
+  hasUnderstood: boolean;
 }
 
 function globalOf(doc: PHDocument | undefined): Record<string, unknown> {
@@ -121,6 +139,7 @@ function productView(doc: PHDocument | undefined): ProductView {
   const g = globalOf(doc) as {
     idea?: string | null;
     createdAt?: string | null;
+    understood?: unknown;
     changes?: {
       kind?: string;
       status?: string;
@@ -136,6 +155,7 @@ function productView(doc: PHDocument | undefined): ProductView {
     hasOtherChanges: changes.some((c) => c.kind !== "FIRST_BUILD"),
     firstBuildStatus: firstBuild ? (firstBuild.status ?? "BUILDING") : null,
     firstBuildSessionId: firstBuild?.chatSessionId ?? null,
+    hasUnderstood: g.understood !== null && g.understood !== undefined,
   };
 }
 
@@ -278,8 +298,16 @@ export function startProduct(
   return started;
 }
 
+/** Where the agent finds the material the understanding came from. */
+function materialLines(materials: readonly DraftMaterial[]): string {
+  return [
+    "Your material is in the workspace:",
+    ...materials.map((m) => `- .ph/vetra/material/${m.id}/${m.name}`),
+  ].join("\n");
+}
+
 async function run(
-  { drive, idea, name }: StartProductInput,
+  { drive, idea, name, draft, language }: StartProductInput,
   deps: StartProductDeps,
 ): Promise<StartProductResult> {
   const driveId = drive.header.id;
@@ -306,7 +334,17 @@ async function run(
     );
   }
 
-  const text = (product?.idea ?? idea).trim();
+  const lang = language ?? draft?.language;
+  const storedIdea = (product?.idea ?? "").trim();
+  const typedIdea = idea.trim();
+  // With no typed idea the summary (or the first thing) stands in, so a
+  // corrected picture can start a build on its own.
+  const text =
+    storedIdea ||
+    typedIdea ||
+    draft?.summary.trim() ||
+    draft?.things[0]?.name.trim() ||
+    "";
   if (!text) throw new Error("Describe your idea first.");
   const at = deps.now();
 
@@ -330,7 +368,10 @@ async function run(
       )
     ).id;
 
-  const productName = name?.trim() || placeholderName(text);
+  const productName =
+    name?.trim() ||
+    (!typedIdea ? draft?.things[0]?.name.trim() : "") ||
+    placeholderName(text);
   const productId =
     productNode?.id ??
     (await deps.addDocument(driveId, productName, studioProductDocumentType))
@@ -343,6 +384,21 @@ async function run(
         name: productName,
         idea: text,
         createdAt: at,
+      }),
+    );
+  }
+  // Stored once: a retry after a later step failed must not replace it.
+  if (draft && !product?.hasUnderstood) {
+    productOps.push(
+      productActions.setUnderstood({
+        json: JSON.stringify(draft),
+        language: lang ?? draft.language,
+        at,
+        materials: draft.materials.map(({ id, name: mName, kind }) => ({
+          id,
+          name: mName,
+          kind,
+        })),
       }),
     );
   }
@@ -367,11 +423,17 @@ async function run(
   }
   if (productOps.length > 0) await deps.dispatch(productId, productOps);
 
+  // The customer's words, then the corrected picture, then where the files are.
+  const blocks = [text];
+  if (draft) blocks.push(draftToBrief(draft, lang ?? draft.language));
+  if (draft?.materials.length) blocks.push(materialLines(draft.materials));
+  const message = blocks.join("\n\n") + (lang ? languageHint(lang) : "");
+
   // Last: the message starts the agent, which expects the product to exist.
   await deps.dispatch(sessionId, [
     chatActions.addUserMessage({
       id: deps.newId(),
-      content: [{ id: deps.newId(), type: "TEXT", text }],
+      content: [{ id: deps.newId(), type: "TEXT", text: message }],
       createdAt: at,
     }),
   ]);
