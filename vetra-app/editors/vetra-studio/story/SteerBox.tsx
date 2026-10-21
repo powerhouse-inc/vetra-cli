@@ -9,6 +9,7 @@
 import {
   actions as chatActions,
   type Message,
+  type UserContentPartInput,
 } from "@powerhousedao/clint-common/document-models/chat-session";
 import { dispatchActions, usePHToast } from "@powerhousedao/reactor-browser";
 import { generateId } from "document-model";
@@ -29,17 +30,19 @@ export const DELIVERY_TEXT: Record<Delivery, string> = {
   "not-delivered": "Not delivered yet",
 };
 
-/** Sends `text` as the customer's message in the conversation. */
+/** Sends `text` (plus optional parts, e.g. a pointed screenshot) as the
+ *  customer's message in the conversation. */
 export async function sendSteer(
   sessionId: string,
   text: string,
   id: string = generateId(),
+  extra: UserContentPartInput[] = [],
 ) {
   const refused: Error[] = [];
   await dispatchActions(
     chatActions.addUserMessage({
       id,
-      content: [{ id: generateId(), type: "TEXT", text }],
+      content: [{ id: generateId(), type: "TEXT", text }, ...extra],
       createdAt: new Date().toISOString(),
     }),
     sessionId,

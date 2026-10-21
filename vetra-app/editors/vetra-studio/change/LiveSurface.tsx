@@ -17,6 +17,8 @@ import type { Failure, FailureSituation } from "../failures/failureStates.js";
 import type { StartProductDrive } from "../idea/startProduct.js";
 import { LiveEmbed } from "../live/LiveEmbed.js";
 import { ProductView } from "../live/ProductView.js";
+import type { PointTarget } from "../preview/pointTarget.js";
+import { sendPointRequest } from "../preview/sendPointRequest.js";
 import { openChange } from "../strip/stripModel.js";
 import {
   ChangeBubble,
@@ -73,6 +75,26 @@ export function LiveSurface({
 }) {
   const change = openChange(product);
   const openId = change?.id ?? null;
+  const onPointRequest = useCallback(
+    async (args: {
+      request: string;
+      target: PointTarget;
+      shot: Blob | null;
+    }) => {
+      if (!productId) {
+        throw new Error(
+          "Your product is still loading. Try again in a moment.",
+        );
+      }
+      await sendPointRequest({
+        ...args,
+        drive,
+        productId,
+        openChange: openChange(product),
+      });
+    },
+    [drive, product, productId],
+  );
   const [drawerOpen, setDrawerOpen] = useState(openId !== null);
   const [launched, setLaunched] = useState<number | null>(null);
   // "Keep changing" puts the Ready bar away for this READY state.
@@ -228,6 +250,7 @@ export function LiveSurface({
             now={now}
             onOpenAccess={onOpenAccess}
             onChangeSomething={drawerOpen ? undefined : openDrawer}
+            onPointRequest={onPointRequest}
             suggestions={
               drawerOpen ? null : (
                 <SuggestionsCard

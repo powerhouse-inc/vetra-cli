@@ -19,6 +19,9 @@ import {
 } from "react";
 import { PreviewBody, STARTING } from "../BuildSection.js";
 import { fetchRestart, fetchStart } from "../hooks/preview-server-client.js";
+import { ChangeThis } from "./ChangeThis.js";
+import { describeElement, type PointTarget } from "./pointTarget.js";
+import { pointShot } from "./pointShot.js";
 import {
   useResolvedPreview,
   type ResolvedPreview,
@@ -121,6 +124,7 @@ export function PreviewPane({
   change,
   documents,
   session,
+  onPointRequest,
 }: {
   /** The change being built (its Editors step marks the tab in progress). */
   change: Change | null;
@@ -128,6 +132,12 @@ export function PreviewPane({
   documents: readonly PHDocument[];
   /** The build's conversation, which says what the agent shows and edits. */
   session: ChatSessionDocument | undefined;
+  /** Sends a pointed request; when absent Point still selects but cannot send. */
+  onPointRequest?: (args: {
+    request: string;
+    target: PointTarget;
+    shot: Blob | null;
+  }) => Promise<void>;
 }) {
   const screens = useMemo(() => previewScreens(documents), [documents]);
   const messages = session?.state.global.messages;
@@ -183,6 +193,59 @@ export function PreviewPane({
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [frameLoads, setFrameLoads] = useState(0);
   const point = usePointMode(frameRef, `${frameLoads}`);
+  // The clicked element, its rect moved into the pane's coordinates, and
+  // its screenshot once html-to-image has rendered it.
+  const paneRef = useRef<HTMLDivElement>(null);
+  const [pointed, setPointed] = useState<{
+    target: PointTarget;
+    shot: Blob | null;
+  } | null>(null);
+  const selectedElement = point.selected;
+
+  useEffect(() => {
+    if (!selectedElement) return;
+    const screen = screens.find((s) => s.id === selected) ?? null;
+    const target = describeElement(selectedElement, { screen });
+    const frame = frameRef.current;
+    const pane = paneRef.current;
+    const frameBox = frame?.getBoundingClientRect();
+    const paneBox = pane?.getBoundingClientRect();
+    if (frameBox && paneBox) {
+      target.rect = {
+        ...target.rect,
+        x: target.rect.x + frameBox.left - paneBox.left,
+        y: target.rect.y + frameBox.top - paneBox.top,
+      };
+    }
+    setPointed({ target, shot: null });
+    let live = true;
+    if (frame) {
+      void pointShot(frame, selectedElement).then((shot) => {
+        if (live) {
+          setPointed((current) => (current ? { ...current, shot } : current));
+        }
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [selectedElement, selected, screens]);
+
+  useEffect(() => {
+    if (!point.active) setPointed(null);
+  }, [point.active]);
+
+  const sendPoint = async (text: string) => {
+    if (!pointed || !onPointRequest) return;
+    await onPointRequest({
+      request: text,
+      target: pointed.target,
+      shot: pointed.shot,
+    });
+    point.clear();
+    setPointed(null);
+  };
+
   const canPoint =
     preview.kind === "ready" &&
     (frameRef.current === null || frameDocument(frameRef.current) !== null);
@@ -192,7 +255,7 @@ export function PreviewPane({
     : undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div ref={paneRef} className="relative flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 py-1.5">
         <span className="text-xs text-muted-foreground">
           Live preview · updates as it builds
@@ -237,6 +300,17 @@ export function PreviewPane({
       />
       {tabs.length > 0 ? (
         <TabBar tabs={tabs} selected={selected} onSelect={setPicked} />
+      ) : null}
+      {pointed && onPointRequest ? (
+        <ChangeThis
+          target={pointed.target}
+          shot={pointed.shot}
+          onSend={sendPoint}
+          onCancel={() => {
+            point.clear();
+            setPointed(null);
+          }}
+        />
       ) : null}
     </div>
   );

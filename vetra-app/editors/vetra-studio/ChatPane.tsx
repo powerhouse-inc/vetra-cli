@@ -4,31 +4,20 @@ import {
   type Message,
   type TurnFailure,
 } from "@powerhousedao/clint-common/document-models/chat-session";
+import { type IAttachmentService } from "@powerhousedao/reactor-attachments";
 import {
-  createRemoteAttachmentService,
-  type IAttachmentService,
-} from "@powerhousedao/reactor-attachments";
-import {
-  DEFAULT_SWITCHBOARD_URL,
-  useDefaultDrivesUrl,
   usePHToast,
   type DocumentDispatch,
 } from "@powerhousedao/reactor-browser";
 import { addAgentWritableDocument } from "./addAgentWritableDocument.js";
+import { useDriveAttachments } from "./hooks/useDriveAttachments.js";
 import { useSafeDocument } from "./SafeDocument.js";
 import type {
   DocumentDriveAction,
   DocumentDriveDocument,
   FileNode,
 } from "@powerhousedao/shared/document-drive";
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
+import { lazy, Suspense, useEffect, useState, useTransition } from "react";
 import VetraMitosis from "./VetraMitosis.js";
 import { budgetFailureAction } from "./budget/BudgetFailureAction.js";
 import { useStudioBudget } from "./budget/useStudioBudget.js";
@@ -153,33 +142,6 @@ export function ChatPane({
       onSelectSession={onSelectSession}
     />
   );
-}
-
-/** The attachment service for the drive's conversations. */
-function useDriveAttachments(
-  document: DocumentDriveDocument,
-): IAttachmentService {
-  const driveRemoteUrl = (
-    document.state.local as { remoteUrl?: string } | undefined
-  )?.remoteUrl;
-  const defaultDrivesUrl = useDefaultDrivesUrl();
-  return useMemo(() => {
-    // The transport appends `/attachments/<hash>` to remoteUrl verbatim.
-    // `source` is the proxied switchboard drive URL `…/switchboard/d/<id>`;
-    // keep everything up to and including `/switchboard` so attachment
-    // requests stay under the proxy base (`…/switchboard/attachments/<hash>`,
-    // which the proxy maps to switchboard `/attachments/<hash>`). Without a
-    // `/switchboard` segment (non-proxied switchboard), fall back to origin.
-    const source =
-      driveRemoteUrl ?? defaultDrivesUrl ?? DEFAULT_SWITCHBOARD_URL;
-    const url = new URL(source);
-    const sbEnd = url.pathname.indexOf("/switchboard");
-    const remoteUrl =
-      sbEnd === -1
-        ? url.origin
-        : url.origin + url.pathname.slice(0, sbEnd + "/switchboard".length);
-    return createRemoteAttachmentService({ remoteUrl });
-  }, [driveRemoteUrl, defaultDrivesUrl]);
 }
 
 /**
