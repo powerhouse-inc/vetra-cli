@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 
-import { materialKindOf, saveMaterial } from "../../src/workshop/material.js";
+import { materialKindOf, safeFileName, saveMaterial } from "../../src/workshop/material.js";
 import { makeWorkdir } from "../spec/_fixtures.js";
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures", "workshop");
@@ -30,6 +30,16 @@ describe("materialKindOf", () => {
     expect(materialKindOf("notes.txt", "", Buffer.from("hi"))).toBe("TEXT");
     expect(materialKindOf("archive.zip", "application/zip", Buffer.from("PK\x03\x04word/doc"))).toBeNull();
     expect(materialKindOf("unknown.bin", "application/octet-stream", Buffer.from([1, 2, 3]))).toBeNull();
+  });
+});
+
+describe("safeFileName", () => {
+  it("drops paths, reserved and format characters", () => {
+    expect(safeFileName("../../etc/passwd")).toBe("passwd");
+    expect(safeFileName("C:\\x\\a<b>.png")).toBe("a_b_.png");
+    expect(safeFileName("rechnung\u202Efdp.exe")).toBe("rechnungfdp.exe");
+    expect(safeFileName(".hidden")).toBe("hidden");
+    expect(safeFileName("meta.json")).toBe("material");
   });
 });
 

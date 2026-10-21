@@ -41,6 +41,48 @@ async function checklistXlsx(): Promise<void> {
   await wb.xlsx.writeFile(join(dir, "checklist.xlsx"));
 }
 
+async function headersXlsx(): Promise<void> {
+  const wb = new ExcelJS.Workbook();
+  wb.created = new Date(Date.UTC(2026, 0, 1));
+  wb.modified = wb.created;
+
+  // A two-line header: groups merged over the columns they name.
+  const two = wb.addWorksheet("Zwei Zeilen");
+  two.getCell("A1").value = "Prüfprotokoll Halle 2";
+  two.mergeCells("A1:F1");
+  two.getRow(3).values = ["Nr", "Prüfung", null, "Ergebnis", null, "Ort"];
+  two.mergeCells("A3:A4");
+  two.mergeCells("B3:C3");
+  two.mergeCells("D3:E3");
+  two.mergeCells("F3:F4");
+  two.getCell("B4").value = "Datum";
+  two.getCell("C4").value = "Prüfer";
+  two.getCell("D4").value = "Status";
+  two.getCell("E4").value = "Bemerkung";
+  const data: Array<[number, Date, string, string, string, string]> = [
+    [1, new Date(Date.UTC(2026, 2, 2)), "MK", "i.O.", "", "Lager"],
+    [2, new Date(Date.UTC(2026, 2, 2)), "MK", "n.i.O.", "Tür klemmt", "Lager"],
+    [3, new Date(Date.UTC(2026, 2, 3)), "AB", "offen", "", "Büro"],
+  ];
+  data.forEach((row, i) => (two.getRow(5 + i).values = row));
+  // The sub-header repeated further down, as after a printed page break.
+  two.getRow(8).values = [null, "Datum", "Prüfer", "Status", "Bemerkung"];
+  two.getRow(9).values = [4, new Date(Date.UTC(2026, 2, 4)), "AB", "i.O.", "", "Büro"];
+
+  // A title, then a metadata line, then the real header.
+  const meta = wb.addWorksheet("Mit Kopfdaten");
+  meta.getCell("A1").value = "Wartungsliste";
+  meta.mergeCells("A1:C1");
+  meta.getRow(2).values = ["Stand: 01.03.2026", "Prüfer: MK"];
+  meta.getRow(3).values = ["Nr", "Punkt", "Status"];
+  meta.getRow(4).values = [1, "Filter tauschen", "offen"];
+  meta.getRow(5).values = [2, "Riemen prüfen", "erledigt"];
+  meta.getRow(6).values = ["Nr", "Punkt", "Status"];
+  meta.getRow(7).values = [3, "Öl nachfüllen", "offen"];
+
+  await wb.xlsx.writeFile(join(dir, "headers.xlsx"));
+}
+
 function checklistCsv(): void {
   const lines = [
     "Nr;Prüfpunkt;Datum;Status;Bemerkung",
@@ -111,6 +153,7 @@ function tinyPng(): void {
 }
 
 await checklistXlsx();
+await headersXlsx();
 checklistCsv();
 onePagePdf();
 tinyPng();

@@ -76,6 +76,8 @@ export function safeFileName(fileName: string): string {
   const base = basename(fileName.replace(/\\/g, "/"))
     .normalize("NFC")
     .replace(/[\p{Cc}<>:"/\\|?*]/gu, "_")
+    // Format characters (e.g. U+202E right-to-left override) disguise names.
+    .replace(/\p{Cf}/gu, "")
     .replace(/^[.\s]+/, "")
     .trim();
   if (base === "" || base === "meta.json") return "material";

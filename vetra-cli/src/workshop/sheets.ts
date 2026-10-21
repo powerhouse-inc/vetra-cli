@@ -18,9 +18,17 @@ export type SheetTable = {
   rowCount: number;
 };
 
-/** One grid cell: its display text, and whether it is the covered part of a
- * merge (counted once when looking for the header). */
-type Cell = { text: string; covered?: boolean };
+/** One grid cell: its display text, whether it is the covered part of a
+ * merge (counted once when looking for the header), and — for a merge that
+ * spans columns of one row — the merge's key (a column group). */
+type Cell = { text: string; covered?: boolean; span?: string };
+
+/** Per sheet, at most this many data rows (`rowCount` stops here too) and
+ * columns are read; the rest of a huge sheet is ignored. */
+export const SHEET_MAX_ROWS = 5000;
+export const SHEET_MAX_COLUMNS = 100;
+/** Rows above the header (titles, notes) allowed on top of the row cap. */
+const HEADER_SLACK = 50;
 
 const CHOICE_MAX_DISTINCT = 8;
 const CHOICE_MIN_ROWS = 5;
@@ -152,20 +160,37 @@ function displayValue(value: ExcelJS.CellValue): string {
 
 function worksheetGrid(ws: ExcelJS.Worksheet): Cell[][] {
   const grid: Cell[][] = [];
-  const cols = ws.columnCount;
-  for (let r = 1; r <= ws.rowCount; r++) {
-    const row = ws.getRow(r);
+  const lastRow = Math.min(ws.rowCount, SHEET_MAX_ROWS + HEADER_SLACK);
+  for (let r = 1; r <= lastRow; r++) {
+    const row = ws.findRow(r);
+    if (!row) {
+      grid.push([]);
+      continue;
+    }
     const cells: Cell[] = [];
+    const cols = Math.min(row.cellCount, SHEET_MAX_COLUMNS);
     for (let c = 1; c <= cols; c++) {
       const cell = row.getCell(c);
       // A merged cell's covered part reads as its top-left cell.
       const master = cell.isMerged ? cell.master : cell;
       const covered = master !== cell;
-      cells.push({ text: displayValue(master.value), covered });
+      const spansColumns =
+        cell.isMerged && master.row === cell.row && isHorizontalMerge(ws, master);
+      cells.push({
+        text: displayValue(master.value),
+        covered,
+        ...(spansColumns && { span: master.address }),
+      });
     }
     grid.push(cells);
   }
   return grid;
+}
+
+/** Whether the merge starting at `master` covers the cell to its right. */
+function isHorizontalMerge(ws: ExcelJS.Worksheet, master: ExcelJS.Cell): boolean {
+  const right = ws.findCell(Number(master.row), Number(master.col) + 1);
+  return Boolean(right?.isMerged && right.master === master);
 }
 
 /* ------------------------------------------------------------- tables */
@@ -219,14 +244,69 @@ function columnType(values: string[]): ColumnType {
   return "text";
 }
 
-/** First row with ≥ 2 text cells and at most one numeric cell. */
-function findHeaderRow(grid: Cell[][]): number {
-  return grid.findIndex((row) => {
-    const own = row.filter((c) => !c.covered && c.text !== "");
-    const numeric = own.filter((c) => isNumber(c.text)).length;
-    const text = own.filter((c) => !isNumber(c.text) && !isDate(c.text)).length;
-    return text >= 2 && numeric <= 1;
-  });
+/** "Stand: 01.03.2026" in one cell, or "Prüfer:" before its value. */
+const KEY_VALUE = /^\p{L}[^:]{0,39}:(?:\s*\S.*)?$/u;
+
+function ownCells(row: Cell[]): Cell[] {
+  return row.filter((c) => !c.covered && c.text !== "");
+}
+
+/**
+ * Header rule: a row with ≥ 2 text cells and at most one numeric cell —
+ * unless half or more of its cells read as `key: value` (a metadata line
+ * such as "Stand: 01.03.2026 | Prüfer: MK" above the real header).
+ */
+function isHeaderLike(row: Cell[]): boolean {
+  const own = ownCells(row);
+  const numeric = own.filter((c) => isNumber(c.text)).length;
+  const text = own.filter((c) => !isNumber(c.text) && !isDate(c.text)).length;
+  if (text < 2 || numeric > 1) return false;
+  const keyed = own.filter((c) => KEY_VALUE.test(c.text)).length;
+  return keyed * 2 < own.length;
+}
+
+/**
+ * Second header line: the header row groups columns with merged cells
+ * ("Prüfung" over B:C), the next non-blank row names every grouped column
+ * with plain text (no numbers, no dates), and leaves the header's ungrouped
+ * columns ("Nr") empty or merged down — a sub-header, not a first data row.
+ */
+function isSubHeader(header: Cell[], next: Cell[] | undefined): boolean {
+  if (!next) return false;
+  const grouped = header.map((c, i) => (c.span ? i : -1)).filter((i) => i !== -1);
+  if (grouped.length === 0) return false;
+  const own = ownCells(next);
+  if (own.length < 2 || own.some((c) => isNumber(c.text) || isDate(c.text))) return false;
+  const named = grouped.every((i) => (next[i]?.text ?? "") !== "" && !next[i].covered);
+  const ungroupedFree = header.every(
+    (c, i) => c.span || c.text === "" || !next[i] || next[i].covered || next[i].text === "",
+  );
+  return named && ungroupedFree;
+}
+
+type HeaderInfo = { names: string[]; source: string[]; firstData: number };
+
+function findHeader(grid: Cell[][]): HeaderInfo | null {
+  const isBlank = (row: Cell[]) => row.every((c) => c.text === "");
+  const at = grid.findIndex(isHeaderLike);
+  if (at === -1) return null;
+  const top = grid[at];
+  let nextAt = at + 1;
+  while (nextAt < grid.length && isBlank(grid[nextAt])) nextAt++;
+  const next = grid[nextAt];
+  if (!isSubHeader(top, next)) {
+    const names = top.map((c) => c.text);
+    return { names, source: names, firstData: at + 1 };
+  }
+  const width = Math.max(top.length, next.length);
+  const names: string[] = [];
+  for (let i = 0; i < width; i++) {
+    const group = top[i]?.span ? top[i].text : "";
+    const sub = next[i]?.covered ? "" : (next[i]?.text ?? "");
+    names.push(group && sub && group !== sub ? `${group} – ${sub}` : sub || top[i]?.text || "");
+  }
+  // Cells merged down from the first line are not part of a repeat below.
+  return { names, source: next.map((c) => (c.covered ? "" : c.text)), firstData: nextAt + 1 };
 }
 
 function columnLetter(index: number): string {
@@ -238,14 +318,24 @@ function columnLetter(index: number): string {
 }
 
 function toTable(sheet: string, grid: Cell[][]): SheetTable {
-  const isBlank = (row: Cell[]) => row.every((c) => c.text === "");
-  const headerAt = findHeaderRow(grid);
-  const headerRow = headerAt === -1 ? [] : grid[headerAt].map((c) => c.text);
+  const isBlank = (row: string[]) => row.every((c) => c === "");
+  const found = findHeader(grid);
+  const headerRow = found?.names ?? [];
+  const source = found?.source ?? [];
+  const sameAsHeader = (row: string[]) =>
+    source.length > 0 &&
+    source.every((v, i) => v === (row[i] ?? "")) &&
+    row.slice(source.length).every((v) => v === "");
   const dataRows = grid
-    .slice(headerAt + 1)
-    .filter((row) => !isBlank(row))
-    .map((row) => row.map((c) => c.text));
-  const width = Math.max(headerRow.length, ...dataRows.map((r) => r.length), 0);
+    .slice(found?.firstData ?? 0)
+    .map((row) => row.map((c) => c.text))
+    // Blank rows, and a header repeated further down (a printed page break).
+    .filter((row) => !isBlank(row) && !sameAsHeader(row))
+    .slice(0, SHEET_MAX_ROWS);
+  const width = Math.min(
+    Math.max(headerRow.length, ...dataRows.map((r) => r.length), 0),
+    SHEET_MAX_COLUMNS,
+  );
 
   const keep: number[] = [];
   for (let c = 0; c < width; c++) {
@@ -283,6 +373,8 @@ export async function readSheets(path: string): Promise<SheetTable[]> {
     return wb.worksheets.map((ws) => toTable(ws.name, worksheetGrid(ws)));
   }
   const text = decodeText(await readFile(path));
-  const grid = parseCsv(text).map((row) => row.map((v) => ({ text: v.trim() })));
+  const grid = parseCsv(text)
+    .slice(0, SHEET_MAX_ROWS + HEADER_SLACK)
+    .map((row) => row.slice(0, SHEET_MAX_COLUMNS).map((v) => ({ text: v.trim() })));
   return [toTable(basename(path, extname(path)), grid)];
 }
