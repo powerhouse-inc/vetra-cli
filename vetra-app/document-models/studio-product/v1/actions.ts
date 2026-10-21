@@ -9,6 +9,7 @@ import {
   studioProductLaunchActions,
   studioProductProductActions,
   studioProductSuggestionsActions,
+  studioProductWorkshopActions,
 } from "./gen/creators.js";
 
 /** Actions for the StudioProduct document model */
@@ -20,4 +21,5 @@ export const actions = {
   ...studioProductLaunchActions,
   ...studioProductSuggestionsActions,
   ...studioProductIterateActions,
+  ...studioProductWorkshopActions,
 };

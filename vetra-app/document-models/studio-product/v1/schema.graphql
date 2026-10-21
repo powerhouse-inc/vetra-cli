@@ -150,6 +150,33 @@ enum PublicSourceKind {
   PACKAGE
 }
 
+enum MaterialKind {
+  PICTURE
+  PDF
+  SHEET
+  TEXT
+}
+
+enum GuidedLoopStatus {
+  NOT_STARTED
+  POINTED
+  CHANGED
+  WENT_BACK
+  DONE
+  DISMISSED
+}
+
+enum RowImportStatus {
+  CONFIRMED
+  DONE
+  FAILED
+}
+
+enum QuestionAnswerBy {
+  ROOM
+  DEFAULT
+}
+
 enum GithubStatus {
   NOT_CONNECTED
   CONNECTED
@@ -217,6 +244,8 @@ type Change {
   metrics: ChangeMetrics!
   lintWaivedAt: DateTime
   variants: [Variant!]!
+  questions: [RoomQuestion!]!
+  cost: ChangeCost
 }
 
 # One of two ways to build a change ("Show me two ways"), on its own branch.
@@ -324,6 +353,62 @@ type PublicSource {
   version: Int!
 }
 
+# A question the agent asks the room while building a change; answered by
+# the room or, after a while, by its default.
+type RoomQuestion {
+  id: OID!
+  text: String!
+  options: [String!]!
+  defaultAnswer: String!
+  language: String!
+  askedAt: DateTime!
+  answer: String
+  answeredAt: DateTime
+  answeredBy: QuestionAnswerBy
+}
+
+# What a change cost in model usage, in US dollars: the meter at its start
+# and at its end.
+type ChangeCost {
+  startUsd: Float
+  endUsd: Float
+}
+
+# A material (picture, PDF, sheet, text) the understanding was built from.
+type MaterialRef {
+  id: OID!
+  name: String!
+  kind: MaterialKind!
+}
+
+# What the agent understood from the idea and the materials, confirmed with
+# "Build this".
+type Understood {
+  json: String!
+  language: String!
+  at: DateTime!
+  materials: [MaterialRef!]!
+}
+
+# Progress through the guided first loop (point, change, go back, done).
+type GuidedLoop {
+  status: GuidedLoopStatus!
+  at: DateTime
+}
+
+# Rows of a sheet imported as documents.
+type RowImport {
+  id: OID!
+  materialId: OID!
+  sheet: String!
+  documentType: String!
+  rows: Int!
+  imported: Int!
+  status: RowImportStatus!
+  at: DateTime!
+  failure: String
+}
+
 type StudioProductState {
   name: String
   idea: String
@@ -351,6 +436,10 @@ type StudioProductState {
   notes: NotesSettings!
   publicSource: PublicSource
   sourceNoticeAcceptedAt: DateTime
+  understood: Understood
+  explainersSeen: [String!]!
+  guidedLoop: GuidedLoop!
+  rowImports: [RowImport!]!
 }
 
 
@@ -696,4 +785,69 @@ input SetPublicSourceInput {
   kind: PublicSourceKind!
   url: URL!
   version: Int!
+}
+
+# workshop
+
+input SetUnderstoodMaterialInput {
+  id: OID!
+  name: String!
+  kind: MaterialKind!
+}
+
+input SetUnderstoodInput {
+  json: String!
+  language: String!
+  at: DateTime!
+  materials: [SetUnderstoodMaterialInput!]!
+}
+
+input MarkExplainersSeenInput {
+  ids: [String!]!
+}
+
+input SetGuidedLoopInput {
+  status: GuidedLoopStatus!
+  at: DateTime!
+}
+
+input AskQuestionInput {
+  changeId: OID!
+  id: OID!
+  text: String!
+  options: [String!]!
+  defaultAnswer: String!
+  language: String!
+  askedAt: DateTime!
+}
+
+input AnswerQuestionInput {
+  changeId: OID!
+  id: OID!
+  answer: String!
+  answeredBy: QuestionAnswerBy!
+  answeredAt: DateTime!
+}
+
+input SetChangeCostInput {
+  changeId: OID!
+  startUsd: Float
+  endUsd: Float
+}
+
+input StartRowImportInput {
+  id: OID!
+  materialId: OID!
+  sheet: String!
+  documentType: String!
+  rows: Int!
+  at: DateTime!
+}
+
+input FinishRowImportInput {
+  id: OID!
+  imported: Int!
+  status: RowImportStatus!
+  failure: String
+  at: DateTime!
 }

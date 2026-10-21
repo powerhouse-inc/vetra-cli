@@ -49,6 +49,13 @@ export function defaultGlobalState(): StudioProductGlobalState {
     },
     publicSource: null,
     sourceNoticeAcceptedAt: null,
+    understood: null,
+    explainersSeen: [],
+    guidedLoop: {
+      status: "NOT_STARTED",
+      at: null,
+    },
+    rowImports: [],
   };
 }
 

@@ -1,18 +1,25 @@
 import {
   addMilestone,
+  answerQuestion,
+  askQuestion,
   completeStep,
   countStep,
+  finishRowImport,
   initProduct,
   keepVariant,
   markStuck,
   planSteps,
   recordChangeMetrics,
   reopenStep,
+  setChangeCost,
   setChangeTitle,
+  setGuidedLoop,
   setOrigin,
+  setUnderstood,
   setUpstreamVersion,
   setVariantStatus,
   startChange,
+  startRowImport,
   startStep,
   startVariants,
   utils,
@@ -257,5 +264,95 @@ describe("iterate scenarios", () => {
         checkedAt: at(2),
       },
     ]);
+  });
+});
+
+describe("workshop scenarios", () => {
+  it("workshop: understood → build → question answered by default → cost recorded → rows imported", () => {
+    const understood = JSON.stringify({ title: "Dog walks", things: ["Dog"] });
+    let doc = apply(
+      utils.createDocument(),
+      initProduct({
+        name: "Dog walks",
+        idea: "plan dog walks with friends",
+        createdAt: at(0),
+      }),
+      setUnderstood({
+        json: understood,
+        language: "de",
+        at: at(1),
+        materials: [{ id: "mat-1", name: "dogs.xlsx", kind: "SHEET" }],
+      }),
+      // "Build this"
+      startChange({
+        id: "c1",
+        kind: "FIRST_BUILD",
+        request: "plan dog walks with friends",
+        startedAt: at(2),
+      }),
+      setChangeCost({ changeId: "c1", startUsd: 0.5 }),
+      askQuestion({
+        changeId: "c1",
+        id: "q1",
+        text: "Soll ein Spaziergang eine feste Dauer haben?",
+        options: ["Ja", "Nein"],
+        defaultAnswer: "Nein",
+        language: "de",
+        askedAt: at(3),
+      }),
+      // Nobody answered in time: the default stands.
+      answerQuestion({
+        changeId: "c1",
+        id: "q1",
+        answer: "Nein",
+        answeredBy: "DEFAULT",
+        answeredAt: at(4),
+      }),
+      setChangeCost({ changeId: "c1", endUsd: 1.75 }),
+      startRowImport({
+        id: "ri1",
+        materialId: "mat-1",
+        sheet: "Hunde",
+        documentType: "acme/dog",
+        rows: 8,
+        at: at(5),
+      }),
+      finishRowImport({ id: "ri1", imported: 8, status: "DONE", at: at(6) }),
+      setGuidedLoop({ status: "POINTED", at: at(7) }),
+    );
+    expect(doc.operations.global.every((o) => !o.error)).toBe(true);
+    const state = doc.state.global;
+    expect(state.understood).toEqual({
+      json: understood,
+      language: "de",
+      at: at(1),
+      materials: [{ id: "mat-1", name: "dogs.xlsx", kind: "SHEET" }],
+    });
+    expect(change(doc).questions[0]).toMatchObject({
+      answer: "Nein",
+      answeredBy: "DEFAULT",
+      answeredAt: at(4),
+    });
+    expect(change(doc).cost).toEqual({ startUsd: 0.5, endUsd: 1.75 });
+    expect(state.rowImports[0]).toMatchObject({
+      id: "ri1",
+      rows: 8,
+      imported: 8,
+      status: "DONE",
+    });
+    expect(state.guidedLoop).toEqual({ status: "POINTED", at: at(7) });
+
+    // The room can't answer again after the default was taken.
+    doc = apply(
+      doc,
+      answerQuestion({
+        changeId: "c1",
+        id: "q1",
+        answer: "Ja",
+        answeredBy: "ROOM",
+        answeredAt: at(8),
+      }),
+    );
+    expect(lastError(doc)).toBe('Question "q1" was already answered.');
   });
 });
