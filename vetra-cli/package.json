@@ -107,5 +107,8 @@
   "author": {
     "name": "Powerhouse",
     "url": "https://powerhouse.inc"
+  },
+  "dependencies": {
+    "ai": "5.0.279"
   }
 }

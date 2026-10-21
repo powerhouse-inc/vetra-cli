@@ -47,6 +47,14 @@ export const configSchema = z.object({
     .describe(
       'Package manager for `ph init` on fresh reactor projects. Unset: prefer pnpm when installed, else npm. An unrecognized value is ignored (falls back to inference). The --clone fast path always uses pnpm (ph requires it). Env VETRA_PACKAGE_MANAGER.',
     ),
+  llmProvider: z
+    .string()
+    .default('openrouter')
+    .describe('Model provider for this Studio (env VETRA_LLM_PROVIDER); only openrouter is supported'),
+  understandModel: z
+    .string()
+    .optional()
+    .describe('Model id for understanding pictures and documents (env VETRA_UNDERSTAND_MODEL); defaults to the main model'),
   subagentModel: z
     .string()
     .optional()

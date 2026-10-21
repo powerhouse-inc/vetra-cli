@@ -8,7 +8,9 @@ import {
   SUBAGENT_MAX_OUTPUT_TOKENS,
   OPENROUTER_ATTRIBUTION_HEADERS,
   clearContextLimitCache,
+  callCostUsd,
   createLlmModels,
+  createModel,
   parseFallbacks,
   requestExtras,
   resolveContextTokenLimit,
@@ -131,6 +133,8 @@ describe("requestExtras", () => {
 
 describe("createLlmModels", () => {
   const settings: LlmSettings = {
+    provider: "openrouter",
+    understandModel: "anthropic/claude-sonnet-4.6",
     apiKey: "sk-or-v1-test",
     model: "anthropic/claude-sonnet-4.6",
     subagentModel: "openai/gpt-5",
@@ -256,5 +260,55 @@ describe("resolveContextTokenLimit", () => {
     }) as unknown as typeof fetch;
     expect(await resolveContextTokenLimit("x/busy", { fetch: f })).toBe(160_000);
     expect(await resolveContextTokenLimit("x/busy", { fetch: f })).toBe(40_000);
+  });
+});
+
+describe("model factory and settings", () => {
+  const withKey = { ...BASE, openrouterApiKey: "k" };
+
+  it("main, subagent and memory models are unchanged (same ids and extras through createModel)", async () => {
+    const settings = resolveLlmSettings({ ...withKey, subagentModel: "openai/gpt-5", modelFallbacks: "openai/gpt-5" }, {})!;
+    const { calls, fetchImpl } = captureFetch();
+    const models = createLlmModels(settings, { fetch: fetchImpl });
+    await models.main.doGenerate({ prompt: PROMPT });
+    await models.subagent.doGenerate({ prompt: PROMPT });
+    await models.memory.doGenerate({ prompt: PROMPT });
+    const direct = captureFetch();
+    await createModel(settings, { modelId: settings.model, maxOutputTokens: MAIN_MAX_OUTPUT_TOKENS, fetch: direct.fetchImpl }).doGenerate({ prompt: PROMPT });
+    expect(direct.calls[0].body).toStrictEqual(calls[0].body);
+    expect(calls.map((c) => [c.body.model, c.body.max_tokens])).toStrictEqual([
+      ["anthropic/claude-sonnet-4.6", MAIN_MAX_OUTPUT_TOKENS],
+      ["openai/gpt-5", SUBAGENT_MAX_OUTPUT_TOKENS],
+      ["anthropic/claude-haiku-4.5", MEMORY_MAX_OUTPUT_TOKENS],
+    ]);
+    expect(calls[0].body).toMatchObject({
+      provider: { data_collection: "deny" },
+      models: ["anthropic/claude-sonnet-4.6", "openai/gpt-5"],
+      cache_control: { type: "ephemeral" },
+      usage: { include: true },
+    });
+  });
+
+  it("understand model defaults to the main model", () => {
+    expect(resolveLlmSettings(withKey, {})!.understandModel).toBe(BASE.model);
+    expect(resolveLlmSettings(withKey, {})!.provider).toBe("openrouter");
+  });
+
+  it("VETRA_UNDERSTAND_MODEL overrides it", () => {
+    expect(resolveLlmSettings({ ...withKey, understandModel: "google/gemini-3-pro" }, {})!.understandModel).toBe("google/gemini-3-pro");
+  });
+
+  it("unknown provider is refused with the supported list", () => {
+    expect(() => resolveLlmSettings({ ...withKey, llmProvider: "acme" }, {})).toThrow(
+      'Unknown model provider "acme". This Studio supports: openrouter.',
+    );
+    expect(resolveLlmSettings({ ...withKey, llmProvider: "openrouter" }, {})).not.toBeNull();
+  });
+
+  it("callCostUsd reads the cost or returns null", () => {
+    expect(callCostUsd({ providerMetadata: { openrouter: { usage: { cost: 0.0123 } } } })).toBe(0.0123);
+    expect(callCostUsd({ providerMetadata: { openrouter: { usage: {} } } })).toBeNull();
+    expect(callCostUsd({ providerMetadata: undefined })).toBeNull();
+    expect(callCostUsd({})).toBeNull();
   });
 });

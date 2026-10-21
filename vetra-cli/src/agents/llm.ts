@@ -1,4 +1,4 @@
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { createOpenRouter, type LanguageModelV2 } from '@openrouter/ai-sdk-provider';
 import { DEFAULT_MODEL_FALLBACKS, type Config } from '../framework.js';
 
 /**
@@ -24,18 +24,26 @@ export const MEMORY_MAX_OUTPUT_TOKENS = 4096;
 /** Hard ceiling on the TokenLimiterProcessor input limit, whatever the model's context window. */
 export const INPUT_TOKEN_CAP = 64_000;
 
+/** The model type the agent and generateText consume (ai v5 / provider spec v2). */
+export type LanguageModel = LanguageModelV2;
+
+export const SUPPORTED_PROVIDERS = ['openrouter'] as const;
+
 export interface LlmSettings {
+  provider: 'openrouter';
   apiKey: string;
   model: string;
   subagentModel: string;
   memoryModel: string;
+  /** Model for understanding pictures and documents; defaults to the main model. */
+  understandModel: string;
   /** The configured fallbacks; undefined means the default chain (see resolveFallbacks). */
   fallbacks: string[] | undefined;
   allowDataCollection: boolean;
 }
 
 export type LlmConfigInput = Pick<Config, 'model' | 'memoryModel' | 'llmAllowDataCollection'> &
-  Partial<Pick<Config, 'subagentModel' | 'modelFallbacks' | 'openrouterApiKey'>>;
+  Partial<Pick<Config, 'subagentModel' | 'modelFallbacks' | 'openrouterApiKey' | 'llmProvider' | 'understandModel'>>;
 
 /**
  * The OpenRouter key: the configured one (VETRA_OPENROUTER_API_KEY, or the
@@ -107,19 +115,29 @@ export function resolveLlmSettings(
   config: LlmConfigInput,
   env: Record<string, string | undefined> = process.env,
 ): LlmSettings | null {
+  const provider = config.llmProvider?.trim().toLowerCase() || 'openrouter';
+  if (provider !== 'openrouter') {
+    throw new Error(`Unknown model provider "${config.llmProvider}". This Studio supports: ${SUPPORTED_PROVIDERS.join(', ')}.`);
+  }
   const apiKey = resolveOpenRouterKey(config, env);
   if (!apiKey) return null;
   return {
+    provider,
     apiKey,
     model: config.model,
     subagentModel: config.subagentModel?.trim() || config.model,
     memoryModel: config.memoryModel,
+    understandModel: config.understandModel?.trim() || config.model,
     fallbacks: parseFallbacks(config.modelFallbacks),
     allowDataCollection: config.llmAllowDataCollection === true,
   };
 }
 
-export function createLlmModels(s: LlmSettings, opts: { fetch?: typeof fetch } = {}) {
+/** The single place a provider client is built. */
+export function createModel(
+  s: LlmSettings,
+  opts: { modelId: string; maxOutputTokens: number; fallbacks?: string[]; fetch?: typeof fetch },
+): LanguageModel {
   const provider = createOpenRouter({
     apiKey: s.apiKey,
     headers: { ...OPENROUTER_ATTRIBUTION_HEADERS },
@@ -129,19 +147,33 @@ export function createLlmModels(s: LlmSettings, opts: { fetch?: typeof fetch } =
   });
   // max_tokens goes in extraBody, which the provider merges last, so it caps
   // whatever maxOutputTokens the caller (Mastra) asks for.
-  const make = (modelId: string, fallbacks: string[], maxOutputTokens: number) =>
-    provider.chat(modelId, {
-      usage: { include: true },
-      extraBody: {
-        ...requestExtras(modelId, { fallbacks, allowDataCollection: s.allowDataCollection }),
-        max_tokens: maxOutputTokens,
-      },
-    });
+  return provider.chat(opts.modelId, {
+    usage: { include: true },
+    extraBody: {
+      ...requestExtras(opts.modelId, {
+        fallbacks: opts.fallbacks ?? resolveFallbacks(opts.modelId, s.fallbacks),
+        allowDataCollection: s.allowDataCollection,
+      }),
+      max_tokens: opts.maxOutputTokens,
+    },
+  });
+}
+
+export function createLlmModels(s: LlmSettings, opts: { fetch?: typeof fetch } = {}) {
+  const make = (modelId: string, maxOutputTokens: number) =>
+    createModel(s, { modelId, maxOutputTokens, ...(opts.fetch ? { fetch: opts.fetch } : {}) });
   return {
-    main: make(s.model, resolveFallbacks(s.model, s.fallbacks), MAIN_MAX_OUTPUT_TOKENS),
-    subagent: make(s.subagentModel, resolveFallbacks(s.subagentModel, s.fallbacks), SUBAGENT_MAX_OUTPUT_TOKENS),
-    memory: make(s.memoryModel, resolveFallbacks(s.memoryModel, s.fallbacks), MEMORY_MAX_OUTPUT_TOKENS),
+    main: make(s.model, MAIN_MAX_OUTPUT_TOKENS),
+    subagent: make(s.subagentModel, SUBAGENT_MAX_OUTPUT_TOKENS),
+    memory: make(s.memoryModel, MEMORY_MAX_OUTPUT_TOKENS),
   };
+}
+
+/** USD cost OpenRouter reports for one call (usage.cost), or null when absent. */
+export function callCostUsd(result: { providerMetadata?: unknown }): number | null {
+  const meta = result.providerMetadata as { openrouter?: { usage?: { cost?: unknown } } } | undefined;
+  const cost = meta?.openrouter?.usage?.cost;
+  return typeof cost === 'number' && Number.isFinite(cost) ? cost : null;
 }
 
 const contextLimits = new Map<string, number>();
