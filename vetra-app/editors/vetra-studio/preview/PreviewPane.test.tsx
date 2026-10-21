@@ -23,14 +23,21 @@ const hoisted = vi.hoisted(() => ({
   }),
   started: [] as string[],
   restarted: [] as string[],
+  /** The autoStart option of each resolve. */
+  autoStart: [] as (boolean | undefined)[],
   /** false: an older Studio without /restart. */
   hasRestart: true,
   refused: false,
 }));
 
 vi.mock("../hooks/useResolvedPreview.js", () => ({
-  useResolvedPreview: (target: PreviewTarget | undefined) =>
-    hoisted.resolve(target),
+  useResolvedPreview: (
+    target: PreviewTarget | undefined,
+    opts?: { autoStart?: boolean },
+  ) => {
+    hoisted.autoStart.push(opts?.autoStart);
+    return hoisted.resolve(target);
+  },
 }));
 vi.mock("../hooks/preview-server-client.js", () => ({
   fetchRestart: ({ project }: { project: string }) => {
@@ -53,7 +60,7 @@ vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
 
 function ready(target: PreviewTarget | undefined): ResolvedPreview {
   if (!target) return { kind: "no-target" };
-  const id = target.doc ?? target.drive ?? "";
+  const id = target.doc ?? target.drive ?? (target.home ? "home" : "");
   return {
     kind: "ready",
     project: target.project,
@@ -120,11 +127,64 @@ beforeEach(() => {
   hoisted.resolve = () => ({ kind: "no-target" });
   hoisted.started = [];
   hoisted.restarted = [];
+  hoisted.autoStart = [];
   hoisted.hasRestart = true;
   hoisted.refused = false;
 });
 
+const PROJECT_STARTED = toolTurn(
+  "reactor-project-start",
+  {},
+  { text: "reactor-project ready", data: { project: "hotel" } },
+);
+
 describe("PreviewPane", () => {
+  it("shows the started project's drive view before the agent shares a screen", () => {
+    hoisted.resolve = ready;
+    const { container } = mount({
+      change: null,
+      documents: [],
+      session: session([PROJECT_STARTED]),
+    });
+    const frame = container.querySelector('iframe[title="Preview"]');
+    expect(frame?.getAttribute("src")).toContain("#home");
+    // The home view never starts a project on its own.
+    expect(hoisted.autoStart.at(-1)).toBe(false);
+
+    // The agent's first shared screen takes over.
+    const shared = mount({
+      change: null,
+      documents: [],
+      session: session([PROJECT_STARTED, ...AGENT_SHOWS_ORDER]),
+    });
+    expect(
+      shared.container.querySelector("iframe")?.getAttribute("src"),
+    ).toContain("breakfast-for-2");
+    expect(hoisted.autoStart.at(-1)).toBe(true);
+  });
+
+  it("keeps the skeleton while the started project isn't up yet", () => {
+    hoisted.resolve = (target) =>
+      target?.home
+        ? {
+            kind: "starting",
+            project: "hotel",
+            projectPath: "/w/hotel",
+            driveId: "d1",
+          }
+        : { kind: "no-target" };
+    const { container } = mount({
+      change: null,
+      documents: [],
+      session: session([PROJECT_STARTED]),
+    });
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.textContent).toContain(
+      "Setting up your project (about 30 s)…",
+    );
+    expectNoForbiddenWords(container);
+  });
+
   it("shows a skeleton with the current activity, never a blank frame", () => {
     const props = { change: null, documents: [], session: undefined };
     let { container } = mount(props);

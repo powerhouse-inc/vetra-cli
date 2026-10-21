@@ -14,8 +14,10 @@ import {
 import {
   CONTINUE_ID_PREFIX,
   STUDIO_NOTE_ID_PREFIX,
+  nextStoryChange,
   staleness,
   storyLines,
+  storySignature,
   type StoryLine,
 } from "./storyModel.js";
 
@@ -341,8 +343,8 @@ describe("staleness", () => {
     toolCall("a1", "Write", { path: "a.ts" }, at(7)),
   );
 
-  it("a waiting line appears after 30 s without news", () => {
-    const fresh = new Date(atSec(7, 25));
+  it("a waiting line appears after 20 s without news", () => {
+    const fresh = new Date(atSec(7, 20));
     const lines = storyLines(product, change, conversation, fresh);
     expect(staleness(lines, { working: true }, fresh)).toBeNull();
 
@@ -356,6 +358,81 @@ describe("staleness", () => {
       kind: "waiting",
       text: "Still working on it — last update 45 s ago.",
     });
+  });
+
+  it("counts quiet time from the last visible change, not the newest tool call", () => {
+    // Two spec calls in a row: the second bumps the active line's time but it
+    // still reads "working on the design…" — the customer sees no change.
+    const first = chat(
+      user("u0", "a task board", at(1), at(1)),
+      toolCall("a1", "spec-update", { name: "Brief" }, atSec(7, 0)),
+    );
+    const second = chat(
+      user("u0", "a task board", at(1), at(1)),
+      toolCall("a1", "spec-update", { name: "Brief" }, atSec(7, 0)),
+      toolCall("a2", "spec-update", { name: "Brief" }, atSec(7, 15)),
+    );
+    const t0 = new Date(atSec(7, 0));
+    const before = storyLines(product, change, first, t0);
+    let seen = nextStoryChange(null, before, t0.getTime());
+    expect(seen.at).toBe(t0.getTime());
+
+    const t1 = new Date(atSec(7, 15));
+    const after = storyLines(product, change, second, t1);
+    expect(storySignature(after)).toBe(storySignature(before));
+    seen = nextStoryChange(seen, after, t1.getTime());
+    expect(seen.at).toBe(t0.getTime());
+
+    const t2 = new Date(atSec(7, 22));
+    const quietLines = storyLines(product, change, second, t2);
+    // By the newest time alone it is only 7 s quiet …
+    expect(staleness(quietLines, { working: true }, t2)).toBeNull();
+    // … but the story hasn't changed for 22 s.
+    expect(staleness(quietLines, { working: true }, t2, seen.at)).toMatchObject(
+      { kind: "waiting", text: "Still working on it — last update 22 s ago." },
+    );
+  });
+
+  it("a visible change restarts the quiet time", () => {
+    const reading = chat(
+      user("u0", "a task board", at(1), at(1)),
+      toolCall("a1", "spec-update", { name: "Brief" }, atSec(7, 0)),
+    );
+    const writing = chat(
+      user("u0", "a task board", at(1), at(1)),
+      toolCall("a1", "spec-update", { name: "Brief" }, atSec(7, 0)),
+      toolCall("a2", "Write", { path: "a.ts" }, atSec(7, 18)),
+    );
+    const t0 = new Date(atSec(7, 0));
+    let seen = nextStoryChange(
+      null,
+      storyLines(product, change, reading, t0),
+      t0.getTime(),
+    );
+    const t1 = new Date(atSec(7, 18));
+    seen = nextStoryChange(
+      seen,
+      storyLines(product, change, writing, t1),
+      t1.getTime(),
+    );
+    expect(seen.at).toBe(t1.getTime());
+    const t2 = new Date(atSec(7, 30));
+    expect(
+      staleness(
+        storyLines(product, change, writing, t2),
+        { working: true },
+        t2,
+        seen.at,
+      ),
+    ).toBeNull();
+  });
+
+  it("the signature ignores the waiting line itself", () => {
+    const now = new Date(atSec(7, 45));
+    const lines = storyLines(product, change, conversation, now);
+    const waiting = staleness(lines, { working: true }, now);
+    expect(waiting).not.toBeNull();
+    expect(storySignature([...lines, waiting!])).toBe(storySignature(lines));
   });
 
   it("no waiting line while the agent isn't working", () => {

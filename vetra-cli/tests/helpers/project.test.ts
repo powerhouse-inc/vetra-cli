@@ -58,6 +58,7 @@ describe("resolveReactorProjectPath", () => {
 
   it("ignores dotfiles when listing projects", async () => {
     mkProject(workdir, "alpha");
+    mkProject(workdir, "beta");
     mkdirSync(join(workdir, ".cache"));
     writeFileSync(
       join(workdir, ".cache", "powerhouse.config.json"),
@@ -66,7 +67,20 @@ describe("resolveReactorProjectPath", () => {
     );
     await expect(
       resolveReactorProjectPath(workdir, undefined),
-    ).rejects.toThrow(/Available projects: alpha$/m);
+    ).rejects.toThrow(/Available projects: alpha, beta$/m);
+  });
+
+  // Staging: the agent left `project` out of spec/preview calls and lost a
+  // step to "Workdir is not a Reactor package" each time.
+  it("defaults to the workspace's only project when none is named", async () => {
+    const alpha = mkProject(workdir, "alpha");
+    // A dot-directory package doesn't count as a second project.
+    mkProject(workdir, ".cache");
+    await expect(resolveReactorProjectPath(workdir, undefined)).resolves.toBe(alpha);
+    // A named project still wins, and a missing one still fails.
+    await expect(resolveReactorProjectPath(workdir, "beta")).rejects.toThrow(
+      /Available projects: alpha/,
+    );
   });
 
   // M0: the bare "not found" errors led the agent to hand-write a project.

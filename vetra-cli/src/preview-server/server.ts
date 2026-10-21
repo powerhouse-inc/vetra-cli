@@ -2,7 +2,7 @@
  * HTTP composition layer.
  *
  * Routes:
- *   GET  /resolve?project=&doc=   read-only; returns JSON `ResolveResult`.
+ *   GET  /resolve?project=&doc=   (or &drive=, or &home=1) read-only; returns JSON `ResolveResult`.
  *   POST /start?project=          idempotent start; returns JSON `StartResult`.
  *   POST /restart?project=        stop the project's preview, start it again (gated).
  *   GET  /events                  SSE stream of reactor-project events.
@@ -160,6 +160,7 @@ export async function startPreviewServer(
           project: q.get("project") ?? "",
           doc: q.get("doc") ?? "",
           drive: q.get("drive") ?? undefined,
+          home: q.get("home") === "1",
           proxyPublicUrl,
         });
         writeJson(res, 200, result);
