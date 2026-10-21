@@ -47,6 +47,11 @@
       "browser": "./dist/browser/processors/index.js",
       "node": "./dist/node/processors/index.mjs"
     },
+    "./shared/*": {
+      "types": "./dist/types/shared/*.d.ts",
+      "browser": "./dist/browser/shared/*.js",
+      "node": "./dist/node/shared/*.mjs"
+    },
     "./manifest": "./dist/powerhouse.manifest.json",
     "./style.css": "./dist/style.css"
   },
@@ -62,7 +67,7 @@
     "check-circular-imports": "npx dpdm -T ./index.ts",
     "generate": "ph-cli generate",
     "connect": "ph-cli connect",
-    "build": "pnpm typecheck && ph-cli build",
+    "build": "pnpm typecheck && ph-cli build && node scripts/emit-shared.mjs",
     "build:connect": "ph-cli connect build --outDir dist/connect --app-name \"Vetra Studio\" --favicon ./branding/vetra.ico --default-drives-url http://__ph_drive_url__ --dynamic-base --renown-namespace vetra-studio",
     "reactor": "ph-cli reactor",
     "service": "ph-cli service",
