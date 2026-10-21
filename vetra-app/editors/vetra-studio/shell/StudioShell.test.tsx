@@ -317,6 +317,8 @@ describe("StudioShell", () => {
       "Build",
       "Review",
       "Demo",
+      // Demo's thin bar returns to Review (Task 2.4).
+      "Open chat",
     ]);
     expect(names.filter((n) => !allowed.has(n))).toEqual([]);
     expect(names).toContain("Settings");
@@ -494,13 +496,32 @@ describe("StudioShell", () => {
 
     click(button(container, "Demo"));
     expect(pressedModes(container)).toEqual(["Demo"]);
-    // The product fills the page; the story is out of view, the steer box stays.
+    // The product fills the page under a thin bar; the story is out of view.
     expect(container.querySelector("aside")).toBeNull();
+    expect(container.querySelector("[data-step]")).toBeNull();
+    expect(container.querySelector("[data-demo-bar]")?.textContent).toContain(
+      "Open chat",
+    );
     expect(
       container.querySelector("[data-demo-product]")?.textContent,
     ).toContain("Preview pane");
-    expect(steerInput(container)).not.toBeNull();
+    expect(steerInput(container)).toBeNull();
+    // The chat is the command bar; Open chat returns to Review.
+    pressKey(window, "k");
+    expect(container.querySelector("[data-command-bar]")).toBeNull();
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "k", ctrlKey: true }),
+      );
+    });
+    expect(
+      container
+        .querySelector("[data-command-bar] input")
+        ?.getAttribute("placeholder"),
+    ).toBe("Ask for a change…");
     expectNoForbiddenWords(container);
+    click(button(container, "Open chat"));
+    expect(pressedModes(container)).toEqual(["Review"]);
   });
 
   it("mode is remembered after remount", () => {
@@ -554,12 +575,11 @@ describe("StudioShell", () => {
     chooseDock(container, "Chat on the left");
     expect(steerInput(container)?.value).toBe("and bigger");
 
-    // Demo keeps the question in view over its steer box.
+    // Demo keeps the question in view and the badge on its thin bar.
     click(button(container, "Demo"));
     expect(
       container.querySelector("[data-demo-question]")?.textContent,
     ).toContain("Should tasks have due dates?");
-    expect(steerInput(container)).not.toBeNull();
     expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
   });
 });

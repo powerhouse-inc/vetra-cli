@@ -38,7 +38,6 @@ import { IdeaScreen } from "../idea/IdeaScreen.js";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
 import { sessionToOpen, startProduct } from "../idea/startProduct.js";
 import { LiveSurface } from "../change/LiveSurface.js";
-import { ChangeRequest } from "../change/ChangeDrawer.js";
 import { ReadyBar } from "../change/ReadyBar.js";
 import { startChange } from "../change/startChange.js";
 import { PublishPermissionModal } from "../permission/PublishPermissionModal.js";
@@ -50,7 +49,6 @@ import { LiveDetail } from "../steps/LiveDetail.js";
 import { PlanDetail } from "../steps/PlanDetail.js";
 import { planBrief } from "../steps/planBrief.js";
 import { TestsDetail } from "../steps/TestsDetail.js";
-import { SteerBox } from "../story/SteerBox.js";
 import { StoryPane } from "../story/StoryPane.js";
 import { storyLines, type StoryLine } from "../story/storyModel.js";
 import { StepStrip } from "../strip/StepStrip.js";
@@ -59,7 +57,7 @@ import { PHASE_AVERAGES } from "../strip/timeLeft.js";
 import { useVersionsPanel } from "../versions/VersionsPanel.js";
 import { VetraStudio } from "../VetraStudio.js";
 import { showsFirstVersionBar } from "./firstVersion.js";
-import { DemoPlaceholder } from "./DemoPlaceholder.js";
+import { DemoLayout } from "./DemoLayout.js";
 import { DockSplit } from "./DockSplit.js";
 import { ModeSwitch } from "./ModeSwitch.js";
 import { ReviewLayout, type ReviewStory } from "./ReviewLayout.js";
@@ -470,27 +468,30 @@ function StudioPage({
       </div>
     ));
 
-  // Demo keeps a way to steer: the open change's steer box, or the next
-  // change's box for closed work before versions.
-  const demoSteer =
-    product && change && openChange(product) ? (
-      <SteerBox
-        sessionId={sessionId ?? null}
-        productId={productId}
-        changeId={change.id}
-        paused={change.status === "PAUSED"}
-        messages={chat?.messages ?? []}
-        now={now}
-      />
-    ) : product && change && !liveView && productId ? (
-      <div className="px-3 py-2">
-        <ChangeRequest
-          product={product}
-          onStart={startNextChange}
-          prefill={null}
-        />
-      </div>
-    ) : null;
+  // Demo's command bar: the newest agent reply shows as a toast, and a send
+  // goes the story's way (into the open change, else a new change).
+  const lastReply = useMemo(() => {
+    if (!product || !change) return null;
+    const replies = storyLines(product, change, chat, now).filter(
+      (l): l is Extract<StoryLine, { kind: "reply" }> => l.kind === "reply",
+    );
+    return replies.at(-1)?.text ?? null;
+  }, [product, change, chat, now]);
+  const sendFromBar = useCallback(
+    async (text: string) => {
+      await startNextChange(text);
+    },
+    [startNextChange],
+  );
+  const modeSwitch = (
+    <ModeSwitch
+      mode={layout.mode}
+      onMode={layout.setMode}
+      dock={layout.dock}
+      onDock={layout.setDock}
+      attention={waitingLines.length}
+    />
+  );
 
   let body: React.ReactNode;
   if (layout.mode === "review") {
@@ -505,9 +506,14 @@ function StudioPage({
     );
   } else if (layout.mode === "demo") {
     body = (
-      <DemoPlaceholder
+      <DemoLayout
         product={productNode}
-        steer={demoSteer}
+        name={product?.name?.trim() || "Your product"}
+        live={liveView}
+        onOpenChat={() => layout.setMode("review")}
+        modeSwitch={modeSwitch}
+        onSend={sendFromBar}
+        lastReply={lastReply}
         question={question?.text ?? null}
       />
     );
@@ -542,36 +548,31 @@ function StudioPage({
 
   return (
     <>
-      <StepStrip
-        view={view}
-        selected={openStep}
-        onOpenStep={toggleStep}
-        onOpenSettings={onOpenSettings}
-        onRename={productId ? rename : undefined}
-        modeSwitch={
-          <ModeSwitch
-            mode={layout.mode}
-            onMode={layout.setMode}
-            dock={layout.dock}
-            onDock={layout.setDock}
-            attention={waitingLines.length}
-          />
-        }
-        versions={
-          product?.liveVersion != null
-            ? { live: product.liveVersion, onOpen: versions.openPanel }
-            : undefined
-        }
-        budget={
-          "budget" in right && (right.budget || budgetLevel === "exhausted") ? (
-            <StripBudget
-              text={right.budget}
-              view={budgetView(budget.snapshot)}
-              onRequest={budget.request}
-            />
-          ) : undefined
-        }
-      />
+      {layout.mode === "demo" ? null : (
+        <StepStrip
+          view={view}
+          selected={openStep}
+          onOpenStep={toggleStep}
+          onOpenSettings={onOpenSettings}
+          onRename={productId ? rename : undefined}
+          modeSwitch={modeSwitch}
+          versions={
+            product?.liveVersion != null
+              ? { live: product.liveVersion, onOpen: versions.openPanel }
+              : undefined
+          }
+          budget={
+            "budget" in right &&
+            (right.budget || budgetLevel === "exhausted") ? (
+              <StripBudget
+                text={right.budget}
+                view={budgetView(budget.snapshot)}
+                onRequest={budget.request}
+              />
+            ) : undefined
+          }
+        />
+      )}
       {body}
       {signIn.status === "signed-out" ? (
         /* The session ended: sign in again over the page, which stays. */
