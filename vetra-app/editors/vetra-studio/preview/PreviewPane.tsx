@@ -3,7 +3,8 @@
  * working on, with a tab per editor and app under it. It follows the agent
  * until the customer picks a tab; then the chip "Following you · Back to the
  * build" returns to following. Before the agent shares a screen, it shows the
- * started project's Connect drive view as soon as the project is up. The picked tab survives reloads of the
+ * started project's Connect drive view as soon as the project is up, with a
+ * note that screens appear as they're built. The picked tab survives reloads of the
  * preview, and `restartPreview()` restarts it (ruling F51: the button lives
  * with the failure line, Task 1.8).
  */
@@ -30,6 +31,9 @@ import {
 } from "./previewTabs.js";
 
 export const FOLLOWING_CHIP = "Following you · Back to the build";
+/** Over the early drive view, until the agent shares a screen. */
+export const EARLY_PREVIEW_NOTE =
+  "Your project is running — screens appear here as they're built";
 
 /* ---------- restart ---------- */
 
@@ -174,6 +178,7 @@ export function PreviewPane({
   const building = shownTab?.building
     ? `${shownTab.label} — building…`
     : undefined;
+  const showingHome = !target && home !== undefined && preview.kind === "ready";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -201,7 +206,7 @@ export function PreviewPane({
             ? STARTING
             : undefined)
         }
-        note={building}
+        note={building ?? (showingHome ? EARLY_PREVIEW_NOTE : undefined)}
       />
       {tabs.length > 0 ? (
         <TabBar tabs={tabs} selected={selected} onSelect={setPicked} />
