@@ -44,7 +44,8 @@ function reloadCount(): number {
  * Restarts the preview: stops the shown project and starts it again (also
  * when it is stuck starting), then reloads the frame. On an older Studio
  * without `/restart` it asks for a start instead. Rejects when the preview
- * can't be reached; the frame reloads either way.
+ * can't be reached or the restart isn't allowed ("Couldn't restart the
+ * preview."); the frame reloads either way.
  */
 export async function restartPreview(): Promise<void> {
   const project = shownProject;

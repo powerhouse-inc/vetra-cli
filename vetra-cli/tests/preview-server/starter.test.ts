@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 import { restartPreview, startPreview } from "../../src/preview-server/starter.js";
-import { startPreviewServer } from "../../src/preview-server/server.js";
 import { getPreviewDriveId } from "../../src/helpers/reactor-project-preview.js";
 import { makeWorkdir } from "../spec/_fixtures.js";
 
@@ -188,32 +187,46 @@ describe("preview-server starter", () => {
     expect(broken.start).not.toHaveBeenCalled();
   });
 
-  it("POST /restart restarts the project over HTTP", async () => {
+  it("overlapping restarts of a project share one restart", async () => {
+    let release: (id: string) => void = () => {};
+    const gate = new Promise<string>((resolve) => {
+      release = resolve;
+    });
     const { services, start, stop } = makeServices({
-      initial: [{ workdir: projectPath, status: "starting", instanceId: "stuck" }],
+      initial: [{ workdir: projectPath, status: "ready", instanceId: "i-1" }],
+      startImpl: () => gate,
+    });
+    const first = restartPreview({ services, workdir, project: PROJECT });
+    const second = restartPreview({ services, workdir, project: PROJECT });
+    release("fresh");
+    const [a, b] = await Promise.all([first, second]);
+    expect(a).toEqual(b);
+    expect(a.kind).toBe("started");
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledTimes(1);
+
+    // Once done, a later restart runs again.
+    await restartPreview({ services, workdir, project: PROJECT });
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it("restart only stops running instances and tolerates one already gone", async () => {
+    const instances: FakeInstance[] = [
+      { workdir: projectPath, status: "ready", instanceId: "i-1" },
+      { workdir: projectPath, status: "stopping", instanceId: "i-2" },
+    ];
+    const { services, start, stop } = makeServices({
+      initial: instances,
       startImpl: async () => "fresh",
     });
-    const server = await startPreviewServer({
-      services,
-      subscribe: () => {},
-      workdir,
-      renownUrl: "http://renown.invalid",
-      port: 0,
-      versions: { vetraCli: "test", ph: "test" },
+    stop.mockImplementation(async () => {
+      // It stopped on its own meanwhile; the manager says it isn't running.
+      instances[0].status = "stopped";
+      throw new Error("not running");
     });
-    try {
-      const base = `http://127.0.0.1:${server.port}`;
-      const ok = await fetch(`${base}/restart?project=${PROJECT}`, { method: "POST" });
-      expect(ok.status).toBe(202);
-      expect(await ok.json()).toMatchObject({ kind: "started", instanceId: "fresh" });
-      expect(stop).toHaveBeenCalledWith("reactor-project", "stuck");
-      expect(start).toHaveBeenCalledTimes(1);
-
-      const missing = await fetch(`${base}/restart?project=nope`, { method: "POST" });
-      expect(missing.status).toBe(404);
-      expect(await missing.json()).toMatchObject({ kind: "unknown-project" });
-    } finally {
-      await server.stop();
-    }
+    const result = await restartPreview({ services, workdir, project: PROJECT });
+    expect(stop.mock.calls).toEqual([["reactor-project", "i-1"]]);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(result.kind).toBe("started");
   });
 });

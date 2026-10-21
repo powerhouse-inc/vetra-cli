@@ -4,7 +4,7 @@
  * Routes:
  *   GET  /resolve?project=&doc=   read-only; returns JSON `ResolveResult`.
  *   POST /start?project=          idempotent start; returns JSON `StartResult`.
- *   POST /restart?project=        stop the project's preview, start it again.
+ *   POST /restart?project=        stop the project's preview, start it again (gated).
  *   GET  /events                  SSE stream of reactor-project events.
  *   GET  /version                 running vetra + ph versions.
  *   GET  /sessions                list chat sessions (gated).
@@ -114,6 +114,7 @@ export async function startPreviewServer(
   let workspaceExportInFlight = false;
 
   // Loopback/secret gate, or the authorized owner (ADMINS) through the proxy.
+  // Guards the exports and /restart.
   async function exportAuthorized(
     req: IncomingMessage,
     token: string | null,
@@ -222,8 +223,13 @@ export async function startPreviewServer(
         return;
       }
 
+      // Restart can take down a running preview: owner-only, like the exports.
       if (path === "/restart" && method === "POST") {
         const q = parseQuery(url);
+        if (!(await exportAuthorized(req, q.get("token")))) {
+          writeJson(res, 403, { error: "forbidden" });
+          return;
+        }
         const result = await restartPreview({
           services,
           workdir,

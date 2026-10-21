@@ -81,14 +81,35 @@ async function spawn(
   }
 }
 
-/** Instance states that still hold the project's service. */
-const LIVE_STATES = new Set(["starting", "ready", "stopping", "idle"]);
+/** Instance states a restart stops (one stuck `starting` included). */
+const RUNNING = new Set(["starting", "ready"]);
+
+/** Restarts in flight, per project path: overlapping calls share one. */
+const restarts = new Map<string, Promise<StartResult>>();
+/** Requests in flight, per workdir + project name (before the path is known). */
+const requests = new Map<string, Promise<StartResult>>();
 
 /**
- * `POST /restart` — stop every live instance of the project's preview
- * service (including one stuck `starting`) and start a fresh one.
+ * `POST /restart` — stop the project's running preview instances (including
+ * one stuck `starting`) and start a fresh one. Overlapping restarts of the
+ * same project share a single restart.
  */
-export async function restartPreview(args: {
+export function restartPreview(args: {
+  services: ServiceManager;
+  workdir: string;
+  project: string;
+  proxyPublicUrl?: string;
+}): Promise<StartResult> {
+  // Keyed before any await, so a second call can't slip past the first.
+  const key = `${args.workdir}\0${args.project}`;
+  const pending = requests.get(key);
+  if (pending) return pending;
+  const request = restartProject(args).finally(() => requests.delete(key));
+  requests.set(key, request);
+  return request;
+}
+
+async function restartProject(args: {
   services: ServiceManager;
   workdir: string;
   project: string;
@@ -105,19 +126,41 @@ export async function restartPreview(args: {
     };
   }
 
-  const live = args.services
-    .list("reactor-project")
-    .filter((i) => i.workdir === projectPath && LIVE_STATES.has(i.status));
-  try {
-    for (const instance of live) {
+  // The same project asked for under another name shares the restart too.
+  const inFlight = restarts.get(projectPath);
+  if (inFlight) return inFlight;
+  const restart = stopThenSpawn(args, projectPath).finally(() => {
+    restarts.delete(projectPath);
+  });
+  restarts.set(projectPath, restart);
+  return restart;
+}
+
+async function stopThenSpawn(
+  args: { services: ServiceManager; project: string; proxyPublicUrl?: string },
+  projectPath: string,
+): Promise<StartResult> {
+  const running = (instanceId?: string) =>
+    args.services
+      .list("reactor-project")
+      .filter(
+        (i) =>
+          i.workdir === projectPath &&
+          RUNNING.has(i.status) &&
+          (instanceId === undefined || i.instanceId === instanceId),
+      );
+  for (const instance of running()) {
+    try {
       await args.services.stop("reactor-project", instance.instanceId);
+    } catch (err) {
+      // Already stopping or gone meanwhile: nothing left to stop.
+      if (running(instance.instanceId).length === 0) continue;
+      return {
+        kind: "failed",
+        project: args.project,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
-  } catch (err) {
-    return {
-      kind: "failed",
-      project: args.project,
-      error: err instanceof Error ? err.message : String(err),
-    };
   }
   return spawn(args, projectPath, getPreviewDriveId(projectPath));
 }

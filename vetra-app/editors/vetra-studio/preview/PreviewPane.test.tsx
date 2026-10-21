@@ -25,6 +25,7 @@ const hoisted = vi.hoisted(() => ({
   restarted: [] as string[],
   /** false: an older Studio without /restart. */
   hasRestart: true,
+  refused: false,
 }));
 
 vi.mock("../hooks/useResolvedPreview.js", () => ({
@@ -33,6 +34,9 @@ vi.mock("../hooks/useResolvedPreview.js", () => ({
 }));
 vi.mock("../hooks/preview-server-client.js", () => ({
   fetchRestart: ({ project }: { project: string }) => {
+    if (hoisted.refused) {
+      return Promise.reject(new Error("Couldn't restart the preview."));
+    }
     if (!hoisted.hasRestart) return Promise.resolve(null);
     hoisted.restarted.push(project);
     return Promise.resolve({ kind: "started" });
@@ -117,6 +121,7 @@ beforeEach(() => {
   hoisted.started = [];
   hoisted.restarted = [];
   hoisted.hasRestart = true;
+  hoisted.refused = false;
 });
 
 describe("PreviewPane", () => {
@@ -207,6 +212,22 @@ describe("PreviewPane", () => {
     });
     await act(() => restartPreview());
     expect(hoisted.started).toEqual(["hotel"]);
+  });
+
+  it("a refused restart rejects with a plain message and doesn't start", async () => {
+    hoisted.resolve = ready;
+    hoisted.refused = true;
+    mount({
+      change: null,
+      documents: SCREEN_DOCS,
+      session: session(AGENT_SHOWS_ORDER),
+    });
+    await act(async () => {
+      await expect(restartPreview()).rejects.toThrow(
+        "Couldn't restart the preview.",
+      );
+    });
+    expect(hoisted.started).toEqual([]);
   });
 
   it("restartPreview restarts the shown project and reloads the frame", async () => {

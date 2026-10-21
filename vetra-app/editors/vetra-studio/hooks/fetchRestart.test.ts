@@ -35,6 +35,14 @@ describe("fetchRestart", () => {
     expect(await fetchRestart({ project: "hotel" })).toBeNull();
   });
 
+  it("a refused restart says so and never falls back to a start", async () => {
+    respond(403, { error: "forbidden" });
+    await expect(fetchRestart({ project: "hotel" })).rejects.toThrow(
+      "Couldn't restart the preview.",
+    );
+    expect(urls.some((u) => u.includes("/start"))).toBe(false);
+  });
+
   it("an unknown project is a result, not a missing route", async () => {
     respond(404, { kind: "unknown-project", project: "x", error: "nope" });
     expect(await fetchRestart({ project: "x" })).toMatchObject({
