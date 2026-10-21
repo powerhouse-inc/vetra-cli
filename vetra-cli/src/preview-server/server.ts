@@ -1,20 +1,27 @@
 /**
  * HTTP composition layer.
  *
- * Routes:
- *   GET  /resolve?project=&doc=   (or &drive=, or &home=1) read-only; returns JSON `ResolveResult`.
- *   POST /start?project=          idempotent start; returns JSON `StartResult`.
- *   POST /restart?project=        stop the project's preview, start it again (gated).
- *   GET  /events                  SSE stream of reactor-project events.
- *   GET  /version                 running vetra + ph versions.
- *   GET  /sessions                list chat sessions (gated).
- *   GET  /sessions/export?id=     zip of a session's doc/thread/log (gated).
- *   GET  /export?workspace=1      zip of selected workspace parts (gated).
- *   GET  /healthz                 liveness check.
+ * Routes (public = reachable by anyone who can reach the Studio; owner =
+ * `authorizeRequest` passes — see request-auth.ts):
+ *   GET  /healthz                 public: liveness check.
+ *   GET  /version                 public: running vetra + ph versions.
+ *   GET  /resolve?project=&doc=   public: preview readiness/URL (or &drive=, &home=1).
+ *   GET  /events                  public: SSE of reactor-project lifecycle event types.
+ *   GET  /export/status           public: whether *this caller* passes the owner gate.
+ *   GET  /project-package         owner.
+ *   GET  /release-status          owner.
+ *   POST /publish                 owner.
+ *   POST /start?project=          owner: idempotent start.
+ *   POST /restart?project=        owner: stop the preview, start it again.
+ *   GET  /sessions                owner: list chat sessions.
+ *   GET  /sessions/export?id=     owner: zip of a session's doc/thread/log.
+ *   GET  /export?workspace=1      owner: zip of selected workspace parts.
+ *   GET  /auth/status             owner: the agent's Renown identity.
+ *   POST /auth/start|confirm|logout  owner: change the agent's Renown identity.
  *
- * Listens on 127.0.0.1 only. CORS is permissive (`*`) for localhost dev —
- * the browser side runs on Connect's port (a different origin) so it needs
- * cross-origin access. Revisit if this server ever leaves the loopback.
+ * Listens on 127.0.0.1, but the embedded proxy exposes it publicly at
+ * `/preview` — so every owner route checks the *request's* credential.
+ * CORS is `*`: the gate is a bearer header, never an ambient cookie.
  */
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import type { ServiceManager } from "@powerhousedao/ph-clint";
@@ -25,14 +32,13 @@ import { publishProjectForDeploy } from "./publish-project.js";
 import { checkReleaseStatus } from "./release-status.js";
 import { resolvePreview } from "./resolver.js";
 import { restartPreview, startPreview } from "./starter.js";
-import { authorizeSessions } from "./session-auth.js";
+import { createRequestAuthorizer, type RequestAuthorizer } from "./request-auth.js";
 import { buildSessionExport, listSessions } from "./session-export.js";
 import { streamWorkspaceExport, WORKSPACE_ZIP_FILENAME } from "./workspace-export.js";
 import type { EmbeddedDrive } from "../helpers/embedded-drive.js";
 import {
   confirmAuth,
   getAuthState,
-  isAuthorizedAdmin,
   logoutAuth,
   startAuth,
 } from "../auth/renown.js";
@@ -56,6 +62,10 @@ interface PreviewServerDeps {
   getReactor?: () => Promise<EmbeddedDrive | undefined>;
   /** Whether agent conversation logging is on (surfaced in the export metadata). */
   agentLogging?: boolean;
+  /** Running as a cloud Studio (`config.environmentId`): no loopback pass. */
+  cloud?: boolean;
+  /** Owner gate override (tests); default `createRequestAuthorizer`. */
+  authorizeRequest?: RequestAuthorizer;
   log?: {
     info: (m: string) => void;
     error: (m: string) => void;
@@ -113,16 +123,23 @@ export async function startPreviewServer(
   // One workspace export at a time — each streams the whole workdir.
   let workspaceExportInFlight = false;
 
-  // Loopback/secret gate, or the authorized owner (ADMINS) through the proxy.
-  // Guards the exports and /restart.
-  async function exportAuthorized(
+  const authorizeRequest =
+    deps.authorizeRequest ??
+    createRequestAuthorizer({
+      renownUrl,
+      cloud: deps.cloud ?? Boolean(process.env.VETRA_ENVIRONMENT_ID?.trim()),
+    });
+
+  // Owner gate for a route: false (and the 401/403 written) when refused.
+  async function requireOwner(
     req: IncomingMessage,
-    token: string | null,
+    res: ServerResponse,
+    url: string,
   ): Promise<boolean> {
-    return (
-      authorizeSessions(req.headers, token) ||
-      (await isAuthorizedAdmin(workdir, renownUrl))
-    );
+    const check = await authorizeRequest(req, parseQuery(url).get("token"));
+    if (check.ok) return true;
+    writeJson(res, check.status, { error: check.error });
+    return false;
   }
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -168,6 +185,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/project-package" && method === "GET") {
+        if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
         const result = await readProjectPackage(workdir, q.get("project") ?? "");
         writeJson(res, 200, result);
@@ -175,6 +193,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/release-status" && method === "GET") {
+        if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
         const result = await checkReleaseStatus({
           workdir,
@@ -187,6 +206,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/publish" && method === "POST") {
+        if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
         const result = await publishProjectForDeploy({
           workdir,
@@ -207,6 +227,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/start" && method === "POST") {
+        if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
         const result = await startPreview({
           services,
@@ -226,11 +247,8 @@ export async function startPreviewServer(
 
       // Restart can take down a running preview: owner-only, like the exports.
       if (path === "/restart" && method === "POST") {
+        if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
-        if (!(await exportAuthorized(req, q.get("token")))) {
-          writeJson(res, 403, { error: "forbidden" });
-          return;
-        }
         const result = await restartPreview({
           services,
           workdir,
@@ -253,11 +271,7 @@ export async function startPreviewServer(
       }
 
       if (path === "/sessions" && method === "GET") {
-        const q = parseQuery(url);
-        if (!authorizeSessions(req.headers, q.get("token"))) {
-          writeJson(res, 401, { error: "unauthorized" });
-          return;
-        }
+        if (!(await requireOwner(req, res, url))) return;
         const drive = await getReactor?.();
         if (!drive) {
           writeJson(res, 503, { error: "reactor-unavailable" });
@@ -268,11 +282,8 @@ export async function startPreviewServer(
       }
 
       if (path === "/sessions/export" && method === "GET") {
+        if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
-        if (!authorizeSessions(req.headers, q.get("token"))) {
-          writeJson(res, 401, { error: "unauthorized" });
-          return;
-        }
         const id = q.get("id") ?? "";
         if (!id) {
           writeJson(res, 400, { error: "missing id" });
@@ -301,23 +312,18 @@ export async function startPreviewServer(
         return;
       }
 
-      // Whether the caller may download an export — lets the studio button
-      // guide an unauthorized user to authorize instead of failing the fetch.
+      // Whether *this caller* passes the owner gate — lets the studio button
+      // say why a download isn't offered instead of failing the fetch.
       if (path === "/export/status" && method === "GET") {
-        const q = parseQuery(url);
-        writeJson(res, 200, {
-          authorized: await exportAuthorized(req, q.get("token")),
-        });
+        const check = await authorizeRequest(req, parseQuery(url).get("token"));
+        writeJson(res, 200, { authorized: check.ok });
         return;
       }
 
       // General export: selectable workspace parts, decoupled from any session.
       if (path === "/export" && method === "GET") {
+        if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
-        if (!(await exportAuthorized(req, q.get("token")))) {
-          writeJson(res, 401, { error: "unauthorized" });
-          return;
-        }
         if (!isTruthyParam(q.get("workspace"))) {
           writeJson(res, 400, { error: "no export parts selected", hint: "add ?workspace=1" });
           return;
@@ -349,26 +355,31 @@ export async function startPreviewServer(
       // Renown auth state for the studio "Authorize agent" button. Both run in
       // this same process as the agent's whoami/deploy tools, sharing the
       // per-workdir Renown instance — so confirm here stores the credential the
-      // tools read.
+      // tools read. Owner-only: status names the owner's wallet, and start /
+      // confirm / logout change which identity the agent acts as.
       if (path === "/auth/status" && method === "GET") {
+        if (!(await requireOwner(req, res, url))) return;
         const state = await getAuthState(workdir, renownUrl);
         writeJson(res, 200, state);
         return;
       }
 
       if (path === "/auth/start" && method === "POST") {
+        if (!(await requireOwner(req, res, url))) return;
         const state = await startAuth(workdir, renownUrl);
         writeJson(res, 200, state);
         return;
       }
 
       if (path === "/auth/logout" && method === "POST") {
+        if (!(await requireOwner(req, res, url))) return;
         const state = await logoutAuth(workdir, renownUrl);
         writeJson(res, 200, state);
         return;
       }
 
       if (path === "/auth/confirm" && method === "POST") {
+        if (!(await requireOwner(req, res, url))) return;
         const q = parseQuery(url);
         const waitMs = Math.min(Math.max(Number(q.get("wait")) || 20000, 0), 60000);
         const state = await confirmAuth(workdir, renownUrl, waitMs);

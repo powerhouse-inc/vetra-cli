@@ -65,6 +65,7 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         versions: { vetraCli: VETRA_CLI_VERSION, ph: DEFAULT_PH_VERSION },
         getReactor: () => getEmbeddedDrive(ctx.commandContext),
         agentLogging: ctx.context.config.agentLogging,
+        cloud: Boolean(ctx.context.config.environmentId?.trim()),
         log: {
           info: (m) => ctx.context.log?.info?.(m),
           error: (m) => ctx.context.log?.error?.(m),

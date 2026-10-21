@@ -184,11 +184,12 @@ via the vetra drive's `preferredEditor` field. The editor renders:
 
 HTTP + SSE service hosted inside the vetra node process on a fixed
 loopback port. Default `127.0.0.1:5180`; see
-`vetra-cli/src/preview-server/config.ts` for the constant. CORS is
-permissive (`Access-Control-Allow-Origin: *`) because the loopback
-bind already restricts the audience; the browser side runs on
-Connect's origin (a different port) and needs cross-origin access.
-Revisit if the server ever leaves loopback.
+`vetra-cli/src/preview-server/config.ts` for the constant. The loopback
+bind does **not** restrict the audience: the embedded proxy (which listens
+on `0.0.0.0`) exposes it publicly at `/preview`, so every route that isn't
+needed to render a preview is owner-gated per request (see "Preview-server
+access gate" below). CORS is `*`: the gate is a bearer header, never an
+ambient cookie.
 
 Implemented as a trigger (`vetra-cli/src/triggers/preview-server.ts`)
 so it gets the framework's `ServiceManager` + event-bus access via
@@ -259,33 +260,44 @@ so it gets the framework's `ServiceManager` + event-bus access via
   free). Single-flight: a concurrent request gets `409 export in progress`. A
   general endpoint — `workspace` is the only selectable part today. `400` when
   no part is selected. Implementation: `preview-server/workspace-export.ts`.
-- `GET /export/status` — ungated; returns `{ authorized }` (the export gate
-  resolved server-side, incl. the `ADMINS` owner check the browser can't
-  compute). The studio "Download workspace" button reads it to guide an
-  unauthorized user to the Renown authorize flow instead of failing the fetch.
+- `GET /export/status` — public; returns `{ authorized }`: whether *this
+  caller* passes the owner gate. The studio "Download workspace" button reads
+  it to send a signed-out user to Renown sign-in instead of failing the fetch.
+- `GET /auth/status`, `POST /auth/start|confirm|logout` — owner-only; the
+  agent's Renown identity (studio "Authorize agent" / publish permission).
 - `GET /healthz` — liveness check.
 
-**Session-export access gate** (`preview-server/session-auth.ts`,
-`authorizeSessions`). The `/sessions*` routes carry bulk conversation data
-and are reachable through the public proxy, so unlike the other read
-endpoints they are gated: when `VETRA_SESSION_EXPORT_SECRET` is set, a
-request must present a matching `Authorization: Bearer <secret>` (or
-`?token=`) — the operator/support path, which works through the proxy;
-when unset, the routes serve only direct-loopback requests (the embedded
-proxy tags routed requests with `x-forwarded-prefix`/`x-forwarded-for`), so
-local dev exports freely while the public proxy stays closed. `GET /export`
-additionally accepts the **authorized owner**: `authorizeSessions` OR
-`isAuthorizedAdmin` (`auth/renown.ts`) — the daemon's authorized Renown
-identity (`getAuthState`) has its wallet in the pod-injected `ADMINS`
-allowlist. This lets the studio "Download workspace" header button work
-through the proxy once the owner has authorized the agent, without shipping a
-secret to the browser. It gates on the daemon's single authorized identity,
-not the specific browser user (per-user browser auth remains the deferred
-follow-up below). Sub-agent
-threads (resource `cli-user-<agentName>`) are not bundled — their
-per-delegation threadIds don't link back to a session. Cryptographic
-per-user browser auth (the browser holds no Renown token today) is a
-deferred follow-up.
+**Preview-server access gate** (`preview-server/request-auth.ts`,
+`createRequestAuthorizer`). Public routes: `/healthz`, `/version`,
+`/resolve`, `/events` (event types only — failure text is not forwarded) and
+`/export/status`. Every other route (`/project-package`, `/release-status`,
+`/publish`, `/start`, `/restart`, `/sessions*`, `/export`, `/auth/*`) is
+owner-only and checks **the request**, never the daemon's own Renown
+sign-in. It passes when the request carries:
+
+1. the operator secret `VETRA_SESSION_EXPORT_SECRET` as
+   `Authorization: Bearer <secret>` or `?token=` (sha256 + timingSafeEqual) —
+   the support path, works through the proxy; or
+2. the signed-in user's Renown bearer (what Connect sends the switchboard):
+   `verifyAuthBearerToken` (signature + expiry), then the claimed wallet must
+   be in the pod's `ADMINS`, then `verifyAuthCredential` confirms on Renown
+   that the wallet delegated to the token's app key (a self-signed token
+   claiming the owner's address fails here). Delegation verdicts are cached
+   per token (5 min ok / 30 s refused); a non-owner wallet never costs a
+   lookup; or
+3. local mode only — no studio environment id (`VETRA_ENVIRONMENT_ID`), no
+   `ADMINS`, no secret: a request from a loopback socket whose every
+   `x-forwarded-for` hop is loopback (the proxy appends the real client
+   address, so LAN clients of the `0.0.0.0` proxy are refused) and whose
+   `Origin`, if any, is loopback (blocks cross-site pages / DNS rebinding).
+
+A cloud Studio never takes path 3, and with `ADMINS` unset refuses every
+bearer (fail closed). No credential / bad token → 401; verified non-owner →
+403. The studio client (`vetra-app/.../hooks/preview-server-client.ts`)
+attaches the bearer from `ambientRenownTokenProvider` on every owner-only
+call. Sub-agent threads (resource `cli-user-<agentName>`) are not bundled in
+session exports — their per-delegation threadIds don't link back to a
+session.
 
 **Endpoints (planned but not yet built):**
 

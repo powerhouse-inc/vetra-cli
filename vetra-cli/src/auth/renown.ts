@@ -106,7 +106,8 @@ export async function getAuthState(
   };
 }
 
-// Is `address` in the ADMINS allowlist? Case-insensitive; empty/unset
+// Is `address` in the ADMINS allowlist (the Studio owner gate,
+// preview-server/request-auth.ts)? Case-insensitive; empty/unset
 // allowlist matches nothing (comma- or whitespace-separated wallet addresses).
 export function isAdminAddress(
   address: string | undefined,
@@ -118,16 +119,6 @@ export function isAdminAddress(
     .map((a) => a.trim().toLowerCase())
     .filter(Boolean);
   return admins.includes(address.toLowerCase());
-}
-
-/** Owner gate for the export endpoints: the daemon must be authorized as a
- * Renown identity whose wallet is in the pod's `ADMINS` allowlist. */
-export async function isAuthorizedAdmin(
-  workdir: string,
-  renownUrl: string,
-): Promise<boolean> {
-  const state = await getAuthState(workdir, renownUrl);
-  return state.authenticated && isAdminAddress(state.address, process.env.ADMINS);
 }
 
 // Re-read after an await: TS keeps the earlier `!renown.user` narrowing.
