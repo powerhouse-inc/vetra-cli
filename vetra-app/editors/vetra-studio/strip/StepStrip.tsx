@@ -180,6 +180,7 @@ export function StepStrip({
   onRename,
   budget,
   versions,
+  modeSwitch,
 }: {
   view: StripView;
   selected: StepKind | null;
@@ -192,6 +193,8 @@ export function StepStrip({
   budget?: ReactNode;
   /** `Version <n> ▾` next to the live line: opens the Versions panel. */
   versions?: { live: number; onOpen: () => void };
+  /** Build | Review | Demo and the chat's side (Task 2.3), on the right. */
+  modeSwitch?: ReactNode;
 }) {
   const right = view.right;
   return (
@@ -226,6 +229,7 @@ export function StepStrip({
         </span>
       ) : null}
       <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+        {modeSwitch}
         {"liveUrl" in right ? (
           /* Live: "· <slug>.vetra.io ↗" over "Deployed 2 min ago · GitHub ✓". */
           <div className="flex flex-col items-end gap-0.5">

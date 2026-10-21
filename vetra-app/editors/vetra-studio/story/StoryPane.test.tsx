@@ -98,6 +98,28 @@ describe("StoryPane", () => {
     expectNoForbiddenWords(container);
   });
 
+  it("a launched change asks for the next change instead of steering it", () => {
+    // Review shows the live version's story beside the live app (Task 2.3).
+    const product = buildingProduct();
+    const change = { ...changeOf(product), status: "LAUNCHED" as const };
+    const onStartChange = vi.fn(() => Promise.resolve());
+    const container = render(
+      <StoryPane
+        product={product}
+        change={change}
+        chat={chat(user("u0", "a task board for my team", at(1), at(1)))}
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        now={new Date(at(9))}
+        onStartChange={onStartChange}
+      />,
+    );
+    expect(container.querySelector('input[aria-label="Steer it"]')).toBeNull();
+    expect(
+      container.querySelector('input[aria-label="What should change?"]'),
+    ).not.toBeNull();
+  });
+
   it("tells the build as a story: idea, milestones, doing now, replies", () => {
     const product = buildingProduct();
     const container = render(

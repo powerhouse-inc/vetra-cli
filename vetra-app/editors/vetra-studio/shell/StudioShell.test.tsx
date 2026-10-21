@@ -5,7 +5,9 @@ import type {
 } from "@powerhousedao/shared/document-drive";
 import type { PHDocument } from "document-model";
 import { actions } from "document-models/studio-product";
+import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { chat, reply, user } from "../story/storyFixtures.js";
 import { expectNoForbiddenWords } from "../test-utils/forbiddenWords.js";
 import {
   button,
@@ -32,6 +34,8 @@ import { StudioShell } from "./StudioShell.js";
 const hoisted = vi.hoisted(() => ({
   documents: undefined as PHDocument[] | undefined,
   dispatched: [] as { action: unknown; id: string }[],
+  /** The build's conversation as `useDocumentSafe` returns it; loading when unset. */
+  session: undefined as PHDocument | undefined,
 }));
 
 vi.mock("../steps/plainModel.js", async (importOriginal) => {
@@ -39,6 +43,15 @@ vi.mock("../steps/plainModel.js", async (importOriginal) => {
   return { ...actual, plainModel: vi.fn(actual.plainModel) };
 });
 
+// The conversation fixture is the story's shape, not a full document.
+vi.mock(
+  "@powerhousedao/clint-common/document-models/chat-session",
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    isChatSessionDocument: (doc: PHDocument | undefined) =>
+      doc?.header.documentType === "powerhouse/chat-session",
+  }),
+);
 vi.mock("../hooks/useDriveDocuments.js", () => ({
   useDriveDocuments: () => hoisted.documents,
 }));
@@ -124,7 +137,10 @@ vi.mock("../ideation/DocumentHost.js", () => ({
 }));
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useDocumentSafe: () => ({ status: "loading" }),
+  useDocumentSafe: () =>
+    hoisted.session
+      ? { status: "success", data: hoisted.session }
+      : { status: "loading" },
   usePHToast: () => undefined,
   dispatchActions: (action: unknown, id: string) => {
     hoisted.dispatched.push({ action, id });
@@ -185,7 +201,58 @@ function building() {
   );
 }
 
+function pressedModes(container: HTMLElement): string[] {
+  return Array.from(
+    container.querySelectorAll(
+      '[data-mode-switch] button[aria-pressed="true"]',
+    ),
+  ).map((b) => b.textContent.trim());
+}
+
+/** The split's children in order: the story's side shows where it docks. */
+function sideOrder(container: HTMLElement): string[] {
+  const split = container.querySelector('[role="separator"]')?.parentElement;
+  return Array.from(split?.children ?? [])
+    .slice(0, 3)
+    .map((el) => el.tagName);
+}
+
+function chooseDock(container: HTMLElement, label: string): void {
+  const select = container.querySelector<HTMLSelectElement>(
+    'select[aria-label="Chat position"]',
+  );
+  const option = Array.from(select?.options ?? []).find(
+    (o) => o.text === label,
+  );
+  if (!select || !option) throw new Error(`no dock option ${label}`);
+  act(() => {
+    Reflect.set(HTMLSelectElement.prototype, "value", option.value, select);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+/** The build's conversation, ending on the agent's question. */
+function askingSession(): PHDocument {
+  return {
+    header: { id: SESSION_ID, documentType: "powerhouse/chat-session" },
+    state: {
+      global: chat(
+        user("u1", "a task board for my team", at(1)),
+        reply("r1", "Should tasks have due dates?", at(7), at(7)),
+      ),
+    },
+  } as unknown as PHDocument;
+}
+
+function steerInput(container: HTMLElement): HTMLInputElement | null {
+  return container.querySelector<HTMLInputElement>(
+    'input[aria-label="Steer it"]',
+  );
+}
+
 beforeEach(() => {
+  window.localStorage.clear();
+  hoisted.session = undefined;
   hoisted.documents = undefined;
   hoisted.dispatched = [];
   vi.mocked(plainModel).mockClear();
@@ -246,6 +313,10 @@ describe("StudioShell", () => {
       "Outcome",
       "Activity",
       "Raw",
+      // The layout switch (Task 2.3): view controls, not routes.
+      "Build",
+      "Review",
+      "Demo",
     ]);
     expect(names.filter((n) => !allowed.has(n))).toEqual([]);
     expect(names).toContain("Settings");
@@ -312,7 +383,7 @@ describe("StudioShell", () => {
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
-  it("a change open on a live product shows the Live | Preview split", () => {
+  it("in Build, a change open on a live product shows the Live | Preview split", () => {
     // The live version is there and a change is being worked on: the strip
     // stays in live mode with the change's progress; the page splits into
     // the live app and the change's preview, the drawer holds its story.
@@ -327,6 +398,8 @@ describe("StudioShell", () => {
         dispatch={() => {}}
       />,
     );
+    // Live defaults to Review; Build keeps today's page.
+    click(button(container, "Build"));
     expect(
       container.querySelector('[data-pane="live"] [data-embed="live"]')
         ?.textContent,
@@ -369,7 +442,13 @@ describe("StudioShell", () => {
         dispatch={() => {}}
       />,
     );
-    expect(container.querySelector("aside")).toBeNull();
+    // Once live the page opens in Review: the live app in the middle, the
+    // story docked on its right.
+    expect(pressedModes(container)).toEqual(["Review"]);
+    expect(sideOrder(container)).toEqual(["MAIN", "DIV", "ASIDE"]);
+    expect(
+      container.querySelector("main [data-review-product] [data-embed='live']"),
+    ).not.toBeNull();
     expect(
       container.querySelector('[data-banner="live"]')?.textContent,
     ).toContain("Your product is live.");
@@ -393,5 +472,94 @@ describe("StudioShell", () => {
     );
     expect(again.textContent).toContain("Went live");
     expect(again.textContent).not.toContain("Your product is live.");
+  });
+  it("one click switches Build → Review → Demo", () => {
+    const container = building();
+    expect(pressedModes(container)).toEqual(["Build"]);
+    // Build: today's page, the story docked left.
+    expect(sideOrder(container)).toEqual(["ASIDE", "DIV", "MAIN"]);
+    expect(button(container, "Show activity")).toBeUndefined();
+
+    click(button(container, "Review"));
+    expect(pressedModes(container)).toEqual(["Review"]);
+    expect(sideOrder(container)).toEqual(["MAIN", "DIV", "ASIDE"]);
+    expect(
+      container.querySelector("main [data-review-product]")?.textContent,
+    ).toContain("Preview pane");
+    expect(
+      container
+        .querySelector("aside [data-story-layer]")
+        ?.getAttribute("data-story-layer"),
+    ).toBe("outcome");
+
+    click(button(container, "Demo"));
+    expect(pressedModes(container)).toEqual(["Demo"]);
+    // The product fills the page; the story is out of view, the steer box stays.
+    expect(container.querySelector("aside")).toBeNull();
+    expect(
+      container.querySelector("[data-demo-product]")?.textContent,
+    ).toContain("Preview pane");
+    expect(steerInput(container)).not.toBeNull();
+    expectNoForbiddenWords(container);
+  });
+
+  it("mode is remembered after remount", () => {
+    const first = building();
+    click(button(first, "Review"));
+    chooseDock(first, "Chat on the bottom");
+    const again = building();
+    expect(pressedModes(again)).toEqual(["Review"]);
+    expect(
+      again.querySelector<HTMLSelectElement>(
+        'select[aria-label="Chat position"]',
+      )?.value,
+    ).toBe("bottom");
+  });
+
+  it("the steer box and a pending question stay visible in Build and Review", () => {
+    hoisted.session = askingSession();
+    const container = building();
+    const question = () =>
+      container.querySelector('aside input[aria-label="Your answer"]');
+    // Build.
+    expect(container.textContent).toContain("Should tasks have due dates?");
+    expect(question()).not.toBeNull();
+    expect(steerInput(container)).not.toBeNull();
+    expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
+
+    // A typed, unsent steer survives moving the chat.
+    typeInto(steerInput(container), "make it blue");
+    chooseDock(container, "Chat on the bottom");
+    expect(sideOrder(container)).toEqual(["MAIN", "DIV", "ASIDE"]);
+    expect(steerInput(container)?.value).toBe("make it blue");
+    expect(question()).not.toBeNull();
+    expect(container.querySelector<HTMLElement>("aside")?.style.minHeight).toBe(
+      "240px",
+    );
+
+    // Review, in each dock.
+    click(button(container, "Review"));
+    for (const dock of [
+      "Chat on the bottom",
+      "Chat on the left",
+      "Chat on the right",
+    ]) {
+      chooseDock(container, dock);
+      expect(question()).not.toBeNull();
+      expect(
+        container.querySelector('aside input[aria-label="Steer it"]'),
+      ).not.toBeNull();
+    }
+    typeInto(steerInput(container), "and bigger");
+    chooseDock(container, "Chat on the left");
+    expect(steerInput(container)?.value).toBe("and bigger");
+
+    // Demo keeps the question in view over its steer box.
+    click(button(container, "Demo"));
+    expect(
+      container.querySelector("[data-demo-question]")?.textContent,
+    ).toContain("Should tasks have due dates?");
+    expect(steerInput(container)).not.toBeNull();
+    expect(container.querySelector("[data-attention]")?.textContent).toBe("1");
   });
 });

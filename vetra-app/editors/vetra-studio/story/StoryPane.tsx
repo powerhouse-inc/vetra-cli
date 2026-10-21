@@ -255,7 +255,10 @@ export function StoryPane({
           </p>
         ) : null}
       </div>
-      {change.status === "CLOSED" && onStartChange ? (
+      {/* Work that is over (before versions, or launched) takes the next
+          change instead of steering the old one. */}
+      {(change.status === "CLOSED" || change.status === "LAUNCHED") &&
+      onStartChange ? (
         <div className="shrink-0 border-t border-border bg-card px-3 py-2">
           <ChangeRequest
             product={product}

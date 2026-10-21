@@ -6,6 +6,7 @@ const SIZE_MIN = 20;
 const SIZE_MAX = 70;
 const SIZE_DEFAULT = 38;
 const KEY_STEP = 2;
+const BOTTOM_MIN_PX = 240;
 
 function clamp(value: number): number {
   return Math.min(SIZE_MAX, Math.max(SIZE_MIN, value));
@@ -105,7 +106,13 @@ export function DockSplit({
       key="side"
       aria-label={sideLabel}
       className="flex shrink-0 flex-col overflow-hidden bg-card"
-      style={vertical ? { width: `${shown}%` } : { height: `${shown}%` }}
+      // R11: at the bottom the pane keeps a floor, so the steer box and a
+      // question never clip on a short window.
+      style={
+        vertical
+          ? { width: `${shown}%` }
+          : { height: `${shown}%`, minHeight: BOTTOM_MIN_PX }
+      }
     >
       {side}
     </aside>
