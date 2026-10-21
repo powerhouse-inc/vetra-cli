@@ -359,8 +359,13 @@ export function environmentUrl(state: VetraCloudEnvironmentGlobalState): string 
 
 const GONE_HTTP_STATUSES = new Set([404, 410]);
 const GONE_CODES = new Set(["NOT_FOUND", "DOCUMENT_NOT_FOUND", "GONE"]);
-/** Gone in words. `\b` keeps a DNS failure (`ENOTFOUND`) out. */
-const GONE_WORDS = /\bnot[ _-]?found\b|\bdoes not exist\b|\bdoesn't exist\b|\bno such document\b|\bhas been deleted\b/i;
+/**
+ * Gone in words, said of a document or an environment ("Document not found:
+ * x", "Environment x does not exist"); any other "not found" (a user, a
+ * credential) isn't. `\b` keeps a DNS failure (`ENOTFOUND`) out.
+ */
+const GONE_WORDS =
+  /\b(?:document|environment)\b[^.;\n]{0,80}?\b(?:not[ _-]?found|does not exist|doesn't exist|has been deleted)\b|\bno such (?:document|environment)\b/i;
 /** 404/410 only where a message states an HTTP status, never in ports or ids. */
 const GONE_HTTP_TEXT = /\b(?:HTTP(?:\/\d(?:\.\d)?)?|status(?: code)?:?)\s*(?:404|410)\b|^(?:404|410)\s+(?:not found|gone)\b/i;
 

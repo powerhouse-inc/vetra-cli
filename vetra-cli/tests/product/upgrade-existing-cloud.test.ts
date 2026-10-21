@@ -147,6 +147,13 @@ describe("findOwnerEnvironmentsRunning", () => {
     expect(isGoneError(new Error("Document 404-abc could not be signed"))).toBe(false);
     expect(isGoneError(Object.assign(new Error("request failed"), { status: 503, port: 404 }))).toBe(false);
     expect(isGoneError(Object.assign(new Error("query failed"), { extensions: { code: "UNAUTHENTICATED" } }))).toBe(false);
+    // Only a document or environment that is gone; any other "not found" isn't.
+    expect(isGoneError(new Error("Environment env-1 does not exist"))).toBe(true);
+    expect(isGoneError(new Error("Document with id env-1 has been deleted"))).toBe(true);
+    expect(isGoneError(new Error("no such document"))).toBe(true);
+    expect(isGoneError(new Error("User not found"))).toBe(false);
+    expect(isGoneError(new Error("Not found"))).toBe(false);
+    expect(isGoneError(new Error("Credential not found for this app"))).toBe(false);
     // A DNS failure is a passing network failure, not a gone document.
     expect(isGoneError(new Error("getaddrinfo ENOTFOUND switchboard.vetra.io"))).toBe(false);
   });

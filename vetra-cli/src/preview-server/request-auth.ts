@@ -22,7 +22,13 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import path from "node:path";
-import { verifyAuthBearerToken, verifyAuthCredential } from "@renown/sdk/node";
+import {
+  DEFAULT_RENOWN_URL,
+  resolveSwitchboardEndpoint,
+  SwitchboardClient,
+  verifyAuthBearerToken,
+  verifyDelegationProof,
+} from "@renown/sdk/node";
 import { isAdminAddress } from "../auth/renown.js";
 
 /** The store of recently verified keys, under the agent's `.ph/` data dir. */
@@ -49,7 +55,9 @@ export interface RequestAuthOptions {
   audience: () => string | undefined;
   /** Local JWT check (signature + expiry + `aud`). Default: `@renown/sdk`. */
   verifyBearer?: (jwt: string, audience: string) => Promise<BearerClaims | false>;
-  /** Network check that the wallet delegated to the token's app key. */
+  /** Network check that the wallet delegated to the token's app key: false
+   *  when Renown has no such delegation, throws when Renown couldn't be
+   *  asked (a trusted key keeps its trust then). */
   verifyDelegation?: (jwt: string, audience: string) => Promise<boolean>;
   /** Max Renown lookups per minute for not-yet-verified app keys, overall
    *  (default 30). Recently verified keys are never capped. */
@@ -174,12 +182,102 @@ async function defaultVerifyBearer(
   return { address, appDid };
 }
 
+type Credential = NonNullable<Awaited<ReturnType<SwitchboardClient["getCredential"]>>>;
+
+/** The delegation from Renown's REST API: undefined when there is none
+ *  (404, or no credential); throws on any other answer or a network error. */
+async function fetchCredentialRest(
+  baseUrl: string,
+  address: string,
+  chainId: number,
+  appDid: string,
+): Promise<Credential | undefined> {
+  const url = new URL("/api/auth/credential", baseUrl);
+  url.searchParams.set("address", address);
+  url.searchParams.set("chainId", String(chainId));
+  url.searchParams.set("connectId", appDid);
+  url.searchParams.set("appId", appDid);
+  const response = await fetch(url, { method: "GET" });
+  if (response.status === 404) return undefined;
+  if (!response.ok) throw new Error(`Renown answered ${response.status}`);
+  const { credential } = (await response.json()) as { credential?: Credential | null };
+  if (!credential) return undefined;
+  // Same binding and expiry checks as the SDK's own lookup.
+  const [, , , issuerChainId, issuerAddress] = credential.issuer.id.split(":");
+  const wallet = address.toLowerCase();
+  if (
+    credential.credentialSubject.id !== appDid ||
+    issuerChainId !== String(chainId) ||
+    issuerAddress?.toLowerCase() !== wallet ||
+    credential.issuer.ethereumAddress.toLowerCase() !== wallet
+  ) {
+    return undefined;
+  }
+  if (credential.expirationDate) {
+    const expiresAt = Date.parse(credential.expirationDate);
+    if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) return undefined;
+  }
+  return credential;
+}
+
+/**
+ * The SDK's `verifyAuthCredential` answers "no" both when the wallet never
+ * delegated and when Renown couldn't be reached, so this does the same lookup
+ * but throws for the second: Renown's switchboard when it advertises one
+ * (`SwitchboardClient` throws on a transport error or non-OK answer), else
+ * its REST API.
+ */
+async function defaultVerifyDelegation(
+  jwt: string,
+  audience: string,
+  renownUrl: string | undefined,
+): Promise<boolean> {
+  const verified = await verifyAuthBearerToken(jwt, { audience });
+  if (!verified) return false;
+  const { address, chainId } = verified.verifiableCredential.credentialSubject;
+  const appDid = verified.issuer;
+  const baseUrl = renownUrl ?? DEFAULT_RENOWN_URL;
+  // Like the SDK: discovery only for a named Renown. A failed discovery
+  // (Renown down) falls through to REST, which then throws.
+  const endpoint = renownUrl ? await resolveSwitchboardEndpoint({ baseUrl }) : undefined;
+  const credential = endpoint
+    ? await new SwitchboardClient(endpoint).getCredential({ address, chainId, appDid })
+    : await fetchCredentialRest(baseUrl, address, chainId, appDid);
+  if (!credential) return false;
+  try {
+    return await verifyDelegationProof(credential, chainId);
+  } catch {
+    return false;
+  }
+}
+
 const OK_TTL_MS = 5 * 60_000;
 const FAIL_TTL_MS = 30_000;
 /** A key verified within this long re-verifies without the lookup caps. */
 const TRUSTED_MS = 24 * 60 * 60_000;
 const WINDOW_MS = 60_000;
 const CACHE_MAX = 500;
+
+/** Expand an IPv6 address to its 8 groups; null when it isn't one. */
+function ipv6Groups(addr: string): string[] | null {
+  const a = addr.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  if (!a.includes(":") || /^::ffff:\d+\.\d+\.\d+\.\d+$/.test(a)) return null;
+  const [head, tail, extra] = a.split("::");
+  if (extra !== undefined) return null;
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const fill = tail === undefined ? 0 : 8 - left.length - right.length;
+  const groups = [...left, ...Array<string>(Math.max(fill, 0)).fill("0"), ...right];
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return null;
+  return groups.map((g) => g.replace(/^0+(?=.)/, ""));
+}
+
+/** One bucket per client: an IPv4 address, or an IPv6 address's /64 (a
+ *  single host usually holds a whole /64). */
+function clientBucket(addr: string): string {
+  const groups = ipv6Groups(addr);
+  return groups ? `${groups.slice(0, 4).join(":")}::/64` : addr;
+}
 
 /** RFC 1918 / CGNAT / link-local / ULA: an address inside the hosting network. */
 function isPrivateAddress(addr: string): boolean {
@@ -203,6 +301,7 @@ function isPrivateAddress(addr: string): boolean {
  * or inside the hosting network. Each proxy appends the address it saw, so
  * hops a client writes itself sit to the left of it and never change the
  * answer. All hops internal (local runs): the right-most non-loopback one.
+ * IPv6 addresses are charged by their /64.
  */
 export function clientAddress(req: IncomingMessage): string {
   const xff = headerValue(req, "x-forwarded-for");
@@ -211,11 +310,11 @@ export function clientAddress(req: IncomingMessage): string {
     req.socket?.remoteAddress ?? "",
   ].filter(Boolean);
   const outside = hops.filter((h) => !isLoopbackAddress(h));
-  return (
+  return clientBucket(
     [...outside].reverse().find((h) => !isPrivateAddress(h)) ??
-    outside.at(-1) ??
-    hops.at(-1) ??
-    "unknown"
+      outside.at(-1) ??
+      hops.at(-1) ??
+      "unknown",
   );
 }
 
@@ -269,13 +368,17 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
   const verifyBearer = opts.verifyBearer ?? defaultVerifyBearer;
   const verifyDelegation =
     opts.verifyDelegation ??
-    (async (jwt: string, audience: string) =>
-      (await verifyAuthCredential(jwt, { audience, renownUrl: opts.renownUrl })) !==
-      undefined);
+    ((jwt: string, audience: string) => defaultVerifyDelegation(jwt, audience, opts.renownUrl));
   const lookupsPerMinute = opts.lookupsPerMinute ?? 30;
   const lookupsPerKeyPerMinute = opts.lookupsPerKeyPerMinute ?? 3;
   const lookupsPerClientPerMinute =
     opts.lookupsPerClientPerMinute ?? Math.max(1, Math.floor(lookupsPerMinute / 3));
+  // Kept back for clients that haven't asked yet this window, so a few
+  // flooding clients can't spend the whole cap before the owner's new device
+  // asks. A flood from many addresses still spends it: this bounds the
+  // lookups Renown sees, it can't promise one to the owner (the trusted keys
+  // do that for devices that verified before).
+  const reserved = Math.floor(lookupsPerMinute / 10);
   // What a lookup proves is "this wallet delegated to this app key", so
   // verdicts are per (app key, wallet) — every token that key signs for that
   // wallet shares one verdict, however often the client mints.
@@ -311,10 +414,11 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     }
     const k = windowOf(perKey, key, t);
     const c = windowOf(perClient, client, t);
+    const limit = c.count === 0 ? lookupsPerMinute : lookupsPerMinute - reserved;
     if (
       k.count >= lookupsPerKeyPerMinute ||
       c.count >= lookupsPerClientPerMinute ||
-      unknownLookups >= lookupsPerMinute
+      unknownLookups >= limit
     ) {
       return false;
     }
@@ -342,20 +446,23 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     if (!isTrusted && !allowUnknownLookup(key, client, t)) return false;
     const lookup = (async () => {
       let ok = false;
-      // A lookup that couldn't run (network) is no verdict on the key.
-      let refused = false;
+      // A lookup that couldn't run (Renown down, network) is no verdict on the
+      // key: a trusted key keeps its last OK verdict, asked again in 30 s.
+      let errored = false;
       try {
         ok = await verifyDelegation(jwt, audience);
-        refused = !ok;
       } catch {
-        ok = false;
+        errored = true;
+        ok = isTrusted;
       }
       const done = now();
-      boundedSet(verdicts, key, { ok, until: done + (ok ? OK_TTL_MS : FAIL_TTL_MS) });
+      const ttl = ok && !errored ? OK_TTL_MS : FAIL_TTL_MS;
+      boundedSet(verdicts, key, { ok, until: done + ttl });
+      if (errored) return ok;
       if (ok) {
         boundedSet(trusted, key, done);
         saveTrusted(opts.trustedStorePath, trusted);
-      } else if (refused && trusted.delete(key)) {
+      } else if (trusted.delete(key)) {
         saveTrusted(opts.trustedStorePath, trusted);
       }
       return ok;

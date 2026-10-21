@@ -1,5 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import type { IncomingMessage } from "node:http";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
@@ -379,10 +380,15 @@ describe("trusted keys: kept across restarts, per-client lookup shares, evicted 
     const authorize = authorizer(delegation, { now: () => t, trustedStorePath: store, lookupsPerMinute: 3 });
     expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
 
-    // A lookup that can't run (network) keeps the trust...
+    // A lookup that can't run (network) keeps the trust and the last OK
+    // verdict, asked again after 30 s...
     t += 6 * 60_000;
     answer = new Error("fetch failed");
-    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(false);
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
+    const calls = delegation.mock.calls.length;
+    t += 10_000;
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
+    expect(delegation.mock.calls.length).toBe(calls);
     t += 31_000;
     for (let c = 1; c <= 3; c++) await flood(authorize, `203.0.113.${c}`, 1);
     answer = true;
@@ -401,5 +407,147 @@ describe("trusted keys: kept across restarts, per-client lookup shares, evicted 
     for (let c = 1; c <= 3; c++) await flood(authorize, `203.0.113.${c}`, 1);
     answer = true;
     expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(false);
+  });
+});
+
+describe("lookup shares: IPv6 clients by /64, a reserve for clients new to the window", () => {
+  const saved = process.env.ADMINS;
+  let errorSpy: ReturnType<typeof jest.spyOn>;
+  beforeEach(() => {
+    process.env.ADMINS = OWNER;
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errorSpy.mockRestore();
+    if (saved === undefined) delete process.env.ADMINS;
+    else process.env.ADMINS = saved;
+  });
+
+  async function forged(): Promise<string> {
+    const crypto = await new RenownCryptoBuilder().withKeyPairStorage(new MemoryKeyStorage()).build();
+    return crypto.getBearerToken(OWNER, { expiresIn: 600, aud: STUDIO });
+  }
+  const via = (client: string, token: string) =>
+    req({ authorization: `Bearer ${token}`, "x-forwarded-for": client });
+
+  it("charges every address of one IPv6 /64 to one client", async () => {
+    const t = 1_000_000;
+    const delegation = jest.fn(async () => false);
+    const authorize = authorizer(delegation, { now: () => t });
+    for (let i = 0; i < 15; i++) {
+      await authorize(via(`2001:db8:1:2:${i.toString(16)}::${i + 1}`, await forged()), null);
+    }
+    expect(delegation).toHaveBeenCalledTimes(10);
+    await authorize(via("2001:db8:1:3::1", await forged()), null);
+    expect(delegation).toHaveBeenCalledTimes(11);
+  });
+
+  it("keeps a share of the cap for a client new to the window", async () => {
+    const t = 1_000_000;
+    const delegation = jest.fn(async () => false);
+    const authorize = authorizer(delegation, { now: () => t });
+    for (const c of ["203.0.113.1", "203.0.113.2", "203.0.113.3"]) {
+      for (let i = 0; i < 12; i++) await authorize(via(c, await forged()), null);
+    }
+    // 30 a minute, 3 of them kept for clients that haven't asked this window.
+    expect(delegation).toHaveBeenCalledTimes(27);
+    await authorize(via("203.0.113.3", await forged()), null);
+    expect(delegation).toHaveBeenCalledTimes(27);
+    // The owner's new device still gets its lookup.
+    delegation.mockImplementation(async () => true);
+    expect((await authorize(via("198.51.100.7", await forged()), null)).ok).toBe(true);
+    expect(delegation).toHaveBeenCalledTimes(28);
+  });
+});
+
+describe("the default delegation lookup tells 'no credential' from 'couldn't ask'", () => {
+  const saved = process.env.ADMINS;
+  let errorSpy: ReturnType<typeof jest.spyOn>;
+  let dir: string;
+  let store: string;
+  let server: Server;
+  let renownUrl: string;
+  let mode: "down" | "graphql-down" | "none" | "null" = "down";
+  const hits: string[] = [];
+  beforeEach(async () => {
+    process.env.ADMINS = OWNER;
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    dir = mkdtempSync(join(tmpdir(), "vetra-renown-"));
+    store = join(dir, ".ph", "preview-trusted-keys.json");
+    hits.length = 0;
+    server = createServer((rq, rs) => {
+      const p = new URL(rq.url ?? "/", "http://x").pathname;
+      hits.push(p);
+      const send = (status: number, body?: unknown) => {
+        rs.writeHead(status, { "content-type": "application/json" });
+        rs.end(body === undefined ? "" : JSON.stringify(body));
+      };
+      if (p === "/api/switchboard") {
+        if (mode === "graphql-down") return send(200, { endpoint: `${renownUrl}/graphql` });
+        return send(mode === "down" ? 503 : 404);
+      }
+      if (p === "/graphql") return send(503);
+      if (p === "/api/auth/credential") {
+        if (mode === "down") return send(503);
+        if (mode === "null") return send(200, { credential: null });
+        return send(404);
+      }
+      send(404);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    renownUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterEach(async () => {
+    errorSpy.mockRestore();
+    await new Promise<void>((r) => server.close(() => r()));
+    rmSync(dir, { recursive: true, force: true });
+    if (saved === undefined) delete process.env.ADMINS;
+    else process.env.ADMINS = saved;
+  });
+
+  it("Renown down (503, or its switchboard down) keeps a trusted key; no credential evicts it", async () => {
+    let t = 1_000_000;
+    const crypto = await new RenownCryptoBuilder().withKeyPairStorage(new MemoryKeyStorage()).build();
+    const mint = () => crypto.getBearerToken(OWNER, { expiresIn: 600, aud: STUDIO });
+    const key = `${crypto.did}|${OWNER.toLowerCase()}`;
+    mkdirSync(join(dir, ".ph"), { recursive: true });
+    writeFileSync(store, JSON.stringify({ version: 1, keys: { [key]: t } }));
+    const authorize = createRequestAuthorizer({
+      renownUrl,
+      cloud: true,
+      audience: () => STUDIO,
+      trustedStorePath: store,
+      now: () => t,
+    });
+
+    mode = "down";
+    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
+    expect(hits).toContain("/api/auth/credential");
+    expect(readFileSync(store, "utf-8")).toContain(key);
+
+    t += 31_000;
+    mode = "graphql-down";
+    hits.length = 0;
+    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
+    expect(hits).toContain("/graphql");
+    expect(readFileSync(store, "utf-8")).toContain(key);
+
+    t += 31_000;
+    mode = "none";
+    expect(await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).toEqual({
+      ok: false,
+      status: 401,
+      error: "unauthorized",
+    });
+    expect(readFileSync(store, "utf-8")).not.toContain(key);
+  });
+
+  it("an unknown key with no credential (null) is refused", async () => {
+    mode = "null";
+    const crypto = await new RenownCryptoBuilder().withKeyPairStorage(new MemoryKeyStorage()).build();
+    const authorize = createRequestAuthorizer({ renownUrl, cloud: true, audience: () => STUDIO });
+    const tok = await crypto.getBearerToken(OWNER, { expiresIn: 600, aud: STUDIO });
+    expect((await authorize(req({ authorization: `Bearer ${tok}` }), null)).ok).toBe(false);
+    expect(hits).toContain("/api/auth/credential");
   });
 });
