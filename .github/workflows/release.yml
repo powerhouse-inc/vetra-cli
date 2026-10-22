@@ -149,9 +149,12 @@ jobs:
           }
 
           for reg in $REGISTRIES; do
-            mint_token "$reg"
             # the app first so the CLI never references an unpublished dep.
+            # A fresh token per package: the Renown bearer lives ~10 minutes,
+            # shorter than the app tarball's upload over the slow ingress.
+            mint_token "$reg"
             publish_one "$VETRA_APP_TGZ" "$APP_NAME" "$reg"
+            mint_token "$reg"
             publish_one "$VETRA_CLI_TGZ" "$CLI_NAME" "$reg"
             if [ -n "$ALSO_TAG" ]; then
               for name in "$APP_NAME" "$CLI_NAME"; do
