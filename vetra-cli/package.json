@@ -1,6 +1,6 @@
 {
   "name": "vetra",
-  "version": "0.0.9-p5.4",
+  "version": "0.0.9-p5.5",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.vetra.io"
