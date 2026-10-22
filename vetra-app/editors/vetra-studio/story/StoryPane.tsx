@@ -23,6 +23,8 @@ import {
 } from "react";
 import { RawDetail } from "../ChatPane.js";
 import { ChangeRequest } from "../change/ChangeDrawer.js";
+import { usePendingTurnRetry } from "../delivery/pendingTurn.js";
+import type { PendingTurnOptions } from "../delivery/pendingTurn.js";
 import {
   FailureActions,
   FailureLine,
@@ -31,6 +33,7 @@ import {
 import {
   failureFor,
   notDeliveredFailure,
+  RETRYING_TEXT,
   shownInline,
   SIMPLER_MESSAGE,
   SKIP_MESSAGE,
@@ -115,6 +118,9 @@ export type StoryPaneProps = {
   /** The shown layer (controlled); the pane keeps its own when omitted. */
   layer?: StoryLayer;
   onLayerChange?: (layer: StoryLayer) => void;
+  /** The automatic retry of a message the agent didn't pick up (on by
+   *  default; tests and hosts may disable it or inject the readiness probe). */
+  pendingTurn?: PendingTurnOptions;
 };
 
 export function StoryPane({
@@ -129,6 +135,7 @@ export function StoryPane({
   onStartChange,
   layer: controlledLayer,
   onLayerChange,
+  pendingTurn,
 }: StoryPaneProps) {
   const [ownLayer, setOwnLayer] = useState<StoryLayer>(DEFAULT_LAYER);
   const layer = controlledLayer ?? ownLayer;
@@ -172,7 +179,16 @@ export function StoryPane({
     requestBudget: failureContext.requestBudget,
     restartPreview: failureContext.restartPreview,
   });
-  const failure = failureFor(
+  // A message the agent didn't pick up (its runtime restarted under the first
+  // prompt) is retried as soon as the runtime answers again; while that wait
+  // runs the line says so instead of asking the customer to press Retry.
+  const pendingTurnRetry = usePendingTurnRetry(
+    chat,
+    now,
+    handlers.retryTurn,
+    pendingTurn,
+  );
+  const rawFailure = failureFor(
     product,
     chat,
     failureContext.budget,
@@ -182,6 +198,14 @@ export function StoryPane({
     },
     { now, handlers },
   );
+  const failure =
+    rawFailure?.situation === "not-delivered" && pendingTurnRetry.retrying
+      ? {
+          ...rawFailure,
+          actions: [],
+          detail: [...(rawFailure.detail ?? []), RETRYING_TEXT],
+        }
+      : rawFailure;
 
   // Newest at the bottom; follow it unless the customer scrolled up.
   const scrollRef = useRef<HTMLDivElement | null>(null);

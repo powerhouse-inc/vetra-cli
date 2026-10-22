@@ -7,6 +7,7 @@ import {
 } from "document-models/studio-product";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PendingTurnOptions } from "../delivery/pendingTurn.js";
 import { readProduct } from "../shell/useStudioState.js";
 import { StoryPane, type StoryFailureContext } from "../story/StoryPane.js";
 import { atSec, chat, reply, user } from "../story/storyFixtures.js";
@@ -46,6 +47,7 @@ import {
   BUDGET_USED_UP_TEXT,
   BUDGET_WARNING_TEXT,
   NOT_DELIVERED_TEXT,
+  RETRYING_TEXT,
   PREVIEW_SLOW_TEXT,
   RESTARTING_TEXT,
   RESTART_FAILED_TEXT,
@@ -133,6 +135,7 @@ function renderStory(
   c: StoryChat,
   context: Partial<StoryFailureContext> = {},
   now = new Date(at(10)),
+  pendingTurn: PendingTurnOptions = { enabled: false },
 ) {
   return render(
     <StoryPane
@@ -142,6 +145,7 @@ function renderStory(
       sessionId={SESSION_ID}
       productId={PRODUCT_ID}
       now={now}
+      pendingTurn={pendingTurn}
       failureContext={{
         budget: null,
         requestBudget: () => {},
@@ -403,6 +407,32 @@ describe("build failure states (spec §5.9, G4)", () => {
       [SESSION_ID, "RETRY_TURN"],
     ]);
     expect(hoisted.dispatched[0].action.input.userMessageId).toBe("u0");
+  });
+
+  it("a message the agent didn't pick up is retried automatically when the runtime answers", async () => {
+    const p = product();
+    const c = chat(user("u0", "a task board for my team", at(1)));
+    renderStory(p, c, {}, new Date(atSec(2, 30)), {
+      waitUntilReady: () => Promise.resolve(true),
+    });
+    await settle();
+    expect(hoisted.dispatched.map((d) => [d.id, d.action.type])).toEqual([
+      [SESSION_ID, "RETRY_TURN"],
+    ]);
+    expect(hoisted.dispatched[0].action.input.userMessageId).toBe("u0");
+  });
+
+  it("while the runtime is down the line says it retries by itself, without a manual Retry", () => {
+    const p = product();
+    const c = chat(user("u0", "a task board for my team", at(1)));
+    const gate = Promise.withResolvers<boolean>();
+    const container = renderStory(p, c, {}, new Date(atSec(2, 30)), {
+      waitUntilReady: () => gate.promise,
+    });
+    const line = failureLine(container);
+    expect(line?.textContent).toContain(RETRYING_TEXT);
+    expect(line?.querySelector("button")).toBeNull();
+    expectNoForbiddenWords(container);
   });
 
   it("preview slow: Restart preview restarts it, and says so when it can't", async () => {

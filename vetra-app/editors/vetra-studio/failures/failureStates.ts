@@ -58,6 +58,7 @@ export const BREATHER_TEXT = "Taking a breather";
 export const BUDGET_WARNING_TEXT = "You've used 80% of this month's budget.";
 export const BUDGET_USED_UP_TEXT = "Budget used up. Your work so far is saved.";
 export const NOT_DELIVERED_TEXT = "Not delivered yet";
+export const RETRYING_TEXT = "Retrying automatically…";
 export const PREVIEW_SLOW_TEXT = "The preview is taking longer than usual.";
 export const RESTARTING_TEXT = "Your Studio is restarting — back in a moment.";
 export const RESTART_FAILED_TEXT = "Couldn't restart the preview.";
