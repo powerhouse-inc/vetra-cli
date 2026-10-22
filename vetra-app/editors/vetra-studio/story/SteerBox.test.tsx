@@ -24,6 +24,8 @@ const hoisted = vi.hoisted(() => ({
   /** How many ADD_USER_MESSAGE dispatches fail before one succeeds. */
   failMessages: 0,
   toasts: [] as string[],
+  /** The runtime readiness the box sees; a test may hold it open. */
+  waitReady: (): Promise<boolean> => Promise.resolve(true),
 }));
 
 vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
@@ -42,7 +44,7 @@ vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
 // The runtime probe and the document read are the only live signals in the
 // send path; the delivery logic under test is the real outbox.
 vi.mock("../delivery/chatReadiness.js", () => ({
-  waitForChatReady: () => Promise.resolve(true),
+  waitForChatReady: () => hoisted.waitReady(),
 }));
 vi.mock("../delivery/outbox.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -53,6 +55,7 @@ beforeEach(() => {
   hoisted.dispatched = [];
   hoisted.failMessages = 0;
   hoisted.toasts = [];
+  hoisted.waitReady = () => Promise.resolve(true);
 });
 
 /** Lets a test change the conversation and the clock the box sees. */
@@ -152,6 +155,25 @@ describe("SteerBox", () => {
       ]),
     );
     expect(deliveries(container)).toEqual(["Seen by the agent"]);
+    expectNoForbiddenWords(container);
+  });
+
+  it("holds the message as Connecting… while the runtime is down, then sends once", async () => {
+    const gate = Promise.withResolvers<boolean>();
+    hoisted.waitReady = () => gate.promise;
+    const container = render(<Harness />);
+
+    await submit(container, "add a Ready column");
+    expect(deliveries(container)).toEqual(["Connecting…"]);
+    expect(hoisted.dispatched).toHaveLength(0);
+
+    await act(async () => {
+      gate.resolve(true);
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    expect(hoisted.dispatched).toHaveLength(1);
+    expect(hoisted.dispatched[0].action.type).toBe("ADD_USER_MESSAGE");
+    expect(deliveries(container)).toEqual(["Sent"]);
     expectNoForbiddenWords(container);
   });
 
