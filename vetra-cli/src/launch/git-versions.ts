@@ -287,7 +287,12 @@ async function draftChanges(workdir: string): Promise<string[]> {
     .filter(Boolean)
     // `git()` trims the output, so the first line may have lost its leading space.
     .map((line) => line.replace(/^\s*\S{1,2}\s+/, ""))
-    .filter((p) => p !== ".gitignore");
+    .filter((p) => p !== ".gitignore")
+    // The Studio mirrors its product/model documents into `specs/*.phd` after a
+    // launch (the live version lands in the product document). Those mirrors are
+    // app-written, not the user's draft: counting them made every Go back after a
+    // launch fail with "your change isn't finished".
+    .filter((p) => !/(^|\/)specs\/.*\.phd$/.test(p));
 }
 
 /** Point `main` at a new commit with `tree` on top of HEAD (no history rewrite). */
