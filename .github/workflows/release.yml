@@ -32,7 +32,12 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    # Runs on a GitHub-hosted runner by default; set the repository variable
+    # RELEASE_RUNNER to a self-hosted label (e.g. "vetra-registry") once a
+    # runner near the registry exists — the 138 MB publish then stops paying
+    # the Azure→Hetzner penalty (~9 min → seconds). Only workflow_dispatch
+    # from protected branches reaches this job, never fork PRs.
+    runs-on: ${{ vars.RELEASE_RUNNER || 'ubuntu-latest' }}
     # The 103 MB vetra-app tarball's upload to registry.vetra.io took ~11 min;
     # npm's 5 min fetch timeout cut the response wait short. Keep the job above
     # the publish's own 20 min budget.
