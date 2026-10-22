@@ -213,6 +213,14 @@ async function loadPreviewConfig(): Promise<PreviewConfig> {
   return { base: DIRECT_BASE, loaded: false };
 }
 
+/** True when `studio.config.json` named a preview server (a provisioned
+ *  Studio, proxied or direct). Vite dev's loopback fallback returns false:
+ *  there is no daemon whose readiness could be asked. */
+export async function resolvePreviewServerConfigured(): Promise<boolean> {
+  const config = await resolvePreviewConfig();
+  return config.loaded && config.base !== DIRECT_BASE;
+}
+
 /** Whether studio.config.json was read, and the Studio's own cloud id in it. */
 export async function resolveStudioConfigLoad(): Promise<{
   loaded: boolean;
@@ -463,6 +471,13 @@ export async function fetchRestart(args: {
     throw new Error(`preview-server /restart: ${res.status} ${res.statusText}`);
   }
   return body;
+}
+
+/** Whether the Studio's daemon (preview server + chat watcher) answers. */
+export async function fetchHealthz(signal?: AbortSignal): Promise<boolean> {
+  const { base } = await resolvePreviewConfig();
+  const res = await fetch(`${base}/healthz`, { signal, cache: "no-store" });
+  return res.ok;
 }
 
 /** Running versions of the vetra daemon serving this studio. */

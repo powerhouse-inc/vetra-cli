@@ -429,6 +429,7 @@ function memoryStudio() {
       ),
     now: () => "2026-10-21T10:00:00.000Z",
     newId: () => `id-${++ids}`,
+    waitUntilReady: () => Promise.resolve(true),
   };
   return {
     drive: { header: { id: "drive-idea" }, state: { global: { nodes } } },

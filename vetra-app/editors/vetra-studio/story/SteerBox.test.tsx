@@ -39,6 +39,16 @@ vi.mock("@powerhousedao/reactor-browser", async (importOriginal) => ({
   },
 }));
 
+// The runtime probe and the document read are the only live signals in the
+// send path; the delivery logic under test is the real outbox.
+vi.mock("../delivery/chatReadiness.js", () => ({
+  waitForChatReady: () => Promise.resolve(true),
+}));
+vi.mock("../delivery/outbox.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  sessionHasMessage: () => Promise.resolve(false),
+}));
+
 beforeEach(() => {
   hoisted.dispatched = [];
   hoisted.failMessages = 0;
@@ -100,7 +110,8 @@ async function submit(container: HTMLElement, text: string) {
     container
       .querySelector("form")
       ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    await Promise.resolve();
+    // The outbox: document check → readiness → dispatch → state update.
+    for (let i = 0; i < 10; i++) await Promise.resolve();
   });
 }
 

@@ -23,8 +23,9 @@ import type {
 import { parseToolValue } from "../tool-renderers/shared/util.js";
 import { doingNow, type ToolCallView } from "./doingNow.js";
 
-/** A steer message's delivery (Foundation): sent → seen by the agent. */
-export type Delivery = "sent" | "seen" | "not-delivered";
+/** A steer message's delivery: connecting (runtime not ready yet) → sent →
+ *  seen by the agent, or not-delivered once the window or budget runs out. */
+export type Delivery = "connecting" | "sent" | "seen" | "not-delivered";
 
 /** Milestone marks: done, in progress, a recovered problem. */
 export type MilestoneMark = "✓" | "◐" | "⟲";

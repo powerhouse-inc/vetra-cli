@@ -26,6 +26,8 @@ import {
   type UnderstoodDraft,
 } from "../../../shared/understood-draft.js";
 import { addAgentWritableDocument } from "../addAgentWritableDocument.js";
+import { waitForChatReady } from "../delivery/chatReadiness.js";
+import { deliverMessage, sessionHasMessage } from "../delivery/outbox.js";
 import { languageHint, type Language } from "../i18n/language.js";
 import { SPECIFY_TYPES } from "../specify/projects.js";
 
@@ -78,7 +80,14 @@ export interface StartProductDeps {
   getDocument: (documentId: string) => Promise<PHDocument | undefined>;
   now: () => string;
   newId: () => string;
+  /** Resolves when the chat runtime can take the first message; false at the
+   *  readiness budget. Defaults to the daemon's real `/healthz` poll. */
+  waitUntilReady?: () => Promise<boolean>;
 }
+
+/** Shown when the first message could not be handed to the agent. */
+export const START_NOT_DELIVERED =
+  "The Studio's agent isn't reachable yet. Your idea is kept — try again in a moment.";
 
 async function dispatchOrThrow(
   documentId: string,
@@ -109,6 +118,7 @@ export const defaultStartDeps: StartProductDeps = {
   getDocument: readDocument,
   now: () => new Date().toISOString(),
   newId: generateId,
+  waitUntilReady: () => waitForChatReady(),
 };
 
 /* ── Reading the documents (structural, tolerant of older documents) ── */
@@ -430,12 +440,24 @@ async function run(
   const message = blocks.join("\n\n") + (lang ? languageHint(lang) : "");
 
   // Last: the message starts the agent, which expects the product to exist.
-  await deps.dispatch(sessionId, [
-    chatActions.addUserMessage({
-      id: deps.newId(),
-      content: [{ id: deps.newId(), type: "TEXT", text: message }],
-      createdAt: at,
-    }),
-  ]);
+  // A restarted Studio's daemon (the chat watcher's process) may still be
+  // down: hold the message until it answers, then dispatch once. Without
+  // this, a prompt sent in that window was written locally and never picked
+  // up. One message id is reused by the dispatch retries, so a refused send
+  // that half-landed cannot double the customer's words.
+  const messageId = deps.newId();
+  const delivery = await deliverMessage({
+    waitUntilReady: deps.waitUntilReady ?? (() => waitForChatReady()),
+    isDelivered: () => sessionHasMessage(sessionId, messageId),
+    send: () =>
+      deps.dispatch(sessionId, [
+        chatActions.addUserMessage({
+          id: messageId,
+          content: [{ id: deps.newId(), type: "TEXT", text: message }],
+          createdAt: at,
+        }),
+      ]),
+  });
+  if (delivery === "failed") throw new Error(START_NOT_DELIVERED);
   return { productId, sessionId };
 }

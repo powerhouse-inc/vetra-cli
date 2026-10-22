@@ -21,6 +21,7 @@ import { TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { UnderstoodDraft } from "../../../shared/understood-draft.js";
 import { useStudioBudget } from "../budget/useStudioBudget.js";
+import { useChatReady } from "../delivery/useChatReady.js";
 import { translate, type Language } from "../i18n/language.js";
 import type { MessageKey } from "../i18n/messages.en.js";
 import { useT } from "../i18n/useT.js";
@@ -98,6 +99,9 @@ export function IdeaScreen({
   const { t, language } = useT();
   const auth = useStudioSignIn();
   const budget = useStudioBudget();
+  // Real signal for the staging harness: the daemon that runs the chat
+  // watcher answers. A prompt typed before this is true is held, not lost.
+  const chatReady = useChatReady();
   const toast = usePHToast();
   const [idea, setIdea] = useState("");
   const [cards, setCards] = useState<MaterialCard[]>([]);
@@ -355,6 +359,7 @@ export function IdeaScreen({
         className="flex min-h-0 flex-1 items-center justify-center px-6 pb-16"
       >
         <form
+          data-chat-ready={chatReady ? "true" : "false"}
           className="flex w-full max-w-2xl flex-col items-center gap-5 text-center"
           onSubmit={(e) => {
             e.preventDefault();

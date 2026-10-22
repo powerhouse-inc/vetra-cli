@@ -2,9 +2,11 @@ import type { Node } from "@powerhousedao/shared/document-drive";
 import type { Action, PHDocument } from "document-model";
 import { describe, expect, it, vi } from "vitest";
 import type { UnderstoodDraft } from "../../../shared/understood-draft.js";
+import { DELIVERY_ATTEMPTS } from "../delivery/outbox.js";
 import {
   ideaStartStatus,
   sessionToOpen,
+  START_NOT_DELIVERED,
   startProduct,
   type StartProductDeps,
   type StartProductDrive,
@@ -39,6 +41,8 @@ function store(driveId = "drive-1") {
   };
   let ids = 0;
   let failOn: string | null = null;
+  /** How many matching dispatches still fail (the outbox retries). */
+  let failTimes = 0;
   const created: { name: string; type: string }[] = [];
   const dispatched: { id: string; types: string[] }[] = [];
 
@@ -60,8 +64,9 @@ function store(driveId = "drive-1") {
     }),
     dispatch: vi.fn((id: string, actions: Action[]) => {
       const types = actions.map((a) => a.type);
-      if (failOn && types.includes(failOn)) {
-        failOn = null;
+      if (failOn && types.includes(failOn) && failTimes > 0) {
+        failTimes -= 1;
+        if (failTimes === 0) failOn = null;
         return Promise.reject(new Error(`${types.join(",")} failed`));
       }
       dispatched.push({ id, types });
@@ -88,6 +93,7 @@ function store(driveId = "drive-1") {
       Promise.resolve(docs.has(id) ? doc(id, docs.get(id)!) : undefined),
     now: () => AT,
     newId: () => `id-${++ids}`,
+    waitUntilReady: () => Promise.resolve(true),
   };
   const documents = () => [...docs].map(([id, g]) => doc(id, g));
   return {
@@ -98,8 +104,9 @@ function store(driveId = "drive-1") {
     created,
     dispatched,
     documents,
-    failNext: (what: string) => {
+    failNext: (what: string, times = 1) => {
       failOn = what;
+      failTimes = times;
     },
   };
 }
@@ -144,6 +151,50 @@ describe("startProduct", () => {
       createdAt: AT,
     });
     expect(ideaStartStatus(s.drive, s.documents())).toBe("started");
+  });
+
+  it("holds the first message until the chat runtime is ready, then sends it once", async () => {
+    const s = store();
+    const ready = Promise.withResolvers<boolean>();
+    const waiting = Promise.withResolvers<void>();
+    s.deps.waitUntilReady = () => {
+      waiting.resolve();
+      return ready.promise;
+    };
+
+    const started = startProduct(
+      { drive: s.drive, idea: "a task board for my team" },
+      s.deps,
+    );
+    // The product and change exist, the message does not: it waits.
+    await waiting.promise;
+    expect(s.docs.get("product-2")?.changes).toHaveLength(1);
+    expect(s.dispatched.some((d) => d.types.includes("ADD_USER_MESSAGE"))).toBe(
+      false,
+    );
+
+    ready.resolve(true);
+    await started;
+
+    const sends = s.dispatched.filter((d) =>
+      d.types.includes("ADD_USER_MESSAGE"),
+    );
+    expect(sends).toHaveLength(1);
+    expect(sends[0].id).toBe("session-1");
+  });
+
+  it("sends nothing when the chat runtime never becomes ready", async () => {
+    const s = store();
+    s.deps.waitUntilReady = () => Promise.resolve(false);
+
+    await expect(
+      startProduct({ drive: s.drive, idea: "a task board" }, s.deps),
+    ).rejects.toThrow(START_NOT_DELIVERED);
+    expect(s.dispatched.some((d) => d.types.includes("ADD_USER_MESSAGE"))).toBe(
+      false,
+    );
+    // The session and product were created, so a retry resumes cleanly.
+    expect(ideaStartStatus(s.drive, s.documents())).toBe("idea");
   });
 
   it("writes the first story line right after the change starts", async () => {
@@ -227,10 +278,10 @@ describe("startProduct", () => {
 
   it("resumes a product and change whose first message was not sent", async () => {
     const s = store();
-    s.failNext("ADD_USER_MESSAGE");
+    s.failNext("ADD_USER_MESSAGE", DELIVERY_ATTEMPTS);
     await expect(
       startProduct({ drive: s.drive, idea: "todo app" }, s.deps),
-    ).rejects.toThrow("failed");
+    ).rejects.toThrow(START_NOT_DELIVERED);
     expect(ideaStartStatus(s.drive, s.documents())).toBe("idea");
 
     // The stored idea wins over what the box holds now.
@@ -372,13 +423,13 @@ describe("starting from the corrected picture", () => {
 
   it("a retry after the first message failed does not store the draft twice", async () => {
     const s = store("drive-retry");
-    s.failNext("ADD_USER_MESSAGE");
+    s.failNext("ADD_USER_MESSAGE", DELIVERY_ATTEMPTS);
     await expect(
       startProduct(
         { drive: s.drive, idea: "", draft: DRAFT, language: "de" },
         s.deps,
       ),
-    ).rejects.toThrow("failed");
+    ).rejects.toThrow(START_NOT_DELIVERED);
     expect(s.docs.get("product-2")).toHaveProperty("understood");
 
     await startProduct(

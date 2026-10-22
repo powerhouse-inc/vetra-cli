@@ -14,6 +14,8 @@ import { dispatchActions, usePHToast } from "@powerhousedao/reactor-browser";
 import { generateId } from "document-model";
 import { actions as productActions } from "document-models/studio-product";
 import { useEffect, useState, type RefObject } from "react";
+import { waitForChatReady } from "../delivery/chatReadiness.js";
+import { deliverOnce, sessionHasMessage } from "../delivery/outbox.js";
 import {
   AUTO_CONTINUE_TEXT,
   CONTINUE_ID_PREFIX,
@@ -24,6 +26,7 @@ import {
 export const STEER_PLACEHOLDER = 'Steer it: "make slides 16:9"…';
 
 export const DELIVERY_TEXT: Record<Delivery, string> = {
+  connecting: "Connecting…",
   sent: "Sent",
   seen: "Seen by the agent",
   "not-delivered": "Not delivered yet",
@@ -128,6 +131,8 @@ export function SteerBox({
   const toast = usePHToast();
   const [text, setText] = useState("");
   const [sent, setSent] = useState<{ id: string; at: Date } | null>(null);
+  /** The chat runtime is not ready yet; the message is held, not lost. */
+  const [connecting, setConnecting] = useState(false);
   // Pause/Continue show at once; the product document confirms them.
   const [requested, setRequested] = useState<"pause" | "resume" | null>(null);
 
@@ -137,9 +142,11 @@ export function SteerBox({
     requested === "pause" ? true : requested === "resume" ? false : paused;
 
   // Until the message reaches the conversation (then the story shows its
-  // delivery): sent, or not delivered after a minute.
-  const delivery: Delivery | null =
-    !sent || messages.some((m) => m.id === sent.id)
+  // delivery): connecting while the runtime is not ready, sent, or not
+  // delivered after a minute.
+  const delivery: Delivery | null = connecting
+    ? "connecting"
+    : !sent || messages.some((m) => m.id === sent.id)
       ? null
       : now.getTime() - sent.at.getTime() > NOT_DELIVERED_AFTER_MS
         ? "not-delivered"
@@ -150,12 +157,22 @@ export function SteerBox({
     if (!message || !sessionId) return;
     setText("");
     const at = now;
-    sendSteer(sessionId, message)
-      .then((id) => setSent({ id, at }))
-      .catch(() => {
+    const id = generateId();
+    setSent({ id, at });
+    void deliverOnce(`${sessionId}:${id}`, {
+      waitUntilReady: () => waitForChatReady(),
+      isDelivered: () => sessionHasMessage(sessionId, id),
+      send: () => sendSteer(sessionId, message, id).then(() => undefined),
+      onState: (state) => {
+        setConnecting(state === "connecting");
+        if (state !== "failed") return;
+        // The runtime stayed unreachable past the budget: give the words back
+        // and say so. The story's explicit Retry still covers a late pickup.
+        setSent(null);
         setText(message);
         toast?.("Couldn't send it. Try again.", { type: "error" });
-      });
+      },
+    });
   }
 
   function togglePause() {
