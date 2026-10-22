@@ -43,6 +43,7 @@ function fakeDeps(packuments: Record<string, PackumentResult>) {
   const deps: PublishDeps = {
     publish,
     fetchPackument: jest.fn(async (_r: string, name: string) => packuments[name] ?? { kind: "not-found" }),
+    identity: async () => ({ kind: "owner" }),
     registryToken: async () => "registry-token",
   };
   return { deps, publish };
@@ -157,6 +158,41 @@ describe("publishAll", () => {
     } finally {
       if (saved !== undefined) process.env.PH_REGISTRY_URL = saved;
     }
+  });
+
+  it("publishes as the org's publisher in an org Studio and as the owner in a personal one", async () => {
+    project("todo", "1.0.0");
+    const ORG_PUBLISHER = "0x4444444444444444444444444444444444444444";
+    const publish = jest.fn<PublishFn>(async (opts: PublishOpts) => ({
+      kind: "ok" as const,
+      packageName: opts.packageName!,
+      version: opts.version!,
+      registry: REGISTRY,
+    }));
+    const identity = jest.fn(async (c: { config: { studioOrgId?: string } }) =>
+      c.config.studioOrgId
+        ? ({ kind: "org", address: ORG_PUBLISHER } as const)
+        : ({ kind: "owner" } as const),
+    );
+    const registryToken = jest.fn(
+      async (_c: unknown, _w: string, id: { kind: string }) =>
+        id.kind === "org" ? "org-publisher-token" : "owner-token",
+    );
+    const deps: PublishDeps = {
+      publish,
+      fetchPackument: jest.fn(async () => ({ kind: "not-found" as const })),
+      identity,
+      registryToken,
+    };
+
+    const org = { config: { registryUrl: REGISTRY, studioOrgId: "org-1", environmentId: "env-1" } };
+    await publishAll(org, workdir, { slug: "s" }, deps);
+    expect(registryToken).toHaveBeenLastCalledWith(org, workdir, { kind: "org", address: ORG_PUBLISHER }, REGISTRY);
+    expect(publish.mock.calls[0][0]).toMatchObject({ registryToken: "org-publisher-token" });
+
+    await publishAll(ctx, workdir, { slug: "s" }, deps);
+    expect(registryToken).toHaveBeenLastCalledWith(ctx, workdir, { kind: "owner" }, REGISTRY);
+    expect(publish.mock.calls[1][0]).toMatchObject({ registryToken: "owner-token" });
   });
 
   it("publishes a single project as @vetra-apps/<slug>", async () => {

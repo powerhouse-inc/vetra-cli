@@ -35,6 +35,7 @@ import { restartPreview, startPreview } from "./starter.js";
 import {
   createCapabilityGate,
   createRequestAuthorizer,
+  type AcceptedMemberCheck,
   type MemberAuthorizer,
   type RequestAuthorizer,
 } from "./request-auth.js";
@@ -71,6 +72,8 @@ interface PreviewServerDeps {
   agentLogging?: boolean;
   /** Running as a cloud Studio (`config.environmentId`): no loopback pass. */
   cloud?: boolean;
+  /** The Studio belongs to an organisation: one delegation per member (1.11). */
+  orgStudio?: boolean;
   /** Renown the owner gate verifies bearers on (the Studio Connect's);
    *  undefined = the SDK default. */
   gateRenownUrl?: string;
@@ -159,6 +162,7 @@ export async function startPreviewServer(
   let workspaceExportInFlight = false;
 
   const cloud = deps.cloud ?? Boolean(process.env.VETRA_ENVIRONMENT_ID?.trim());
+  const orgStudio = deps.orgStudio ?? false;
   const authorizeRequest =
     deps.authorizeRequest ??
     createRequestAuthorizer({
@@ -194,6 +198,23 @@ export async function startPreviewServer(
   ): Promise<boolean> {
     if (!capabilityGate) return requireOwner(req, res, url);
     return (await capabilityGate(req, res, url, cap, ctx)) !== null;
+  }
+
+  /**
+   * Like `requireCapability`, but hands the accepted caller back. Without the
+   * member gate (a local Studio, the S1 tests) the owner gate counts as the
+   * admin-side path: `member: null`.
+   */
+  async function requireMemberCapability(
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: string,
+    cap: Parameters<NonNullable<typeof capabilityGate>>[3],
+  ): Promise<AcceptedMemberCheck | null> {
+    if (!capabilityGate) {
+      return (await requireOwner(req, res, url)) ? { ok: true, via: "operator", member: null } : null;
+    }
+    return capabilityGate(req, res, url, cap);
   }
 
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -423,42 +444,46 @@ export async function startPreviewServer(
         return;
       }
 
-      // Renown auth state for the studio "Authorize agent" button. Both run in
-      // this same process as the agent's whoami/deploy tools, sharing the
-      // per-workdir Renown instance — so confirm here stores the credential the
-      // tools read. Owner-only: status names the owner's wallet, and start /
-      // confirm / logout change which identity the agent acts as.
-      if (path === "/auth/status" && method === "GET") {
-        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
-        const state = await getAuthState(workdir, renownUrl);
-        writeJson(res, 200, state);
-        return;
-      }
+      // "Authorize agent" for the caller (P6-4): `allowAgent` is Owners and
+      // Makers, self only. These routes run in the same process as the agent's
+      // whoami/deploy tools, so confirm here stores the credential the tools
+      // read. An org Studio keeps one delegation per member (keyed by their
+      // address); a personal Studio keeps the single owner identity.
+      if (path.startsWith("/auth/")) {
+        const check = await requireMemberCapability(req, res, url, "allowAgent");
+        if (!check) return;
+        const target = orgStudio && check.member ? { member: check.member.address } : {};
 
-      if (path === "/auth/start" && method === "POST") {
-        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
-        const state = await startAuth(workdir, renownUrl);
-        writeJson(res, 200, state);
-        return;
-      }
-
-      if (path === "/auth/logout" && method === "POST") {
-        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
-        const state = await logoutAuth(workdir, renownUrl);
-        writeJson(res, 200, state);
-        return;
-      }
-
-      if (path === "/auth/confirm" && method === "POST") {
-        if (!(await requireCapability(req, res, url, "exportWorkspace"))) return;
-        const q = parseQuery(url);
-        const waitMs = Math.min(Math.max(Number(q.get("wait")) || 20000, 0), 60000);
-        // A cloud Studio's agent may only act as the owner: a login approved
-        // with any other wallet is logged straight back out.
-        const state = await confirmAuth(workdir, renownUrl, waitMs, {
-          requireAdmin: cloud,
-        });
-        writeJson(res, 200, state);
+        if (path === "/auth/status" && method === "GET") {
+          writeJson(res, 200, await getAuthState(workdir, renownUrl, target));
+          return;
+        }
+        if (path === "/auth/start" && method === "POST") {
+          writeJson(res, 200, await startAuth(workdir, renownUrl, target));
+          return;
+        }
+        if (path === "/auth/logout" && method === "POST") {
+          writeJson(res, 200, await logoutAuth(workdir, renownUrl, target));
+          return;
+        }
+        if (path === "/auth/confirm" && method === "POST") {
+          const q = parseQuery(url);
+          const waitMs = Math.min(Math.max(Number(q.get("wait")) || 20000, 0), 60000);
+          // A member's login is kept only under their own address; where the
+          // single-identity owner rule applies, only the owner's wallet is kept.
+          writeJson(
+            res,
+            200,
+            await confirmAuth(workdir, renownUrl, waitMs, {
+              ...target,
+              // Where a member's own delegation is the rule (an org Studio),
+              // ADMINS is empty and must not be consulted.
+              requireAdmin: cloud && !orgStudio,
+            }),
+          );
+          return;
+        }
+        writeJson(res, 404, { error: "not found", path });
         return;
       }
 

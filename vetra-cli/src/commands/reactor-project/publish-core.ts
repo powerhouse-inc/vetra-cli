@@ -139,6 +139,9 @@ export async function publishReactorProject(opts: {
   dryRun?: boolean;
   /** Bump the patch and retry when the registry rejects an existing version. */
   bumpOnConflict?: boolean;
+  /** A pre-minted registry token (the org publisher's, task 1.11). Null means
+   * "not authorized"; undefined mints one for the agent's own identity. */
+  registryToken?: string | null;
   log?: (chunk: string) => void;
 }): Promise<PublishCoreResult> {
   const packageJsonPath = path.join(opts.projectPath, "package.json");
@@ -185,7 +188,10 @@ export async function publishReactorProject(opts: {
     }
   }
 
-  const token = await getRegistryToken(opts.workdir, opts.renownUrl, registryUrl);
+  const token =
+    opts.registryToken === undefined
+      ? await getRegistryToken(opts.workdir, opts.renownUrl, registryUrl)
+      : opts.registryToken;
   if (!token) {
     return {
       kind: "auth-required",

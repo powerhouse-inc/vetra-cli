@@ -82,6 +82,7 @@ import { publishAll, type LiveRelease, type PublishedPackage } from "./publish-a
 import { awaitRollbackSettle } from "../triggers/live-health.js";
 import { askForSuggestions, chatBudgetUsedUp, hasSuggestionsFor } from "./suggestions.js";
 import { checkLive, waitForDeployment } from "./verify.js";
+import { changeOwner } from "../team/change-owner.js";
 import { adoptedWithoutVersions, ensureProductTarget } from "../product/upgrade-existing.js";
 
 /* ------------------------------------------------------------------------ */
@@ -279,7 +280,10 @@ const defaultDeps: LaunchDeps = {
 
 export interface OrchestratorContext extends ProductContext, ProductDriveContext {
   workdir: string;
-  config: Pick<Config, "cloudSwitchboardUrl" | "cloudRenownUrl" | "environmentId" | "registryUrl">;
+  config: Pick<
+    Config,
+    "cloudSwitchboardUrl" | "cloudRenownUrl" | "environmentId" | "registryUrl" | "studioOrgId" | "renownOrgsUrl"
+  >;
   log?: {
     info?: (msg: string) => void;
     warn?: (msg: string) => void;
@@ -289,6 +293,9 @@ export interface OrchestratorContext extends ProductContext, ProductDriveContext
   /** Seams for tests. */
   deps?: Partial<LaunchDeps>;
   now?: () => Date;
+  /** The change owner whose delegation this launch's cloud calls carry (an
+   * org Studio, task 1.11); set for the launch, cleared when it ends. */
+  member?: string;
 }
 
 function depsOf(ctx: OrchestratorContext): LaunchDeps {
@@ -495,6 +502,16 @@ async function runLaunch(
     }
     liveBefore = state.liveVersion ?? null;
     const change = state.changes.find((c) => c.id === version.changeId);
+    // An org Studio's cloud calls speak for the change's owner (the launch
+    // requester), not for a Studio-wide identity: their own delegation only.
+    if (change && ctx.config.studioOrgId) {
+      try {
+        const owner = await changeOwner(ctx, change);
+        if (owner) ctx.member = owner.address;
+      } catch (err) {
+        ctx.log?.warn?.(`[launch] launch requester could not be read: ${message(err)}`);
+      }
+    }
     const title = versionTitle(change);
     const line = (kind: LaunchLineKind) => version.lines.find((l) => l.kind === kind);
     const isDone = (kind: LaunchLineKind) => line(kind)?.status === "DONE" && !!line(kind)?.detail;

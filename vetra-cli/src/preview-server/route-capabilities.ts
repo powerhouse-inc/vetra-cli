@@ -32,10 +32,11 @@ export const ROUTE_CAPABILITIES: readonly RouteRule[] = [
   { method: "GET", path: "/sessions", cap: "exportWorkspace" },
   { method: "GET", path: "/sessions/export", cap: "exportWorkspace" },
   { method: "GET", path: "/export", cap: "exportWorkspace" },
-  { method: "GET", path: "/auth/status", cap: "exportWorkspace" },
-  { method: "POST", path: "/auth/start", cap: "exportWorkspace" },
-  { method: "POST", path: "/auth/logout", cap: "exportWorkspace" },
-  { method: "POST", path: "/auth/confirm", cap: "exportWorkspace" },
+  // "Authorize agent": each member allows the agent for themselves (1.11).
+  { method: "GET", path: "/auth/status", cap: "allowAgent" },
+  { method: "POST", path: "/auth/start", cap: "allowAgent" },
+  { method: "POST", path: "/auth/logout", cap: "allowAgent" },
+  { method: "POST", path: "/auth/confirm", cap: "allowAgent" },
 
   // Making and publishing a change (P6-3: Owners and Makers).
   { method: "POST", path: "/start", cap: "startChange" },

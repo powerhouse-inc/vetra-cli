@@ -14,8 +14,6 @@
  * this trigger never emits work items; it exists purely for its setup-
  * lifetime side effects. `teardown()` closes the server on daemon shutdown.
  */
-import fs from "node:fs";
-import path from "node:path";
 import { defineTrigger } from "../framework.js";
 import {
   DEFAULT_PREVIEW_SERVER_PORT,
@@ -32,6 +30,7 @@ import { createSwitchboardDriveAccess, syncDriveAccess } from "../team/drive-acc
 import { createMembership, type Membership } from "../team/membership.js";
 import { fetchOrgMembership } from "../team/renown-orgs.js";
 import { createDelegationCheck } from "../team/delegation-check.js";
+import { dropDelegation, hasDelegation } from "../team/delegations.js";
 import { createAcceptedTeam } from "../team/team-state.js";
 import { isOrgStudio, readTeamDocument, type TeamContext } from "../team/team-doc.js";
 import type { Member } from "../team/roles.js";
@@ -73,8 +72,11 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
     const config = ctx.context.config;
     const { renownUrl } = resolveCloudConfig(config);
     const cloud = Boolean(config.environmentId?.trim());
-    // Cloud Studio: the agent's Renown identity must be an ADMINS wallet.
-    setRequireAdminIdentity(cloud);
+    const org = isOrgStudio(config);
+    // Personal cloud Studios keep the owner-only identity; an org Studio has
+    // no ADMINS (1.2 writes `ADMINS=""`), so each admitted member's own
+    // delegation is the rule (P6-4, Ruling C16).
+    setRequireAdminIdentity(cloud && !org);
 
     // Verify bearers and delegations on the Renown the Studio's Connect logs in on.
     const gateRenownUrl = resolveStudioRenownUrl(process.env.RENOWN_URL, config.cloudRenownUrl, {
@@ -140,11 +142,8 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         }
         return out;
       },
-      // P6-4 stores one delegation per member; task 1.11 writes these files.
-      hasDelegation: async (address) =>
-        fs.existsSync(
-          path.join(workdir, ".ph", "vetra", "team", "delegations", `${address.toLowerCase()}.json`),
-        ),
+      // P6-4 stores one delegation per member (task 1.11).
+      hasDelegation: async (address) => hasDelegation(workdir, address),
       verifyAction: (action, documentId) => {
         const op = {
           id: action.id,
@@ -226,6 +225,8 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         scheduleAccessSync();
       },
       onRefused: (address) => {
+        // Not a member: nothing may be signed with their delegation any more.
+        dropDelegation(workdir, address);
         if (knownMembers.delete(address.toLowerCase())) scheduleAccessSync();
       },
     });
@@ -243,6 +244,7 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         getReactor: () => getEmbeddedDrive(ctx.commandContext),
         agentLogging: config.agentLogging,
         cloud,
+        orgStudio: org,
         // Verify owner/member bearers on the Renown the Studio's Connect logs in on.
         gateRenownUrl,
         // Read per request: the proxy's public URL can land after startup.

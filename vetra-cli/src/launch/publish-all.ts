@@ -12,8 +12,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Config } from "../framework.js";
-import { getRegistryToken } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
+import {
+  publishIdentity,
+  registryTokenFor,
+  type PublishIdentity,
+} from "../team/publisher.js";
 import { fetchPackument } from "../cloud/registry-packument.js";
 import { resolveLaunchRegistryUrl } from "../cloud/registry-url.js";
 import {
@@ -32,22 +36,34 @@ export const LAUNCH_PUBLISH_FETCH_TIMEOUT_MS = 30 * 60_000;
 
 export interface PublishContext {
   config: Pick<Config, "registryUrl" | "cloudRenownUrl"> &
-    Partial<Pick<Config, "environmentId" | "cloudSwitchboardUrl">>;
+    Partial<Pick<Config, "environmentId" | "cloudSwitchboardUrl" | "studioOrgId">>;
   log?: { info?: (msg: string) => void; warn?: (msg: string) => void };
+  /** Seams for the org-publisher lookup (tests). */
+  fetch?: typeof fetch;
+  env?: Record<string, string | undefined>;
 }
 
 /** Seams for tests; production uses the real registry and publish sequence. */
 export interface PublishDeps {
   publish: typeof publishReactorProject;
   fetchPackument: typeof fetchPackument;
-  registryToken: (workdir: string, renownUrl: string, registryUrl: string) => Promise<string | null>;
+  /** Who publishes: the owner (personal Studio) or the org's publisher. */
+  identity: (ctx: PublishContext, workdir: string) => Promise<PublishIdentity>;
+  /** The registry token for that identity. */
+  registryToken: (
+    ctx: PublishContext,
+    workdir: string,
+    identity: PublishIdentity,
+    registryUrl: string,
+  ) => Promise<string | null>;
 }
 
 const defaultDeps: PublishDeps = {
   publish: publishReactorProject,
   fetchPackument,
-  registryToken: (workdir, renownUrl, registryUrl) =>
-    getRegistryToken(workdir, renownUrl, registryUrl),
+  identity: (ctx, workdir) => publishIdentity({ ...ctx, workdir }),
+  registryToken: (ctx, workdir, identity, registryUrl) =>
+    registryTokenFor({ ...ctx, workdir }, identity, registryUrl),
 };
 
 function npmSegment(value: string): string {
@@ -153,6 +169,9 @@ export async function publishAll(
     : null;
   const names = assignPackageNames(opts.slug, projects, live);
   const published: PublishedPackage[] = [];
+  // Resolved once per launch: one cloud lookup at most, and every project of
+  // this launch publishes under the same identity.
+  const identity = await deps.identity(ctx, workdir);
 
   for (const project of projects) {
     const projectPath = path.join(workdir, project);
@@ -175,7 +194,7 @@ export async function publishAll(
       cloudSwitchboardUrl: ctx.config.cloudSwitchboardUrl,
     });
 
-    const token = await deps.registryToken(workdir, renownUrl, registryUrl);
+    const token = await deps.registryToken(ctx, workdir, identity, registryUrl);
     const packument = await deps.fetchPackument(registryUrl, name, token);
     if (packument.kind === "error") {
       throw new LaunchError(
@@ -206,6 +225,7 @@ export async function publishAll(
         version,
         bumpOnConflict: true,
         fetchTimeoutMs: LAUNCH_PUBLISH_FETCH_TIMEOUT_MS,
+        registryToken: token,
       });
     } finally {
       await writeFile(packageJsonPath, original);

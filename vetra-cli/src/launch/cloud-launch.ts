@@ -15,7 +15,7 @@
  */
 import { CLOUD_BASE_DOMAIN } from "@powerhousedao/vetra-cloud-client";
 import type { Config } from "../framework.js";
-import { getBearerToken } from "../auth/renown.js";
+import { getBearerToken, getMemberBearerToken } from "../auth/renown.js";
 import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from "../cloud/config.js";
 import { LaunchError } from "./errors.js";
 
@@ -39,6 +39,9 @@ export interface CloudContext {
   bearerToken?: () => Promise<string | null>;
   env?: Record<string, string | undefined>;
   sleep?: (ms: number) => Promise<void>;
+  /** The member whose own delegation these calls carry (org Studios, task
+   * 1.11); absent = the Studio's single stored identity. */
+  member?: string;
 }
 
 /** Plain reasons per call (the UI prefixes "Couldn't go live:"; F39). */
@@ -49,6 +52,7 @@ export const REASONS = {
   studioDeployment: "the new version didn't start",
   studioProduct: "your live product couldn't be checked",
   setStudioProductDrive: "your live address couldn't open your product",
+  orgPublisherCredential: "the organisation's publisher couldn't be set up",
 } as const;
 
 export type StudioOperation = keyof typeof REASONS;
@@ -100,12 +104,20 @@ export async function studioGql<T>(
   const endpoint = resolveCloudGraphqlEndpoint(ctx.config);
   const token = await (ctx.bearerToken
     ? ctx.bearerToken()
-    : getBearerToken(ctx.workdir, resolveCloudConfig(ctx.config).renownUrl));
+    : ctx.member
+      ? getMemberBearerToken(
+          ctx.workdir,
+          resolveCloudConfig(ctx.config).renownUrl,
+          ctx.member,
+        )
+      : getBearerToken(ctx.workdir, resolveCloudConfig(ctx.config).renownUrl));
   if (!token) {
     throw new LaunchError(
       "PERMISSION",
       "your Studio needs your OK to publish",
-      "The agent is not signed in with the owner's Renown identity.",
+      ctx.member
+        ? "The change's owner has not allowed the Studio's agent to work for them."
+        : "The agent is not signed in with the owner's Renown identity.",
     );
   }
   const secrets = [secret, token];
