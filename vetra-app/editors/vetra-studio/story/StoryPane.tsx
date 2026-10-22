@@ -106,6 +106,8 @@ export type StoryPaneProps = {
   /** Starts a new change; asked for under a closed change (an existing
    *  Studio's work before versions, spec §6.6) instead of steering it. */
   onStartChange?: (request: string) => Promise<unknown>;
+  /** A Viewer (P6): the steer box shows the watch-and-comment notice. */
+  canSteer?: boolean;
 };
 
 export function StoryPane({
@@ -117,6 +119,7 @@ export function StoryPane({
   now: fixedNow,
   failureContext = NO_FAILURE_CONTEXT,
   onStartChange,
+  canSteer = true,
 }: StoryPaneProps) {
   const ticking = useNow(5_000);
   const now = fixedNow ?? ticking;
@@ -229,6 +232,7 @@ export function StoryPane({
           messages={messages ?? []}
           now={now}
           inputRef={steerRef}
+          readOnly={!canSteer}
         />
       )}
     </div>

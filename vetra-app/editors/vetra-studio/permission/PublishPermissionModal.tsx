@@ -5,11 +5,14 @@
  * Declining never blocks the build: the Live step asks again with its
  * `! needs you` row when it gets there.
  *
- * The answer is remembered per Studio (its drive), so the modal isn't shown
- * on every render; a delegation the agent already holds means nothing to ask.
+ * The answer is remembered per Studio, member and change (P6): each Maker is
+ * asked on their first change in the Studio, and never for someone else's
+ * answer. A delegation the agent already holds means nothing to ask.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useStudioSignIn } from "../idea/useStudioSignIn.js";
+import type { Member } from "../team/capabilities.js";
+import { canLaunch } from "../team/roleGate.js";
 import { usePublishPermission } from "./usePublishPermission.js";
 
 export const PUBLISH_PERMISSION_TITLE =
@@ -19,19 +22,28 @@ export const PUBLISH_PERMISSION_TEXT =
 
 const ASKED_PREFIX = "vetra-studio:publish-asked:";
 
-/** Whether this Studio has already asked this browser. */
-function askedBefore(studioId: string): boolean {
+/** Per Studio, per member, per change: one person's answer never covers another. */
+function askedKey(
+  studioId: string,
+  member: string | null | undefined,
+  changeId: string | null,
+): string {
+  return `${ASKED_PREFIX}${studioId}:${member?.toLowerCase() ?? "local"}:${changeId ?? "studio"}`;
+}
+
+/** Whether this person was already asked for this Studio and change. */
+function askedBefore(key: string): boolean {
   try {
-    return window.localStorage.getItem(ASKED_PREFIX + studioId) === "1";
+    return window.localStorage.getItem(key) === "1";
   } catch {
     // Blocked storage: ask again on the next visit rather than not at all.
     return false;
   }
 }
 
-function markAsked(studioId: string): void {
+function markAsked(key: string): void {
   try {
-    window.localStorage.setItem(ASKED_PREFIX + studioId, "1");
+    window.localStorage.setItem(key, "1");
   } catch {
     // Blocked storage: the answer lasts for this visit only.
   }
@@ -40,31 +52,47 @@ function markAsked(studioId: string): void {
 export function PublishPermissionModal({
   productId,
   studioId,
+  me = null,
+  changeId = null,
 }: {
   productId: string | null;
   /** The Studio (drive) the answer is remembered for. */
   studioId: string;
+  /** The caller's member record (P6): each Maker is asked for themselves. */
+  me?: Member | null;
+  /** The change being started: the ask is per change. */
+  changeId?: string | null;
 }) {
   const signIn = useStudioSignIn();
-  const { state, delegated, pending, allow } = usePublishPermission(productId);
-  const [asked, setAsked] = useState(() => askedBefore(studioId));
+  const { state, delegated, pending, allow } = usePublishPermission(
+    productId,
+    me?.address,
+  );
+  const key = askedKey(studioId, me?.address, changeId);
+  const [asked, setAsked] = useState(() => askedBefore(key));
+
+  // A different member or change is a different ask.
+  useEffect(() => {
+    setAsked(askedBefore(key));
+  }, [key]);
 
   const close = useCallback(() => {
-    markAsked(studioId);
+    markAsked(key);
     setAsked(true);
-  }, [studioId]);
+  }, [key]);
 
   // Approved (now or before this visit): the ask is done for this Studio.
   useEffect(() => {
     if (!delegated) return;
-    markAsked(studioId);
+    markAsked(key);
     setAsked(true);
-  }, [delegated, studioId]);
+  }, [delegated, key]);
 
   // The product's permission decides too, and a MISSING/EXPIRED state is
   // asked about by the Live row (Task 2.9), not by a modal on every visit.
   // A local Studio needs no sign-in and has no Renown user to delegate from.
   const open =
+    canLaunch(me) &&
     signIn.status === "signed-in" &&
     signIn.hasUser &&
     !asked &&

@@ -7,6 +7,11 @@
  * The page never calls the agent: the product document is the channel, and
  * the agent's requests trigger watches it (F7). Used by the sign-in modal
  * (Task 2.8) and the Live "needs you" row (Task 2.9).
+ *
+ * P6 (task 1.12): the delegation is per member. `/auth/*` answers for the
+ * signed-in caller's own delegation (1.11), so `delegated` means "this Maker
+ * has allowed the agent", and `member` re-runs the reconciliation when a
+ * different person signs in.
  */
 import {
   dispatchActions,
@@ -37,6 +42,7 @@ export interface PublishPermission {
 
 export function usePublishPermission(
   productId: string | null,
+  member?: string | null,
 ): PublishPermission {
   const auth = useAgentAuth();
   const doc = useDocumentSafe(productId);
@@ -87,7 +93,7 @@ export function usePublishPermission(
     if (state !== "UNKNOWN") return;
     reconciled.current = true;
     void record("GRANTED");
-  }, [auth.authenticated, productId, state, record]);
+  }, [auth.authenticated, productId, state, record, member]);
 
   // Approved in Renown after Allow: record it.
   useEffect(() => {

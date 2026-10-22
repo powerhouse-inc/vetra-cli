@@ -32,6 +32,8 @@ import { StudioShell } from "./StudioShell.js";
 const hoisted = vi.hoisted(() => ({
   documents: undefined as PHDocument[] | undefined,
   dispatched: [] as { action: unknown; id: string }[],
+  /** Set per test: the team the page sees (P6). */
+  teamUnavailable: false,
 }));
 
 vi.mock("../steps/plainModel.js", async (importOriginal) => {
@@ -41,6 +43,20 @@ vi.mock("../steps/plainModel.js", async (importOriginal) => {
 
 vi.mock("../hooks/useDriveDocuments.js", () => ({
   useDriveDocuments: () => hoisted.documents,
+}));
+// P6: the team routes are not available in these tests; no team information
+// gates nothing, and the panel/page assertions stay about the shell.
+vi.mock("../team/useTeam.js", () => ({
+  useTeam: () => ({
+    me: null,
+    members: [],
+    orgId: null,
+    loading: false,
+    unavailable: hoisted.teamUnavailable,
+    limited: false,
+    needsAllow: false,
+    refresh: () => {},
+  }),
 }));
 vi.mock("../VetraStudio.js", () => ({
   VetraStudio: () => <div>Old Studio view</div>,
@@ -187,6 +203,7 @@ function building() {
 
 beforeEach(() => {
   hoisted.documents = undefined;
+  hoisted.teamUnavailable = false;
   hoisted.dispatched = [];
   vi.mocked(plainModel).mockClear();
 });
@@ -217,7 +234,7 @@ describe("StudioShell", () => {
     expect(container.textContent).toContain("Opening your Studio…");
   });
 
-  it("no route other than strip steps, Settings and Versions", () => {
+  it("no route other than strip steps, Settings, Team and Versions", () => {
     const container = building();
     expect(
       container.querySelectorAll('[role="tab"], [role="tablist"]'),
@@ -236,6 +253,7 @@ describe("StudioShell", () => {
       "LIVE",
       "Rename",
       "Settings",
+      "Team",
       "Versions",
       // The steer box's actions (Task 1.6), not routes.
       "Send",
@@ -243,6 +261,18 @@ describe("StudioShell", () => {
     ]);
     expect(names.filter((n) => !allowed.has(n))).toEqual([]);
     expect(names).toContain("Settings");
+    expectNoForbiddenWords(container);
+  });
+
+  it("access unavailable shows the message, not a blank Studio", () => {
+    hoisted.teamUnavailable = true;
+    const container = building();
+    expect(container.textContent).toContain(
+      "The team isn't available right now.",
+    );
+    // The Studio keeps working: the strip and the steer box are still there.
+    expect(container.querySelector('[aria-label="Steps"]')).not.toBeNull();
+    expect(button(container, "Send")).toBeDefined();
     expectNoForbiddenWords(container);
   });
 

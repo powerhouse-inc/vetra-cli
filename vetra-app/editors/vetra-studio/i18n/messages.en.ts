@@ -29,6 +29,35 @@ export const en = {
   "account.signIn": "Sign in",
   "account.signOut": "Sign out",
   "account.language": "Language",
+  "team.menu": "Team",
+  "team.heading": "Team",
+  "team.close": "Close",
+  "team.you": "you",
+  "team.role.owner": "Owner",
+  "team.role.maker": "Maker",
+  "team.role.viewer": "Viewer",
+  "team.role.guest": "Guest",
+  "team.reviewer": "Reviewer",
+  "team.agentAllowed": "Agent allowed",
+  "team.needsAllow": "Allow the agent to work for you",
+  "team.limited":
+    "This Studio sees the members who have opened it. The organisation's full member list isn't available here.",
+  "team.unavailable": "The team isn't available right now.",
+  "team.pending": "Team settings are still being set up for this Studio.",
+  "team.onlyWatch": "Can only watch here",
+  "team.actionFailed": "Couldn't change that. Try again.",
+  "team.viewerSteer":
+    "You can watch and comment. Ask an Owner if you want to make changes.",
+  "team.move.heading": "Move into an organisation",
+  "team.move.choose": "Choose an organisation",
+  "team.move.explainer":
+    "Moves this Studio and its remaining budget to {org}. Members of {org} get access by their role.",
+  "team.move.button": "Move to {org}",
+  "team.move.noOrgs": "You don't own an organisation yet.",
+  "team.move.unavailable":
+    "Moving a Studio into an organisation isn't available here yet.",
+  "team.move.failed": "This Studio couldn't be moved. Try again.",
+  "team.move.done": "This Studio now belongs to {org}.",
 } as const;
 
 export type MessageKey = keyof typeof en;

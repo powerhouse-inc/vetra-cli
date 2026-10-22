@@ -127,6 +127,14 @@ export function connectDriveUrlOnSwitchboardReady(
             ? ctx.config.cloudSwitchboardUrl
             : undefined;
 
+        // Renown organisations (an org Studio's member roles; 1.12's Move into
+        // an organisation picker). Unset outside a provisioned org Studio.
+        const renownOrgsUrl =
+          typeof ctx.config.renownOrgsUrl === "string" &&
+          ctx.config.renownOrgsUrl
+            ? ctx.config.renownOrgsUrl
+            : undefined;
+
         const bundleDir = path.join(options.vetraAppDir, connectDir);
         try {
           patchRuntimeConfig(
@@ -146,6 +154,7 @@ export function connectDriveUrlOnSwitchboardReady(
             environmentId,
             packageRegistryUrl,
             cloudSwitchboardUrl,
+            renownOrgsUrl,
             ctx.log,
           );
         } catch (err: unknown) {
@@ -248,6 +257,7 @@ function writeStudioConfig(
   environmentId: string | undefined,
   packageRegistryUrl: string | null,
   cloudSwitchboardUrl: string | undefined,
+  renownOrgsUrl: string | undefined,
   log: Log,
 ): void {
   if (!existsSync(bundleDir)) {
@@ -259,10 +269,12 @@ function writeStudioConfig(
     packageRegistryUrl?: string;
     environmentId?: string;
     cloudSwitchboardUrl?: string;
+    renownOrgsUrl?: string;
   } = { previewServerUrl };
   if (packageRegistryUrl) config.packageRegistryUrl = packageRegistryUrl;
   if (environmentId) config.environmentId = environmentId;
   if (cloudSwitchboardUrl) config.cloudSwitchboardUrl = cloudSwitchboardUrl;
+  if (renownOrgsUrl) config.renownOrgsUrl = renownOrgsUrl;
   const next = `${JSON.stringify(config, null, 2)}\n`;
 
   if (existsSync(file) && readFileSync(file, "utf8") === next) {

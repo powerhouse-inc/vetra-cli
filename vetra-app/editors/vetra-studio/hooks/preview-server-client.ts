@@ -133,6 +133,8 @@ interface PreviewConfig {
   // Cloud switchboard the Deploy view talks to; undefined outside a
   // provisioned studio (falls back to the shared client default).
   cloudSwitchboardUrl?: string;
+  // Renown organisations endpoint (org roles; the org picker in Settings).
+  renownOrgsUrl?: string;
   // False when studio.config.json could not be fetched or read: what it would
   // have said (e.g. the environment id) is unknown, not absent.
   loaded: boolean;
@@ -190,6 +192,7 @@ async function loadPreviewConfig(): Promise<PreviewConfig> {
         environmentId?: string;
         packageRegistryUrl?: string;
         cloudSwitchboardUrl?: string;
+        renownOrgsUrl?: string;
       };
       if (cfg.previewServerUrl) {
         return {
@@ -198,6 +201,7 @@ async function loadPreviewConfig(): Promise<PreviewConfig> {
           environmentId: cfg.environmentId,
           packageRegistryUrl: cfg.packageRegistryUrl,
           cloudSwitchboardUrl: cfg.cloudSwitchboardUrl,
+          renownOrgsUrl: cfg.renownOrgsUrl,
           loaded: true,
         };
       }
@@ -246,6 +250,13 @@ export async function resolveStudioCloudSwitchboardUrl(): Promise<
 > {
   const config = await resolvePreviewConfig();
   return config.cloudSwitchboardUrl ?? null;
+}
+
+/** The Renown organisations endpoint (org roles, the org picker), from
+ * `studio.config.json`; null outside a provisioned org Studio. */
+export async function resolveStudioRenownOrgsUrl(): Promise<string | null> {
+  const config = await resolvePreviewConfig();
+  return config.renownOrgsUrl ?? null;
 }
 
 export type ResolveResult =

@@ -13,6 +13,7 @@ import {
 } from "document-models/studio-product";
 import { useState } from "react";
 import { dispatchOrFail } from "../failures/FailureLine.js";
+import { useT } from "../i18n/useT.js";
 import { liveHost } from "../live/liveCopy.js";
 import {
   CHECKS_PASSED,
@@ -48,6 +49,7 @@ export function ReadyBar({
   change,
   requestedBy,
   onKeepChanging,
+  canLaunch = true,
 }: {
   /** Normalised product state (`readProduct`). */
   product: StudioProductState;
@@ -58,7 +60,10 @@ export function ReadyBar({
   requestedBy: string;
   /** Back to the conversation: another request joins the same change. */
   onKeepChanging: () => void;
+  /** A Viewer (P6) gets the watch-and-comment line, no launch actions. */
+  canLaunch?: boolean;
 }) {
+  const { t } = useT();
   const [confirming, setConfirming] = useState(false);
   const [sent, setSent] = useState<"LAUNCH" | "DISCARD" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -135,30 +140,38 @@ export function ReadyBar({
               {THROWING_AWAY}
             </span>
           ) : null}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => request("LAUNCH")}
-            className="rounded-full bg-vetra-primary px-3 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {MAKE_IT_LIVE}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onKeepChanging}
-            className={buttonClass}
-          >
-            {KEEP_CHANGING}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setConfirming(true)}
-            className={buttonClass}
-          >
-            {DISCARD}
-          </button>
+          {canLaunch ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => request("LAUNCH")}
+                className="rounded-full bg-vetra-primary px-3 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {MAKE_IT_LIVE}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onKeepChanging}
+                className={buttonClass}
+              >
+                {KEEP_CHANGING}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setConfirming(true)}
+                className={buttonClass}
+              >
+                {DISCARD}
+              </button>
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {t("team.viewerSteer")}
+            </span>
+          )}
         </div>
       </div>
       {confirming ? (

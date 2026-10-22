@@ -105,6 +105,25 @@ async function submit(container: HTMLElement, text: string) {
 }
 
 describe("SteerBox", () => {
+  it("a viewer sees the watch-and-comment notice instead of the box (P6)", () => {
+    const c = render(
+      <SteerBox
+        sessionId={SESSION_ID}
+        productId={PRODUCT_ID}
+        changeId="c1"
+        paused={false}
+        messages={[]}
+        now={new Date(atSec(5, 10))}
+        readOnly
+      />,
+    );
+    expect(c.querySelector("input")).toBeNull();
+    expect(c.textContent).toContain(
+      "You can watch and comment. Ask an Owner if you want to make changes.",
+    );
+    expectNoForbiddenWords(c);
+  });
+
   it("steer message shows sent then seen by the agent", async () => {
     const container = render(<StoryHarness />);
     const input = container.querySelector<HTMLInputElement>(

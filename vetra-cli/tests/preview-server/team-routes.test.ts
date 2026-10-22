@@ -64,10 +64,12 @@ function routes(over: { verify?: VerifyResult } = {}) {
   const verifyAction = jest.fn(async () => verified);
   const handle = createTeamRoutes({
     orgId: "acme",
-    members: async () => [
-      { address: OTHER, name: "Bo", role: "viewer", reviewer: true },
+    seen: async () => [{ address: OTHER, name: "Bo", role: "maker", reviewer: false }],
+    reviewers: async () => [
+      { address: OTHER, name: "Bo", role: "maker", reviewer: true },
     ],
     hasDelegation: async () => false,
+    overridden: async () => new Set<string>(),
     verifyAction,
     relay,
   });
@@ -83,13 +85,40 @@ describe("team routes", () => {
     expect(JSON.parse(out.body)).toEqual({ member: member("maker"), orgId: "acme", needsAllow: true });
   });
 
-  it("GET /team/members adds the caller to the accepted reviewers", async () => {
+  it("GET /team/members lists the seen members and accepted reviewers, with the caller", async () => {
     const { handle } = routes();
     const { call: c, out } = call("GET", "/team/members", undefined, member("owner"));
     await handle.handle(c);
     expect(out.status).toBe(200);
-    const body = JSON.parse(out.body) as { members: { address: string }[] };
+    const body = JSON.parse(out.body) as {
+      members: { address: string; reviewer: boolean; allowedAgent: boolean }[];
+      limited: boolean;
+    };
     expect(body.members.map((m) => m.address)).toEqual([OTHER, OWNER]);
+    // The seen member gains the Reviewer flag from the accepted reviewer.
+    expect(body.members[0]).toMatchObject({ reviewer: true, allowedAgent: false });
+    // An org Studio can only show who it has seen: the full list is the 1.10 gap.
+    expect(body.limited).toBe(true);
+  });
+
+  it("GET /team/members marks the members who allowed the agent", async () => {
+    const handle = createTeamRoutes({
+      orgId: "acme",
+      seen: async () => [{ address: OTHER, name: "Bo", role: "maker", reviewer: false }],
+      reviewers: async () => [],
+      hasDelegation: async (address) => address.toLowerCase() === OTHER.toLowerCase(),
+      overridden: async () => new Set([OTHER.toLowerCase()]),
+      verifyAction: jest.fn(),
+      relay: jest.fn(),
+    });
+    const { call: c, out } = call("GET", "/team/members", undefined, member("owner"));
+    await handle.handle(c);
+    const body = JSON.parse(out.body) as {
+      members: { address: string; allowedAgent: boolean }[];
+    };
+    expect(body.members.find((m) => m.address === OTHER)?.allowedAgent).toBe(true);
+    expect(body.members.find((m) => m.address === OWNER)?.allowedAgent).toBe(false);
+    expect(body.members.find((m) => m.address === OTHER)?.overridden).toBe(true);
   });
 
   it("POST /team/relay appends the caller's signed action unchanged", async () => {

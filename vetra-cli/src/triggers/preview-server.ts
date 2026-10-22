@@ -126,9 +126,13 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
 
     const teamRoutes = createTeamRoutes({
       orgId,
-      members: async () => {
+      // Task 1.10's seen members: the ones this Studio has admitted at the
+      // gate. An org's full member list is not readable from the pod (the
+      // 1.10 gap), so the panel is built from these plus accepted reviewers.
+      seen: async () => [...knownMembers.values()],
+      reviewers: async () => {
         const state = await acceptedTeam();
-        const out: Member[] = [];
+        const out: Array<Pick<Member, "address" | "name" | "role" | "reviewer">> = [];
         for (const reviewer of state.reviewers) {
           const base = await membership.resolveBase(reviewer.address);
           if (base) {
@@ -144,6 +148,15 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
       },
       // P6-4 stores one delegation per member (task 1.11).
       hasDelegation: async (address) => hasDelegation(workdir, address),
+      // "Can only watch here": the accepted VIEWER overrides (task 1.12).
+      overridden: async () => {
+        const state = await acceptedTeam();
+        return new Set(
+          state.roleOverrides
+            .filter((override) => override.role === "VIEWER")
+            .map((override) => override.address.toLowerCase()),
+        );
+      },
       verifyAction: (action, documentId) => {
         const op = {
           id: action.id,

@@ -34,4 +34,36 @@ export const de: Record<MessageKey, string> = {
   "account.signIn": "Anmelden",
   "account.signOut": "Abmelden",
   "account.language": "Sprache",
+  "team.menu": "Team",
+  "team.heading": "Team",
+  "team.close": "Schließen",
+  "team.you": "du",
+  "team.role.owner": "Inhaber",
+  "team.role.maker": "Macher",
+  "team.role.viewer": "Betrachter",
+  "team.role.guest": "Gast",
+  "team.reviewer": "Prüfer",
+  "team.agentAllowed": "Agent erlaubt",
+  "team.needsAllow": "Erlaube dem Agenten, für dich zu arbeiten",
+  "team.limited":
+    "Dieses Studio sieht die Mitglieder, die es geöffnet haben. Die vollständige Mitgliederliste der Organisation ist hier nicht verfügbar.",
+  "team.unavailable": "Das Team ist gerade nicht verfügbar.",
+  "team.pending":
+    "Die Team-Einstellungen dieses Studios werden noch eingerichtet.",
+  "team.onlyWatch": "Kann hier nur zuschauen",
+  "team.actionFailed":
+    "Das konnte nicht geändert werden. Versuch es noch einmal.",
+  "team.viewerSteer":
+    "Du kannst zuschauen und kommentieren. Frag einen Inhaber, wenn du Änderungen machen möchtest.",
+  "team.move.heading": "In eine Organisation verschieben",
+  "team.move.choose": "Organisation wählen",
+  "team.move.explainer":
+    "Verschiebt dieses Studio und sein verbleibendes Budget zu {org}. Mitglieder von {org} erhalten Zugriff nach ihrer Rolle.",
+  "team.move.button": "Zu {org} verschieben",
+  "team.move.noOrgs": "Du besitzt noch keine Organisation.",
+  "team.move.unavailable":
+    "Das Verschieben eines Studios in eine Organisation ist hier noch nicht verfügbar.",
+  "team.move.failed":
+    "Dieses Studio konnte nicht verschoben werden. Versuch es noch einmal.",
+  "team.move.done": "Dieses Studio gehört jetzt zu {org}.",
 };

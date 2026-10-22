@@ -45,6 +45,11 @@ import { PublishPermissionModal } from "../permission/PublishPermissionModal.js"
 import { usePublishPermission } from "../permission/usePublishPermission.js";
 import { PreviewPane, restartPreview } from "../preview/PreviewPane.js";
 import { SettingsDialog } from "../settings/SettingsDialog.js";
+import { TeamPanel } from "../team/TeamPanel.js";
+import { canLaunch, canSteer } from "../team/roleGate.js";
+import { teamDocumentId } from "../team/teamClient.js";
+import { useTeam, type Team } from "../team/useTeam.js";
+import { useT } from "../i18n/useT.js";
 import { DataDetail } from "../steps/DataDetail.js";
 import { LiveDetail } from "../steps/LiveDetail.js";
 import { PlanDetail } from "../steps/PlanDetail.js";
@@ -80,7 +85,12 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // "Change who can use it" opens Settings straight on the access switch.
   const [settingsOnAccess, setSettingsOnAccess] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
   const [showDebug] = useState(isProductDebugEnabled);
+  // P6: who the caller is here (role gates, the Team panel). An unavailable
+  // team leaves today's page and lets the server enforce every route.
+  const team = useTeam();
+  const teamDoc = teamDocumentId(document.state.global.nodes);
   const driveRef = useRef(document);
   driveRef.current = document;
 
@@ -134,6 +144,7 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
           onStart={startFromIdea}
           onStarted={setStartedSession}
           onOpenSettings={openSettings}
+          onOpenTeam={() => setTeamOpen(true)}
         />
       ) : (
         <StudioPage
@@ -145,6 +156,8 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
           productId={productId}
           onOpenSettings={openSettings}
           onOpenAccess={openAccessSettings}
+          onOpenTeam={() => setTeamOpen(true)}
+          team={team}
         />
       )}
       {settingsOpen ? (
@@ -152,17 +165,40 @@ export function StudioShell({ document, dispatch }: StudioShellProps) {
           product={product}
           productId={productId}
           initialSection={settingsOnAccess ? "access" : undefined}
+          team={team}
           onClose={closeSettings}
+        />
+      ) : null}
+      {teamOpen ? (
+        <TeamPanel
+          me={team.me}
+          members={team.members}
+          limited={team.limited}
+          unavailable={team.unavailable}
+          needsAllow={team.needsAllow}
+          teamDocumentId={teamDoc}
+          onChanged={team.refresh}
+          onClose={() => setTeamOpen(false)}
         />
       ) : null}
       {/* D7: the one-time ask right after sign-in, over either screen. */}
       <PublishPermissionModal
         productId={productId}
         studioId={document.header.id}
+        me={team.me}
+        changeId={product?.activeChangeId ?? null}
       />
       {showDebug ? <ProductDebugPanel drive={document} /> : null}
     </div>
   );
+}
+
+/** P6: the team routes could not answer (an older daemon, Renown down, or a
+ * caller the gate refused). The Studio keeps working; this says why the team
+ * list is empty instead of blanking the page. */
+function TeamUnavailable() {
+  const { t } = useT();
+  return <>{t("team.unavailable")}</>;
 }
 
 function ShellLoading() {
@@ -237,6 +273,8 @@ function StudioPage({
   productId,
   onOpenSettings,
   onOpenAccess,
+  onOpenTeam,
+  team,
 }: {
   drive: DocumentDriveDocument;
   documents: readonly PHDocument[];
@@ -246,12 +284,19 @@ function StudioPage({
   productId: string | null;
   onOpenSettings: () => void;
   onOpenAccess: () => void;
+  onOpenTeam: () => void;
+  team: Team;
 }) {
   const now = useNow(30_000);
   const budget = useStudioBudget();
   const usage = budget.snapshot.usage;
   useChangeCostRecorder(product, productId, usage ? usage.usageUsd : null);
   const change = product ? stripChange(product) : null;
+  // P6 role gates: an Owner/Maker steers and launches; a Viewer watches and
+  // comments. No team information (an older daemon, a Renown outage) gates
+  // nothing — the preview server still refuses what a role may not do.
+  const steerAllowed = canSteer(team.me, change ? { changeId: change.id } : {});
+  const launchAllowed = canLaunch(team.me);
   // The time left shown before for this change: it never goes back up.
   const shownTimeLeft = useRef<{ changeId: string; text: string | null }>(null);
   const plainView = stripModel(product, {
@@ -361,6 +406,7 @@ function StudioPage({
         change={change}
         requestedBy={signIn.name ?? "you"}
         onKeepChanging={NO_FOCUS}
+        canLaunch={launchAllowed}
       />
     ) : null;
 
@@ -382,6 +428,7 @@ function StudioPage({
           allowPublish: permission.allow,
         }}
         onStartChange={productId ? startNextChange : undefined}
+        canSteer={steerAllowed}
       />
     ) : sessionId ? (
       /* No readable product yet: the conversation as it is. */
@@ -432,11 +479,20 @@ function StudioPage({
 
   return (
     <>
+      {team.unavailable ? (
+        <div
+          role="status"
+          className="shrink-0 border-b border-border bg-card px-4 py-1.5 text-xs text-muted-foreground"
+        >
+          <TeamUnavailable />
+        </div>
+      ) : null}
       <StepStrip
         view={view}
         selected={openStep}
         onOpenStep={toggleStep}
         onOpenSettings={onOpenSettings}
+        onOpenTeam={onOpenTeam}
         onRename={productId ? rename : undefined}
         versions={
           product?.liveVersion != null
@@ -471,6 +527,7 @@ function StudioPage({
               preview={previewPane}
               requestedBy={signIn.name ?? "you"}
               onOpenAccess={onOpenAccess}
+              canLaunch={launchAllowed}
             />
           </main>
         )

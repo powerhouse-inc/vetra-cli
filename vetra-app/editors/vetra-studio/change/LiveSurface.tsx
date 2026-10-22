@@ -53,6 +53,7 @@ export function LiveSurface({
   preview,
   requestedBy,
   onOpenAccess,
+  canLaunch = true,
 }: {
   /** Normalised product state with a live version (`readProduct`). */
   product: StudioProductState;
@@ -70,6 +71,8 @@ export function LiveSurface({
   preview: ReactNode;
   requestedBy: string;
   onOpenAccess: () => void;
+  /** A Viewer (P6) sees the Ready bar without launch actions. */
+  canLaunch?: boolean;
 }) {
   const change = openChange(product);
   const openId = change?.id ?? null;
@@ -214,6 +217,7 @@ export function LiveSurface({
                     change={change}
                     requestedBy={requestedBy}
                     onKeepChanging={keepChanging}
+                    canLaunch={canLaunch}
                   />
                 )}
               </>

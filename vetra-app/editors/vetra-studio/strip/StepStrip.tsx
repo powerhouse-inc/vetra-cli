@@ -177,6 +177,7 @@ export function StepStrip({
   selected,
   onOpenStep,
   onOpenSettings,
+  onOpenTeam,
   onRename,
   budget,
   versions,
@@ -185,6 +186,8 @@ export function StepStrip({
   selected: StepKind | null;
   onOpenStep: (kind: StepKind) => void;
   onOpenSettings: () => void;
+  /** Opens the Team panel (P6); omitted where the page has none. */
+  onOpenTeam?: () => void;
   /** Renames the product; the name is read-only without it. */
   onRename?: (name: string) => void;
   /** The budget meter shown in place of the plain budget text; omitted
@@ -265,6 +268,15 @@ export function StepStrip({
               : null}
           </span>
         )}
+        {onOpenTeam ? (
+          <button
+            type="button"
+            onClick={onOpenTeam}
+            className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
+          >
+            Team
+          </button>
+        ) : null}
         <SettingsButton onOpen={onOpenSettings} />
       </div>
     </header>

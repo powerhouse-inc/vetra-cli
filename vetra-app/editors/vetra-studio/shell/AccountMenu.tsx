@@ -1,6 +1,6 @@
 /**
  * The account menu, top right of the Studio page (spec §5.3, §5.6): who is
- * signed in, Settings, and sign in / sign out.
+ * signed in, the Team panel, Settings, and sign in / sign out.
  */
 import { useT } from "../i18n/useT.js";
 import { useEffect, useRef, useState } from "react";
@@ -17,12 +17,15 @@ export function AccountMenu({
   onSignIn,
   onSignOut,
   onOpenSettings,
+  onOpenTeam,
 }: {
   name: string | undefined;
   hasUser: boolean;
   onSignIn: () => void;
   onSignOut: () => void;
   onOpenSettings: () => void;
+  /** Opens the Team panel (P6); omitted where the page has none. */
+  onOpenTeam?: () => void;
 }) {
   const { t, language, setLanguage } = useT();
   const [open, setOpen] = useState(false);
@@ -79,6 +82,11 @@ export function AccountMenu({
           aria-label={t("account.label")}
           className="absolute right-0 top-full z-40 mt-1 min-w-[10rem] rounded-lg border border-border bg-card py-1 text-sm shadow-lg"
         >
+          {onOpenTeam ? (
+            <MenuItem onSelect={() => choose(onOpenTeam)}>
+              {t("team.menu")}
+            </MenuItem>
+          ) : null}
           <MenuItem onSelect={() => choose(onOpenSettings)}>
             {t("account.settings")}
           </MenuItem>

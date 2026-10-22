@@ -15,6 +15,8 @@ import { AgentAuthButton } from "../AgentAuthButton.js";
 import { StudioBudgetMeter } from "../budget/BudgetMeter.js";
 import { DeploySection } from "../DeploySection.js";
 import { ANYONE_WITH_THE_LINK } from "../live/liveCopy.js";
+import { MoveToOrg } from "../team/MoveToOrg.js";
+import type { Team } from "../team/useTeam.js";
 import { githubText } from "../strip/stripModel.js";
 import { VersionBadge } from "../VersionBadge.js";
 import { WorkspaceExportButton } from "../WorkspaceExportButton.js";
@@ -41,11 +43,14 @@ export function SettingsDialog({
   product,
   productId,
   initialSection,
+  team,
   onClose,
 }: {
   product: StudioProductState | null;
   productId: string | null;
   initialSection?: SettingsSection;
+  /** The page's team (P6): the Move into an organisation section decides. */
+  team?: Team;
   onClose: () => void;
 }) {
   const currentName = product?.name ?? "";
@@ -203,6 +208,7 @@ export function SettingsDialog({
               </span>
             ) : null}
           </section>
+          {team ? <MoveToOrg team={team} /> : null}
           <section className="flex flex-col gap-1">
             <h3 className="font-medium text-foreground">GitHub</h3>
             <p className="text-muted-foreground">

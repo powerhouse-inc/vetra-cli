@@ -4,7 +4,11 @@
  * specific to the route:
  *
  *   GET  /team/me       the caller's member record, org and "allow the agent?"
- *   GET  /team/members  the caller and the accepted reviewers (M6 adds org members)
+ *   GET  /team/members  the members this Studio has seen, plus the accepted
+ *                       reviewers, with each one's agent delegation. An org's
+ *                       full member list is not readable from the pod (Renown's
+ *                       organizationMembers needs a wallet-signed OrgAuthInput),
+ *                       so `limited` says the list is the seen members only.
  *   POST /team/relay    append actions signed in the caller's own browser,
  *                       after checking each action's type, signature and the
  *                       caller's capability for it; the action is appended
@@ -30,12 +34,28 @@ export const RELAY_ACTION_TYPES: Readonly<Record<string, Capability>> = {
 
 const MAX_BODY_BYTES = 1_000_000;
 
+/** One row of `GET /team/members`. */
+export interface TeamMemberView {
+  address: string;
+  name: string | null;
+  role: Member["role"];
+  reviewer: boolean;
+  /** The member allowed the Studio's agent (their own delegation, 1.11). */
+  allowedAgent: boolean;
+  /** An Owner limited this member to watching here (a VIEWER role override). */
+  overridden: boolean;
+}
+
 export interface TeamRouteDeps {
   orgId: string | null;
-  /** Who is in this Studio (accepted team operations only). */
-  members(): Promise<Array<Pick<Member, "address" | "name" | "role" | "reviewer">>>;
-  /** Whether the member already allowed the agent (P6-4); until 1.11, false. */
+  /** The members the gate has admitted (task 1.10's seen members). */
+  seen(): Promise<Array<Pick<Member, "address" | "name" | "role" | "reviewer">>>;
+  /** The accepted reviewers, with their base role (accepted team operations). */
+  reviewers(): Promise<Array<Pick<Member, "address" | "name" | "role" | "reviewer">>>;
+  /** Whether the member already allowed the agent (their own delegation). */
   hasDelegation(address: string): Promise<boolean>;
+  /** The members an Owner limited to viewing here (lower-case addresses). */
+  overridden(): Promise<ReadonlySet<string>>;
   /** Verify one action's v2 signature and delegation for `documentId`. */
   verifyAction(action: Action, documentId: string): Promise<VerifyResult>;
   /** Append the verified actions unchanged. */
@@ -103,11 +123,31 @@ export function createTeamRoutes(deps: TeamRouteDeps): TeamRoutes {
   }
 
   async function members({ res, check }: TeamRouteCall) {
-    const list = await deps.members();
+    const byAddress = new Map<
+      string,
+      Pick<Member, "address" | "name" | "role" | "reviewer">
+    >();
+    for (const m of await deps.seen()) byAddress.set(m.address.toLowerCase(), m);
+    for (const reviewer of await deps.reviewers()) {
+      const key = reviewer.address.toLowerCase();
+      const known = byAddress.get(key);
+      byAddress.set(key, { ...(known ?? reviewer), reviewer: true });
+    }
     const me = check.member;
-    const byAddress = new Map(list.map((m) => [m.address.toLowerCase(), m]));
     if (me) byAddress.set(me.address.toLowerCase(), me);
-    writeJson(res, 200, { orgId: deps.orgId, members: [...byAddress.values()] });
+
+    const overridden = await deps.overridden();
+    const members: TeamMemberView[] = [];
+    for (const m of byAddress.values()) {
+      members.push({
+        ...m,
+        allowedAgent: await deps.hasDelegation(m.address),
+        overridden: overridden.has(m.address.toLowerCase()),
+      });
+    }
+    // An org's full member list cannot be read here; the caller sees who has
+    // opened the Studio and who an Owner made a Reviewer.
+    writeJson(res, 200, { orgId: deps.orgId, members, limited: deps.orgId !== null });
   }
 
   async function relay({ req, res, url, check }: TeamRouteCall) {

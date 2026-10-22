@@ -15,6 +15,8 @@ export type StudioSignIn = {
   status: StudioSignInStatus;
   /** The signed-in person's name or short address, when there is one. */
   name: string | undefined;
+  /** The signed-in wallet address (member identity), when there is one. */
+  address: string | undefined;
   /** True when a Renown user is signed in (sign out is offered then). */
   hasUser: boolean;
   signIn: () => void;
@@ -70,6 +72,7 @@ export function useStudioSignIn(): StudioSignIn {
   return {
     status: signInStatus(required, auth.status),
     name: auth.displayName ?? auth.displayAddress,
+    address: auth.address,
     hasUser: Boolean(auth.user),
     // Wrapped: login() takes an optional wallet session first.
     signIn: () => auth.login(),

@@ -55,6 +55,8 @@ export type IdeaScreenProps = {
   onStart: (idea: string) => Promise<string | undefined>;
   onStarted: (sessionId: string) => void;
   onOpenSettings: () => void;
+  /** Opens the Team panel (P6); omitted where the page has none. */
+  onOpenTeam?: () => void;
   /** Files are attached: read them with the text (the picture of what was
    *  understood). Without it, the idea starts as text alone. */
   onUnderstand?: (input: { cards: MaterialCard[]; text: string }) => void;
@@ -64,6 +66,7 @@ export function IdeaScreen({
   onStart,
   onStarted,
   onOpenSettings,
+  onOpenTeam,
   onUnderstand,
 }: IdeaScreenProps) {
   const { t } = useT();
@@ -187,6 +190,7 @@ export function IdeaScreen({
           onSignIn={auth.signIn}
           onSignOut={auth.signOut}
           onOpenSettings={onOpenSettings}
+          onOpenTeam={onOpenTeam}
         />
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-16">

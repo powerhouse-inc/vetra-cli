@@ -67,6 +67,28 @@ describe("ReadyBar (spec §5.7)", () => {
     expectNoForbiddenWords(container);
   });
 
+  it("a viewer sees no Make it live (P6 role gate)", () => {
+    const product = changing("READY");
+    const change = product.changes.find((c) => c.id === CHANGE_ID)!;
+    const container = render(
+      <ReadyBar
+        product={product}
+        productId="product-1"
+        change={change}
+        requestedBy="Vi"
+        onKeepChanging={() => {}}
+        canLaunch={false}
+      />,
+    );
+    expect(button(container, "Make it live")).toBeUndefined();
+    expect(button(container, "Keep changing")).toBeUndefined();
+    expect(button(container, "Discard")).toBeUndefined();
+    expect(container.textContent).toContain(
+      "You can watch and comment. Ask an Owner if you want to make changes.",
+    );
+    expectNoForbiddenWords(container);
+  });
+
   it("is not shown while the change builds", () => {
     const { container } = bar(changing("BUILDING"));
     expect(container.querySelector("[data-ready-bar]")).toBeNull();

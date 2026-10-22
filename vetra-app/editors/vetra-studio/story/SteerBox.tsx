@@ -14,6 +14,7 @@ import { dispatchActions, usePHToast } from "@powerhousedao/reactor-browser";
 import { generateId } from "document-model";
 import { actions as productActions } from "document-models/studio-product";
 import { useEffect, useState, type RefObject } from "react";
+import { useT } from "../i18n/useT.js";
 import {
   AUTO_CONTINUE_TEXT,
   CONTINUE_ID_PREFIX,
@@ -114,6 +115,8 @@ export type SteerBoxProps = {
   messages: readonly Message[];
   now: Date;
   inputRef?: RefObject<HTMLInputElement | null>;
+  /** A Viewer (P6): watch and comment, no steering. Shows the notice instead. */
+  readOnly?: boolean;
 };
 
 export function SteerBox({
@@ -124,7 +127,9 @@ export function SteerBox({
   messages,
   now,
   inputRef,
+  readOnly = false,
 }: SteerBoxProps) {
+  const { t } = useT();
   const toast = usePHToast();
   const [text, setText] = useState("");
   const [sent, setSent] = useState<{ id: string; at: Date } | null>(null);
@@ -178,6 +183,16 @@ export function SteerBox({
       productId,
       failed,
     ).catch(failed);
+  }
+
+  if (readOnly) {
+    return (
+      <div className="shrink-0 border-t border-border bg-card px-3 py-2">
+        <p role="status" className="text-xs text-muted-foreground">
+          {t("team.viewerSteer")}
+        </p>
+      </div>
+    );
   }
 
   return (
