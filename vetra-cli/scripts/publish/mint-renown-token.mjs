@@ -1,4 +1,6 @@
-// Mint a short-lived Renown bearer token (aud = target registry) for publishing.
+// Mint a Renown bearer token (aud = target registry) for publishing. 30 min:
+// the CLI tarball can take ~17 min to upload from a hosted runner, and the
+// registry checks the token AFTER the body, so a 10-minute token expired mid-publish.
 // Needs PH_RENOWN_PRIVATE_KEY + RENOWN_ADDRESS. Usage: <script> <registry-url>.
 import { NodeKeyStorage, RenownCryptoBuilder } from "@renown/sdk/node";
 
@@ -18,7 +20,7 @@ const crypto = await new RenownCryptoBuilder()
 
 const token = await crypto.getBearerToken(address, {
   aud: registryUrl,
-  expiresIn: 600,
+  expiresIn: 1800,
 });
 
 process.stdout.write(token);
