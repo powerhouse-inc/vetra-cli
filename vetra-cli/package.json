@@ -12,7 +12,7 @@
   "files": [
     "dist",
     "Dockerfile",
-    "!dist/connect/**/*.map"
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build:assets": "tsx scripts/build-assets.ts",
