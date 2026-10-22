@@ -1,6 +1,6 @@
 {
   "name": "vetra-app",
-  "version": "0.0.9-p5.5",
+  "version": "0.0.9-p5.6",
   "license": "AGPL-3.0-only",
   "publishConfig": {
     "access": "public",
