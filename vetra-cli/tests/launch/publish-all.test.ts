@@ -11,6 +11,10 @@ import {
   type PublishDeps,
 } from "../../src/launch/publish-all.js";
 import type { PackumentResult } from "../../src/cloud/registry-packument.js";
+import {
+  MANIFEST_FILENAME,
+  setManifestName,
+} from "../../src/helpers/project-manifest.js";
 
 const REGISTRY = "https://registry.example.test";
 let workdir: string;
@@ -127,6 +131,47 @@ describe("publishAll", () => {
     // The snapshot's package.json is back as it was.
     expect(fs.readFileSync(path.join(workdir, "billing/package.json"), "utf8")).toBe(billingPkg);
     expect(fs.readFileSync(path.join(workdir, "todo/package.json"), "utf8")).toBe(todoPkg);
+  });
+
+  it("keeps the manifest name in step with the package name, then restores both files", async () => {
+    const pkg = project("todo", "1.0.0");
+    const manifest =
+      JSON.stringify(
+        {
+          name: "todo",
+          documentModels: [{ id: "todo/task", name: "Task" }],
+        },
+        null,
+        2,
+      ) + "\n";
+    fs.writeFileSync(path.join(workdir, "todo", MANIFEST_FILENAME), manifest);
+    const seen: Array<{ pkg: string; manifest: string }> = [];
+    const { deps, publish } = fakeDeps({});
+    publish.mockImplementationOnce(async (opts: PublishOpts) => {
+      // What publish-core does before `ph build`: rename both files.
+      fs.writeFileSync(
+        path.join(opts.projectPath, "package.json"),
+        JSON.stringify({ name: opts.packageName, version: opts.version }),
+      );
+      setManifestName(opts.projectPath, opts.packageName!);
+      const read = (file: string) =>
+        JSON.parse(fs.readFileSync(path.join(opts.projectPath, file), "utf8")).name;
+      seen.push({ pkg: read("package.json"), manifest: read(MANIFEST_FILENAME) });
+      return {
+        kind: "ok",
+        packageName: opts.packageName!,
+        version: opts.version!,
+        registry: REGISTRY,
+      };
+    });
+
+    await publishAll(ctx, workdir, { slug: "team-todo" }, deps);
+
+    expect(seen).toEqual([
+      { pkg: "@vetra-apps/team-todo", manifest: "@vetra-apps/team-todo" },
+    ]);
+    expect(fs.readFileSync(path.join(workdir, "todo/package.json"), "utf8")).toBe(pkg);
+    expect(fs.readFileSync(path.join(workdir, "todo", MANIFEST_FILENAME), "utf8")).toBe(manifest);
   });
 
   it("a Studio without a named registry publishes to its stack's registry, writing nothing (R25)", async () => {

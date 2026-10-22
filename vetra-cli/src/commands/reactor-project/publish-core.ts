@@ -18,6 +18,7 @@ import {
   computeProjectContentHash,
   CONTENT_HASH_FIELD,
 } from "../../helpers/project-fingerprint.js";
+import { setManifestName } from "../../helpers/project-manifest.js";
 import { runBuild } from "./build.js";
 
 type SemverCore = [number, number, number];
@@ -176,7 +177,13 @@ export async function publishReactorProject(opts: {
       packageJsonPath,
       JSON.stringify(packageJson, null, 2) + "\n",
     );
-  if (!opts.dryRun) writePackageJson();
+  if (!opts.dryRun) {
+    writePackageJson();
+    // `ph build` fails a package.json/powerhouse.manifest.json name mismatch.
+    // Publishing under another name (a Studio launch names the package after
+    // its address) must rename the manifest too; the caller restores it.
+    if (opts.packageName) setManifestName(opts.projectPath, opts.packageName);
+  }
 
   if (!opts.skipBuild) {
     const build = await runBuild(opts.projectPath, opts.log);

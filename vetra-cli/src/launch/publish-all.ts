@@ -5,9 +5,10 @@
  * (controller ruling X13; the registry serves `@vetra-apps/*` from local
  * storage only, never from npmjs).
  *
- * The publish rewrites `package.json` (name, version, content hash) for the
- * build and the tarball; the original file is put back afterwards, so the
- * working tree still equals the version's snapshot.
+ * The publish rewrites `package.json` (name, version, content hash) and the
+ * manifest's `name` (the build refuses a mismatch) for the build and the
+ * tarball; both original files are put back afterwards, so the working tree
+ * still equals the version's snapshot.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -20,6 +21,7 @@ import {
   nextPublishVersion,
   publishReactorProject,
 } from "../commands/reactor-project/publish-core.js";
+import { MANIFEST_FILENAME } from "../helpers/project-manifest.js";
 import { listReactorProjects } from "../helpers/project.js";
 import { LaunchError } from "./errors.js";
 import { projectDirs } from "./git-versions.js";
@@ -159,6 +161,8 @@ export async function publishAll(
     const name = names.get(project)!;
     const packageJsonPath = path.join(projectPath, "package.json");
     const original = await readFile(packageJsonPath, "utf-8").catch(() => null);
+    const manifestPath = path.join(projectPath, MANIFEST_FILENAME);
+    const originalManifest = await readFile(manifestPath, "utf-8").catch(() => null);
     if (original === null) {
       throw new LaunchError(
         "PUBLISH_FAILED",
@@ -209,6 +213,7 @@ export async function publishAll(
       });
     } finally {
       await writeFile(packageJsonPath, original);
+      if (originalManifest !== null) await writeFile(manifestPath, originalManifest);
     }
 
     if (result.kind === "auth-required") {

@@ -31,6 +31,8 @@ export type DocumentModelSpecification = {
   modules?: Module[];
 };
 export type DocumentModelGlobalState = {
+  /** The model id (`SET_MODEL_ID`); codegen writes it to the manifest. */
+  id?: string | null;
   name?: string | null;
   specifications?: DocumentModelSpecification[];
 };

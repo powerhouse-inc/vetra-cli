@@ -11,7 +11,8 @@ import {
   summarizeDiagnostics,
   type GenDiagnostic,
 } from "../../helpers/project-checks.js";
-import { DOCUMENT_MODEL_TYPE } from "./document-model.js";
+import { DOCUMENT_MODEL_TYPE, documentModelState } from "./document-model.js";
+import { pruneEmptyDocumentModels } from "../../helpers/project-manifest.js";
 import { withProjectCodegenLock } from "../../helpers/project-lock.js";
 import { phBuildNodeOptions } from "../../helpers/node-memory.js";
 import { findByName, getDocumentsWithPaths } from "./_helpers.js";
@@ -89,6 +90,26 @@ async function generateOne(
   if (!success) {
     throw new Error(output);
   }
+}
+
+/**
+ * Why a document-model spec can't be generated yet, or null. Codegen takes the
+ * module name and the manifest entry from the spec's `state.global.name`/`id`;
+ * generating before either is set writes a module with an empty name and a
+ * phantom `{ "id": "", "name": "" }` entry in powerhouse.manifest.json.
+ */
+export function missingModelIdentity(doc: PHDocument): string | null {
+  const state = documentModelState(doc.state);
+  const name = typeof state?.name === "string" ? state.name.trim() : "";
+  const id = typeof state?.id === "string" ? state.id.trim() : "";
+  const missing = [!name && "name", !id && "id"].filter(Boolean) as string[];
+  if (missing.length === 0) return null;
+  const actions = missing
+    .map((field) => (field === "name" ? "SET_MODEL_NAME" : "SET_MODEL_ID"))
+    .join(" and ");
+  return `(the model has no ${missing.join(" or ")} yet — set ${
+    missing.length > 1 ? "them" : "it"
+  } with spec-update ${actions})`;
 }
 
 /* `reason` is stored and shown to the customer; `detail` is for the agent. */
@@ -172,6 +193,17 @@ export async function generateInProject(
       });
       continue;
     }
+    // Generating an unnamed model writes a module with an empty name and a
+    // phantom manifest entry; make the agent name it first.
+    const identity =
+      type === DOCUMENT_MODEL_TYPE ? missingModelIdentity(doc) : null;
+    if (identity) {
+      if (input.name) {
+        throw new Error(`${type} — ${doc.header.name}: ${identity}`);
+      }
+      skipped.push({ name: doc.header.name, type, reason: identity });
+      continue;
+    }
     try {
       await generateOne(doc, path, base, runProcess);
       generated.push({ name: doc.header.name, type });
@@ -196,6 +228,11 @@ export async function generateInProject(
       failed.push(doc.header.name);
     }
   }
+
+  /* A manifest written before the identity check above can still carry a
+   * placeholder: codegen appends entries and never prunes, so regenerating the
+   * spec that fixes it would leave the empty entry behind. */
+  const pruned = generated.length > 0 ? pruneEmptyDocumentModels(base) : 0;
 
   let diagnostics: GenDiagnostic[] = [];
   const checkNotes: string[] = [];
@@ -256,6 +293,11 @@ export async function generateInProject(
   }
   for (const note of checkNotes) {
     lines.push(`  · ${note}`);
+  }
+  if (pruned > 0) {
+    lines.push(
+      `  · removed ${pruned} empty document-model entr${pruned === 1 ? "y" : "ies"} from powerhouse.manifest.json`,
+    );
   }
 
   // GENERATE only when some codegen actually ran (Ruling F1).
