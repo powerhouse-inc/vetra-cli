@@ -24,13 +24,16 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { baseLoadFromFile } from "document-model/node";
+import { signaturePolicyOf } from "document-model";
 import type { ReactorContext } from "@powerhousedao/ph-clint";
 import type { LoadJobPlan } from "@powerhousedao/reactor";
 import {
   createSpecDocument,
   listSpecTypes,
   resolveSpecEntry,
+  saveSpec,
 } from "../commands/spec/registry.js";
+import type { StudioSignatureMode } from "../auth/studio-mode.js";
 
 export const SPECS_DIRNAME = "specs";
 
@@ -104,7 +107,14 @@ export function projectForPath(
 }
 
 interface LoadedDoc {
-  header: { id: string; name: string; documentType: string; branch?: string };
+  header: {
+    id: string;
+    name: string;
+    documentType: string;
+    branch?: string;
+    protocolVersions?: Record<string, number> | null;
+  };
+  state?: unknown;
   operations: Record<string, unknown[]>;
 }
 
@@ -326,6 +336,17 @@ async function ensureFileNode(
  * and document id — the trigger uses it to maintain a path→docId map for
  * resolving external deletes.
  */
+export interface ApplyFsChangesOptions {
+  /**
+   * `v2-required` (a new cloud Studio): the reactor accepts only signed
+   * documents, so the FS is not replayed unsigned. Documents the reactor does
+   * not have are created through the client (signed); a legacy file gets a new
+   * signed document from its state. Anything that cannot be signed is refused
+   * and logged, never submitted (Task 5.SIG, X39).
+   */
+  signatureMode?: StudioSignatureMode;
+}
+
 export async function applyFsChangesToReactor(
   paths: ReadonlyArray<string>,
   workdir: string,
@@ -333,7 +354,11 @@ export async function applyFsChangesToReactor(
   driveId: string | undefined,
   log?: FsSyncLogger,
   onLoaded?: (filePath: string, docId: string) => void,
+  options: ApplyFsChangesOptions = {},
 ): Promise<number> {
+  if (options.signatureMode === "v2-required") {
+    return applySignedFsChanges(paths, workdir, reactor, driveId, log, onLoaded);
+  }
   const loaded: Array<{
     path: string;
     project: string | undefined;
@@ -457,4 +482,164 @@ export async function removeSpecFromDrive(
       `[spec-fs-sync] deleteDocument skipped for ${docId}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/* ── Signed sync for a v2-required cloud Studio (Task 5.SIG, X39) ────────── */
+
+interface SignedClient {
+  get(id: string): Promise<unknown>;
+  create(document: unknown): Promise<unknown>;
+  execute(docId: string, scope: string, actions: unknown[]): Promise<unknown>;
+  getOperations?(docId: string): Promise<{
+    results: Array<{ index?: number; action?: { id?: string; scope?: string } }>;
+    next?: () => Promise<unknown>;
+  }>;
+}
+
+interface OperationLike {
+  index?: number;
+  action?: { id?: string; scope?: string };
+}
+
+/** All operations of a document, grouped by scope (empty without a client). */
+export async function operationsByScope(
+  client: SignedClient,
+  docId: string,
+): Promise<Record<string, OperationLike[]>> {
+  const byScope: Record<string, OperationLike[]> = {};
+  if (!client.getOperations) return byScope;
+  type Page = {
+    results: OperationLike[];
+    next?: () => Promise<unknown>;
+  };
+  let page: Page | undefined = await client.getOperations(docId);
+  while (page) {
+    for (const op of page.results) {
+      const scope = op.action?.scope ?? "global";
+      (byScope[scope] ??= []).push(op);
+    }
+    page = page.next ? ((await page.next()) as Page) : undefined;
+  }
+  for (const ops of Object.values(byScope)) {
+    ops.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  }
+  return byScope;
+}
+
+/** Write the reactor's (signed) version of a document over its `.phd`. */
+export async function mirrorSignedSpec(
+  client: SignedClient,
+  docId: string,
+  projectDir: string,
+  log?: FsSyncLogger,
+): Promise<string | undefined> {
+  const doc = (await client.get(docId)) as {
+    header: { name?: string; documentType: string };
+  };
+  const operations = await operationsByScope(client, docId);
+  const path = await saveSpec(
+    { ...(doc as unknown as Record<string, unknown>), operations } as never,
+    projectDir,
+  );
+  log?.debug?.(`[spec-fs-sync] mirrored signed ${doc.header.documentType} "${doc.header.name}" → ${path}`);
+  return path;
+}
+
+async function hasDocument(client: SignedClient, id: string): Promise<boolean> {
+  try {
+    await client.get(id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Apply `.phd` files to a v2-required reactor. Every write goes through the
+ * agent's client, so it is signed; a write that cannot be signed is logged and
+ * refused (never submitted unsigned). The files are then rewritten from the
+ * signed documents, so a `.phd` in a signed Studio holds signed operations.
+ */
+async function applySignedFsChanges(
+  paths: ReadonlyArray<string>,
+  workdir: string,
+  reactor: Pick<ReactorContext, "client">,
+  driveId: string | undefined,
+  log?: FsSyncLogger,
+  onLoaded?: (filePath: string, docId: string) => void,
+): Promise<number> {
+  const client = reactor.client as unknown as SignedClient;
+  let synced = 0;
+  for (const filePath of paths) {
+    const spec = await loadSpecForFile(filePath, log);
+    if (!spec) continue;
+    const project = projectForPath(filePath, workdir);
+    const projectDir = project ? path.join(workdir, project) : workdir;
+    let docId = spec.doc.header.id;
+    try {
+      if (await hasDocument(client, docId)) {
+        const existing = await operationsByScope(client, docId);
+        for (const [scope, ops] of Object.entries(spec.doc.operations)) {
+          if (scope === "document" || !Array.isArray(ops) || ops.length === 0) continue;
+          const known = new Set(
+            (existing[scope] ?? []).map((op) => op.action?.id).filter(Boolean),
+          );
+          const actions = ops
+            .map((op) => (op as { action?: unknown }).action)
+            .filter((action): action is Record<string, unknown> => Boolean(action))
+            .filter((action) => !known.has(action.id as string));
+          if (actions.length === 0) continue;
+          // Signed by the agent's client; throws SignerNotReadyError when the
+          // Studio has no delegation yet — then nothing is submitted.
+          await client.execute(docId, scope, actions);
+        }
+      } else if (signaturePolicyOf(spec.doc.header) === "v2-required") {
+        // A signed document whose file arrived first (create wrote the file).
+        await client.create(spec.doc);
+      } else {
+        // A legacy file (e.g. `ph generate --extract`): it can never become a
+        // v2 document, so a new signed one is built from its state and the
+        // file is rewritten under the signed id below.
+        const fresh = createSpecDocument(spec.doc.header.documentType, {
+          name: spec.doc.header.name,
+          initialState: spec.doc.state,
+          signaturePolicy: "v2-required",
+        });
+        await client.create(fresh);
+        const previous = docId;
+        docId = fresh.header.id;
+        log?.info?.(
+          `[spec-fs-sync] created signed ${fresh.header.documentType} "${fresh.header.name}" ${docId} from ${previous} (this Studio keeps no unsigned documents).`,
+        );
+      }
+      await mirrorSignedSpec(client, docId, projectDir, log);
+      if (driveId) {
+        const doc = (await client.get(docId)) as {
+          header: { name: string; documentType: string };
+        };
+        const folderId = await ensureProjectFolder(
+          client as never,
+          driveId,
+          project,
+          log,
+        );
+        await ensureFileNode(
+          client as never,
+          driveId,
+          docId,
+          doc.header.name,
+          doc.header.documentType,
+          folderId,
+          log,
+        );
+      }
+      onLoaded?.(filePath, docId);
+      synced += 1;
+    } catch (err) {
+      log?.error?.(
+        `[spec-fs-sync] refused ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return synced;
 }

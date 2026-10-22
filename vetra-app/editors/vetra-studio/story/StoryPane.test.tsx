@@ -226,7 +226,7 @@ describe("StoryPane", () => {
     expectNoForbiddenWords(container);
   });
 
-  it("stuck offers ways forward; paused offers Continue", () => {
+  it("stuck offers ways forward; paused offers Continue", async () => {
     const product = readProduct(
       productDoc(
         ...buildingOps(),
@@ -254,9 +254,13 @@ describe("StoryPane", () => {
     expectNoForbiddenWords(container);
 
     click(button(container, "Try a simpler version"));
-    expect(hoisted.dispatched[0]).toMatchObject({
-      id: SESSION_ID,
-      action: { type: "ADD_USER_MESSAGE" },
+    // The write passes the Studio's sign-in gate first (Task 5.SIG), so it
+    // lands a microtask later.
+    await vi.waitFor(() => {
+      expect(hoisted.dispatched[0]).toMatchObject({
+        id: SESSION_ID,
+        action: { type: "ADD_USER_MESSAGE" },
+      });
     });
 
     const story = container.querySelector('[data-line="paused"]');

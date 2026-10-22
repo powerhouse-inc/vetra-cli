@@ -240,6 +240,19 @@ describe("restoreVersion", () => {
     await expect(restoreVersion(workdir, 1)).resolves.toBeDefined();
   });
 
+  it("does not count the Studio's spec mirrors as unsaved changes", async () => {
+    await snapshot(workdir, 1, "First");
+    write("specs/studio-product/idea.vsp.phd", "mirror v1\n");
+    write("todo/specs/document-models/todo.phdm.phd", "mirror v1\n");
+    const v2 = await snapshot(workdir, 2, "Second");
+    // Written after the launch snapshot, when the live version lands in the
+    // product document and the Studio mirrors it into specs/.
+    write("specs/studio-product/idea.vsp.phd", "mirror v2\n");
+    write("todo/specs/document-models/todo.phdm.phd", "mirror v2\n");
+    await expect(restoreVersion(workdir, 1)).resolves.toBeDefined();
+    expect(git("rev-parse", "HEAD")).not.toBe(v2.sha);
+  });
+
   it("does nothing when main already has that version's code", async () => {
     const v1 = await snapshot(workdir, 1, "First");
     expect(await restoreVersion(workdir, 1)).toEqual({ sha: v1.sha });

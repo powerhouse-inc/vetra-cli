@@ -21,6 +21,7 @@ import {
   type PreviewServerHandle,
 } from "../preview-server/index.js";
 import { setRequireAdminIdentity } from "../auth/renown.js";
+import { isCloudStudio } from "../auth/studio-mode.js";
 import { resolveCloudConfig } from "../cloud/config.js";
 import { resolveStudioRenownUrl } from "../lifecycle/connect-drive-url.js";
 import { getEmbeddedDrive } from "../helpers/embedded-drive.js";
@@ -54,8 +55,10 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
     }
 
     const { renownUrl } = resolveCloudConfig(ctx.context.config);
-    // Cloud Studio: the agent's Renown identity must be an ADMINS wallet.
-    setRequireAdminIdentity(Boolean(ctx.context.config.environmentId?.trim()));
+    // Cloud Studio (the environment id, or the sticky v2 marker): the agent's
+    // Renown identity must be an ADMINS wallet. Same test as the signing mode.
+    const cloud = isCloudStudio(ctx.context.config, workdir);
+    setRequireAdminIdentity(cloud);
 
     try {
       ctx.state.handle = await startPreviewServer({
@@ -69,7 +72,7 @@ export const previewServerTrigger = defineTrigger<TriggerState>({
         versions: { vetraCli: VETRA_CLI_VERSION, ph: DEFAULT_PH_VERSION },
         getReactor: () => getEmbeddedDrive(ctx.commandContext),
         agentLogging: ctx.context.config.agentLogging,
-        cloud: Boolean(ctx.context.config.environmentId?.trim()),
+        cloud,
         // Verify owner bearers on the Renown the Studio's Connect logs in on.
         gateRenownUrl: resolveStudioRenownUrl(
           process.env.RENOWN_URL,

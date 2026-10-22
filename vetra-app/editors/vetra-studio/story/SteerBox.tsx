@@ -14,6 +14,7 @@ import { dispatchActions, usePHToast } from "@powerhousedao/reactor-browser";
 import { generateId } from "document-model";
 import { actions as productActions } from "document-models/studio-product";
 import { useEffect, useState, type RefObject } from "react";
+import { assertStudioWritable } from "../studioWrite.js";
 import {
   AUTO_CONTINUE_TEXT,
   CONTINUE_ID_PREFIX,
@@ -35,6 +36,9 @@ export async function sendSteer(
   text: string,
   id: string = generateId(),
 ) {
+  // A signed-out cloud Studio refuses before dispatch (Task 5.SIG): the local
+  // reactor would accept an unattributed write that could never sync.
+  await assertStudioWritable();
   const refused: Error[] = [];
   await dispatchActions(
     chatActions.addUserMessage({

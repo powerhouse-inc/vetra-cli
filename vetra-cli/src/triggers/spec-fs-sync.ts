@@ -28,6 +28,7 @@ import {
   SPECS_DIRNAME,
 } from "../helpers/spec-drive-sync.js";
 import { defineTrigger } from "../framework.js";
+import { planStudioSigning, type StudioSignatureMode } from "../auth/studio-mode.js";
 
 interface TriggerState {
   changed: Set<string>;
@@ -194,6 +195,7 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
           ctx.state.driveId,
           log,
           (filePath, docId) => ctx.state.docIdByPath.set(filePath, docId),
+          { signatureMode: signatureModeOf(ctx.context.config, ctx.context.workdir) },
         );
       } catch {
         // logged in helper
@@ -232,3 +234,12 @@ export const specFsSyncTrigger = defineTrigger<TriggerState>({
     return null;
   },
 });
+
+/** The signature mode for this Studio's files (a signed Studio never replays
+ * unsigned files into its drive). */
+function signatureModeOf(
+  config: Record<string, unknown>,
+  workdir: string,
+): StudioSignatureMode {
+  return planStudioSigning(workdir, config).mode;
+}

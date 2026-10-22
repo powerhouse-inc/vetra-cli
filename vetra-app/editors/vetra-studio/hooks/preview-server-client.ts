@@ -127,6 +127,9 @@ interface PreviewConfig {
   proxyBase?: string;
   // The studio's cloud environment document id, when the daemon stamped one.
   environmentId?: string;
+  // The Studio drive's id as the daemon stamped it; an open tab compares it
+  // with the selected drive after the Studio's drive changes (Task 5.SIG).
+  studioDriveId?: string;
   // Registry to stamp onto envs this studio deploys; undefined outside a
   // provisioned studio (falls back to the shared client default).
   packageRegistryUrl?: string;
@@ -190,12 +193,14 @@ async function loadPreviewConfig(): Promise<PreviewConfig> {
         environmentId?: string;
         packageRegistryUrl?: string;
         cloudSwitchboardUrl?: string;
+        studioDriveId?: string;
       };
       if (cfg.previewServerUrl) {
         return {
           base: cfg.previewServerUrl,
           proxyBase: computeProxyBase(cfg.previewServerUrl),
           environmentId: cfg.environmentId,
+          studioDriveId: cfg.studioDriveId,
           packageRegistryUrl: cfg.packageRegistryUrl,
           cloudSwitchboardUrl: cfg.cloudSwitchboardUrl,
           loaded: true,
@@ -204,6 +209,7 @@ async function loadPreviewConfig(): Promise<PreviewConfig> {
       return {
         base: DIRECT_BASE,
         environmentId: cfg.environmentId,
+        studioDriveId: cfg.studioDriveId,
         loaded: true,
       };
     }
@@ -230,6 +236,12 @@ export async function resolveStudioConfigLoad(): Promise<{
 export async function resolveStudioEnvironmentId(): Promise<string | null> {
   const config = await resolvePreviewConfig();
   return config.environmentId ?? null;
+}
+
+/** The Studio drive the daemon stamped, or null when it stamped none. */
+export async function resolveStudioDriveId(): Promise<string | null> {
+  const config = await resolvePreviewConfig();
+  return config.studioDriveId ?? null;
 }
 
 /** The registry to stamp onto envs this studio deploys, from
