@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { APICallError } from "ai";
@@ -11,6 +11,7 @@ import {
   understand,
   UnderstandUnreadableError,
   UNDERSTAND_MAX_OUTPUT_TOKENS,
+  UNDERSTAND_RETRY_MAX_OUTPUT_TOKENS,
   type UnderstandDeps,
   type UnderstandRequest,
 } from "../../src/workshop/understand.js";
@@ -195,6 +196,59 @@ describe("understand", () => {
     expect(calls).toBe(2);
     expect(result.notes).toEqual([]);
     expect(result.draft.things.map((t) => t.name)).toEqual(["Mangel"]);
+  });
+
+  // The P5 material rerun: deepseek-v4.1-flash spent all 4096 output tokens on
+  // reasoning, returned empty content (finish_reason "length"), and the retry
+  // repeated the same cap — so the xlsx stayed "unread" over 4 attempts.
+  it("a reply cut off at the output cap is retried with a bigger budget", async () => {
+    let calls = 0;
+    const { deps, calls: requests } = fakeDeps(async () => {
+      calls++;
+      return calls === 1
+        ? { text: "", finishReason: "length" }
+        : reply(thing("Mangel"));
+    });
+    const result = await understand(deps, {
+      materials: [],
+      text: "Prüfliste",
+      language: "de",
+    });
+    expect(calls).toBe(2);
+    expect(requests[0].maxOutputTokens).toBe(UNDERSTAND_MAX_OUTPUT_TOKENS);
+    expect(requests[1].maxOutputTokens).toBe(UNDERSTAND_RETRY_MAX_OUTPUT_TOKENS);
+    expect(requests[1].maxOutputTokens).toBeGreaterThan(requests[0].maxOutputTokens);
+    expect(result.notes).toEqual([]);
+  });
+
+  it("a retry re-reads the input from disk instead of resending the first read", async () => {
+    const note = await saveMaterial(workdir, {
+      fileName: "notiz.txt",
+      mimeType: "text/plain",
+      bytes: Buffer.from("erste Fassung"),
+    });
+    const seen: string[] = [];
+    let calls = 0;
+    const { deps } = fakeDeps(async (req) => {
+      seen.push(messageText(req));
+      calls++;
+      if (calls === 1) {
+        writeFileSync(note.path, "zweite Fassung");
+        return { text: "", finishReason: "length" };
+      }
+      return reply(thing("Notiz"));
+    });
+
+    const result = await understand(deps, {
+      materials: [note],
+      text: "",
+      language: "de",
+    });
+
+    expect(calls).toBe(2);
+    expect(seen[0]).toContain("erste Fassung");
+    expect(seen[1]).toContain("zweite Fassung");
+    expect(result.notes).toEqual([]);
   });
 
   it("a diagram with steps but no things is still a read", async () => {

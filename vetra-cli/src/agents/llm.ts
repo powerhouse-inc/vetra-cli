@@ -136,7 +136,14 @@ export function resolveLlmSettings(
 /** The single place a provider client is built. */
 export function createModel(
   s: LlmSettings,
-  opts: { modelId: string; maxOutputTokens: number; fallbacks?: string[]; fetch?: typeof fetch },
+  opts: {
+    modelId: string;
+    /** Model-level `max_tokens`. Omit when the caller sets it per call (the
+     * understand pass raises it on a retry); set, it caps every call. */
+    maxOutputTokens?: number;
+    fallbacks?: string[];
+    fetch?: typeof fetch;
+  },
 ): LanguageModel {
   const provider = createOpenRouter({
     apiKey: s.apiKey,
@@ -146,7 +153,8 @@ export function createModel(
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
   });
   // max_tokens goes in extraBody, which the provider merges last, so it caps
-  // whatever maxOutputTokens the caller (Mastra) asks for.
+  // whatever maxOutputTokens the caller (Mastra) asks for. Callers that vary
+  // the cap per call leave it out.
   return provider.chat(opts.modelId, {
     usage: { include: true },
     extraBody: {
@@ -154,7 +162,7 @@ export function createModel(
         fallbacks: opts.fallbacks ?? resolveFallbacks(opts.modelId, s.fallbacks),
         allowDataCollection: s.allowDataCollection,
       }),
-      max_tokens: opts.maxOutputTokens,
+      ...(opts.maxOutputTokens !== undefined && { max_tokens: opts.maxOutputTokens }),
     },
   });
 }

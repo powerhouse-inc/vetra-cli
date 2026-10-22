@@ -20,6 +20,7 @@ import {
   type LlmSettings,
 } from "../../src/agents/llm.js";
 import { DEFAULT_MODEL_FALLBACKS } from "../../src/framework.js";
+import { UNDERSTAND_RETRY_MAX_OUTPUT_TOKENS } from "../../src/workshop/understand.js";
 
 const BASE = { model: "anthropic/claude-sonnet-4.6", memoryModel: "anthropic/claude-haiku-4.5", llmAllowDataCollection: false };
 
@@ -194,6 +195,15 @@ describe("createLlmModels", () => {
     await createLlmModels(settings, { fetch: fetchImpl }).memory.doGenerate({ prompt: PROMPT });
     expect(MEMORY_MAX_OUTPUT_TOKENS).toBe(4096);
     expect(calls[0].body.max_tokens).toBe(4096);
+  });
+
+  // The understand pass sets maxOutputTokens per attempt; a model-level cap in
+  // extraBody is merged last and would pin the retry to the first attempt's cap.
+  it("a model without a model-level cap sends each call's maxOutputTokens", async () => {
+    const { calls, fetchImpl } = captureFetch();
+    const model = createModel(settings, { modelId: settings.understandModel, fetch: fetchImpl });
+    await model.doGenerate({ prompt: PROMPT, maxOutputTokens: UNDERSTAND_RETRY_MAX_OUTPUT_TOKENS });
+    expect(calls[0].body.max_tokens).toBe(UNDERSTAND_RETRY_MAX_OUTPUT_TOKENS);
   });
 
   it("uses the default fallback chain when none are configured", async () => {

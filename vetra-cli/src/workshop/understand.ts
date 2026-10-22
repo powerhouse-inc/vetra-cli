@@ -25,7 +25,13 @@ import {
 export type { Language } from "./understand-prompt.js";
 
 export const UNDERSTAND_MAX_INPUTS = 6;
-export const UNDERSTAND_MAX_OUTPUT_TOKENS = 4096;
+/** The cap covers reasoning tokens too: a reasoning model that spends the
+ * whole budget thinking returns empty `content` (or a cut-off JSON), which was
+ * the P5 "pruefcheckliste.xlsx konnte ich nicht lesen" failure at 4096. */
+export const UNDERSTAND_MAX_OUTPUT_TOKENS = 8192;
+/** A retry gets more room than the attempt that was cut off — repeating the
+ * same cap only repeats the truncation. */
+export const UNDERSTAND_RETRY_MAX_OUTPUT_TOKENS = 16_384;
 export const UNDERSTAND_TIMEOUT_MS = 75_000;
 /** A reply that isn't a draft (or a transient provider error) gets one more call. */
 export const UNDERSTAND_ATTEMPTS = 2;
@@ -50,7 +56,11 @@ export type UnderstandRequest = {
 };
 
 export type UnderstandDeps = {
-  generate: (req: UnderstandRequest) => Promise<{ text: string; providerMetadata?: unknown }>;
+  /** `finishReason` is the provider's ("length" when the output cap cut the
+   * reply off, reasoning tokens included), used to name the retry's failure. */
+  generate: (
+    req: UnderstandRequest,
+  ) => Promise<{ text: string; finishReason?: string; providerMetadata?: unknown }>;
   /** Id source for draft items the model left without one. */
   ids?: () => string;
 };
@@ -73,10 +83,9 @@ export class UnderstandUnreadableError extends Error {
 
 /** The real model call: the Studio's understand model behind the per-Studio routing. */
 export function createUnderstandDeps(settings: LlmSettings): UnderstandDeps {
-  const model = createModel(settings, {
-    modelId: settings.understandModel,
-    maxOutputTokens: UNDERSTAND_MAX_OUTPUT_TOKENS,
-  });
+  // No model-level cap: each attempt passes its own maxOutputTokens, and a
+  // retry must be able to ask for more than the attempt that was cut off.
+  const model = createModel(settings, { modelId: settings.understandModel });
   return {
     generate: (req) =>
       generateText({
@@ -250,12 +259,18 @@ export async function understand(
       for (let attempt = 1; attempt <= UNDERSTAND_ATTEMPTS; attempt++) {
         const abortSignal = AbortSignal.timeout(UNDERSTAND_TIMEOUT_MS);
         try {
+          // Re-read the material: a retry must resend the input, not just the
+          // same request, and it gets more output room than the attempt that
+          // was cut off.
           const content = await inp.content();
           const result = await raceAbort(
             deps.generate({
               system,
               messages: [{ role: "user", content }],
-              maxOutputTokens: UNDERSTAND_MAX_OUTPUT_TOKENS,
+              maxOutputTokens:
+                attempt === 1
+                  ? UNDERSTAND_MAX_OUTPUT_TOKENS
+                  : UNDERSTAND_RETRY_MAX_OUTPUT_TOKENS,
               abortSignal,
             }),
             abortSignal,
@@ -269,7 +284,11 @@ export async function understand(
               cost,
             };
           }
-          last = new Error("unparseable reply");
+          last = new Error(
+            result.finishReason === "length"
+              ? "reply cut off at the output cap"
+              : "unparseable reply",
+          );
         } catch (err) {
           if (isBudgetError(err) || abortSignal.aborted) throw err;
           last = err;
