@@ -11,7 +11,10 @@
 import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-models/chat-session";
 import type { PHDocument } from "document-model";
 import type { ProductStep } from "document-models/studio-product";
-import type { PreviewTarget } from "../hooks/useSessionPreviewTarget.js";
+import {
+  isPreviewDriveId,
+  type PreviewTarget,
+} from "../hooks/useSessionPreviewTarget.js";
 
 export const EDITOR_SPEC_TYPE = "powerhouse/document-editor";
 export const APP_SPEC_TYPE = "powerhouse/app";
@@ -264,6 +267,9 @@ export function screenPreviews(
         if (record(data).blocked === true) break;
         const drive = text(call.args.drive);
         if (drive) {
+          // Never make a tab for a value that isn't a drive id: the iframe
+          // would load a 404 (`/d/%22%3E`) instead of the app.
+          if (!isPreviewDriveId(drive)) break;
           const screen = appFor(screens, text(call.args.app));
           if (!screen) break;
           targets.set(screen.id, { project, drive, callId });

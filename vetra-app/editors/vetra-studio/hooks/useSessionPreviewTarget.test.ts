@@ -247,6 +247,76 @@ describe("extractPreviewTarget", () => {
   });
 });
 
+describe("extractPreviewTarget drive kind", () => {
+  it("uses a valid drive id from a drive-root show result", () => {
+    const session = makeSession([
+      msg("ASSISTANT", [showCall("c1", { project: "todo-list" })]),
+      msg("TOOL", [
+        showResult("c1", {
+          project: "todo-list",
+          projectPath: "/abs/todo-list",
+          driveId: "preview-abcd1234",
+          kind: "drive",
+          documentId: null,
+          documentSlug: null,
+        }),
+      ]),
+    ]);
+    expect(extractPreviewTarget(session)).toEqual({
+      project: "todo-list",
+      drive: "preview-abcd1234",
+      callId: "c1",
+    });
+  });
+
+  it('ignores a drive id that is not one URL-safe id (the `">` fragment)', () => {
+    /* The acceptance-run failure: spec-preview-show was called with
+     * drive: `">`, the pane fetched /resolve?drive=%22%3E and loaded
+     * `/d/%22%3E` ("Drive \"> not found"). No such result may become a target. */
+    const session = makeSession([
+      msg("ASSISTANT", [showCall("c1", { name: "My Todos", drive: '">' })]),
+      msg("TOOL", [
+        showResult("c1", {
+          project: "todo-list",
+          driveId: '">',
+          kind: "drive",
+          documentId: null,
+          documentSlug: null,
+        }),
+      ]),
+    ]);
+    expect(extractPreviewTarget(session)).toBeUndefined();
+  });
+
+  it("keeps the last valid target when a newer drive result is malformed", () => {
+    const session = makeSession([
+      msg("ASSISTANT", [showCall("old", { project: "todo-list" })]),
+      msg("TOOL", [
+        showResult("old", {
+          project: "todo-list",
+          driveId: "preview-abcd1234",
+          kind: "drive",
+        }),
+      ]),
+      msg("ASSISTANT", [
+        showCall("bad", { project: "todo-list", drive: '">' }),
+      ]),
+      msg("TOOL", [
+        showResult("bad", {
+          project: "todo-list",
+          driveId: '">',
+          kind: "drive",
+        }),
+      ]),
+    ]);
+    expect(extractPreviewTarget(session)).toEqual({
+      project: "todo-list",
+      drive: "preview-abcd1234",
+      callId: "old",
+    });
+  });
+});
+
 describe("extractPreviewTarget without the call's project", () => {
   it("takes the project from the result (the workspace's only project)", () => {
     const session = makeSession([

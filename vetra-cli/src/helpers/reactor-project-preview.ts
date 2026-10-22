@@ -141,11 +141,38 @@ function runningProjectsHint(
 }
 
 /**
+ * A drive id must be exactly one URL path segment: document ids and slugs are
+ * letters, digits, `-`, `_`, `.`, `~`. Anything else (quotes, angle brackets,
+ * whitespace, `/`, `?`, `#`) changes the URL's shape — e.g. the `">` HTML
+ * fragment that once reached the embed path and made the BUILD pane load
+ * `/d/%22%3E` ("Drive \"> not found") instead of the app.
+ *
+ * Enforced by every preview-URL builder below, so no caller can put a
+ * non-id value into a preview/embed URL.
+ */
+export function isPreviewDriveId(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(value);
+}
+
+/** Throws a plain, actionable error for a value that is not a drive id. */
+export function assertPreviewDriveId(value: string): string {
+  if (!isPreviewDriveId(value)) {
+    throw new Error(
+      `"${value}" is not a drive id. A drive id is one URL-safe id (for ` +
+        `example "preview-1a2b3c4d") — pass the id from spec-preview-create-drive, ` +
+        `not markup or a URL.`,
+    );
+  }
+  return value;
+}
+
+/**
  * Path to a preview document inside a reactor-project's Connect. `?embed=1`
  * strips Connect's outer chrome. Single source for the URL shape — used by
  * the preview-server resolver and the spec-preview-show command.
  */
 export function buildPreviewDocPath(driveId: string, doc: string): string {
+  assertPreviewDriveId(driveId);
   return `/d/${driveId}/${encodeURIComponent(doc)}?embed=1`;
 }
 
@@ -529,6 +556,7 @@ export function buildPreviewDriveRootPath(
   driveId: string,
   driveRemoteUrl?: string,
 ): string {
+  assertPreviewDriveId(driveId);
   const base = `/d/${driveId}?embed=1`;
   return driveRemoteUrl
     ? `${base}&driveUrl=${encodeURIComponent(driveRemoteUrl)}`
@@ -540,6 +568,7 @@ export function buildPreviewDriveRootPath(
  * (`<switchboard-origin>/d/<driveId>`) from a Switchboard GraphQL URL.
  */
 export function driveRemoteUrl(switchboardUrl: string, driveId: string): string {
+  assertPreviewDriveId(driveId);
   return `${switchboardUrl.replace(/\/graphql\/?$/, "")}/d/${driveId}`;
 }
 
@@ -555,6 +584,7 @@ export function browserDriveRemoteUrl(args: {
   proxyUrl?: string;
   switchboardUrl?: string;
 }): string | undefined {
+  assertPreviewDriveId(args.driveId);
   if (args.proxyUrl) {
     return `${args.proxyUrl.replace(/\/+$/, "")}${REACTOR_PROJECT_SWITCHBOARD_PROXY_PATH}/d/${args.driveId}`;
   }

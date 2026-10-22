@@ -8,11 +8,13 @@ import {
 } from "../../helpers/project.js";
 import { runChecks } from "../../helpers/project-checks.js";
 import {
+  assertPreviewDriveId,
   browserDriveRemoteUrl,
   buildPreviewDocPath,
   buildPreviewDriveRootPath,
   findPreviewByName,
   getPreviewAuthToken,
+  isPreviewDriveId,
   resolveAppEditorId,
   resolvePreviewEndpoint,
   setDrivePreferredEditor,
@@ -33,8 +35,22 @@ export const specPreviewShow = defineCommand({
     drive: z
       .string()
       .optional()
+      .superRefine((value, ctx) => {
+        // Fail before any switchboard call or URL is built: a non-id value
+        // (an HTML fragment such as `">`, a whole URL, a name) would become
+        // the embed path and the pane would load a 404 instead of the app.
+        if (value && !isPreviewDriveId(value)) {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              `"${value}" is not a drive id. Pass the id from ` +
+              `spec-preview-create-drive (for example "preview-1a2b3c4d"), ` +
+              `not markup or a URL.`,
+          });
+        }
+      })
       .describe(
-        "Drive id to show. When set, resolves a drive-root URL (renders the drive's app) instead of a document URL.",
+        "Drive id to show (from spec-preview-create-drive). When set, resolves a drive-root URL (renders the drive's app) instead of a document URL.",
       ),
     app: z
       .string()
@@ -124,6 +140,7 @@ export const specPreviewShow = defineCommand({
     const token = await getPreviewAuthToken(context.workdir, context.config);
 
     if (input.drive) {
+      assertPreviewDriveId(input.drive);
       // Re-assert the app binding AFTER populate: adding documents to a drive
       // wipes its header.meta.preferredEditor, so set it again here (this is the
       // last step before the user views the preview).

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 
 import {
   browserDriveRemoteUrl,
+  buildPreviewDocPath,
   buildPreviewDriveRootPath,
   createEmptyPreviewDocument,
   createPreviewDrive,
@@ -10,6 +11,7 @@ import {
   findPreviewByName,
   findPreviewDriveByPreferredEditor,
   getPreviewDriveId,
+  isPreviewDriveId,
   listPreviewDocuments,
   resolvePreviewEndpoint,
 } from "../../src/helpers/reactor-project-preview.js";
@@ -410,6 +412,36 @@ describe("preview drive URL builders", () => {
     expect(
       browserDriveRemoteUrl({ driveId: "abc", proxyUrl: "https://host/myagent" }),
     ).toBe("https://host/myagent/reactor-project/switchboard/d/abc");
+  });
+
+  it("refuses a non-id drive value instead of putting it in the preview URL", () => {
+    // The acceptance-run failure: an HTML fragment arrived as the drive id and
+    // the BUILD pane loaded `/d/%22%3E` ("Drive \"> not found").
+    for (const bad of ['">', "preview-abcd1234/extra", "drive id", "https://x/d/abc"]) {
+      expect(() => buildPreviewDriveRootPath(bad)).toThrow(/not a drive id/);
+      expect(() => buildPreviewDocPath(bad, "doc")).toThrow(/not a drive id/);
+      expect(() => driveRemoteUrl("http://localhost:4001/graphql", bad)).toThrow(
+        /not a drive id/,
+      );
+      expect(() =>
+        browserDriveRemoteUrl({
+          driveId: bad,
+          proxyUrl: "https://wise-hare.vetra.io",
+        }),
+      ).toThrow(/not a drive id/);
+    }
+    expect(isPreviewDriveId("preview-abcd1234")).toBe(true);
+    expect(isPreviewDriveId("u_oFPaXHBcGKD9VxlxYeSeF639vUpO_CZF4TyZHmXOk")).toBe(true);
+    expect(isPreviewDriveId('">')).toBe(false);
+  });
+
+  it("a valid drive id still builds the root URL", () => {
+    expect(buildPreviewDriveRootPath("preview-abcd1234")).toBe(
+      "/d/preview-abcd1234?embed=1",
+    );
+    expect(
+      driveRemoteUrl("http://localhost:4001/graphql", "preview-abcd1234"),
+    ).toBe("http://localhost:4001/d/preview-abcd1234");
   });
 
   it("browserDriveRemoteUrl falls back to the switchboard origin without a proxy", () => {

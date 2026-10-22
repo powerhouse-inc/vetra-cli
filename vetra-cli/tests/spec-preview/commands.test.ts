@@ -4,6 +4,7 @@ import { specPreviewCreate } from "../../src/commands/spec-preview/create.js";
 import { specPreviewDelete } from "../../src/commands/spec-preview/delete.js";
 import { specPreviewGet } from "../../src/commands/spec-preview/get.js";
 import { specPreviewList } from "../../src/commands/spec-preview/list.js";
+import { specPreviewShow } from "../../src/commands/spec-preview/show.js";
 import { specPreviewUpdate } from "../../src/commands/spec-preview/update.js";
 import { makeCtx, makeWorkdir } from "../spec/_fixtures.js";
 
@@ -93,6 +94,26 @@ describe("spec-preview command shapes", () => {
   it("specPreviewDelete exposes id and name", () => {
     expect(specPreviewDelete.id).toBe("spec-preview-delete");
     expect(specPreviewDelete.inputSchema.shape).toHaveProperty("name");
+  });
+
+  it("specPreviewShow refuses a non-id drive before any work, and accepts a real one", () => {
+    // The acceptance-run call: `{"name":"My Todos","drive":"\">"}` reached the
+    // embed URL and the BUILD pane loaded /d/%22%3E ("Drive \"> not found").
+    const rejected = specPreviewShow.inputSchema.safeParse({
+      project: "todo-list",
+      name: "My Todos",
+      drive: '">',
+    });
+    expect(rejected.success).toBe(false);
+    const issues = rejected.success ? [] : rejected.error.issues;
+    expect(issues[0]?.message).toMatch(/not a drive id/);
+
+    const accepted = specPreviewShow.inputSchema.safeParse({
+      project: "todo-list",
+      name: "My Todos",
+      drive: "preview-abcd1234",
+    });
+    expect(accepted.success).toBe(true);
   });
 });
 

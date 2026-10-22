@@ -18,6 +18,17 @@ import type { ChatSessionDocument } from "@powerhousedao/clint-common/document-m
 
 const SHOW_TOOL_NAME = "spec-preview-show";
 
+/**
+ * Same rule as the CLI's `isPreviewDriveId` (vetra-cli's
+ * `reactor-project-preview.ts`): a drive id is one URL-safe path segment.
+ * A result carrying anything else (e.g. the `">` HTML fragment a tool call
+ * once sent) must not become a preview target — the pane would load a 404
+ * iframe instead of the app.
+ */
+export function isPreviewDriveId(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(value);
+}
+
 export interface PreviewTarget {
   project: string;
   doc?: string;
@@ -81,6 +92,9 @@ export function extractPreviewTarget(
       const data = safeParse<ShowToolResultData>(part.result);
 
       if (data?.data?.kind === "drive" && data?.data?.driveId) {
+        // Ignore a malformed id and keep looking for an earlier good target
+        // (the pane then keeps showing the last valid preview).
+        if (!isPreviewDriveId(data.data.driveId)) continue;
         const call = findToolCall(messages, part.toolCallId);
         const project = call?.project || data.data.project;
         if (!project) continue;

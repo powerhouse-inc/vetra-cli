@@ -124,6 +124,19 @@ describe("screenPreviews", () => {
     expect(tabForTarget(found.targets, undefined)).toBeNull();
   });
 
+  it("ignores a show whose drive argument isn't a drive id", () => {
+    const messages = [
+      toolTurn(
+        "spec-preview-show",
+        { project: "hotel", drive: '">', app: "kitchen-queue" },
+        { data: { kind: "drive", driveId: '">' } },
+      ),
+    ];
+    const found = screenPreviews(messages, screens);
+    expect(found.targets.size).toBe(0);
+    expect(found.activeScreenId).toBeNull();
+  });
+
   it("an edited spec makes its screen the active one", () => {
     const messages = [
       toolTurn(
