@@ -19,8 +19,9 @@ import {
 
 /** How often the probe is repeated while the daemon is down. */
 export const CHAT_READY_POLL_MS = 1_000;
-/** How long a send waits for the daemon before it gives up. */
-export const CHAT_READY_BUDGET_MS = 180_000;
+/** How long a send waits for the daemon before it gives up: the observed
+ *  pod recovery after a model-key roll was under five minutes. */
+export const CHAT_READY_BUDGET_MS = 300_000;
 
 export type ChatReadyProbe = () => Promise<boolean>;
 
