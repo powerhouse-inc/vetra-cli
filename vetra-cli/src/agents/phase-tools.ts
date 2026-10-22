@@ -51,6 +51,32 @@ const SHELL = 'mastra_workspace_execute_command';
 export const PROJECT_MCP = 'reactor-project-mcp__*';
 const ATTACHMENTS = ['attachment-preprocess', 'attachment-upload'];
 
+/**
+ * What a live turn may use. A launch failure sends the customer's "Ask the
+ * agent to fix it" into the failed change's conversation while every step is
+ * LIVE, and that turn must be able to do what the build turn did: edit the
+ * project (files, specs, editor/app sub-agents), check and build it, and
+ * publish the fix. Deploy and GitHub tools stay hidden (F25).
+ */
+const REPAIR = [
+  ...SPEC_BUILD,
+  'spec-preview-*',
+  ...WORKSPACE_WRITE,
+  SHELL,
+  'reactor-project-start',
+  'reactor-project-stop',
+  'reactor-project-restart',
+  'reactor-project-check',
+  'reactor-project-build',
+  'reactor-project-publish',
+  'reactor-project-publish-status',
+  PROJECT_MCP,
+  ...ATTACHMENTS,
+  'agent-agentDocumentModel',
+  'agent-agentEditor',
+  'agent-agentApp',
+];
+
 export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
   // Bootstrap first, then product specs at the workspace root (and naming
   // the product). The project installs while the specs are written; without
@@ -97,8 +123,9 @@ export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
   ],
   // Checks, reducer tests, preview smoke.
   TESTS: ['reactor-project-check', 'reactor-project-build', ...WORKSPACE_WRITE, SHELL, PROJECT_MCP],
-  // Launch is automatic (§6.5): nothing beyond ALWAYS_ON, no deploy tools.
-  LIVE: [],
+  // Launch is automatic (§6.5); no deploy tools. A live repair turn (a failed
+  // launch's "Ask the agent to fix it") gets the editor/check/publish set.
+  LIVE: REPAIR,
   // No product or no active change: every tool, unchanged behaviour.
   NONE: ['*'],
 };
@@ -111,8 +138,6 @@ export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
 export const ADVANCED_ONLY: readonly string[] = [
   'deploy-*',
   'github-*',
-  'reactor-project-publish',
-  'reactor-project-publish-status',
   'reactor-project-manage',
   'vetra-studio-*',
   'vetra-agent-run',

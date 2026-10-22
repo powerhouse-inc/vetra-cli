@@ -83,13 +83,34 @@ describe('phase tool sets', () => {
     expect(tools!.length).toBeLessThan(names.length);
   });
 
-  it('LIVE step exposes no deploy tools', async () => {
+  // A failed launch sends "Ask the agent to fix it" into the failed change's
+  // conversation while every step is LIVE (README-P5 1.9): that turn must be
+  // able to edit the project and publish the fix, not only read it.
+  it('LIVE step exposes the edit, check and publish tools and no deploy tools', async () => {
     h = await productHarness();
     await runProgress(h.ctx, { action: 'plan', steps: [{ kind: 'LIVE' }] });
     await runProgress(h.ctx, { action: 'start', step: 'LIVE' });
     const tools = await visibleTools(h);
+    for (const t of [
+      'mastra_workspace_write_file',
+      'mastra_workspace_edit_file',
+      'mastra_workspace_execute_command',
+      'spec-update',
+      'spec-generate',
+      'reactor-project-check',
+      'reactor-project-build',
+      'reactor-project-publish',
+      'reactor-project-publish-status',
+      'reactor-project-mcp__addActions',
+      'agent-agentDocumentModel',
+      'agent-agentEditor',
+      'agent-agentApp',
+      'product-progress',
+    ]) {
+      expect(tools).toContain(t);
+    }
     expect(tools!.filter((n) => /^(deploy|github)-/.test(n))).toEqual([]);
-    expect(tools!.every((n) => matchesAny(n, ALWAYS_ON))).toBe(true);
+    expect(tools!.length).toBeLessThan(names.length);
   });
 
   it('no product document → all tools', async () => {
