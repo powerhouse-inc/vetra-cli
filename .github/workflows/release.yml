@@ -132,9 +132,9 @@ jobs:
             # still point the dist-tag at the version.
             if curl -sfo /dev/null "$reg/$name/$VERSION?cb=$RANDOM"; then
               echo "$name@$VERSION already on $reg — ensuring dist-tag '$TAG'"
-              npm dist-tag add "$name@$VERSION" "$TAG" --registry "$reg"
+              npm dist-tag add "$name@$VERSION" "$TAG" --registry "$reg" --fetch-timeout=1200000
             else
-              npm publish "$tgz" --registry "$reg" --tag "$TAG"
+              npm publish "$tgz" --registry "$reg" --tag "$TAG" --fetch-timeout=1200000
             fi
           }
 
@@ -146,7 +146,7 @@ jobs:
             if [ -n "$ALSO_TAG" ]; then
               for name in "$APP_NAME" "$CLI_NAME"; do
                 echo "pointing $name@$VERSION at dist-tag '$ALSO_TAG' on $reg"
-                npm dist-tag add "$name@$VERSION" "$ALSO_TAG" --registry "$reg"
+                npm dist-tag add "$name@$VERSION" "$ALSO_TAG" --registry "$reg" --fetch-timeout=1200000
               done
             fi
           done
