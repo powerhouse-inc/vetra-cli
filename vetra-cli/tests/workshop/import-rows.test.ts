@@ -168,6 +168,23 @@ describe("row imports", () => {
     });
   });
 
+  it("offers the import when a rebuild left a second project in the workdir", async () => {
+    // A rebuild leaves the newer project next to the first one, so the workdir
+    // has no single reactor package. The live product's import files stay in
+    // the project that owns its models; they must still be offered and found.
+    const rebuilt = path.join(workdir, "todo-app-2");
+    await fs.mkdir(rebuilt, { recursive: true });
+    await fs.writeFile(path.join(rebuilt, "powerhouse.config.json"), "{}");
+
+    const offers = await listImports(ctx);
+
+    expect(offers.map((offer) => offer.file)).toEqual(["import/todo-list.json"]);
+    await expect(runImport(ctx, "import/todo-list.json")).resolves.toEqual({
+      imported: 2,
+      failed: 0,
+    });
+  });
+
   it("imports every row as the owner and records progress on the product", async () => {
     const result = await runImport(ctx, "import/todo-list.json");
 

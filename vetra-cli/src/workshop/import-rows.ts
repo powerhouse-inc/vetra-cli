@@ -120,11 +120,31 @@ function importFiles(projectPath: string, materialNames: Map<string, string>) {
   });
 }
 
-async function liveProject(ctx: ImportRowsContext): Promise<string | null> {
+/**
+ * The reactor project(s) in the workdir. Normally exactly one. A Studio that
+ * rebuilt a product leaves the earlier project next to the new one, so the
+ * workdir then holds several — `resolveReactorProjectPath` refuses to pick one.
+ * Every project is then read, newest first; each file is still validated
+ * against its own project's models, so only real imports survive.
+ */
+async function liveProjects(ctx: ImportRowsContext): Promise<string[]> {
   try {
-    return await resolveReactorProjectPath(ctx.workdir, undefined);
+    return [await resolveReactorProjectPath(ctx.workdir, undefined)];
   } catch {
-    return null;
+    const entries = await fs.promises
+      .readdir(ctx.workdir, { withFileTypes: true })
+      .catch(() => []);
+    return entries
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => path.join(ctx.workdir, entry.name))
+      .filter((project) =>
+        fs.existsSync(path.join(project, "powerhouse.config.json")),
+      )
+      .sort((a, b) => {
+        const at = fs.statSync(a).mtimeMs;
+        const bt = fs.statSync(b).mtimeMs;
+        return bt - at;
+      });
   }
 }
 
@@ -140,19 +160,22 @@ export async function listImports(
 ): Promise<ImportOffer[]> {
   const product = await getProductDoc(ctx);
   if (!product || !product.state.liveUrl) return [];
-  const project = await liveProject(ctx);
-  if (!project) return [];
-  return importFiles(project, materialNames(product.state)).map(
-    ({ file, value, materialName }) => ({
-      file,
-      materialName,
-      sheet: value.source.sheet,
-      documentType: value.documentType,
-      rows: value.documents.length,
-      mapping: value.mapping,
-      done: readProgress(ctx.workdir, file, importId(file)).imported.length,
-    }),
-  );
+  const projects = await liveProjects(ctx);
+  if (!projects.length) return [];
+  const names = materialNames(product.state);
+  const seen = new Set<string>();
+  const files = projects
+    .flatMap((project) => importFiles(project, names))
+    .filter(({ file }) => (seen.has(file) ? false : Boolean(seen.add(file))));
+  return files.map(({ file, value, materialName }) => ({
+    file,
+    materialName,
+    sheet: value.source.sheet,
+    documentType: value.documentType,
+    rows: value.documents.length,
+    mapping: value.mapping,
+    done: readProgress(ctx.workdir, file, importId(file)).imported.length,
+  }));
 }
 
 async function driveFor(ctx: ImportRowsContext): Promise<{
@@ -223,12 +246,10 @@ export async function runImport(
       "Your product is not live yet.",
     );
   }
-  const project = await liveProject(ctx);
-  const found = project
-    ? importFiles(project, materialNames(product.state)).find(
-        (f) => f.file === file,
-      )
-    : undefined;
+  const names = materialNames(product.state);
+  const found = (await liveProjects(ctx))
+    .flatMap((project) => importFiles(project, names))
+    .find((f) => f.file === file);
   if (!found) {
     throw new ImportRowsError("unknown-file", `Unknown import file "${file}".`);
   }
