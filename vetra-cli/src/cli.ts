@@ -327,35 +327,40 @@ cli.configureReactor({
     // before the marker keep the legacy, unsigned path.
     const config = ctx.config as Config;
     const plan = planStudioSigning(ctx.workdir, config);
-    // Sticky before anything is created: a restart cannot fall back to legacy.
-    commitStudioSigningPlan(ctx.workdir, plan);
     const connectDir = 'dist/connect';
     const log = {
       debug: (m: string) => console.debug(m),
       info: (m: string) => console.log(m),
       warn: (m: string) => console.warn(m),
     };
-    try {
-      stampCreateSignaturePolicy(CONNECT_ASSETS_ROOT, plan.mode, connectDir, log);
-    } catch (err: unknown) {
-      log.warn(
-        `[signing] could not stamp the browser create policy: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    const v2 = plan.mode === 'v2-required';
     // The same Renown the browser logs in on and the switchboard verifies
     // against (R21): RENOWN_URL, else cloudRenownUrl, else the cloud default.
     const renownUrl =
       resolveStudioRenownUrl(process.env.RENOWN_URL, config.cloudRenownUrl, {
         warn: (m) => log.warn(m),
       }) ?? resolveCloudConfig(config).renownUrl;
-    const signature = v2
-      ? await studioReactorSigning({
-          workdir: ctx.workdir,
-          renownUrl,
-          log,
-        })
-      : undefined;
+    const signature =
+      plan.mode === 'v2-required'
+        ? await studioReactorSigning({
+            workdir: ctx.workdir,
+            renownUrl,
+            log,
+          })
+        : undefined;
+    // A fresh cloud Studio can only create its drive once the owner has
+    // delegated: without a Renown user the v2 signer refuses every write, so
+    // the Studio would boot without a drive and the browser would never get
+    // the permission modal. Stay legacy until the delegation exists.
+    const v2 = Boolean(signature && signerHasUser(signature.renown.signer));
+    // Sticky only for a v2 boot (a legacy boot must never write the marker).
+    if (v2) commitStudioSigningPlan(ctx.workdir, plan);
+    try {
+      stampCreateSignaturePolicy(CONNECT_ASSETS_ROOT, v2 ? 'v2-required' : 'legacy', connectDir, log);
+    } catch (err: unknown) {
+      log.warn(
+        `[signing] could not stamp the browser create policy: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     const signing: ReactorSigningOptions | undefined = signature?.signing;
     const drive = v2
       ? cloudStudioDriveConfig(ctx.workdir, {
