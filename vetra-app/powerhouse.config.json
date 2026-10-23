@@ -26,7 +26,7 @@
       "provider": "local"
     }
   ],
-  "packageRegistryUrl": "https://registry.dev.vetra.io/",
+  "packageRegistryUrl": "https://registry.vetra.io/",
   "connect": {
     "renown": {
       "url": "https://www.renown.id/"
