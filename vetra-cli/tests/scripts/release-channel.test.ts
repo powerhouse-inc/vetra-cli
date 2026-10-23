@@ -1,18 +1,18 @@
 import { resolveReleaseChannel } from '../../scripts/publish/release-channel.mjs';
 
-const BOTH = ['https://registry.dev.vetra.io', 'https://registry.vetra.io'];
+const ONLY = ['https://registry.vetra.io'];
 
 describe('resolveReleaseChannel', () => {
-  it('main → dev on both registries', () => {
+  it('main → dev on registry.vetra.io only', () => {
     expect(
       resolveReleaseChannel({ branch: 'main', prereleaseTag: '', version: '0.0.8-dev.9' }),
-    ).toEqual({ distTag: 'dev', registries: BOTH });
+    ).toEqual({ distTag: 'dev', registries: ONLY });
   });
 
-  it('production → latest on both registries', () => {
+  it('production → latest on registry.vetra.io only', () => {
     expect(
       resolveReleaseChannel({ branch: 'production', prereleaseTag: '', version: '0.0.8' }),
-    ).toEqual({ distTag: 'latest', registries: BOTH });
+    ).toEqual({ distTag: 'latest', registries: ONLY });
   });
 
   it('p4 prerelease → p4 on registry.vetra.io only', () => {

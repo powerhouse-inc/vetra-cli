@@ -1,13 +1,12 @@
 // Resolves the npm dist-tag and target registries for a release run.
-//   main                     -> dev     (both registries)
-//   production               -> latest  (both registries)
+//   main                     -> dev     (registry.vetra.io)
+//   production               -> latest  (registry.vetra.io)
 //   <any branch> + prerelease-tag <t>   -> <t> (registry.vetra.io only),
 //                               version must be x.y.z-<t>.N
 // CLI: reads GITHUB_REF_NAME, INPUT_PRERELEASE_TAG, VERSION and prints
 // `dist_tag=` and `registries=` lines for $GITHUB_OUTPUT.
 import { pathToFileURL } from 'node:url';
 
-const DEV_REGISTRY = 'https://registry.dev.vetra.io';
 const MAIN_REGISTRY = 'https://registry.vetra.io';
 
 export function resolveReleaseChannel({ branch, prereleaseTag, version, alsoTag = '' }) {
@@ -23,8 +22,8 @@ export function resolveReleaseChannel({ branch, prereleaseTag, version, alsoTag 
     }
     return { distTag: prereleaseTag, registries: [MAIN_REGISTRY] };
   }
-  if (branch === 'main') return { distTag: 'dev', registries: [DEV_REGISTRY, MAIN_REGISTRY] };
-  if (branch === 'production') return { distTag: 'latest', registries: [DEV_REGISTRY, MAIN_REGISTRY] };
+  if (branch === 'main') return { distTag: 'dev', registries: [MAIN_REGISTRY] };
+  if (branch === 'production') return { distTag: 'latest', registries: [MAIN_REGISTRY] };
   throw new Error(`release runs from main or production only (got ${branch})`);
 }
 
