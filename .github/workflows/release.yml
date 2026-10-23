@@ -6,8 +6,8 @@ name: release
 # builds and publishes whatever version is committed on the branch it runs from.
 #
 #   branch      dist-tag   registries
-#   main        dev        registry.dev.vetra.io + registry.vetra.io
-#   production  latest     registry.dev.vetra.io + registry.vetra.io
+#   main        dev        registry.vetra.io
+#   production  latest     registry.vetra.io
 
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  REGISTRIES: https://registry.dev.vetra.io https://registry.vetra.io
+  REGISTRIES: https://registry.vetra.io
 
 jobs:
   publish:
