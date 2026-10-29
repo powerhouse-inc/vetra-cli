@@ -64,3 +64,23 @@ export function filterOwn(
     return owner === me || (owner === null && createdBy === me);
   });
 }
+
+/**
+ * Environments a user-supplied reference points at: an exact document id wins
+ * outright; otherwise every environment whose subdomain or name (name compared
+ * case-insensitively) equals the reference. More than one result means the
+ * reference is ambiguous — the caller decides how to report it.
+ */
+export function matchEnvironments(
+  items: EnvironmentSummary[],
+  ref: string,
+): EnvironmentSummary[] {
+  const q = ref.trim();
+  if (!q) return [];
+  const byId = items.find((e) => e.id === q);
+  if (byId) return [byId];
+  const lower = q.toLowerCase();
+  return items.filter(
+    (e) => e.subdomain === q || e.name?.toLowerCase() === lower,
+  );
+}
