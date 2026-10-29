@@ -110,6 +110,8 @@ export const PHASE_TOOLS: Record<StepKind | 'NONE', readonly string[]> = {
  */
 export const ADVANCED_ONLY: readonly string[] = [
   'deploy-*',
+  // `vetra env …`: the terminal twin of the console's environment actions.
+  'env',
   'github-*',
   'reactor-project-publish',
   'reactor-project-publish-status',

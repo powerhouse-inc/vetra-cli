@@ -22,6 +22,7 @@ import { agentRun } from './commands/agent-run.js';
 import { specCommands } from './commands/spec/index.js';
 import { specPreviewCommands } from './commands/spec-preview/index.js';
 import { deployCommands } from './commands/deploy/index.js';
+import { envCommands } from './commands/env/index.js';
 import { authCommands } from './commands/auth/index.js';
 import { reactorProjectCommands } from './commands/reactor-project/index.js';
 import { productCommands } from './commands/product/index.js';
@@ -89,6 +90,7 @@ export const cli = defineCli({
     ...specCommands,
     ...specPreviewCommands,
     ...deployCommands,
+    ...envCommands,
     ...authCommands,
     ...reactorProjectCommands,
     ...productCommands,
