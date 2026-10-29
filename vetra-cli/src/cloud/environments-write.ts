@@ -17,7 +17,9 @@ import {
   resolveCloudDriveId,
   type CloudServiceType,
   type EnvironmentChanges,
+  type EnvironmentController,
   type EnvironmentSummary,
+  type OperationLike,
   type ListScope,
   type VetraCloudEnvironmentGlobalState,
 } from "@powerhousedao/vetra-cloud-client";
@@ -76,6 +78,49 @@ export async function loadEnvironmentState(
     parentIdentifier: session.driveId,
     signer: session.signer,
   });
+  return controller.state.global;
+}
+
+/** Load an environment's state plus its global-scope operation log (the log
+ * is what pending changes are derived from). Read-only. */
+export async function loadEnvironmentDocument(
+  ctx: ReadContext,
+  documentId: string,
+): Promise<{
+  state: VetraCloudEnvironmentGlobalState;
+  operations: OperationLike[];
+}> {
+  const session = await getWriteSession(ctx);
+  const controller = await loadEnvironmentController({
+    client: session.client,
+    documentId,
+    parentIdentifier: session.driveId,
+    signer: session.signer,
+  });
+  return {
+    state: controller.state.global,
+    operations: controller.operations.global ?? [],
+  };
+}
+
+/** Load an environment, let `apply` dispatch actions on it (it may throw to
+ * refuse before anything is pushed), then push the signed actions. Returns the
+ * resulting global state. Unlike `applyEnvironmentUpdate` this dispatches
+ * exactly what `apply` does — no implied service enables or studio stamping. */
+export async function dispatchEnvironmentActions(
+  ctx: ReadContext,
+  documentId: string,
+  apply: (controller: EnvironmentController) => void,
+): Promise<VetraCloudEnvironmentGlobalState> {
+  const session = await getWriteSession(ctx);
+  const controller = await loadEnvironmentController({
+    client: session.client,
+    documentId,
+    parentIdentifier: session.driveId,
+    signer: session.signer,
+  });
+  apply(controller);
+  await controller.push();
   return controller.state.global;
 }
 
