@@ -1,13 +1,15 @@
 /**
- * Agent Renown authorization state + actions, shared by the studio header
- * button and the deploy flow.
+ * The agent's session state + actions, shared by the studio header button
+ * and the deploy flow.
  *
- * Two Renown identities exist: the user's wallet (on renown.id) and the agent's
- * own did:key (backend). `authorize` starts delegating the user's identity to
- * the agent's did:key — it opens the renown.id console for that did:key, where
- * the user approves with their wallet, while the daemon polls to store the
- * credential. (An in-app one-click authorize isn't possible: the wallet session
- * and credential publishing live on the renown.id origin.)
+ * The agent signs with its own session key (backend), under a credential the
+ * user signs. In a local Studio with nobody logged in that is the user's
+ * pseudonym, issued at the agent's first write. Otherwise `authorize` opens
+ * the renown.id console for the session's did:key, where the user approves
+ * with their wallet, while the daemon polls to keep the credential. (An
+ * in-app one-click authorize isn't possible: the wallet session and
+ * credential publishing live on the renown.id origin.) `disconnect` withdraws
+ * the agent's credential: the store refuses it from its next request.
  */
 import { useEffect, useRef, useState } from "react";
 import {
@@ -44,7 +46,12 @@ export type AgentAuth = {
   state: AuthState | null;
   /** An authorize/disconnect call is in flight. */
   busy: boolean;
+  /** A Renown wallet approved the agent: it acts for the user at Vetra Cloud too. */
   authenticated: boolean;
+  /** The agent acts as the user's pseudonym (here only; Vetra Cloud needs a Renown approval). */
+  pseudonym: boolean;
+  /** The store withdrew the agent: it acts again once authorized again. */
+  withdrawn: boolean;
   /** A console login is awaiting browser approval (and is still usable). */
   pending: boolean;
   /** Start (or reopen) the renown.id console login for the agent. */
@@ -54,9 +61,14 @@ export type AgentAuth = {
    * a fresh login when there is none, or it is older than the Renown lifetime.
    */
   reopen: () => Promise<void>;
-  /** Clear the stored credential (the agent's keypair/DID is kept). */
+  /** Withdraw the agent's credential (its session key is kept). */
   disconnect: () => Promise<void>;
 };
+
+/** A Renown wallet approved the agent (an older daemon names no kind). */
+function renownApproved(state: AuthState | null): boolean {
+  return Boolean(state?.authenticated && state.kind !== "pseudonym");
+}
 
 export function useAgentAuth(): AgentAuth {
   const [state, setState] = useState<AuthState | null>(null);
@@ -105,8 +117,10 @@ export function useAgentAuth(): AgentAuth {
     if (busy) return;
     setBusy(true);
     // Open the tab inside the click gesture so it isn't popup-blocked, then
-    // point it at the console URL once the daemon returns it.
-    const popup = window.open("about:blank", "_blank");
+    // point it at the console URL once the daemon returns it. A pseudonym is
+    // authorized again by the daemon alone: no page to open.
+    const popup =
+      state?.kind === "pseudonym" ? null : window.open("about:blank", "_blank");
     try {
       const next = await startAuth();
       apply(next);
@@ -148,7 +162,9 @@ export function useAgentAuth(): AgentAuth {
   return {
     state,
     busy,
-    authenticated: state?.authenticated ?? false,
+    authenticated: renownApproved(state),
+    pseudonym: Boolean(state?.authenticated && state.kind === "pseudonym"),
+    withdrawn: state?.withdrawn ?? false,
     pending: Boolean(currentLogin(state)),
     authorize,
     reopen,

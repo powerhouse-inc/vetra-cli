@@ -62,6 +62,40 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("useAgentAuth whom the agent acts for", () => {
+  it("is authenticated only when a Renown wallet approved it", async () => {
+    hoisted.status = { authenticated: true, kind: "renown", address: "0xaa" };
+    const renown = await mount();
+    expect(renown.authenticated).toBe(true);
+    expect(renown.pseudonym).toBe(false);
+  });
+
+  it("acts as the pseudonym without counting as the user's Renown approval", async () => {
+    hoisted.status = {
+      authenticated: true,
+      kind: "pseudonym",
+      address: "0x1a2b00000000000000000000000000000000009f3c",
+      who: "Anonymous 0x1a2b...9f3c",
+      recorded: true,
+    };
+    const current = await mount();
+    expect(current.pseudonym).toBe(true);
+    expect(current.authenticated).toBe(false);
+  });
+
+  it("authorizes a withdrawn pseudonym again without opening a page", async () => {
+    hoisted.status = { authenticated: false, kind: "pseudonym", withdrawn: true };
+    hoisted.started = { authenticated: true, kind: "pseudonym" };
+    const current = await mount();
+    expect(current.withdrawn).toBe(true);
+    await act(async () => {
+      await current.authorize();
+    });
+    expect(hoisted.startAuth).toHaveBeenCalledTimes(1);
+    expect(window.open).not.toHaveBeenCalled();
+  });
+});
+
 describe("useAgentAuth reopen", () => {
   it("reopens the pending Renown login without starting a new one", async () => {
     hoisted.status = {

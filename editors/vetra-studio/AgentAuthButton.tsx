@@ -3,9 +3,11 @@
  * flow live in useAgentAuth (shared with the deploy flow and the sign-in
  * publishing modal, D7).
  *
- * States: not authorized → "Authorize agent"; awaiting approval → "Authorizing…"
- * (reopens the console on click); authorized → a "✓ Renown 0x…" chip with
- * Disconnect.
+ * States: not authorized (or withdrawn) → "Authorize agent"; awaiting
+ * approval → "Authorizing…" (reopens the console on click); approved by a
+ * Renown wallet → a "✓ Renown 0x…" chip with Disconnect; acting as the user's
+ * pseudonym (a local Studio, nobody logged in) → "Agent acts as Anonymous
+ * 0x…" with Withdraw.
  */
 import { useAgentAuth } from "./hooks/useAgentAuth.js";
 
@@ -14,12 +16,49 @@ function shortAddress(addr: string): string {
 }
 
 export function AgentAuthButton() {
-  const { state, busy, authorize, disconnect } = useAgentAuth();
+  const { state, busy, authenticated, pseudonym, authorize, disconnect } =
+    useAgentAuth();
 
   // Until the first status resolves, render nothing (avoids a flash).
   if (!state) return null;
 
-  if (state.authenticated) {
+  if (state.locked) {
+    return (
+      <span
+        className="text-[11px] text-muted-foreground"
+        title="The agent's credential is issued by your pseudonym, whose key is locked with a password. Set PH_IDENTITY_PASSWORD where the Studio runs."
+      >
+        Agent can't sign: your pseudonym is locked
+      </span>
+    );
+  }
+
+  if (pseudonym) {
+    return (
+      <span
+        className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+        title="The agent signs its changes with its own key, as your pseudonym. Vetra Cloud needs a Renown login."
+      >
+        <span>
+          Agent acts as{" "}
+          <span className="font-mono">{state.who ?? "your pseudonym"}</span>
+        </span>
+        {state.recorded ? (
+          <button
+            type="button"
+            onClick={() => void disconnect()}
+            disabled={busy}
+            title="Withdraw the agent's credential: it can no longer change anything here"
+            className="ml-0.5 rounded px-1 hover:text-foreground disabled:opacity-50"
+          >
+            Withdraw
+          </button>
+        ) : null}
+      </span>
+    );
+  }
+
+  if (authenticated) {
     return (
       <span
         className="flex items-center gap-1.5 text-[11px] text-success"
@@ -38,7 +77,7 @@ export function AgentAuthButton() {
           type="button"
           onClick={() => void disconnect()}
           disabled={busy}
-          title="Sign out of Renown (revoke the agent's access)"
+          title="Withdraw the agent's approval: it can no longer act as you"
           className="ml-0.5 rounded px-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           Disconnect
@@ -67,7 +106,11 @@ export function AgentAuthButton() {
       type="button"
       onClick={() => void authorize()}
       disabled={busy}
-      title="Authorize the agent to act as you, using your Renown identity"
+      title={
+        state.withdrawn
+          ? "Let the agent act as you again"
+          : "Authorize the agent to act as you, using your Renown identity"
+      }
       className="flex items-center gap-1.5 rounded-md bg-vetra-primary px-2 py-0.5 text-[11px] font-medium text-vetra-primary-fg shadow-sm hover:opacity-90 disabled:opacity-50"
     >
       Authorize agent

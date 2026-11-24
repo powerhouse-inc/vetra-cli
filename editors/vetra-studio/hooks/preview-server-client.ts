@@ -636,14 +636,28 @@ export async function fetchExportStatus(
   return (await res.json()) as { authorized: boolean };
 }
 
-/** Renown auth state served by the daemon's /auth endpoints. `pending`
- * is set while a Renown console login is awaiting browser approval; `ageMs`
+/** The agent's session as the daemon's /auth endpoints serve it. `pending`
+ * is set while a Renown console approval is awaiting the wallet; `ageMs`
  * is how old it is by the daemon's clock at response time (older daemons
  * omit it, and `startedAt`, epoch ms on the daemon's clock). */
 export type AuthState = {
+  /** The agent signs now: a Renown wallet approved it, or (a local Studio,
+   * nobody logged in) it acts as the user's pseudonym. */
   authenticated: boolean;
+  /** Whom it acts for: an approved Renown wallet, or the pseudonym. */
+  kind?: "renown" | "pseudonym";
   address?: string;
+  /** "Anonymous 0x1a2b...9f3c" for a pseudonym. */
+  who?: string;
+  /** The store withdrew the agent: it signs nothing until authorized again. */
+  withdrawn?: boolean;
+  /** The store holds the agent's credential's record: "Withdraw" stops it. */
+  recorded?: boolean;
+  /** The pseudonym's key is locked with a password the Studio cannot ask for. */
+  locked?: boolean;
   pending?: { loginUrl: string; startedAt?: number; ageMs?: number };
+  /** Why the last approval was refused (`not-owner`). */
+  error?: string;
 };
 
 /** Current Renown auth state (read-only; does not advance the login). */
@@ -663,8 +677,9 @@ export async function fetchAuthStatus(
   return (await res.json()) as AuthState;
 }
 
-/** Start a login for the agent's identity: the daemon builds the renown.id
- * console URL (returned as `pending.loginUrl`) and stashes the session. */
+/** "Authorize agent": the daemon builds Renown's console page for the agent's
+ * session (returned as `pending.loginUrl`), or issues a withdrawn pseudonym's
+ * credential again. */
 export async function startAuth(signal?: AbortSignal): Promise<AuthState> {
   const { base } = await previewBase();
   const res = await fetch(`${base}/auth/start`, {
@@ -680,8 +695,8 @@ export async function startAuth(signal?: AbortSignal): Promise<AuthState> {
   return (await res.json()) as AuthState;
 }
 
-/** Advance a pending login: the daemon polls Renown for up to `waitMs` and,
- * once the user has approved in the browser, stores the credential. */
+/** Advance a pending approval: the daemon polls Renown for up to `waitMs`
+ * and, once the user has approved with their wallet, keeps the credential. */
 export async function confirmAuth(args?: {
   waitMs?: number;
   signal?: AbortSignal;
@@ -703,7 +718,8 @@ export async function confirmAuth(args?: {
   return (await res.json()) as AuthState;
 }
 
-/** Clear the stored credential (the agent's keypair/DID is kept). */
+/** "Withdraw": the store refuses the agent's credential from its next request
+ * (the agent's session key is kept). */
 export async function logoutAuth(signal?: AbortSignal): Promise<AuthState> {
   const { base } = await previewBase();
   const res = await fetch(`${base}/auth/logout`, {

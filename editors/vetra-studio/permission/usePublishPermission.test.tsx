@@ -46,6 +46,8 @@ function authWith(patch: Partial<AgentAuth>): AgentAuth {
     state: { authenticated: false },
     busy: false,
     authenticated: false,
+    pseudonym: false,
+    withdrawn: false,
     pending: false,
     authorize: vi.fn(() => Promise.resolve()),
     reopen: vi.fn(() => Promise.resolve()),
