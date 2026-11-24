@@ -9,7 +9,8 @@
  *
  * Keyed by workdir so each workdir owns its identity: the keypair and the
  * stored credential live under `<workdir>/.ph/vetra/agent/`, apart from the
- * project's own `ph login` identity at `.ph/` root. `PH_RENOWN_PRIVATE_KEY`
+ * instance key at `.ph/` root and the user's `ph login` in the home folder.
+ * `PH_RENOWN_PRIVATE_KEY`
  * overrides the on-disk keypair for pre-provisioned deployed agents.
  */
 import path from "node:path";
@@ -24,6 +25,9 @@ import {
   type ISigner,
 } from "@renown/sdk/node";
 import { pollLogin, startLogin } from "./login-flow.js";
+import { isAdminAddress, requireAdminIdentity } from "./owner-rule.js";
+
+export { isAdminAddress, requireAdminIdentity, setRequireAdminIdentity } from "./owner-rule.js";
 
 const APP_NAME = "vetra-cli";
 
@@ -72,19 +76,6 @@ function entryFor(workdir: string, renownUrl: string): CloudAuthEntry {
     entries.set(key, entry);
   }
   return entry;
-}
-
-let requireAdminOverride: boolean | undefined;
-
-/** Whether the agent's identity must be an ADMINS wallet: in a cloud Studio
- * (VETRA_ENVIRONMENT_ID / `config.environmentId`), unless set explicitly. */
-export function requireAdminIdentity(): boolean {
-  return requireAdminOverride ?? Boolean(process.env.VETRA_ENVIRONMENT_ID?.trim());
-}
-
-/** Set by the daemon from `config.environmentId` (undefined: env fallback). */
-export function setRequireAdminIdentity(required: boolean | undefined): void {
-  requireAdminOverride = required;
 }
 
 /** The entry's Renown, with the owner rule applied on every read: in a cloud
@@ -153,21 +144,6 @@ export async function getAuthState(
     authenticated: false,
     ...(entry.pending ? { pending: shownLogin(entry.pending) } : {}),
   };
-}
-
-// Is `address` in the ADMINS allowlist (the Studio owner gate,
-// preview-server/request-auth.ts)? Case-insensitive; empty/unset
-// allowlist matches nothing (comma- or whitespace-separated wallet addresses).
-export function isAdminAddress(
-  address: string | undefined,
-  adminsEnv: string | undefined,
-): boolean {
-  if (!address) return false;
-  const admins = (adminsEnv ?? "")
-    .split(/[\s,]+/)
-    .map((a) => a.trim().toLowerCase())
-    .filter(Boolean);
-  return admins.includes(address.toLowerCase());
 }
 
 // Re-read after an await: TS keeps the earlier `!renown.user` narrowing.

@@ -2,8 +2,9 @@
  * Where the Cli keeps the files it writes on its own account in the project
  * (its workdir): all under `.ph/vetra/`, the folder the Studio switchboard's
  * stores (host data) and clint's store (`.mastra`, `logs`) already use. None
- * lands at `.ph/` root, where a project keeps its own `ph login` identity
- * (`.keypair.json`, `.renown.json`), nor anywhere else in the project.
+ * lands at `.ph/` root, where the switchboard keeps its instance key
+ * (`.keypair.json`) and the store its pseudonym (`.pseudonym.json`), nor
+ * anywhere else in the project.
  *
  * The paths are relative to the workdir; `studioPath` joins one to it.
  */

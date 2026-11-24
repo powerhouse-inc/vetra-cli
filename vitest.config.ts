@@ -19,12 +19,14 @@ const notOurs = [
 export default defineConfig({
   test: {
     globals: true,
-    // No test meets the user's own supervisor: the folder holds none.
+    // No test meets the user's own supervisor or identities: the folders
+    // hold none.
     env: {
       PH_SUPERVISOR_HOME: path.join(
         os.tmpdir(),
         "vetra-cli-test-no-supervisor",
       ),
+      PH_IDENTITY_HOME: path.join(os.tmpdir(), "vetra-cli-test-no-identities"),
     },
     coverage: {
       provider: "v8",

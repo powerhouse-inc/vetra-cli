@@ -86,6 +86,9 @@ const CASES: { name: string; args: string[]; prints: RegExp }[] = [
   { name: "<command> --help", args: ["spec-list", "--help"], prints: /--category/ },
   // Needs neither agent nor reactor.
   { name: "config --list", args: ["config", "--list"], prints: /model/ },
+  // Reads files only: no Renown, no network (an exit after a request aborts
+  // Node on Windows).
+  { name: "whoami", args: ["whoami"], prints: /Not authorized/ },
 ];
 
 const SOURCE = ["--import", "tsx", join(ROOT, "cli", "src", "main.ts")];

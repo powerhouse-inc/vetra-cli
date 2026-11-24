@@ -312,7 +312,7 @@ describe("trusted keys: kept across restarts, per-client lookup shares, evicted 
       .filter((ace) => ace.includes(":(") && !ace.includes("(I)"));
   }
 
-  it("a restart keeps the owner's verified key (no tokens stored; mode 600 on POSIX, the folder's ACL on Windows)", async () => {
+  it("a restart keeps the owner's verified key (no tokens stored; readable by the OS user only)", async () => {
     let t = 1_000_000;
     const owner = await keyFor(OWNER);
     const ownerTokens = new Set<string>();
@@ -323,10 +323,11 @@ describe("trusted keys: kept across restarts, per-client lookup shares, evicted 
     expect((await before(from("198.51.100.7", first), null)).ok).toBe(true);
 
     if (process.platform === "win32") {
-      // Windows has no mode bits (Node reports 0o666 for a writable file). The
-      // store adds no ACL entry: it is guarded exactly as its `.ph` folder is.
-      expect(statSync(store).mode & 0o777).toBe(0o666);
-      expect(explicitAces(store)).toEqual([]);
+      // No mode bits on Windows: the file's ACL is one entry, its user's,
+      // none inherited from the `.ph` folder.
+      expect(explicitAces(store)).toHaveLength(1);
+      const all = execFileSync("icacls", [store], { encoding: "utf8", windowsHide: true });
+      expect(all).not.toContain("(I)");
     } else {
       expect(statSync(store).mode & 0o777).toBe(0o600);
     }

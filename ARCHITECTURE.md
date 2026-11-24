@@ -909,7 +909,7 @@ delegates the user's wallet to that `did:key`.
 - **Identity.** `@renown/sdk/node` `RenownBuilder` gives the agent a stable
   `did:key`. The keypair persists to `<workdir>/.ph/vetra/agent/.keypair.json` and the
   delegated credential to `<workdir>/.ph/vetra/agent/.renown.json` (workdir-scoped,
-  apart from the project's own `ph login` pair at `.ph/` root); `PH_RENOWN_PRIVATE_KEY` overrides the keypair
+  apart from the instance key at `.ph/` root and the user's `ph login` in the home folder); `PH_RENOWN_PRIVATE_KEY` overrides the keypair
   for pre-provisioned deployed agents. `src/auth/renown.ts` caches one
   `IRenown` per workdir and exposes `getBearerToken` (no `aud` — the
   switchboard's verifier rejects it), `getSigner`, the auth state machine
@@ -918,7 +918,10 @@ delegates the user's wallet to that `did:key`.
   environments, drive — stays under `src/cloud/`.)
 - **Authorization is the user's action, from the studio.** The agent has a
   single read-only `whoami` tool (reports whether it's authorized, and as
-  which address); it cannot log in. The studio header renders an **Authorize
+  which address, and who the user is on this computer: their Renown login or
+  pseudonym); it cannot log in. It reads the files only (the agent's
+  credential, `@powerhousedao/shared/clis/identity` for the user, the owner
+  rule from `src/auth/owner-rule.ts`): no Renown, no network. The studio header renders an **Authorize
   agent** button (`editors/vetra-studio/.../AgentAuthButton.tsx`, left of "Auto-follow
   agent") that drives the console flow via the preview-server (the in-process
   local API, sharing the same per-workdir `IRenown`): `POST /auth/start`
@@ -1177,8 +1180,9 @@ vetra-cli/                     ← package root, @powerhousedao/vetra-cli
 <project>/.ph/vetra/services/  ← clint's service state (reactor-project)
 ```
 
-Nothing the Cli writes on its own account lands at `.ph/` root, where a
-project keeps its own `ph login` identity (`.keypair.json`, `.renown.json`).
+Nothing the Cli writes on its own account lands at `.ph/` root, where the
+switchboard keeps its instance key (`.keypair.json`) and the store its
+pseudonym (`.pseudonym.json`). The user's `ph login` is in the home folder.
 
 ## Open gaps
 

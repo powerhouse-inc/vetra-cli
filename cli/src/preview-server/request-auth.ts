@@ -21,9 +21,10 @@
  * is the owner.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import path from "node:path";
+import { writeOwnerOnlyFile } from "@powerhousedao/shared/clis/owner-only";
 import {
   DEFAULT_RENOWN_URL,
   resolveSwitchboardEndpoint,
@@ -350,17 +351,12 @@ function loadTrusted(file: string | undefined, t: number): Map<string, number> {
   return out;
 }
 
-/** Write `trusted` to `file` (mode 600 on POSIX, atomic rename). Best effort. */
+/** Write `trusted` to `file`, readable by the OS user only. Best effort. */
 function saveTrusted(file: string | undefined, trusted: Map<string, number>): void {
   if (!file) return;
-  const tmp = `${file}.${process.pid}.tmp`;
   try {
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    writeFileSync(tmp, JSON.stringify({ version: 1, keys: Object.fromEntries(trusted) }), {
-      mode: 0o600,
-    });
-    chmodSync(tmp, 0o600);
-    renameSync(tmp, file);
+    writeOwnerOnlyFile(file, JSON.stringify({ version: 1, keys: Object.fromEntries(trusted) }));
   } catch {
     // Kept in memory; the next verification writes again.
   }
