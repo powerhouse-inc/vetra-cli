@@ -88,6 +88,20 @@ with the exit code. Ctrl-C in the caller, or a caller that goes away,
 aborts the command's `context.signal`. The caller builds no reactor and no
 agent, and loads none of their packages.
 
+Such a command signs as the person who typed it (`cli.configureIdentity` in
+`cli/src/cli.ts`, `cli/src/auth/caller-session.ts`). While it runs in the
+Studio, each action the Studio's reactor client signs is sent back over the
+open control connection and signed in the caller's process, and the
+requests carry the caller's bearer; work the command leaves running cannot
+sign. The caller opens its session at the first such ask only: the active
+identity (the Renown login, else the pseudonym, made then if there is none),
+a P-256 session labelled `vetra` in `~/.ph/identities/<address>/sessions/`,
+its credential issued by the pseudonym for 30 days and recorded in the
+project's data folder (`.ph/credentials/`). A pseudonym's password is asked
+on the caller's terminal. A prompt is the agent's work and signs as the
+Studio's Cli. A Studio that cannot ask (another version) is refused with
+"cannot sign as you; restart it".
+
 That Studio is found through its run record (`findRunningInstance` of
 `@powerhousedao/host-core/instance`, which reads records and loads no
 runner): the instance is the Studio host plus the data folder

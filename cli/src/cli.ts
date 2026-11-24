@@ -278,6 +278,14 @@ cli.configureReactor({
 });
 // @clint:end reactor
 
+// A command that runs in the Studio signs as the person who typed it: its
+// actions are signed in that process (auth/caller-session.ts), loaded on the
+// first signature.
+cli.configureIdentity({
+  label: 'vetra',
+  open: async (o) => (await import('./auth/caller-session.js')).openCallerSession(o),
+});
+
 // @clint:begin mastra
 // Mastra and the agent definitions load at the first chat or agent run.
 cli.configureAgent(async (ctx) => (await import('./agents/agent.js')).createAgent(ctx));
