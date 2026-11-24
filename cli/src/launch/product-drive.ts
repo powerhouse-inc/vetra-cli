@@ -39,7 +39,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Action, ISigner } from "document-model";
-import { getBearerToken, getRenown } from "../auth/renown.js";
+import { getBearerToken, getCloudAgent } from "../auth/renown.js";
 import { resolveCloudConfig } from "../cloud/config.js";
 import { studioPath } from "../helpers/studio-paths.js";
 import { redact, type CloudContext } from "./cloud-launch.js";
@@ -498,15 +498,15 @@ export async function createDriveClient(
   const { renownUrl } = resolveCloudConfig(ctx.config);
   let signer = deps.signer;
   if (!signer) {
-    const renown = await getRenown(ctx.workdir, renownUrl);
-    if (!renown.user) {
+    const agent = await getCloudAgent(ctx.workdir, renownUrl);
+    if (!agent) {
       throw new LaunchError(
         "PERMISSION",
         "your Studio needs your OK to publish",
         "The agent is not signed in with the owner's Renown identity.",
       );
     }
-    signer = renown.signer;
+    signer = agent.signer;
   }
   const actionSigner = signer;
   const [{ createReactorClient }, rb, dm, drive] = await Promise.all([

@@ -2,14 +2,15 @@
  * Per-request owner gate for the preview server. See ARCHITECTURE.md →
  * "Preview-server access gate".
  *
- * Authorizes the *sender of the request*, never the daemon's own Renown
- * sign-in. A request passes when it carries one of:
+ * Authorizes the *sender of the request*, never the daemon's own identity. A
+ * request passes when it carries one of:
  *   1. the operator secret (`VETRA_SESSION_EXPORT_SECRET`) as
  *      `Authorization: Bearer <secret>` or `?token=` (constant-time compare);
- *   2. a Renown bearer token minted for *this* Studio — `aud` must equal the
- *      Studio's public origin (so a token captured by another Studio the owner
- *      opens can't be replayed here) — that verifies: JWT signature + expiry,
- *      then the wallet→app delegation credential on Renown, for a wallet in
+ *   2. a bearer minted for *this* Studio — `aud` must equal the Studio's
+ *      public origin (so a token captured by another Studio the owner opens
+ *      can't be replayed here) — that verifies: JWT signature + expiry, then
+ *      its credential by the hosts' one check (`createCredentialVerifier`:
+ *      the record in the store's data folder, else Renown), for a wallet in
  *      the pod's `ADMINS`;
  *   3. local mode only (no studio environment id): a direct-loopback request
  *      with a loopback Host and browser origin. `ADMINS` or the secret do not
@@ -21,18 +22,15 @@
  * is the owner.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
-import path from "node:path";
-import { writeOwnerOnlyFile } from "@powerhousedao/shared/clis/owner-only";
 import {
-  DEFAULT_RENOWN_URL,
-  resolveSwitchboardEndpoint,
-  SwitchboardClient,
+  carriedCredentialOf,
+  createCredentialVerifier,
   verifyAuthBearerToken,
-  verifyDelegationProof,
+  type CredentialVerifier,
+  type PowerhouseVerifiableCredential,
 } from "@renown/sdk/node";
-import { isAdminAddress } from "../auth/renown.js";
+import { isAdminAddress } from "../auth/owner-rule.js";
 
 export type OwnerCheck =
   | { ok: true; via: "operator" | "owner" | "local"; address?: string }
@@ -41,13 +39,22 @@ export type OwnerCheck =
 /** A verified bearer's claimed identity (signature, expiry, `aud` checked). */
 export interface BearerClaims {
   address: string;
+  /** The session key's did:key, which signed the bearer. */
   appDid: string;
+  /** 1 when the bearer names none. */
+  chainId?: number;
+  /** "eip155" when the bearer names none. */
+  networkId?: string;
+  /** The credential the bearer carries (`phCredential`), when it carries one. */
+  credential?: PowerhouseVerifiableCredential;
 }
 
 export interface RequestAuthOptions {
   /** The Renown the Studio's Connect logs in on (`resolveStudioRenownUrl`);
    *  undefined = the SDK default. */
   renownUrl: string | undefined;
+  /** The store's data folder, whose credential records the check reads first. */
+  dataDir: string;
   /** Running as a cloud Studio (`config.environmentId` set). */
   cloud: boolean;
   /** This Studio's public origin (the required `aud`), read per request;
@@ -55,24 +62,19 @@ export interface RequestAuthOptions {
   audience: () => string | undefined;
   /** Local JWT check (signature + expiry + `aud`). Default: `@renown/sdk`. */
   verifyBearer?: (jwt: string, audience: string) => Promise<BearerClaims | false>;
-  /** Network check that the wallet delegated to the token's app key: false
-   *  when Renown has no such delegation, throws when Renown couldn't be
-   *  asked (a trusted key keeps its trust then). */
-  verifyDelegation?: (jwt: string, audience: string) => Promise<boolean>;
-  /** Max Renown lookups per minute for not-yet-verified app keys, overall
+  /** Whether the wallet's credential naming the bearer's key holds: false
+   *  when it does not, throws when it could not be checked. Default: the
+   *  hosts' check over `dataDir` (record, then Renown). */
+  verifyCredential?: (claims: BearerClaims) => Promise<boolean>;
+  /** Max checks per minute for not-yet-verified session keys, overall
    *  (default 30). Recently verified keys are never capped. */
   lookupsPerMinute?: number;
-  /** Max lookups per minute for one not-yet-verified app key (default 3). */
+  /** Max checks per minute for one not-yet-verified key (default 3). */
   lookupsPerKeyPerMinute?: number;
-  /** Max lookups per minute from one client address, for not-yet-verified
+  /** Max checks per minute from one client address, for not-yet-verified
    *  keys (default a third of `lookupsPerMinute`, at least 1), so one client
    *  can't spend the whole overall cap. */
   lookupsPerClientPerMinute?: number;
-  /** File that keeps the recently verified keys (`appDid|address` and when
-   *  each verified, never a token) across restarts; written mode 600 (on
-   *  Windows, which has no mode bits, it keeps its folder's ACL).
-   *  Undefined = kept in memory only. */
-  trustedStorePath?: string;
   now?: () => number;
 }
 
@@ -177,88 +179,42 @@ async function defaultVerifyBearer(
   const verified = await verifyAuthBearerToken(jwt, { audience });
   if (!verified) return false;
   if (!audMatches(verified.payload.aud, audience)) return false;
-  const address = verified.verifiableCredential.credentialSubject.address;
+  const subject = verified.verifiableCredential.credentialSubject;
+  const address = subject.address;
   const appDid = verified.issuer;
   if (typeof address !== "string" || !address || !appDid) return false;
-  return { address, appDid };
+  const credential = carriedCredentialOf(verified);
+  return {
+    address,
+    appDid,
+    chainId: Number(subject.chainId),
+    networkId: String(subject.networkId),
+    ...(credential ? { credential } : {}),
+  };
 }
 
-type Credential = NonNullable<Awaited<ReturnType<SwitchboardClient["getCredential"]>>>;
-
-/** The delegation from Renown's REST API: undefined when there is none
- *  (404, or no credential); throws on any other answer or a network error. */
-async function fetchCredentialRest(
-  baseUrl: string,
-  address: string,
-  chainId: number,
-  appDid: string,
-): Promise<Credential | undefined> {
-  const url = new URL("/api/auth/credential", baseUrl);
-  url.searchParams.set("address", address);
-  url.searchParams.set("chainId", String(chainId));
-  url.searchParams.set("connectId", appDid);
-  url.searchParams.set("appId", appDid);
-  const response = await fetch(url, { method: "GET" });
-  if (response.status === 404) return undefined;
-  if (!response.ok) throw new Error(`Renown answered ${response.status}`);
-  const { credential } = (await response.json()) as { credential?: Credential | null };
-  if (!credential) return undefined;
-  // Same binding and expiry checks as the SDK's own lookup.
-  const [, , , issuerChainId, issuerAddress] = credential.issuer.id.split(":");
-  const wallet = address.toLowerCase();
-  if (
-    credential.credentialSubject.id !== appDid ||
-    issuerChainId !== String(chainId) ||
-    issuerAddress?.toLowerCase() !== wallet ||
-    credential.issuer.ethereumAddress.toLowerCase() !== wallet
-  ) {
-    return undefined;
-  }
-  if (credential.expirationDate) {
-    const expiresAt = Date.parse(credential.expirationDate);
-    if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) return undefined;
-  }
-  return credential;
-}
-
-/**
- * The SDK's `verifyAuthCredential` answers "no" both when the wallet never
- * delegated and when Renown couldn't be reached, so this does the same lookup
- * but throws for the second: Renown's switchboard when it advertises one
- * (`SwitchboardClient` throws on a transport error or non-OK answer), else
- * its REST API.
- */
-async function defaultVerifyDelegation(
-  jwt: string,
-  audience: string,
-  renownUrl: string | undefined,
-): Promise<boolean> {
-  const verified = await verifyAuthBearerToken(jwt, { audience });
-  if (!verified) return false;
-  const { address, chainId } = verified.verifiableCredential.credentialSubject;
-  const appDid = verified.issuer;
-  const baseUrl = renownUrl ?? DEFAULT_RENOWN_URL;
-  // Like the SDK: discovery only for a named Renown. A failed discovery
-  // (Renown down) falls through to REST, which then throws.
-  const endpoint = renownUrl ? await resolveSwitchboardEndpoint({ baseUrl }) : undefined;
-  const credential = endpoint
-    ? await new SwitchboardClient(endpoint).getCredential({ address, chainId, appDid })
-    : await fetchCredentialRest(baseUrl, address, chainId, appDid);
-  if (!credential) return false;
-  try {
-    return await verifyDelegationProof(credential, chainId);
-  } catch {
+/** The hosts' check of the credential a bearer's key acts under. */
+function checkWith(verifier: () => CredentialVerifier) {
+  return async (claims: BearerClaims): Promise<boolean> => {
+    const verdict = await verifier().check(
+      {
+        address: claims.address,
+        chainId: claims.chainId ?? 1,
+        networkId: claims.networkId ?? "eip155",
+        sessionDid: claims.appDid,
+      },
+      claims.credential,
+    );
+    if (verdict.ok) return true;
+    // No answer at all is no verdict on the key.
+    if (verdict.reason === "unverifiable") throw new Error("credential not checkable now");
     return false;
-  }
+  };
 }
 
-const OK_TTL_MS = 5 * 60_000;
 const FAIL_TTL_MS = 30_000;
-/** A key verified within this long re-verifies without the lookup caps. */
+/** A key verified within this long is checked again without the caps. */
 const TRUSTED_MS = 24 * 60 * 60_000;
-/** While Renown can't be asked, a trusted key passes only this long after
- *  its last OK check (ruling X38); signature, `aud` and ADMINS still apply. */
-const UNREACHABLE_GRACE_MS = 60 * 60_000;
 const WINDOW_MS = 60_000;
 const CACHE_MAX = 500;
 
@@ -301,7 +257,7 @@ function isPrivateAddress(addr: string): boolean {
 }
 
 /**
- * The address a lookup is charged to: the right-most hop that isn't loopback
+ * The address a check is charged to: the right-most hop that isn't loopback
  * or inside the hosting network. Each proxy appends the address it saw, so
  * hops a client writes itself sit to the left of it and never change the
  * answer. All hops internal (local runs): the right-most non-loopback one.
@@ -333,41 +289,21 @@ function boundedSet<V>(map: Map<string, V>, key: string, value: V): void {
   map.set(key, value);
 }
 
-/** Recently verified keys from `file`, without the ones past `TRUSTED_MS`. */
-function loadTrusted(file: string | undefined, t: number): Map<string, number> {
-  const out = new Map<string, number>();
-  if (!file) return out;
-  try {
-    const raw = JSON.parse(readFileSync(file, "utf-8")) as { keys?: unknown };
-    const keys = raw.keys && typeof raw.keys === "object" ? raw.keys : {};
-    const entries = Object.entries(keys as Record<string, unknown>)
-      .filter((e): e is [string, number] => typeof e[1] === "number" && e[0].includes("|"))
-      .filter(([, at]) => t - at < TRUSTED_MS && at <= t)
-      .sort((x, y) => x[1] - y[1]);
-    for (const [key, at] of entries) boundedSet(out, key, at);
-  } catch {
-    // No store yet, or unreadable: start empty.
-  }
-  return out;
-}
-
-/** Write `trusted` to `file`, readable by the OS user only. Best effort. */
-function saveTrusted(file: string | undefined, trusted: Map<string, number>): void {
-  if (!file) return;
-  try {
-    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    writeOwnerOnlyFile(file, JSON.stringify({ version: 1, keys: Object.fromEntries(trusted) }));
-  } catch {
-    // Kept in memory; the next verification writes again.
-  }
-}
-
 export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthorizer {
   const now = opts.now ?? Date.now;
   const verifyBearer = opts.verifyBearer ?? defaultVerifyBearer;
-  const verifyDelegation =
-    opts.verifyDelegation ??
-    ((jwt: string, audience: string) => defaultVerifyDelegation(jwt, audience, opts.renownUrl));
+  let verifier: CredentialVerifier | undefined;
+  const verifyCredential =
+    opts.verifyCredential ??
+    checkWith(
+      () =>
+        (verifier ??= createCredentialVerifier({
+          dataDir: opts.dataDir,
+          ...(opts.renownUrl ? { renownUrl: opts.renownUrl } : {}),
+          // No sockets here to close on a withdrawal: each request asks.
+          watch: false,
+        })),
+    );
   const lookupsPerMinute = opts.lookupsPerMinute ?? 30;
   const lookupsPerKeyPerMinute = opts.lookupsPerKeyPerMinute ?? 3;
   const lookupsPerClientPerMinute =
@@ -375,19 +311,17 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
   // Kept back for clients that haven't asked yet this window, so a few
   // flooding clients can't spend the whole cap before the owner's new device
   // asks. A flood from many addresses still spends it: this bounds the
-  // lookups Renown sees, it can't promise one to the owner (the trusted keys
+  // checks Renown sees, it can't promise one to the owner (the trusted keys
   // do that for devices that verified before).
   const reserved = Math.floor(lookupsPerMinute / 10);
-  // What a lookup proves is "this wallet delegated to this app key", so
-  // verdicts are per (app key, wallet) — every token that key signs for that
-  // wallet shares one verdict, however often the client mints.
-  const verdicts = new Map<string, { ok: boolean; until: number }>();
+  // A refusal is per (session key, wallet) and kept briefly; a key that
+  // verified is asked again on every request, so a withdrawn record refuses
+  // at once (the check reads the record's file, Renown at most once a
+  // minute), and it skips the caps.
+  const refusals = new Map<string, number>();
   const inFlight = new Map<string, Promise<boolean>>();
-  // Keys that verified recently: their re-checks skip the caps, so a flood of
-  // fresh attacker keys can't lock out the owner's already-verified key. Kept
-  // in `trustedStorePath` so a restart doesn't drop them.
-  const trusted = loadTrusted(opts.trustedStorePath, now());
-  // Caps on lookups for keys not yet trusted: per key, per client, overall.
+  const trusted = new Map<string, number>();
+  // Caps on checks for keys not yet trusted: per key, per client, overall.
   const perKey = new Map<string, { start: number; count: number }>();
   const perClient = new Map<string, { start: number; count: number }>();
   let windowStart = 0;
@@ -427,45 +361,31 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
     return true;
   }
 
-  async function delegated(
-    jwt: string,
-    audience: string,
-    claims: BearerClaims,
-    client: string,
-  ): Promise<boolean> {
+  async function delegated(claims: BearerClaims, client: string): Promise<boolean> {
     const key = `${claims.appDid}|${claims.address.toLowerCase()}`;
     const t = now();
-    const hit = verdicts.get(key);
-    if (hit && hit.until > t) return hit.ok;
+    const refusedUntil = refusals.get(key);
+    if (refusedUntil !== undefined && refusedUntil > t) return false;
     const running = inFlight.get(key);
     if (running) return running;
     const lastOk = trusted.get(key);
     const isTrusted = lastOk !== undefined && t - lastOk < TRUSTED_MS;
-    // Over the cap: refused, not cached — retried once the window rolls.
+    // Over the cap: refused, not kept — asked again once the window rolls.
     if (!isTrusted && !allowUnknownLookup(key, client, t)) return false;
     const lookup = (async () => {
-      let ok = false;
-      // A lookup that couldn't run (Renown down, network) is no verdict on the
-      // key: a key whose last OK check is under 1 h old keeps that verdict,
-      // asked again in 30 s; an older one is refused, uncached, so the next
-      // request asks again.
-      let errored = false;
+      let ok: boolean;
       try {
-        ok = await verifyDelegation(jwt, audience);
+        ok = await verifyCredential(claims);
       } catch {
-        errored = true;
-        ok = isTrusted && t - lastOk < UNREACHABLE_GRACE_MS;
+        // Could not be checked: refused now, asked again on the next request.
+        return false;
       }
-      if (errored && !ok) return false;
-      const done = now();
-      const ttl = ok && !errored ? OK_TTL_MS : FAIL_TTL_MS;
-      boundedSet(verdicts, key, { ok, until: done + ttl });
-      if (errored) return ok;
       if (ok) {
-        boundedSet(trusted, key, done);
-        saveTrusted(opts.trustedStorePath, trusted);
-      } else if (trusted.delete(key)) {
-        saveTrusted(opts.trustedStorePath, trusted);
+        refusals.delete(key);
+        boundedSet(trusted, key, now());
+      } else {
+        trusted.delete(key);
+        boundedSet(refusals, key, now() + FAIL_TTL_MS);
       }
       return ok;
     })();
@@ -507,9 +427,9 @@ export function createRequestAuthorizer(opts: RequestAuthOptions): RequestAuthor
       claims = false;
     }
     if (!claims) return refused;
-    // Address check before the network one: a non-owner never costs a lookup.
+    // Address check before the credential's: a non-owner never costs a check.
     if (!isAdminAddress(claims.address, admins)) return refused;
-    if (!(await delegated(bearer, audience, claims, clientAddress(req)))) return refused;
+    if (!(await delegated(claims, clientAddress(req)))) return refused;
     return { ok: true, via: "owner", address: claims.address };
   };
 }

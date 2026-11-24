@@ -1,35 +1,41 @@
-import { readFileSync } from "node:fs";
-import {
-  identityDataDir,
-  readActiveIdentity,
-} from "@powerhousedao/shared/clis/identity";
+import { identityDataDir, readActiveIdentity } from "@powerhousedao/shared/clis/identity";
+import { readAgentStatus, type AgentStatus } from "../../auth/agent-files.js";
 import { defineCommand } from "../../framework.js";
-import { isAdminAddress, requireAdminIdentity } from "../../auth/owner-rule.js";
-import { studioPath } from "../../helpers/studio-paths.js";
 import { whoamiMeta } from "./meta.js";
 
-/** The agent's delegated credential, read from its file: no Renown, no network. */
-function agentAddress(workdir: string): string | undefined {
-  let user:
-    | { address?: string; credential?: { expirationDate?: string } }
-    | undefined;
-  try {
-    user = (
-      JSON.parse(readFileSync(studioPath(workdir, "agentRenown"), "utf8")) as {
-        user?: typeof user;
-      }
-    ).user;
-  } catch {
-    return undefined;
+const AUTHORIZE =
+  "Ask the user to click 'Authorize agent' in the top bar of Vetra Studio (next to Auto-follow agent) and approve in their wallet, then retry. There is no sign-in tool — you cannot authorize yourself.";
+
+/** The agent's session, from its files: no Renown, no network. */
+function agentLines(status: AgentStatus): string[] {
+  const session = `Your session "${status.session}"${status.key ? ` (${status.key})` : ""}`;
+  const until = status.expiresAt ? `, its credential valid until ${status.expiresAt}` : "";
+  const record = status.recorded ? "; this store holds its record" : "";
+  if (status.kind === "pseudonym") {
+    if (status.locked) {
+      return [
+        `${session} cannot sign: the key of the user's pseudonym, ${status.who}, is locked with a password and the Studio has no terminal to ask it on. Ask the user to set PH_IDENTITY_PASSWORD where the Studio runs.`,
+      ];
+    }
+    if (status.withdrawn) {
+      return [`${session} was withdrawn in this store: you cannot write. ${AUTHORIZE}`];
+    }
+    return [
+      status.address
+        ? `${session} acts for the user's pseudonym, ${status.who}${until}${record}. You may write here; Vetra Cloud needs a Renown approval.`
+        : `${session} acts for the user's pseudonym, made at your first write. You may write here; Vetra Cloud needs a Renown approval.`,
+    ];
   }
-  if (!user?.address || !user.credential) return undefined;
-  const expires = Date.parse(user.credential.expirationDate ?? "");
-  if (Number.isFinite(expires) && expires <= Date.now()) return undefined;
-  // A cloud Studio's agent holds only the owner's delegation (auth/renown.ts).
-  if (requireAdminIdentity() && !isAdminAddress(user.address, process.env.ADMINS)) {
-    return undefined;
+  if (status.authorized) {
+    return [
+      `${session} is authorized via Renown to act as ${status.address}${until}${record}, here and across Vetra Cloud and other Renown-protected services.`,
+    ];
   }
-  return user.address;
+  return [
+    status.withdrawn
+      ? `${session} was withdrawn in this store: you cannot write. ${AUTHORIZE}`
+      : `Not authorized — the user hasn't approved your session with their Renown wallet yet, so you cannot write. ${AUTHORIZE}`,
+  ];
 }
 
 /** Who acts on this computer when the user runs a command themselves. */
@@ -47,10 +53,7 @@ function personLine(workdir: string): string {
 export const whoami = defineCommand({
   ...whoamiMeta,
   execute: (_input, { workdir }) => {
-    const address = agentAddress(workdir);
-    const agent = address
-      ? `Authorized to act as the user via Renown (${address}).`
-      : "Not authorized — the user hasn't connected their Renown identity to you yet. Ask the user to click 'Authorize agent' in the top bar of Vetra Studio (next to Auto-follow agent) and approve in their wallet, then retry. There is no sign-in tool — you cannot authorize yourself.";
-    return Promise.resolve({ text: `${agent}\n${personLine(workdir)}` });
+    const lines = [...agentLines(readAgentStatus(workdir)), personLine(workdir)];
+    return Promise.resolve({ text: lines.join("\n") });
   },
 });

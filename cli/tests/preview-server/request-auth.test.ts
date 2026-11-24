@@ -1,13 +1,16 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createServer, type IncomingMessage, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { mkdtempSync, rmSync } from "node:fs";
+import type { IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { listCredentialRecords, withdrawCredentialRecords } from "@powerhousedao/shared/clis/credential-records";
 import { MemoryKeyStorage, RenownCryptoBuilder } from "@renown/sdk/node";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createRequestAuthorizer, isLocalRequest } from "../../src/preview-server/request-auth.js";
+import {
+  createRequestAuthorizer,
+  isLocalRequest,
+  type BearerClaims,
+} from "../../src/preview-server/request-auth.js";
 
 const OWNER = "0x00000000000000000000000000000000000000aa";
 const STUDIO = "https://studio-1.vetra.example";
@@ -33,60 +36,72 @@ async function mintToken(
   });
 }
 
-function authorizer(verifyDelegation: (jwt: string, aud: string) => Promise<boolean>, extra = {}) {
+async function keyFor(address: string) {
+  const crypto = await new RenownCryptoBuilder()
+    .withKeyPairStorage(new MemoryKeyStorage())
+    .build();
+  return { did: crypto.did, mint: () => crypto.getBearerToken(address, { expiresIn: 600, aud: STUDIO }) };
+}
+
+function authorizer(verifyCredential: (claims: BearerClaims) => Promise<boolean>, extra = {}) {
   return createRequestAuthorizer({
     renownUrl: "http://renown.invalid",
+    dataDir: join(tmpdir(), "vetra-request-auth-unused"),
     cloud: true,
     audience: () => `${STUDIO}/preview`,
-    verifyDelegation,
+    verifyCredential,
     ...extra,
   });
 }
 
-describe("createRequestAuthorizer with the real Renown token check", () => {
-  const saved = { admins: process.env.ADMINS, secret: process.env.VETRA_SESSION_EXPORT_SECRET };
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    process.env.ADMINS = OWNER;
-    delete process.env.VETRA_SESSION_EXPORT_SECRET;
-    // The SDK logs every rejected token; keep the run quiet.
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-  afterEach(() => {
-    errorSpy.mockRestore();
-    if (saved.admins === undefined) delete process.env.ADMINS;
-    else process.env.ADMINS = saved.admins;
-    if (saved.secret === undefined) delete process.env.VETRA_SESSION_EXPORT_SECRET;
-    else process.env.VETRA_SESSION_EXPORT_SECRET = saved.secret;
-  });
+let errorSpy: ReturnType<typeof vi.spyOn>;
+beforeEach(() => {
+  vi.stubEnv("ADMINS", OWNER);
+  vi.stubEnv("VETRA_SESSION_EXPORT_SECRET", undefined);
+  // The SDK logs every rejected token; keep the run quiet.
+  errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+});
+afterEach(() => {
+  errorSpy.mockRestore();
+  vi.unstubAllEnvs();
+});
 
-  it("a self-signed token claiming the owner's wallet is refused without the delegation", async () => {
+describe("createRequestAuthorizer with the real token check", () => {
+  it("a self-signed token claiming the owner's wallet is refused without its credential", async () => {
     // Anyone can mint this: a fresh did:key signing a claim to OWNER's address.
-    const forged = await mintToken(OWNER);
-    const verifyDelegation = vi.fn(async () => false);
-    const authorize = authorizer(verifyDelegation);
-    const check = await authorize(req({ authorization: `Bearer ${forged}` }), null);
+    const forger = await keyFor(OWNER);
+    const verifyCredential = vi.fn(async () => false);
+    const authorize = authorizer(verifyCredential);
+    const check = await authorize(req({ authorization: `Bearer ${await forger.mint()}` }), null);
     expect(check).toMatchObject({ ok: false, status: 401 });
-    expect(verifyDelegation).toHaveBeenCalledWith(forged, STUDIO);
+    expect(verifyCredential).toHaveBeenCalledWith(
+      expect.objectContaining({ address: OWNER, appDid: forger.did, chainId: 1, networkId: "eip155" }),
+    );
   });
 
-  it("accepts the owner's token once the delegation verifies; caches the verdict", async () => {
+  it("accepts the owner's token while its credential holds, asking at every request", async () => {
     const token = await mintToken(OWNER);
-    const verifyDelegation = vi.fn(async () => true);
-    const authorize = authorizer(verifyDelegation);
+    let holds = true;
+    const verifyCredential = vi.fn(async () => holds);
+    const authorize = authorizer(verifyCredential);
     const r = req({ authorization: `Bearer ${token}` });
     expect(await authorize(r, null)).toMatchObject({ ok: true, via: "owner" });
     expect(await authorize(r, null)).toMatchObject({ ok: true, via: "owner" });
-    expect(verifyDelegation).toHaveBeenCalledTimes(1);
+    expect(verifyCredential).toHaveBeenCalledTimes(2);
+    // Withdrawn: the very next request is refused.
+    holds = false;
+    expect(await authorize(r, null)).toMatchObject({ ok: false, status: 401 });
   });
 
-  it("a verified token for another wallet is the same 401", async () => {
+  it("a verified token for another wallet is the same 401, and costs no check", async () => {
     const token = await mintToken("0x00000000000000000000000000000000000000bb");
-    const authorize = authorizer(async () => true);
+    const verifyCredential = vi.fn(async () => true);
+    const authorize = authorizer(verifyCredential);
     expect(await authorize(req({ authorization: `Bearer ${token}` }), null)).toMatchObject({
       ok: false,
       status: 401,
     });
+    expect(verifyCredential).not.toHaveBeenCalled();
   });
 
   it("an expired or tampered token is 401", async () => {
@@ -108,24 +123,27 @@ describe("createRequestAuthorizer with the real Renown token check", () => {
       status: 401,
     });
   });
+
+  it("a check that cannot run refuses now and is asked again on the next request", async () => {
+    const token = await mintToken(OWNER);
+    let down = true;
+    const verifyCredential = vi.fn(async () => {
+      if (down) throw new Error("fetch failed");
+      return true;
+    });
+    const authorize = authorizer(verifyCredential);
+    const r = req({ authorization: `Bearer ${token}` });
+    expect((await authorize(r, null)).ok).toBe(false);
+    down = false;
+    expect((await authorize(r, null)).ok).toBe(true);
+    expect(verifyCredential).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("bearer is bound to this Studio (aud)", () => {
-  const saved = process.env.ADMINS;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    process.env.ADMINS = OWNER;
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-  afterEach(() => {
-    errorSpy.mockRestore();
-    if (saved === undefined) delete process.env.ADMINS;
-    else process.env.ADMINS = saved;
-  });
-
   it("refuses a token minted for another Studio, or with no aud at all", async () => {
-    const delegation = vi.fn(async () => true);
-    const authorize = authorizer(delegation);
+    const verifyCredential = vi.fn(async () => true);
+    const authorize = authorizer(verifyCredential);
     const other = await mintToken(OWNER, { aud: "https://evil-studio.vetra.example" });
     const none = await mintToken(OWNER, { aud: null });
     for (const t of [other, none]) {
@@ -134,17 +152,17 @@ describe("bearer is bound to this Studio (aud)", () => {
         status: 401,
       });
     }
-    expect(delegation).not.toHaveBeenCalled();
+    expect(verifyCredential).not.toHaveBeenCalled();
     const mine = await mintToken(OWNER);
     expect(await authorize(req({ authorization: `Bearer ${mine}` }), null)).toMatchObject({
       ok: true,
     });
   });
 
-  it("caps Renown lookups per minute; a flood of fresh tokens is refused", async () => {
+  it("caps checks per minute; a flood of fresh keys is refused", async () => {
     let t = 1_000_000;
-    const delegation = vi.fn(async () => true);
-    const authorize = authorizer(delegation, {
+    const verifyCredential = vi.fn(async () => true);
+    const authorize = authorizer(verifyCredential, {
       lookupsPerMinute: 2,
       lookupsPerClientPerMinute: 2,
       now: () => t,
@@ -153,89 +171,175 @@ describe("bearer is bound to this Studio (aud)", () => {
     const results = [];
     for (const tok of tokens) results.push(await authorize(req({ authorization: `Bearer ${tok}` }), null));
     expect(results.map((r) => r.ok)).toEqual([true, true, false]);
-    expect(delegation).toHaveBeenCalledTimes(2);
+    expect(verifyCredential).toHaveBeenCalledTimes(2);
     t += 60_000;
     expect((await authorize(req({ authorization: `Bearer ${tokens[2]}` }), null)).ok).toBe(true);
   });
 });
 
-describe("Renown lookups: cached per (app key, wallet), capped only for unknown keys", () => {
-  const saved = process.env.ADMINS;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    process.env.ADMINS = OWNER;
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-  afterEach(() => {
-    errorSpy.mockRestore();
-    if (saved === undefined) delete process.env.ADMINS;
-    else process.env.ADMINS = saved;
-  });
-
-  async function keyFor(address: string) {
-    const crypto = await new RenownCryptoBuilder()
-      .withKeyPairStorage(new MemoryKeyStorage())
-      .build();
-    return { did: crypto.did, mint: () => crypto.getBearerToken(address, { expiresIn: 600, aud: STUDIO }) };
+describe("checks are capped only for keys that have not verified", () => {
+  /** A request through the embedded proxy from `client`. */
+  function from(client: string, token: string, spoofed?: string): IncomingMessage {
+    return req({
+      authorization: `Bearer ${token}`,
+      "x-forwarded-for": spoofed ? `${spoofed}, ${client}` : client,
+    });
   }
 
-  it("owner polling at 100 req/min, a fresh token each time, stays authorized with one lookup", async () => {
+  it("the owner polling at 100 req/min with a fresh token each time stays authorized", async () => {
     let t = 1_000_000;
     const owner = await keyFor(OWNER);
-    const delegation = vi.fn(async () => true);
-    const authorize = authorizer(delegation, { now: () => t });
+    const verifyCredential = vi.fn(async () => true);
+    const authorize = authorizer(verifyCredential, { now: () => t, lookupsPerMinute: 3 });
     for (let i = 0; i < 100; i++) {
-      const tok = await owner.mint();
-      expect((await authorize(req({ authorization: `Bearer ${tok}` }), null)).ok).toBe(true);
+      expect((await authorize(req({ authorization: `Bearer ${await owner.mint()}` }), null)).ok).toBe(true);
       t += 600;
     }
-    expect(delegation).toHaveBeenCalledTimes(1);
   });
 
   it("a flood of fresh attacker keys claiming the owner can't lock out the owner's verified key", async () => {
     let t = 1_000_000;
     const owner = await keyFor(OWNER);
-    const ownerTokens = new Set<string>();
-    const delegation = vi.fn(async (jwt: string) => ownerTokens.has(jwt));
-    const authorize = authorizer(delegation, { now: () => t });
-    const first = await owner.mint();
-    ownerTokens.add(first);
-    expect((await authorize(req({ authorization: `Bearer ${first}` }), null)).ok).toBe(true);
+    const verifyCredential = vi.fn(async (claims: BearerClaims) => claims.appDid === owner.did);
+    const authorize = authorizer(verifyCredential, { now: () => t });
+    expect((await authorize(req({ authorization: `Bearer ${await owner.mint()}` }), null)).ok).toBe(true);
 
     // 40 self-signed keys, each claiming the owner's wallet with the right aud.
     for (let i = 0; i < 40; i++) {
       const forged = await (await keyFor(OWNER)).mint();
       expect((await authorize(req({ authorization: `Bearer ${forged}` }), null)).ok).toBe(false);
     }
-    // The global cap for unknown keys is spent...
-    const lateForger = await (await keyFor(OWNER)).mint();
-    const before = delegation.mock.calls.length;
-    expect((await authorize(req({ authorization: `Bearer ${lateForger}` }), null)).ok).toBe(false);
-    expect(delegation.mock.calls.length).toBe(before);
-
-    // ...yet the owner's key passes, from cache and after its verdict expires.
-    const again = await owner.mint();
-    ownerTokens.add(again);
-    expect((await authorize(req({ authorization: `Bearer ${again}` }), null)).ok).toBe(true);
-    t += 6 * 60_000; // owner's verdict expired; attackers spend the new window's cap first
-    for (let i = 0; i < 40; i++) {
-      await authorize(req({ authorization: `Bearer ${await (await keyFor(OWNER)).mint()}` }), null);
-    }
-    const later = await owner.mint();
-    ownerTokens.add(later);
-    expect((await authorize(req({ authorization: `Bearer ${later}` }), null)).ok).toBe(true);
+    // The cap for unknown keys is spent...
+    const before = verifyCredential.mock.calls.length;
+    const late = await (await keyFor(OWNER)).mint();
+    expect((await authorize(req({ authorization: `Bearer ${late}` }), null)).ok).toBe(false);
+    expect(verifyCredential.mock.calls.length).toBe(before);
+    // ...yet the owner's key passes, now and later.
+    expect((await authorize(req({ authorization: `Bearer ${await owner.mint()}` }), null)).ok).toBe(true);
+    t += 6 * 60_000;
+    expect((await authorize(req({ authorization: `Bearer ${await owner.mint()}` }), null)).ok).toBe(true);
   });
 
-  it("one unknown key gets at most 3 lookups a minute", async () => {
+  it("one unknown key gets at most 3 checks a minute", async () => {
     const t = 1_000_000;
     const attacker = await keyFor(OWNER);
-    const delegation = vi.fn(async () => false);
-    const authorize = authorizer(delegation, { now: () => t });
-    // Failures are cached 30 s per key anyway; the per-key cap is the backstop.
+    const verifyCredential = vi.fn(async () => false);
+    const authorize = authorizer(verifyCredential, { now: () => t });
+    // Refusals are kept 30 s per key anyway; the per-key cap is the backstop.
     for (let i = 0; i < 10; i++) {
       await authorize(req({ authorization: `Bearer ${await attacker.mint()}` }), null);
     }
-    expect(delegation.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(verifyCredential.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it("one client can't spend the whole cap; spoofed forwarded hops don't add shares", async () => {
+    const t = 1_000_000;
+    const verifyCredential = vi.fn(async () => false);
+    const authorize = authorizer(verifyCredential, { now: () => t });
+    for (let i = 0; i < 40; i++) {
+      const forged = await (await keyFor(OWNER)).mint();
+      await authorize(from("203.0.113.9", forged, `10.0.${i}.1`), null);
+    }
+    // Default cap 30 a minute, a third of it per client.
+    expect(verifyCredential).toHaveBeenCalledTimes(10);
+    // The owner's new device, from another client, still gets a check.
+    verifyCredential.mockImplementation(async () => true);
+    expect((await authorize(from("198.51.100.7", await (await keyFor(OWNER)).mint()), null)).ok).toBe(true);
+  });
+
+  it("a key whose credential no longer holds loses its trust", async () => {
+    let t = 1_000_000;
+    const owner = await keyFor(OWNER);
+    let holds = true;
+    const verifyCredential = vi.fn(async () => holds);
+    const authorize = authorizer(verifyCredential, { now: () => t, lookupsPerMinute: 3 });
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
+    holds = false;
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(false);
+    // Capped like any unknown key once the cap is spent.
+    t += 31_000;
+    for (let c = 1; c <= 3; c++) {
+      await authorize(from(`203.0.113.${c}`, await (await keyFor(OWNER)).mint()), null);
+    }
+    holds = true;
+    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(false);
+  });
+});
+
+describe("check shares: IPv6 clients by /64, a reserve for clients new to the window", () => {
+  const via = (client: string, token: string) =>
+    req({ authorization: `Bearer ${token}`, "x-forwarded-for": client });
+
+  it("charges every address of one IPv6 /64 to one client", async () => {
+    const t = 1_000_000;
+    const verifyCredential = vi.fn(async () => false);
+    const authorize = authorizer(verifyCredential, { now: () => t });
+    for (let i = 0; i < 15; i++) {
+      await authorize(via(`2001:db8:1:2:${i.toString(16)}::${i + 1}`, await mintToken(OWNER)), null);
+    }
+    expect(verifyCredential).toHaveBeenCalledTimes(10);
+    await authorize(via("2001:db8:1:3::1", await mintToken(OWNER)), null);
+    expect(verifyCredential).toHaveBeenCalledTimes(11);
+  });
+
+  it("keeps a share of the cap for a client new to the window", async () => {
+    const t = 1_000_000;
+    const verifyCredential = vi.fn(async () => false);
+    const authorize = authorizer(verifyCredential, { now: () => t });
+    for (const c of ["203.0.113.1", "203.0.113.2", "203.0.113.3"]) {
+      for (let i = 0; i < 12; i++) await authorize(via(c, await mintToken(OWNER)), null);
+    }
+    // 30 a minute, 3 of them kept for clients that haven't asked this window.
+    expect(verifyCredential).toHaveBeenCalledTimes(27);
+    await authorize(via("203.0.113.3", await mintToken(OWNER)), null);
+    expect(verifyCredential).toHaveBeenCalledTimes(27);
+    // The owner's new device still gets its check.
+    verifyCredential.mockImplementation(async () => true);
+    expect((await authorize(via("198.51.100.7", await mintToken(OWNER)), null)).ok).toBe(true);
+    expect(verifyCredential).toHaveBeenCalledTimes(28);
+  });
+});
+
+describe("the hosts' check over the store's data folder", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "vetra-request-auth-"));
+    vi.stubEnv("PH_IDENTITY_HOME", join(root, "identities"));
+    vi.stubEnv("PH_USER_DATA_DIR", undefined);
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it("accepts a credential the store holds a record of, and refuses it once withdrawn", async () => {
+    const dataDir = join(root, "studio");
+    const { openSession } = await import("@renown/sdk/identity");
+    // A pseudonym's session, its record in the store; Renown is never asked.
+    const session = await openSession({
+      dataDir,
+      label: "connect test",
+      place: "data-folder",
+      interactive: false,
+      target: { dataDir },
+    });
+    vi.stubEnv("ADMINS", session.signer.user.address);
+    const authorize = createRequestAuthorizer({
+      renownUrl: "http://127.0.0.1:1",
+      dataDir,
+      cloud: true,
+      audience: () => STUDIO,
+    });
+    const bearer = await session.bearer({ aud: STUDIO });
+    expect(await authorize(req({ authorization: `Bearer ${bearer}` }), null)).toMatchObject({
+      ok: true,
+      via: "owner",
+      address: session.signer.user.address,
+    });
+
+    const [record] = listCredentialRecords({ dataDir });
+    withdrawCredentialRecords({ dataDir, ids: [record!.id], by: "command" });
+    expect(await authorize(req({ authorization: `Bearer ${bearer}` }), null)).toMatchObject({
+      ok: false,
+      status: 401,
+    });
   });
 });
 
@@ -260,356 +364,5 @@ describe("isLocalRequest", () => {
     expect(isLocalRequest(req({ origin: "http://localhost:8090" }))).toBe(true);
     expect(isLocalRequest(req({ origin: "https://evil.example" }))).toBe(false);
     expect(isLocalRequest(req({ origin: "null" }))).toBe(false);
-  });
-});
-
-describe("trusted keys: kept across restarts, per-client lookup shares, evicted on refusal", () => {
-  const saved = process.env.ADMINS;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-  let dir: string;
-  let store: string;
-  beforeEach(() => {
-    process.env.ADMINS = OWNER;
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    dir = mkdtempSync(join(tmpdir(), "vetra-trusted-"));
-    store = join(dir, ".ph", "preview-trusted-keys.json");
-  });
-  afterEach(() => {
-    errorSpy.mockRestore();
-    rmSync(dir, { recursive: true, force: true });
-    if (saved === undefined) delete process.env.ADMINS;
-    else process.env.ADMINS = saved;
-  });
-
-  async function keyFor(address: string) {
-    const crypto = await new RenownCryptoBuilder()
-      .withKeyPairStorage(new MemoryKeyStorage())
-      .build();
-    return { did: crypto.did, mint: () => crypto.getBearerToken(address, { expiresIn: 600, aud: STUDIO }) };
-  }
-
-  /** A request through the embedded proxy from `client`. */
-  function from(client: string, token: string, spoofed?: string): IncomingMessage {
-    return req({
-      authorization: `Bearer ${token}`,
-      "x-forwarded-for": spoofed ? `${spoofed}, ${client}` : client,
-    });
-  }
-
-  async function flood(authorize: ReturnType<typeof authorizer>, client: string, n: number) {
-    for (let i = 0; i < n; i++) {
-      const forged = await (await keyFor(OWNER)).mint();
-      expect((await authorize(from(client, forged), null)).ok).toBe(false);
-    }
-  }
-
-  /** The store's own ACL entries (`icacls`), those not inherited from its folder. */
-  function explicitAces(file: string): string[] {
-    const out = execFileSync("icacls", [file], { encoding: "utf8", windowsHide: true });
-    return out
-      .split(/\r?\n/)
-      .map((line, i) => (i === 0 ? line.slice(file.length) : line).trim())
-      .filter((ace) => ace.includes(":(") && !ace.includes("(I)"));
-  }
-
-  it("a restart keeps the owner's verified key (no tokens stored; readable by the OS user only)", async () => {
-    let t = 1_000_000;
-    const owner = await keyFor(OWNER);
-    const ownerTokens = new Set<string>();
-    const delegation = vi.fn(async (jwt: string) => ownerTokens.has(jwt));
-    const first = await owner.mint();
-    ownerTokens.add(first);
-    const before = authorizer(delegation, { now: () => t, trustedStorePath: store });
-    expect((await before(from("198.51.100.7", first), null)).ok).toBe(true);
-
-    if (process.platform === "win32") {
-      // No mode bits on Windows: the file's ACL is one entry, its user's,
-      // none inherited from the `.ph` folder.
-      expect(explicitAces(store)).toHaveLength(1);
-      const all = execFileSync("icacls", [store], { encoding: "utf8", windowsHide: true });
-      expect(all).not.toContain("(I)");
-    } else {
-      expect(statSync(store).mode & 0o777).toBe(0o600);
-    }
-    const saved = readFileSync(store, "utf-8");
-    expect(saved).toContain(owner.did);
-    expect(saved).toContain(OWNER.toLowerCase());
-    expect(saved).not.toContain(first);
-    expect(saved).not.toMatch(/eyJ/);
-
-    // Restart: a fresh authorizer, attackers from many clients spend the cap.
-    t += 6 * 60_000;
-    const after = authorizer(delegation, { now: () => t, trustedStorePath: store });
-    for (let c = 1; c <= 4; c++) await flood(after, `203.0.113.${c}`, 12);
-    const again = await owner.mint();
-    ownerTokens.add(again);
-    expect(await after(from("198.51.100.7", again), null)).toMatchObject({ ok: true, via: "owner" });
-  });
-
-  it("drops stored keys past their trust window, and ignores an unreadable store", async () => {
-    let t = 1_000_000;
-    const owner = await keyFor(OWNER);
-    const ownerTokens = new Set<string>();
-    const mint = async () => {
-      const tok = await owner.mint();
-      ownerTokens.add(tok);
-      return tok;
-    };
-    const delegation = vi.fn(async (jwt: string) => ownerTokens.has(jwt));
-    const a = authorizer(delegation, { now: () => t, trustedStorePath: store });
-    expect((await a(from("198.51.100.7", await mint()), null)).ok).toBe(true);
-
-    t += 25 * 60 * 60_000;
-    const b = authorizer(delegation, { now: () => t, trustedStorePath: store, lookupsPerMinute: 1 });
-    await flood(b, "203.0.113.1", 1);
-    // Not trusted any more: capped like any unknown key.
-    expect((await b(from("198.51.100.7", await mint()), null)).ok).toBe(false);
-
-    writeFileSync(store, "{not json");
-    const c = authorizer(delegation, { now: () => t, trustedStorePath: store });
-    expect((await c(from("198.51.100.7", await mint()), null)).ok).toBe(true);
-  });
-
-  it("one client can't spend the whole lookup cap; spoofed forwarded hops don't add shares", async () => {
-    const t = 1_000_000;
-    const delegation = vi.fn(async () => false);
-    const authorize = authorizer(delegation, { now: () => t });
-    for (let i = 0; i < 40; i++) {
-      const forged = await (await keyFor(OWNER)).mint();
-      await authorize(from("203.0.113.9", forged, `10.0.${i}.1`), null);
-    }
-    // Default cap 30 a minute, a third of it per client.
-    expect(delegation).toHaveBeenCalledTimes(10);
-
-    // The owner's new device, from another client, still gets a lookup.
-    const owner = await keyFor(OWNER);
-    delegation.mockImplementation(async () => true);
-    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
-  });
-
-  it("a key that fails verification later loses its trust (and the stored entry)", async () => {
-    let t = 1_000_000;
-    const owner = await keyFor(OWNER);
-    let answer: boolean | Error = true;
-    const delegation = vi.fn(async () => {
-      if (answer instanceof Error) throw answer;
-      return answer;
-    });
-    const authorize = authorizer(delegation, { now: () => t, trustedStorePath: store, lookupsPerMinute: 3 });
-    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
-
-    // A lookup that can't run (network) keeps the trust and the last OK
-    // verdict, asked again after 30 s...
-    t += 6 * 60_000;
-    answer = new Error("fetch failed");
-    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
-    const calls = delegation.mock.calls.length;
-    t += 10_000;
-    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
-    expect(delegation.mock.calls.length).toBe(calls);
-    t += 31_000;
-    for (let c = 1; c <= 3; c++) await flood(authorize, `203.0.113.${c}`, 1);
-    answer = true;
-    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(true);
-
-    // ...a refusal evicts it: once the cap is spent the key is capped again.
-    t += 6 * 60_000;
-    answer = false;
-    expect(await authorize(from("198.51.100.7", await owner.mint()), null)).toEqual({
-      ok: false,
-      status: 401,
-      error: "unauthorized",
-    });
-    expect(readFileSync(store, "utf-8")).not.toContain(owner.did);
-    t += 31_000;
-    for (let c = 1; c <= 3; c++) await flood(authorize, `203.0.113.${c}`, 1);
-    answer = true;
-    expect((await authorize(from("198.51.100.7", await owner.mint()), null)).ok).toBe(false);
-  });
-});
-
-describe("Renown unreachable: a trusted key passes only within 1 h of its last OK check", () => {
-  const saved = process.env.ADMINS;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    process.env.ADMINS = OWNER;
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-  afterEach(() => {
-    errorSpy.mockRestore();
-    if (saved === undefined) delete process.env.ADMINS;
-    else process.env.ADMINS = saved;
-  });
-
-  it("passes under 1 h, refuses past it without caching the refusal", async () => {
-    let t = 1_000_000;
-    const crypto = await new RenownCryptoBuilder().withKeyPairStorage(new MemoryKeyStorage()).build();
-    const mint = () => crypto.getBearerToken(OWNER, { expiresIn: 600, aud: STUDIO });
-    let down = false;
-    const delegation = vi.fn(async () => {
-      if (down) throw new Error("fetch failed");
-      return true;
-    });
-    const authorize = authorizer(delegation, { now: () => t });
-    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
-
-    down = true;
-    t += 60 * 60_000 - 1_000; // just under 1 h since the last OK check
-    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
-
-    t += 31_000; // past 1 h (the grace verdict has run out too)
-    expect(await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).toEqual({
-      ok: false,
-      status: 401,
-      error: "unauthorized",
-    });
-    // Not cached: the next request asks Renown again, and passes once it answers.
-    const calls = delegation.mock.calls.length;
-    down = false;
-    t += 1_000;
-    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
-    expect(delegation.mock.calls.length).toBe(calls + 1);
-  });
-});
-
-describe("lookup shares: IPv6 clients by /64, a reserve for clients new to the window", () => {
-  const saved = process.env.ADMINS;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => {
-    process.env.ADMINS = OWNER;
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-  afterEach(() => {
-    errorSpy.mockRestore();
-    if (saved === undefined) delete process.env.ADMINS;
-    else process.env.ADMINS = saved;
-  });
-
-  async function forged(): Promise<string> {
-    const crypto = await new RenownCryptoBuilder().withKeyPairStorage(new MemoryKeyStorage()).build();
-    return crypto.getBearerToken(OWNER, { expiresIn: 600, aud: STUDIO });
-  }
-  const via = (client: string, token: string) =>
-    req({ authorization: `Bearer ${token}`, "x-forwarded-for": client });
-
-  it("charges every address of one IPv6 /64 to one client", async () => {
-    const t = 1_000_000;
-    const delegation = vi.fn(async () => false);
-    const authorize = authorizer(delegation, { now: () => t });
-    for (let i = 0; i < 15; i++) {
-      await authorize(via(`2001:db8:1:2:${i.toString(16)}::${i + 1}`, await forged()), null);
-    }
-    expect(delegation).toHaveBeenCalledTimes(10);
-    await authorize(via("2001:db8:1:3::1", await forged()), null);
-    expect(delegation).toHaveBeenCalledTimes(11);
-  });
-
-  it("keeps a share of the cap for a client new to the window", async () => {
-    const t = 1_000_000;
-    const delegation = vi.fn(async () => false);
-    const authorize = authorizer(delegation, { now: () => t });
-    for (const c of ["203.0.113.1", "203.0.113.2", "203.0.113.3"]) {
-      for (let i = 0; i < 12; i++) await authorize(via(c, await forged()), null);
-    }
-    // 30 a minute, 3 of them kept for clients that haven't asked this window.
-    expect(delegation).toHaveBeenCalledTimes(27);
-    await authorize(via("203.0.113.3", await forged()), null);
-    expect(delegation).toHaveBeenCalledTimes(27);
-    // The owner's new device still gets its lookup.
-    delegation.mockImplementation(async () => true);
-    expect((await authorize(via("198.51.100.7", await forged()), null)).ok).toBe(true);
-    expect(delegation).toHaveBeenCalledTimes(28);
-  });
-});
-
-describe("the default delegation lookup tells 'no credential' from 'couldn't ask'", () => {
-  const saved = process.env.ADMINS;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-  let dir: string;
-  let store: string;
-  let server: Server;
-  let renownUrl: string;
-  let mode: "down" | "graphql-down" | "none" | "null" = "down";
-  const hits: string[] = [];
-  beforeEach(async () => {
-    process.env.ADMINS = OWNER;
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    dir = mkdtempSync(join(tmpdir(), "vetra-renown-"));
-    store = join(dir, ".ph", "preview-trusted-keys.json");
-    hits.length = 0;
-    server = createServer((rq, rs) => {
-      const p = new URL(rq.url ?? "/", "http://x").pathname;
-      hits.push(p);
-      const send = (status: number, body?: unknown) => {
-        rs.writeHead(status, { "content-type": "application/json" });
-        rs.end(body === undefined ? "" : JSON.stringify(body));
-      };
-      if (p === "/api/switchboard") {
-        if (mode === "graphql-down") return send(200, { endpoint: `${renownUrl}/graphql` });
-        return send(mode === "down" ? 503 : 404);
-      }
-      if (p === "/graphql") return send(503);
-      if (p === "/api/auth/credential") {
-        if (mode === "down") return send(503);
-        if (mode === "null") return send(200, { credential: null });
-        return send(404);
-      }
-      send(404);
-    });
-    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
-    renownUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  });
-  afterEach(async () => {
-    errorSpy.mockRestore();
-    await new Promise<void>((r) => server.close(() => r()));
-    rmSync(dir, { recursive: true, force: true });
-    if (saved === undefined) delete process.env.ADMINS;
-    else process.env.ADMINS = saved;
-  });
-
-  it("Renown down (503, or its switchboard down) keeps a trusted key; no credential evicts it", async () => {
-    let t = 1_000_000;
-    const crypto = await new RenownCryptoBuilder().withKeyPairStorage(new MemoryKeyStorage()).build();
-    const mint = () => crypto.getBearerToken(OWNER, { expiresIn: 600, aud: STUDIO });
-    const key = `${crypto.did}|${OWNER.toLowerCase()}`;
-    mkdirSync(join(dir, ".ph"), { recursive: true });
-    writeFileSync(store, JSON.stringify({ version: 1, keys: { [key]: t } }));
-    const authorize = createRequestAuthorizer({
-      renownUrl,
-      cloud: true,
-      audience: () => STUDIO,
-      trustedStorePath: store,
-      now: () => t,
-    });
-
-    mode = "down";
-    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
-    expect(hits).toContain("/api/auth/credential");
-    expect(readFileSync(store, "utf-8")).toContain(key);
-
-    t += 31_000;
-    mode = "graphql-down";
-    hits.length = 0;
-    expect((await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).ok).toBe(true);
-    expect(hits).toContain("/graphql");
-    expect(readFileSync(store, "utf-8")).toContain(key);
-
-    t += 31_000;
-    mode = "none";
-    expect(await authorize(req({ authorization: `Bearer ${await mint()}` }), null)).toEqual({
-      ok: false,
-      status: 401,
-      error: "unauthorized",
-    });
-    expect(readFileSync(store, "utf-8")).not.toContain(key);
-  });
-
-  it("an unknown key with no credential (null) is refused", async () => {
-    mode = "null";
-    const crypto = await new RenownCryptoBuilder().withKeyPairStorage(new MemoryKeyStorage()).build();
-    const authorize = createRequestAuthorizer({ renownUrl, cloud: true, audience: () => STUDIO });
-    const tok = await crypto.getBearerToken(OWNER, { expiresIn: 600, aud: STUDIO });
-    expect((await authorize(req({ authorization: `Bearer ${tok}` }), null)).ok).toBe(false);
-    expect(hits).toContain("/api/auth/credential");
   });
 });

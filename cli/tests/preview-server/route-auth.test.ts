@@ -3,7 +3,7 @@ import { request } from "node:http";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { createRequestAuthorizer } from "../../src/preview-server/request-auth.js";
+import { createRequestAuthorizer, type BearerClaims } from "../../src/preview-server/request-auth.js";
 import { publicResolveResult, startPreviewServer } from "../../src/preview-server/server.js";
 import { makeWorkdir } from "../spec/_fixtures.js";
 
@@ -45,7 +45,7 @@ describe("preview-server route gate", () => {
   let cleanup: () => void;
   let server: Awaited<ReturnType<typeof startPreviewServer>>;
   let start: Mock<() => Promise<string>>;
-  let delegation: Mock<(jwt: string, audience: string) => Promise<boolean>>;
+  let delegation: Mock<(claims: BearerClaims) => Promise<boolean>>;
   let publicUrl: string | undefined;
   let audiences: string[];
   const saved = {
@@ -79,7 +79,8 @@ describe("preview-server route gate", () => {
               ? { address: OTHER, appDid: "did:key:z6MkOther" }
               : false;
         },
-        verifyDelegation: delegation,
+        dataDir: workdir,
+        verifyCredential: delegation,
       }),
     });
   }

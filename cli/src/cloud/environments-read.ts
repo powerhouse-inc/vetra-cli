@@ -10,7 +10,7 @@ import {
   type EnvironmentSummary,
   type ListScope,
 } from "../../../cloud-client/index.js";
-import { getBearerToken, getRenownStatus } from "../auth/renown.js";
+import { getBearerToken, getCloudAgent } from "../auth/renown.js";
 import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from "./config.js";
 
 export interface ReadContext {
@@ -37,8 +37,8 @@ export async function listMyEnvironments(
   if (!token) throw new Error(NOT_AUTHENTICATED);
   const items = await fetchMyEnvironments(graphqlEndpoint, scope, token);
   if (scope === "ALL") return items;
-  const status = await getRenownStatus(ctx.workdir, renownUrl);
-  return filterOwn(items, status.address);
+  const agent = await getCloudAgent(ctx.workdir, renownUrl);
+  return filterOwn(items, agent?.address);
 }
 
 /** Resolve a single environment by id, name, or subdomain (MINE scope). */

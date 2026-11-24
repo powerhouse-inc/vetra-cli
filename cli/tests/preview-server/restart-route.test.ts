@@ -12,7 +12,8 @@ const authorizeRequest = createRequestAuthorizer({
   audience: () => "https://studio.example",
   verifyBearer: async (jwt) =>
     jwt === "owner-token" ? { address: OWNER, appDid: "did:key:z6Mk" } : false,
-  verifyDelegation: async () => true,
+  dataDir: "/unused",
+  verifyCredential: async () => true,
 });
 
 describe("POST /restart", () => {

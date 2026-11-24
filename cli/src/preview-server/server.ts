@@ -45,7 +45,7 @@ import { previewStatus } from "./status.js";
 import { createRequestAuthorizer, type RequestAuthorizer } from "./request-auth.js";
 import { previewModels } from "../helpers/preview-inspector.js";
 import { projectRoot } from "../helpers/project.js";
-import { studioPath } from "../helpers/studio-paths.js";
+import { agentDataDir } from "../auth/agent-files.js";
 import { localProjectHosts, type ProjectHostsApi } from "../project-hosts/control.js";
 import { projectHosts, type ProjectHosts } from "../project-hosts/manager.js";
 import { buildSessionExport, listSessions } from "./session-export.js";
@@ -168,9 +168,8 @@ export async function startPreviewServer(
       renownUrl: deps.gateRenownUrl,
       cloud,
       audience: () => deps.getStudioUrl?.(),
-      // The Cli's folder (outside exports and git): verified owner keys
-      // survive a restart.
-      trustedStorePath: studioPath(workdir, "trustedKeys"),
+      // The store's credential records, then Renown, as every host checks.
+      dataDir: agentDataDir(workdir),
     });
 
   // Owner gate for a route: false (and the 401/403 written) when refused.
@@ -467,21 +466,22 @@ export async function startPreviewServer(
         return;
       }
 
-      // Renown auth state for the studio "Authorize agent" button. Both run in
-      // this same process as the agent's whoami/deploy tools, sharing the
-      // per-workdir Renown instance — so confirm here stores the credential the
-      // tools read. Owner-only: status names the owner's wallet, and start /
-      // confirm / logout change which identity the agent acts as.
+      // The agent's session for the studio "Authorize agent" control. They run
+      // in this same process as the agent's writes and its whoami/deploy
+      // tools, which read the session's files — so confirm here keeps the
+      // credential they sign with, and logout withdraws it at once.
+      // Owner-only: status names whom the agent acts for, and start /
+      // confirm / logout change it.
       if (path === "/auth/status" && method === "GET") {
         if (!(await requireOwner(req, res, url))) return;
-        const state = await getAuthState(workdir, renownUrl);
+        const state = await getAuthState(workdir, renownUrl, { cloud });
         writeJson(res, 200, state);
         return;
       }
 
       if (path === "/auth/start" && method === "POST") {
         if (!(await requireOwner(req, res, url))) return;
-        const state = await startAuth(workdir, renownUrl);
+        const state = await startAuth(workdir, renownUrl, { cloud });
         writeJson(res, 200, state);
         return;
       }

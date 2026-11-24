@@ -53,10 +53,11 @@ describe("studioSignatureMode", () => {
     expect(String(log.error.mock.calls[0][0])).toContain("v2-required");
   });
 
-  it("logs when a local Studio is on a v2-required switchboard", async () => {
+  it("logs nothing for a local Studio, which signs on either policy", async () => {
     const log = { error: vi.fn() };
     await studioSignatureMode(switchboard("v2-required"), {}, log, {});
-    expect(String(log.error.mock.calls[0][0])).toContain("VETRA_ENVIRONMENT_ID");
+    await studioSignatureMode(switchboard("legacy"), {}, log, {});
+    expect(log.error).not.toHaveBeenCalled();
   });
 
   it("reads again after a failed read", async () => {

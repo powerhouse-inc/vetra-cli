@@ -77,8 +77,9 @@ export function resolvePreviewEndpoint(
  * has a grant. Undefined → caller hits the reactor anonymously, which only works
  * when the preview reactor runs without auth.
  *
- * Mint from the daemon `workdir`, NOT the reactor-project path: the credential
- * is keyed to the daemon's identity (`<workdir>/.ph/vetra/agent/.renown.json`).
+ * Mint from the daemon `workdir`, NOT the reactor-project path: the session is
+ * the Studio's agent's (`<workdir>/.ph/sessions/`). A pseudonym's session gets
+ * none: the preview's store does not know its credential.
  */
 export async function getPreviewAuthToken(
   workdir: string,

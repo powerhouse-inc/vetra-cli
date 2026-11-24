@@ -13,6 +13,7 @@ import { INPUT_TOKEN_CAP, createLlmModels, resolveContextTokenLimit, resolveLlmS
 import { createNoModelAgent } from './no-model-agent.js';
 import { createReplayAgent } from './replay-agent.js';
 import { bindRecorderContext } from '../lifecycle/check-recorder.js';
+import { getPreviewAuthToken } from '../helpers/reactor-project-preview.js';
 import { PauseProcessor, agentLogger } from './pause.js';
 import { ChangeBaseProcessor } from './change-base.js';
 import { PhaseToolsProcessor } from './phase-tools.js';
@@ -62,6 +63,10 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
   ).map((limit) => Math.min(limit, INPUT_TOKEN_CAP));
 
   const m = createMastraHelpers(ctx);
+  // A preview's MCP endpoint knows the agent by its Renown-approved session;
+  // a pseudonym's goes anonymous, since the preview's store does not know it.
+  // That endpoint's host still signs the writes its tools make.
+  const mcpBearer = () => getPreviewAuthToken(ctx.workdir, ctx.config);
   // Observer/Reflector model for observational memory — compresses long chat
   // histories into observation logs so sessions never hit the context limit.
   const memory = await m.createMemory({
@@ -119,7 +124,7 @@ export async function createAgent(ctx: AgentSetupContext<Config>): Promise<Agent
     model: models.main,
     tools: async () => {
       ctx.context.log?.debug('[agent main] resolving tools');
-      return m.getTools({ MCPClient });
+      return m.getTools({ MCPClient, mcpBearer });
     },
     workspace: await m.createWorkspace(),
     memory,

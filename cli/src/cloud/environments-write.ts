@@ -22,7 +22,7 @@ import {
   type VetraCloudEnvironmentGlobalState,
 } from "../../../cloud-client/index.js";
 import { resolveRegistryUrl } from "./registry-url.js";
-import { getBearerToken, getRenown } from "../auth/renown.js";
+import { getBearerToken, getCloudAgent } from "../auth/renown.js";
 import { DEFAULT_PH_VERSION } from "../constants.js";
 import { resolveCloudConfig, resolveCloudGraphqlEndpoint } from "./config.js";
 import {
@@ -49,12 +49,12 @@ interface WriteSession {
 async function getWriteSession(ctx: ReadContext): Promise<WriteSession> {
   const { renownUrl } = resolveCloudConfig(ctx.config);
   const graphqlEndpoint = resolveCloudGraphqlEndpoint(ctx.config);
-  const renown = await getRenown(ctx.workdir, renownUrl);
-  if (!renown.user) throw new Error(NOT_AUTHENTICATED);
+  const agent = await getCloudAgent(ctx.workdir, renownUrl);
+  if (!agent) throw new Error(NOT_AUTHENTICATED);
   return {
-    signer: renown.signer,
-    address: renown.user.address,
-    driveId: resolveCloudDriveId(renown.user.address),
+    signer: agent.signer,
+    address: agent.address,
+    driveId: resolveCloudDriveId(agent.address),
     client: createReactorClient(graphqlEndpoint, () =>
       getBearerToken(ctx.workdir, renownUrl),
     ),

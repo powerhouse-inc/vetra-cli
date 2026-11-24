@@ -236,8 +236,8 @@ is needed: a switchboard without a keypair generates one at
 1. Build once: `pnpm build`, then `pnpm build:connect`. Ports 8090 and 8091
    free.
 2. Start it from this package's root (Git Bash); keep the data dir apart
-   from the workdir, so the switchboard's keypair and the agent's
-   (`<workdir>/.ph/vetra/agent/.keypair.json`) stay two identities:
+   from the workdir (the switchboard's keypair and the agent's session,
+   `$PH_USER_DATA_DIR/.ph/sessions/`, are two identities either way):
 
    ```sh
    export PH_USER_DATA_DIR=<fresh data dir>
@@ -270,7 +270,7 @@ is needed: a switchboard without a keypair generates one at
    curl -s -X POST -H "Authorization: Bearer $S" $API/auth/start
    # open pending.loginUrl from the answer, approve with the ADMINS wallet
    curl -s -X POST -H "Authorization: Bearer $S" "$API/auth/confirm?wait=60000"
-   # {"authenticated":true,"address":"0x…"}; "not-owner": that wallet is not in ADMINS
+   # {"authenticated":true,"kind":"renown","address":"0x…",…}; "not-owner": that wallet is not in ADMINS
    ```
 
 4. Open the printed `Vetra Studio: http://127.0.0.1:8090/d/<id>` and sign in
@@ -289,8 +289,9 @@ is needed: a switchboard without a keypair generates one at
        index action { type context { signer { user { address } app { key } signatures } } } } } } } }
    ```
 
-   The agent's operations name your address and the agent's `did:key` (its
-   keypair under `<workdir>/.ph/vetra/agent/`), each with a signature.
+   The agent's operations name your address and the agent's session key
+   (`$PH_USER_DATA_DIR/.ph/sessions/vetra-agent-vetra-agent.json`), each with
+   a signature.
 6. Stop: `pnpm exec ph-cli run studio-signed --stop`.
 
 ## Components, in detail
@@ -309,8 +310,9 @@ the lifecycle hooks. Everything else loads on first use, through literal
 - Mastra and the agent definitions (`agents/agent.ts`) at the first chat or
   agent run (`cli.configureAgent`);
 - the document models (this package's, `@powerhousedao/vetra`'s,
-  clint-common's) and the Renown identity when a command attaches
-  (`remote` in `cli.configureReactor`);
+  clint-common's) when a command attaches (`remote` in
+  `cli.configureReactor`), and the agent's session and Renown at its first
+  write;
 - the product model inside the check recorder, with the first recorded run.
 
 `cli/tests/build/start-path-imports.test.ts` runs the source entry and the
@@ -344,17 +346,20 @@ document a `spec-*` command, the runtime sync or the explorer adds goes in the f
 `ideate/features`, …), made on first use; documents already in the drive
 are not moved, and chat sessions stay at the root.
 
-**Signing.** A cloud Studio (`VETRA_ENVIRONMENT_ID` or
-`config.environmentId`; `isCloudStudio` in `cli/src/auth/studio-mode.ts`)
-attaches with the agent's Renown identity (`cli/src/auth/studio-identity.ts`):
-`signer` = the workdir's Renown signer, `tokenProvider` = its bearer while it
-has a user, `onSignerChange` = Renown's `user` event, `legacyDocuments:
-"refuse"`. clint hands them to its writes, emits `powerhouse:writes:ready`
-when the owner authorizes the agent, and reconnects the realtime socket with
-the new bearer. A local Studio passes none: no keypair is written at start,
-and writes go out unsigned. While the signer has no user every write is
-refused, a legacy one included (clint documents this limit), so a signer goes
-only to a cloud Studio, whose switchboard creates `v2-required` documents.
+**Signing.** Every Studio attaches with its agent's session
+(`cli/src/auth/studio-identity.ts`, see "The agent's session"): `signer` = a
+clint `LazySigner` whose `ready()` reads the session's files and whose
+`open()` opens the session at the agent's first write, `tokenProvider` = the
+session's bearer once it has a credential, `onSignerChange` = the agent's
+authorize and withdraw, `legacyDocuments: "refuse"` in a cloud Studio
+(`VETRA_ENVIRONMENT_ID` or `config.environmentId`; `isCloudStudio` in
+`cli/src/auth/studio-mode.ts`), `"sign-when-ready"` in a local one. clint
+hands them to its writes and its attachment uploads, emits
+`powerhouse:writes:ready` when the agent is authorized, and reconnects the
+realtime socket with the new bearer. While the agent is not authorized every
+write is refused, a legacy one included (clint documents this limit). A
+prompt is the agent's work and signs as its session too; a command typed in
+another terminal signs as its caller.
 
 The signature mode of the spec writes is the switchboard's create policy
 (`studioSignatureMode`: `client.getCreateSignaturePolicy()`, read once per
@@ -536,7 +541,8 @@ answers `unknown-project`.
   caller* passes the owner gate. The studio "Download workspace" button reads
   it to send a signed-out user to Renown sign-in instead of failing the fetch.
 - `GET /auth/status`, `POST /auth/start|confirm|logout` — owner-only; the
-  agent's Renown identity (studio "Authorize agent" / publish permission).
+  agent's session (studio "Authorize agent" / "Withdraw" / publish
+  permission; see "The agent's session").
 - `GET /healthz` — liveness check.
 
 **Preview-server access gate** (`preview-server/request-auth.ts`,
@@ -564,18 +570,22 @@ sign-in. It passes when the request carries:
    under one origin with different base paths would accept each other's
    tokens. The client reuses one token until shortly before its 10-minute
    expiry rather than minting per call. Then `verifyAuthBearerToken` (signature +
-   expiry), the claimed wallet must be in the pod's `ADMINS`, and
-   `verifyAuthCredential` confirms on Renown that the wallet delegated to the
-   token's app key (a self-signed token claiming the owner's address fails
-   here). Bearers are verified on the Renown the Studio's Connect logs in on
-   (`resolveStudioRenownUrl`). Delegation verdicts are cached per
-   (app key, wallet) — what the lookup proves — for 5 min ok / 30 s refused,
-   with concurrent checks sharing one lookup. A key verified in the last 24 h
-   re-verifies without any cap, so the owner's polling never hits one and a
-   flood of fresh attacker keys can't lock the owner's key out; keys not yet
-   verified are capped at 3 lookups/min each and 30/min overall. A non-owner
-   wallet never costs a lookup. Residual: a flood of fresh keys can delay an
-   owner's *first* verification on a new device by up to a minute; or
+   expiry), the claimed wallet must be in the pod's `ADMINS`, and the
+   credential naming the token's session key is checked as every host checks
+   it (`createCredentialVerifier({ dataDir })` of `@renown/sdk/node`): the
+   credential the bearer carries, its record in the store's data folder
+   (present: valid; removed: refused at once), else Renown, on the Renown the
+   Studio's Connect logs in on (`resolveStudioRenownUrl`); with Renown down a
+   known credential keeps Renown's last answer (`.ph/.credentials.json`). A
+   self-signed token claiming the owner's address fails here. The check runs
+   on every request, so a withdrawal refuses the next one; a refusal is kept
+   30 s per (session key, wallet), and concurrent checks share one. A key
+   verified in the last 24 h is checked without any cap, so the owner's
+   polling never hits one and a flood of fresh attacker keys can't lock the
+   owner's key out; keys not yet verified are capped at 3 checks/min each and
+   30/min overall. A non-owner wallet never costs a check. Residual: a flood
+   of fresh keys can delay an owner's *first* verification on a new device by
+   up to a minute; or
 3. local mode only — no studio environment id (`VETRA_ENVIRONMENT_ID`;
    `ADMINS` or the secret do not end it, since a project's `.env` may set
    them): a request from a loopback socket whose every
@@ -592,13 +602,13 @@ bearer from the Connect Renown session (`window.ph.renown`, `aud` =
 `studioOrigin`) on every owner-only call, and sends none while
 `studio.config.json` names no origin.
 
-`POST /auth/confirm` in a cloud Studio keeps a completed agent login only when
-its wallet is in `ADMINS`; any other wallet is logged straight back out
+`POST /auth/confirm` in a cloud Studio keeps a completed approval only when
+its wallet is in `ADMINS`; any other wallet's is not kept
 (`error: "not-owner"`), so the agent can't be switched to another identity.
-The same rule applies whenever the agent's identity is read (`auth/renown.ts`
-`getRenown`/`getAuthState`/`getBearerToken`/`getSigner`, …): a stored
-non-owner credential (e.g. from before the rule) is cleared and the agent
-reads as signed out.
+The same rule applies whenever the agent's session is read (`auth/renown.ts`
+`getAuthState`/`openAgentSession`/`getBearerToken`/`getCloudAgent`, …, and
+`auth/agent-files.ts` for `whoami`): a stored non-owner approval is dropped
+and the agent reads as not authorized.
 
 Residual risks: (a) the owner's Renown session lives in Connect's origin; if
 the owner signs into Renown on an attacker's page (a malicious Studio or
@@ -907,52 +917,74 @@ The spec-driven generation runs in the Cli's process: no `ph generate` child.
   `@powerhousedao/vetra`.
 - Its suites are in `cli/tests/generation/` and run in `pnpm test`.
 
-### Renown identity (agent authorization)
+### The agent's session (agent authorization)
 
-**Renown is the identity/auth provider.** The user authorizes the agent with
-their Renown identity once; that authorization lets the agent act as the user
-across Vetra Cloud and other Renown-protected services. The `deploy-environment-*`
-tools are one consumer — they operate on the user's real Vetra Cloud environments
-at `switchboard.staging.vetra.io` (the same switchboard the Studio's
-Deploy section uses). The Node side lives in `cli/src/cloud/`.
+The agent signs as a labelled session of the user (F3c, D10): its own P-256
+key, `vetra agent vetra-agent`, under a credential the user signs, so every
+operation reads "the agent acting for the user". Its sub-agents act under it.
+The session is the store's: `<data dir>/.ph/sessions/vetra-agent-vetra-agent.json`
+(the data dir is `PH_USER_DATA_DIR`, else the workdir), its credential's
+record in `.ph/credentials/`; withdrawing the record stops the agent at once.
+Old `.ph/vetra/agent/` files are not read (the upgrade step removes them).
 
-Two Renown identities are involved: the user's wallet identity (browser, on
-`renown.id`) and the agent's own `did:key` (backend). Authorizing the agent
-delegates the user's wallet to that `did:key`.
-
-- **Identity.** `@renown/sdk/node` `RenownBuilder` gives the agent a stable
-  `did:key`. The keypair persists to `<workdir>/.ph/vetra/agent/.keypair.json` and the
-  delegated credential to `<workdir>/.ph/vetra/agent/.renown.json` (workdir-scoped,
-  apart from the instance key at `.ph/` root and the user's `ph login` in the home folder); `PH_RENOWN_PRIVATE_KEY` overrides the keypair
-  for pre-provisioned deployed agents. `src/auth/renown.ts` caches one
-  `IRenown` per workdir and exposes `getBearerToken` (no `aud` — the
-  switchboard's verifier rejects it), `getSigner`, the auth state machine
-  (`startAuth` / `getAuthState` / `confirmAuth` / `logoutAuth`), and
-  `getRenownStatus`. (The Vetra Cloud resource layer — switchboard URL,
-  environments, drive — stays under `src/cloud/`.)
+- **Who it acts for.** A local Studio with nobody logged in: the user's
+  pseudonym, which issues the session's credential at the agent's first
+  write, with no click (and renews it). A Renown login (`ph login`), and
+  every cloud Studio: the user approves the session once at Renown's console
+  ("Authorize agent"); the credential the wallet signs (Renown's console
+  labels it `renown-app`) is kept in the session file, and such an approved
+  session signs as that wallet whoever is logged in. A cloud Studio's agent
+  never acts as a pseudonym, and only for an `ADMINS` wallet. A pseudonym
+  locked with a password signs only when `PH_IDENTITY_PASSWORD` is set where
+  the Studio runs (the Studio cannot ask it yet); the Studio says so.
+- **Code.** `src/auth/agent-files.ts` reads the state from the files only
+  (`readAgentStatus`; light, for `whoami` and `ready()`). `src/auth/renown.ts`
+  opens the session (`openAgentSession`, `@renown/sdk/identity`'s
+  `openSession`, loaded at the first write), drives "Authorize agent"
+  (`startAuth` / `confirmAuth`, `startSessionApproval` /
+  `pollSessionApproval`), "Withdraw" (`logoutAuth`: the record is withdrawn,
+  a wallet's approval dropped; the key stays) and the state the Studio shows
+  (`getAuthState`), and mints bearers: `getAgentBearer` for the Studio's
+  switchboard (none before the first write, so a read makes no pseudonym),
+  `getBearerToken` (no `aud`) and `getRegistryToken` (`aud` = registry) for
+  Renown-checked services, which know a wallet's session only, and
+  `getCloudAgent` (address, signer) for Vetra Cloud writes.
+- **Renown is the identity/auth provider for Vetra Cloud.** The approved
+  session lets the agent act as the user across Vetra Cloud and other
+  Renown-protected services. The `deploy-environment-*` tools are one
+  consumer — they operate on the user's real Vetra Cloud environments at
+  `switchboard.staging.vetra.io` (the same switchboard the Studio's Deploy
+  section uses). The Node side lives in `cli/src/cloud/`.
 - **Authorization is the user's action, from the studio.** The agent has a
-  single read-only `whoami` tool (reports whether it's authorized, and as
-  which address, and who the user is on this computer: their Renown login or
-  pseudonym); it cannot log in. It reads the files only (the agent's
-  credential, `@powerhousedao/shared/clis/identity` for the user, the owner
-  rule from `src/auth/owner-rule.ts`): no Renown, no network. The studio header renders an **Authorize
-  agent** button (`editors/vetra-studio/.../AgentAuthButton.tsx`, left of "Auto-follow
-  agent") that drives the console flow via the preview-server (the in-process
-  local API, sharing the same per-workdir `IRenown`): `POST /auth/start`
-  builds the `<renownUrl>/console?session=…&connect=<agentDid>` URL and opens
-  it; the user approves with their wallet on `renown.id`; `POST /auth/confirm`
-  polls `<renownUrl>/api/console/session/<id>` and runs `renown.login` to store
-  the credential; `GET /auth/status` and `POST /auth/logout` round it out. (An
-  in-app one-click authorize isn't possible — the wallet session and credential
-  publishing live on the
-  `renown.id` origin.) The Renown server URL defaults to
+  single read-only `whoami` tool (its session, whom it acts for, its
+  credential's expiry and record, and who the user is on this computer:
+  their Renown login or pseudonym); it cannot authorize itself. It reads the
+  files only: no Renown, no network. The studio header renders an **Authorize
+  agent** control (`editors/vetra-studio/.../AgentAuthButton.tsx`, left of
+  "Auto-follow agent") over the preview-server (the in-process local API):
+  "Agent acts as Anonymous 0x…" with **Withdraw** for a pseudonym, a
+  "✓ Renown 0x…" chip with Disconnect for an approved wallet, else
+  **Authorize agent**: `POST /auth/start` builds the
+  `<renownUrl>/console?session=…&connect=<session did>&app=<label>` page (or
+  issues a withdrawn pseudonym's credential again), the user approves with
+  their wallet on `renown.id`, `POST /auth/confirm` polls
+  `<renownUrl>/api/console/session/<id>` and keeps the credential; `GET
+  /auth/status` and `POST /auth/logout` round it out. The deploy and publish
+  flows count only a wallet's approval as authorized. (An in-app one-click
+  authorize isn't possible — the wallet session and credential publishing
+  live on the `renown.id` origin.) The Renown server URL defaults to
   `https://www.renown.id` (`config.cloudRenownUrl` overrides); the switchboard
   URL defaults to staging (`config.cloudSwitchboardUrl`).
+- **MCP.** The MCP endpoints the agent discovers (a reactor-project
+  preview's) get the agent's Renown-approved bearer (`mcpBearer`), so their
+  door knows it; their own host still signs the writes their tools make. A
+  pseudonym's session goes anonymous there: the preview's store does not
+  know its credential.
 - **Publish path (live).** `reactor-project-publish` mints a registry-bound
-  bearer token from the agent's identity (`getRegistryToken` in
-  `src/auth/renown.ts` → `generateAccessToken(…, { aud: registryUrl })`, the
-  same mechanism as `ph publish`) and passes it to `npm publish` as the
-  ephemeral `_authToken`; `reactor-project-publish-status` reads the registry
+  bearer token from the agent's approved session (`getRegistryToken` in
+  `src/auth/renown.ts`, `aud: registryUrl`, the same mechanism as
+  `ph publish`) and passes it to `npm publish` as the ephemeral
+  `_authToken`; `reactor-project-publish-status` reads the registry
   packument over HTTP with the same token. No `npm login` — authorizing the
   agent is the only prerequisite.
 - **Read path (live).** `deploy-environment-list` / `-get` query
@@ -1185,12 +1217,12 @@ vetra-cli/                     ← package root, @powerhousedao/vetra-cli
 <project>/.ph/vetra-signed/    ← the same for hosts/studio-signed
 <project>/.ph/run/             ← run records of the studio stack
 <workdir>/.ph/vetra/           ← the Cli's own files (helpers/studio-paths.ts):
-                                 clint's store (.mastra, logs), the agent's
-                                 identity (agent/.keypair.json, .renown.json),
-                                 downloads/ (files from chat messages), the
-                                 local API's preview-trusted-keys.json,
-                                 codegen.lock, launch.json, product-drive.json,
+                                 clint's store (.mastra, logs), downloads/
+                                 (files from chat messages), codegen.lock,
+                                 launch.json, product-drive.json,
                                  upgrade-existing.json
+<data dir>/.ph/sessions/       ← the agent's session (vetra-agent-vetra-agent.json)
+<data dir>/.ph/credentials/    ← its credential's record, beside the others
 <project>/.ph/vetra/services/  ← clint's service state (reactor-project)
 ```
 

@@ -1,251 +1,387 @@
 /**
- * Node Renown auth — the agent's identity/auth provider.
+ * The Studio agent's identity: a labelled session of the person
+ * (`vetra agent vetra-agent`, see `agent-files.ts`), signing and bearing with
+ * `@renown/sdk/identity`'s `openSession`.
  *
- * Wraps `@renown/sdk/node` so the agent authenticates as the user's
- * Ethereum-wallet identity. The agent holds a stable `did:key`; a console login
- * (see login-flow.ts) delegates the user's wallet to it, after which we can mint
- * no-`aud` bearer tokens and sign documents — for Vetra Cloud and any other
- * Renown-protected service.
- *
- * Keyed by workdir so each workdir owns its identity: the keypair and the
- * stored credential live under `<workdir>/.ph/vetra/agent/`, apart from the
- * instance key at `.ph/` root and the user's `ph login` in the home folder.
- * `PH_RENOWN_PRIVATE_KEY`
- * overrides the on-disk keypair for pre-provisioned deployed agents.
+ * Nobody logged in, in a local Studio: the agent acts as the person's
+ * pseudonym, its credential issued at its first write with no click. A
+ * Renown login, and every cloud Studio: the person approves the session once
+ * at Renown's console ("Authorize agent", `startAuth`/`confirmAuth`); the
+ * credential the wallet signs is kept in the session file and recorded in
+ * the store's data folder. `logoutAuth` withdraws the record, which stops
+ * the agent at once. A cloud Studio's agent may only act as an `ADMINS`
+ * wallet. Old `.ph/vetra/agent/` files are not read.
  */
-import path from "node:path";
-import { studioPath } from "../helpers/studio-paths.js";
+import { EventEmitter } from "node:events";
 import {
-  RenownBuilder,
-  generateAccessToken,
-  getAuthStatus,
-  type AuthStatusResult,
-  type CreateBearerTokenOptions,
-  type IRenown,
-  type ISigner,
-} from "@renown/sdk/node";
-import { pollLogin, startLogin } from "./login-flow.js";
+  listCredentialRecords,
+  withdrawCredentialRecords,
+} from "@powerhousedao/shared/clis/credential-records";
+import { PasswordRequiredError } from "@powerhousedao/shared/clis/identity";
+import {
+  credentialEndsWithin,
+  readSessionFile,
+  SESSION_RENEW_DAYS,
+  writeSessionFile,
+} from "@powerhousedao/shared/clis/sessions";
+import type { ISigner } from "@powerhousedao/shared/document-model";
+import type { OpenSession, SessionApproval } from "@renown/sdk/identity";
+import {
+  AGENT_LABEL,
+  agentDataDir,
+  agentSessionFile,
+  readAgentStatus,
+  type AgentStatus,
+} from "./agent-files.js";
 import { isAdminAddress, requireAdminIdentity } from "./owner-rule.js";
 
 export { isAdminAddress, requireAdminIdentity, setRequireAdminIdentity } from "./owner-rule.js";
 
-const APP_NAME = "vetra-cli";
+/** The agent's state as the Studio's "Authorize agent" control shows it. */
+export interface AuthState {
+  /** The agent signs now (a pseudonym's credential is issued at its first write). */
+  authenticated: boolean;
+  /** `renown`: a wallet approved the session; `pseudonym`: the person's pseudonym. */
+  kind?: AgentStatus["kind"];
+  address?: string;
+  /** "Anonymous 0x1a2b...9f3c", or the wallet's short address. */
+  who?: string;
+  /** The store withdrew the agent: it signs nothing until authorized again. */
+  withdrawn?: boolean;
+  /** The store holds the record of the agent's credential: "Withdraw" stops it. */
+  recorded?: boolean;
+  /** The pseudonym's key is locked with a password the Studio cannot ask for. */
+  locked?: boolean;
+  /** Set while a console approval is awaiting the person's wallet. `startedAt`
+   * is epoch ms on the daemon's clock; `ageMs` (how long ago, at response
+   * time) lets the Studio start a fresh one once Renown has dropped this one. */
+  pending?: { loginUrl: string; startedAt: number; ageMs: number };
+  /** Why the last approval was refused (`not-owner`). */
+  error?: string;
+}
 
-interface PendingLogin {
-  sessionId: string;
-  loginUrl: string;
-  /** When the login was started (epoch ms). */
+interface PendingApproval {
+  approval: SessionApproval;
   startedAt: number;
 }
 
-/** The pending login as the Studio sees it (the session id stays here).
- * `ageMs` is measured on this clock at response time, so the browser can
- * compare it with the Renown lifetime whatever its own clock says. */
-function shownLogin(
-  pending: PendingLogin,
-  now = Date.now(),
-): { loginUrl: string; startedAt: number; ageMs: number } {
-  return {
-    loginUrl: pending.loginUrl,
-    startedAt: pending.startedAt,
-    ageMs: Math.max(0, now - pending.startedAt),
-  };
+interface AgentEntry {
+  pending?: PendingApproval;
+  /** The session opened by the last write; dropped on every change. */
+  session?: Promise<OpenSession>;
 }
 
-interface CloudAuthEntry {
-  renown: Promise<IRenown>;
-  pending?: PendingLogin;
-}
+const entries = new Map<string, AgentEntry>();
+const changes = new EventEmitter();
 
-const entries = new Map<string, CloudAuthEntry>();
-
-function keyFor(workdir: string): string {
-  return path.resolve(workdir);
-}
-
-function entryFor(workdir: string, renownUrl: string): CloudAuthEntry {
-  const key = keyFor(workdir);
+function entryFor(workdir: string): AgentEntry {
+  const key = agentDataDir(workdir);
   let entry = entries.get(key);
   if (!entry) {
-    const renown = new RenownBuilder(APP_NAME, {
-      keyPath: studioPath(key, "agentKeypair"),
-      storagePath: studioPath(key, "agentRenown"),
-      baseUrl: renownUrl,
-    }).build();
-    entry = { renown };
+    entry = {};
     entries.set(key, entry);
   }
   return entry;
 }
 
-/** The entry's Renown, with the owner rule applied on every read: in a cloud
- * Studio a stored credential for a non-ADMINS wallet (e.g. one stored before
- * the rule existed) is cleared, so the agent reads as signed out. */
-async function ownedRenown(entry: CloudAuthEntry): Promise<IRenown> {
-  const renown = await entry.renown;
-  const user = renown.user;
-  if (user && requireAdminIdentity() && !isAdminAddress(user.address, process.env.ADMINS)) {
-    entry.pending = undefined;
-    await renown.logout();
-  }
-  return renown;
+/** Tell the agent's watchers (the reactor's writes, its socket) that it changed. */
+function changed(workdir: string): void {
+  entryFor(workdir).session = undefined;
+  changes.emit("change", agentDataDir(workdir));
 }
 
-/** The workdir's Renown instance (builds + caches on first use). The CLI's DID
- * is stable across calls. In a cloud Studio a non-owner credential is cleared
- * first (see `ownedRenown`). */
-export function getRenown(workdir: string, renownUrl: string): Promise<IRenown> {
-  return ownedRenown(entryFor(workdir, renownUrl));
-}
-
-/** Snapshot of the workdir's Renown auth, including any in-flight login the
- * studio "Authorize agent" button should surface a URL for. */
-export interface AuthState {
-  authenticated: boolean;
-  address?: string;
-  /** Set while a console login is awaiting browser approval. `startedAt` is
-   * epoch ms on the daemon's clock; `ageMs` (how long ago, at response time)
-   * lets the Studio start a fresh login once Renown has dropped this one. */
-  pending?: { loginUrl: string; startedAt: number; ageMs: number };
-  /** Why the last login was refused (e.g. `not-owner`). */
-  error?: string;
-}
-
-/** Begin a console login: build the approval URL, open the browser on the host
- * when possible, and stash the session so the panel/confirm can complete it.
- * Returns the current state — `authenticated` when already signed in (no-op),
- * else `pending` with the URL the user must approve. Non-blocking. */
-export async function startAuth(
-  workdir: string,
-  renownUrl: string,
-): Promise<AuthState> {
-  const entry = entryFor(workdir, renownUrl);
-  const renown = await ownedRenown(entry);
-  if (renown.user) {
-    return { authenticated: true, address: renown.user.address };
-  }
-  const { url, sessionId } = startLogin(renown);
-  const startedAt = Date.now();
-  entry.pending = { sessionId, loginUrl: url, startedAt };
-  return { authenticated: false, pending: shownLogin(entry.pending, startedAt) };
-}
-
-/** Current auth + pending-login snapshot for the studio panel. */
-export async function getAuthState(
-  workdir: string,
-  renownUrl: string,
-): Promise<AuthState> {
-  const entry = entryFor(workdir, renownUrl);
-  const renown = await ownedRenown(entry);
-  if (renown.user) {
-    return { authenticated: true, address: renown.user.address };
-  }
-  return {
-    authenticated: false,
-    ...(entry.pending ? { pending: shownLogin(entry.pending) } : {}),
+/** Calls `listener` whenever the agent of `workdir` is authorized or withdrawn. */
+export function onAgentChange(workdir: string, listener: () => void): () => void {
+  const key = agentDataDir(workdir);
+  const on = (changedKey: string) => {
+    if (changedKey === key) listener();
+  };
+  changes.on("change", on);
+  return () => {
+    changes.off("change", on);
   };
 }
 
-// Re-read after an await: TS keeps the earlier `!renown.user` narrowing.
-function currentUser(renown: IRenown): IRenown["user"] {
-  return renown.user;
+/** The pending approval as the Studio sees it. */
+function shownApproval(
+  pending: PendingApproval,
+  now = Date.now(),
+): NonNullable<AuthState["pending"]> {
+  return {
+    loginUrl: pending.approval.url,
+    startedAt: pending.startedAt,
+    ageMs: Math.max(0, now - pending.startedAt),
+  };
 }
 
-/** Poll the pending login for up to `timeoutMs` and, once the user has approved
- * in the browser, store the credential. Returns the resulting state; `pending`
- * stays true if approval hasn't landed yet (caller retries). */
+function stateOf(status: AgentStatus, entry: AgentEntry): AuthState {
+  return {
+    authenticated: status.authorized,
+    kind: status.kind,
+    ...(status.address ? { address: status.address } : {}),
+    ...(status.who ? { who: status.who } : {}),
+    ...(status.withdrawn ? { withdrawn: true } : {}),
+    ...(status.recorded ? { recorded: true } : {}),
+    ...(status.locked ? { locked: true } : {}),
+    ...(entry.pending && !status.authorized ? { pending: shownApproval(entry.pending) } : {}),
+  };
+}
+
+/** Removes the credential a wallet approved from the session file. */
+function dropApproval(workdir: string): void {
+  const file = agentSessionFile(workdir);
+  const session = readSessionFile(file);
+  if (!session?.credential) return;
+  const { credential: _dropped, ...kept } = session;
+  writeSessionFile(file, kept);
+}
+
+/** A cloud Studio's agent holds only the owner's approval: any other is dropped. */
+function applyOwnerRule(workdir: string, cloud: boolean): void {
+  if (!cloud) return;
+  const session = readSessionFile(agentSessionFile(workdir));
+  const issuer = session?.credential?.issuer.ethereumAddress;
+  if (issuer && session.credential?.credentialSubject.id === session.did &&
+    !isAdminAddress(issuer, process.env.ADMINS)) {
+    dropApproval(workdir);
+  }
+}
+
+/** The agent's state for the Studio's control. */
+export function getAuthState(
+  workdir: string,
+  _renownUrl?: string,
+  opts: { cloud?: boolean } = {},
+): Promise<AuthState> {
+  const cloud = opts.cloud ?? requireAdminIdentity();
+  applyOwnerRule(workdir, cloud);
+  return Promise.resolve(stateOf(readAgentStatus(workdir, { cloud }), entryFor(workdir)));
+}
+
+/**
+ * "Authorize agent". Already signing: nothing to do. A pseudonym the store
+ * withdrew: issue it a new credential. Otherwise start the approval at
+ * Renown's console and return its page (`pending.loginUrl`). Non-blocking.
+ */
+export async function startAuth(
+  workdir: string,
+  renownUrl: string,
+  opts: { cloud?: boolean } = {},
+): Promise<AuthState> {
+  const cloud = opts.cloud ?? requireAdminIdentity();
+  applyOwnerRule(workdir, cloud);
+  const entry = entryFor(workdir);
+  const status = readAgentStatus(workdir, { cloud });
+  if (status.authorized) return stateOf(status, entry);
+  if (status.locked) return { ...stateOf(status, entry), error: "locked" };
+  if (status.kind === "pseudonym") {
+    // The person asked: a credential issued now lifts the withdrawal.
+    await openAgentSession(workdir, { cloud, reissueWithdrawn: true });
+    changed(workdir);
+    return stateOf(readAgentStatus(workdir, { cloud }), entry);
+  }
+  const { startSessionApproval } = await import("@renown/sdk/identity");
+  const approval = startSessionApproval({
+    dataDir: agentDataDir(workdir),
+    label: AGENT_LABEL,
+    renownUrl,
+  });
+  const startedAt = Date.now();
+  entry.pending = { approval, startedAt };
+  return { ...stateOf(status, entry), pending: shownApproval(entry.pending, startedAt) };
+}
+
+/** Waits up to `timeoutMs` for the person to approve the pending session at
+ * Renown's console, then keeps the credential their wallet signed. A cloud
+ * Studio's agent keeps only an `ADMINS` wallet's approval (`requireAdmin`).
+ * `pending` stays set while the approval has not landed (the caller retries). */
 export async function confirmAuth(
   workdir: string,
   renownUrl: string,
   timeoutMs: number,
   opts: { requireAdmin?: boolean } = {},
 ): Promise<AuthState> {
-  const entry = entryFor(workdir, renownUrl);
-  const renown = await ownedRenown(entry);
-  // Cloud Studio: the agent may only hold the owner's (ADMINS) delegation. A
-  // login approved with any other wallet is logged out at once, so an
-  // attacker-approved console login can't become the agent's identity.
-  const settle = async (address: string): Promise<AuthState> => {
-    const requireAdmin = opts.requireAdmin ?? requireAdminIdentity();
-    if (requireAdmin && !isAdminAddress(address, process.env.ADMINS)) {
-      entry.pending = undefined;
-      await renown.logout();
-      return { authenticated: false, error: "not-owner" };
-    }
-    return { authenticated: true, address };
-  };
-  if (renown.user) return settle(renown.user.address);
+  const requireAdmin = opts.requireAdmin ?? requireAdminIdentity();
+  const entry = entryFor(workdir);
+  const current = () => stateOf(readAgentStatus(workdir, { cloud: requireAdmin }), entry);
   const pending = entry.pending;
-  if (!pending) {
-    return { authenticated: false };
+  if (!pending) return current();
+  const status = readAgentStatus(workdir, { cloud: requireAdmin });
+  if (status.authorized) {
+    if (entry.pending === pending) entry.pending = undefined;
+    return current();
   }
-  const result = await pollLogin(renown, pending.sessionId, timeoutMs);
+  const { pollSessionApproval } = await import("@renown/sdk/identity");
+  const result = await pollSessionApproval({
+    approval: pending.approval,
+    renownUrl,
+    timeoutMs,
+    target: { dataDir: agentDataDir(workdir) },
+    ...(requireAdmin
+      ? { accept: (address: string) => isAdminAddress(address, process.env.ADMINS) }
+      : {}),
+  });
+  if (result.status === "refused") {
+    if (entry.pending === pending) entry.pending = undefined;
+    return { authenticated: false, error: "not-owner" };
+  }
   if (result.status === "ready") {
     if (entry.pending === pending) entry.pending = undefined;
-    return settle(result.user.address);
+    changed(workdir);
   }
-  // Concurrent confirms (several studio hooks poll at once): another call may
-  // have completed this login, and cleared `entry.pending`, while we polled.
-  const user = currentUser(renown);
-  if (user) return settle(user.address);
-  const current = entry.pending ?? pending;
-  return { authenticated: false, pending: shownLogin(current) };
+  // Concurrent confirms: another call may have completed this approval.
+  return current();
 }
 
-/** Clear the stored credential and any pending login. The keypair (the agent's
- * `did:key`) is kept so re-authorizing returns to the same identity. */
-export async function logoutAuth(
-  workdir: string,
-  renownUrl: string,
-): Promise<AuthState> {
-  const entry = entryFor(workdir, renownUrl);
-  const renown = await ownedRenown(entry);
+/** "Withdraw": withdraws the agent's credential in the store, which refuses it
+ * from its next request, and forgets a wallet's approval. The session key is
+ * kept, so authorizing again keeps the agent's did:key. */
+export function logoutAuth(workdir: string, _renownUrl?: string): Promise<AuthState> {
+  const entry = entryFor(workdir);
   entry.pending = undefined;
-  if (renown.user) await renown.logout();
-  return { authenticated: false };
+  const dataDir = agentDataDir(workdir);
+  const session = readSessionFile(agentSessionFile(workdir));
+  if (session) {
+    const ids = listCredentialRecords({ dataDir })
+      .filter((record) => record.sessionDid === session.did)
+      .map((record) => record.id);
+    withdrawCredentialRecords({ dataDir, ids, by: "command" });
+    if (readAgentStatus(workdir).kind === "renown") dropApproval(workdir);
+  }
+  changed(workdir);
+  return getAuthState(workdir);
 }
 
-/** Mint a bearer token for switchboard requests, or null if not logged in. No
- * `aud` claim — the switchboard's verifier rejects tokens that carry one. */
+/** The agent stopped because nobody authorized it, or the store withdrew it. */
+export class AgentNotAuthorizedError extends Error {
+  constructor() {
+    super(
+      "The agent is not authorized to act: ask the user to click 'Authorize agent' in Vetra Studio's top bar.",
+    );
+    this.name = "AgentNotAuthorizedError";
+  }
+}
+
+/** The pseudonym must issue the agent's credential, and its key is locked. */
+export class AgentLockedError extends Error {
+  constructor() {
+    super(
+      "The agent cannot sign: the key of the user's pseudonym is locked with a password, and the Studio has no terminal to ask it on. Set PH_IDENTITY_PASSWORD where the Studio runs.",
+    );
+    this.name = "AgentLockedError";
+  }
+}
+
+/**
+ * The agent's session, ready to sign: the session a wallet approved, else
+ * (a local Studio, nobody logged in) the pseudonym's, made and issued now if
+ * there is none, with its record in the store. Kept until the agent changes.
+ */
+export async function openAgentSession(
+  workdir: string,
+  o: { cloud?: boolean; reissueWithdrawn?: boolean } = {},
+): Promise<OpenSession> {
+  const cloud = o.cloud ?? requireAdminIdentity();
+  const entry = entryFor(workdir);
+  if (entry.session && !o.reissueWithdrawn) {
+    const held = await entry.session.catch(() => undefined);
+    // Opened again near its end, so a pseudonym's credential is renewed.
+    if (held && !credentialEndsWithin(held.credential, SESSION_RENEW_DAYS)) return held;
+  }
+  applyOwnerRule(workdir, cloud);
+  const opening = (async () => {
+    const { openSession, SessionApprovalRequiredError, SessionWithdrawnError } =
+      await import("@renown/sdk/identity");
+    const dataDir = agentDataDir(workdir);
+    try {
+      return await openSession({
+        dataDir,
+        label: AGENT_LABEL,
+        place: "data-folder",
+        interactive: false,
+        target: { dataDir },
+        pseudonym: !cloud,
+        reissueWithdrawn: o.reissueWithdrawn ?? false,
+      });
+    } catch (error) {
+      if (error instanceof SessionApprovalRequiredError || error instanceof SessionWithdrawnError) {
+        throw new AgentNotAuthorizedError();
+      }
+      if (error instanceof PasswordRequiredError) throw new AgentLockedError();
+      throw error;
+    }
+  })();
+  entry.session = opening;
+  opening.catch(() => {
+    if (entry.session === opening) entry.session = undefined;
+  });
+  return opening;
+}
+
+/** The agent's session when it signs now, else undefined; makes nothing it would not sign with. */
+async function signingSession(workdir: string): Promise<OpenSession | undefined> {
+  if (!readAgentStatus(workdir).authorized) return undefined;
+  try {
+    return await openAgentSession(workdir);
+  } catch (error) {
+    if (error instanceof AgentNotAuthorizedError) return undefined;
+    throw error;
+  }
+}
+
+/** A bearer of the agent's session, for the Studio's switchboard and its
+ * attachments: undefined until the agent has a session it signs with, so a
+ * read makes no pseudonym. */
+export async function getAgentBearer(
+  workdir: string,
+  opts: { expiresIn?: number } = {},
+): Promise<string | undefined> {
+  const status = readAgentStatus(workdir);
+  if (!status.authorized || !status.recorded) return undefined;
+  const session = await signingSession(workdir);
+  return session?.bearer({ expiresIn: opts.expiresIn ?? 600 });
+}
+
+/** The agent acting for a Renown wallet, for Vetra Cloud and other Renown-checked services. */
+export interface CloudAgent {
+  address: string;
+  signer: ISigner;
+  bearer(o?: { expiresIn?: number; aud?: string }): Promise<string>;
+}
+
+/** The agent when a Renown wallet approved it; undefined otherwise (a pseudonym is unknown to Renown). */
+export async function getCloudAgent(
+  workdir: string,
+  _renownUrl?: string,
+): Promise<CloudAgent | undefined> {
+  if (readAgentStatus(workdir).kind !== "renown") return undefined;
+  const session = await signingSession(workdir);
+  if (!session) return undefined;
+  return {
+    address: session.signer.user.address,
+    signer: session.actionSigner,
+    bearer: (o) => session.bearer(o),
+  };
+}
+
+/** A bearer (no `aud`) of the agent's Renown-approved session, or null. */
 export async function getBearerToken(
   workdir: string,
   renownUrl: string,
-  opts: CreateBearerTokenOptions = { expiresIn: 600 },
+  opts: { expiresIn?: number } = { expiresIn: 600 },
 ): Promise<string | null> {
-  const renown = await getRenown(workdir, renownUrl);
-  if (!renown.user) return null;
-  return renown.getBearerToken(opts);
+  const agent = await getCloudAgent(workdir, renownUrl);
+  return agent ? agent.bearer({ expiresIn: opts.expiresIn ?? 600 }) : null;
 }
 
-/** Mint a registry-bound bearer token (JWT `aud` = registryUrl) from the
- * agent's authorized identity, or null if not authorized. Mirrors `ph
- * publish`'s registry auth so the same identity publishes packages. */
+/** A registry-bound bearer (JWT `aud` = registryUrl) of the agent's
+ * Renown-approved session, or null. Mirrors `ph publish`'s registry auth. */
 export async function getRegistryToken(
   workdir: string,
   renownUrl: string,
   registryUrl: string,
   expiresIn = 300,
 ): Promise<string | null> {
-  const renown = await getRenown(workdir, renownUrl);
-  if (!renown.user) return null;
-  const { token } = await generateAccessToken(renown, {
-    expiresIn,
-    aud: registryUrl,
-  });
-  return token;
-}
-
-/** The Renown signer for signed document pushes (write path). Its `.user` is
- * set once login succeeds. */
-export async function getSigner(workdir: string, renownUrl: string): Promise<ISigner> {
-  const renown = await getRenown(workdir, renownUrl);
-  return renown.signer;
-}
-
-export async function getRenownStatus(
-  workdir: string,
-  renownUrl: string,
-): Promise<AuthStatusResult> {
-  const renown = await getRenown(workdir, renownUrl);
-  return getAuthStatus(renown);
+  const agent = await getCloudAgent(workdir, renownUrl);
+  return agent ? agent.bearer({ expiresIn, aud: registryUrl }) : null;
 }

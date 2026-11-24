@@ -1,13 +1,13 @@
 /**
  * The Cli's own files in a project stay under `.ph/vetra/`: the helper names
- * nothing outside it, the modules that write them name no `.ph` path of
- * their own, and the agent's identity lands there on disk.
+ * nothing outside it, and the modules that write them name no `.ph` path of
+ * their own. The agent's session is the store's, kept as every tool's is.
  */
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getRenown } from "../../src/auth/renown.js";
+import { openAgentSession } from "../../src/auth/renown.js";
 import { STUDIO_DIR, STUDIO_FILES, studioPath } from "../../src/helpers/studio-paths.js";
 
 const SRC = path.resolve(import.meta.dirname, "..", "..", "src");
@@ -55,14 +55,23 @@ describe("the Cli's files in a project", () => {
     }
   });
 
-  it("the agent's identity lands in .ph/vetra/agent, never at .ph root", async () => {
+  it("the agent's session is the store's, in .ph/sessions, beside its record", async () => {
     workdir = mkdtempSync(path.join(tmpdir(), "studio-paths-"));
-    const renown = await getRenown(workdir, "http://renown.invalid");
-    expect(renown.did).toMatch(/^did:key:/);
-    const written = filesUnder(workdir);
-    expect(written.length).toBeGreaterThan(0);
-    for (const f of written) {
-      expect(f.startsWith(path.join(".ph", "vetra", "agent") + path.sep)).toBe(true);
+    const savedHome = process.env.PH_IDENTITY_HOME;
+    process.env.PH_IDENTITY_HOME = path.join(workdir, "identities");
+    try {
+      const project = path.join(workdir, "project");
+      const session = await openAgentSession(project, { cloud: false });
+      expect(session.signer.app.key).toMatch(/^did:key:/);
+      const written = filesUnder(project);
+      expect(written).toContain(path.join(".ph", "sessions", "vetra-agent-vetra-agent.json"));
+      expect(written.some((f) => f.startsWith(path.join(".ph", "credentials") + path.sep))).toBe(
+        true,
+      );
+      expect(written.some((f) => f.startsWith(path.join(".ph", "vetra") + path.sep))).toBe(false);
+    } finally {
+      if (savedHome === undefined) delete process.env.PH_IDENTITY_HOME;
+      else process.env.PH_IDENTITY_HOME = savedHome;
     }
   });
 });

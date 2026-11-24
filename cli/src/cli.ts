@@ -258,8 +258,8 @@ export const cli = defineCli({
 // The Cli attaches to a running switchboard: a host runner (or the bin, from
 // the project's running Studio or VETRA_SWITCHBOARD_URL) hands it the drive
 // address and the reactor holds
-// `remote`, built at attach: a cloud Studio adds the agent's Renown identity
-// (auth/studio-identity.ts), a local one writes unsigned.
+// `remote`, built at attach, with the agent's session as its signer and
+// bearer (auth/studio-identity.ts), opened at the agent's first write.
 cli.configureReactor({
   create: async () => {
     throw new Error(

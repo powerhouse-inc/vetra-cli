@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -15,7 +15,7 @@ import {
   type ISigner,
   type TransportAction,
 } from "document-model";
-import { getRenown } from "../../src/auth/renown.js";
+import { openAgentSession } from "../../src/auth/renown.js";
 
 const USER = {
   address: "0x1111111111111111111111111111111111111111",
@@ -23,12 +23,17 @@ const USER = {
   chainId: 1,
 };
 
-/** The vetra-cli Renown signer for `workdir`, with a stand-in for the
- * delegated wallet a console login attaches. */
+/** The agent's session signer for `workdir`: its session key signs as the
+ * Renown agent's does, here for the pseudonym of a temporary home. */
 async function renownSigner(workdir: string): Promise<ISigner> {
-  const renown = await getRenown(workdir, "http://127.0.0.1:1");
-  renown.signer.user = USER;
-  return renown.signer;
+  vi.stubEnv("PH_IDENTITY_HOME", path.join(workdir, "identities"));
+  vi.stubEnv("PH_USER_DATA_DIR", undefined);
+  try {
+    return (await openAgentSession(path.join(workdir, "studio"), { cloud: false }))
+      .actionSigner;
+  } finally {
+    vi.unstubAllEnvs();
+  }
 }
 
 /** A pushed wire action back in the shape the switchboard verifies. */

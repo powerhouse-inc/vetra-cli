@@ -3,10 +3,10 @@
  *
  * The mode is the Studio switchboard's create policy (`studioSignatureMode`):
  * the switchboard is the one party that enforces it, so the Cli writes spec
- * documents the way the switchboard creates documents. A **cloud Studio** (an
- * environment id is set) attaches with the agent's Renown identity
- * (`studio-identity.ts`) and belongs on a `v2-required` switchboard; a local
- * Studio attaches unsigned and belongs on a `legacy` one.
+ * documents the way the switchboard creates documents. Every Studio signs as
+ * its agent's session (`studio-identity.ts`). A **cloud Studio** (an
+ * environment id is set) belongs on a `v2-required` switchboard: its agent
+ * writes no legacy document.
  */
 export type StudioSignatureMode = "legacy" | "v2-required";
 
@@ -40,9 +40,8 @@ const modes = new WeakMap<object, Promise<StudioSignatureMode>>();
 /**
  * The create policy of the switchboard the reactor is attached to, read once
  * per client (a failed read is retried on the next call). The first read logs
- * one error when the policy does not fit the Studio: a cloud Studio on a
- * `legacy` switchboard, or a local Studio, which writes unsigned, on a
- * `v2-required` one. The Studio still starts.
+ * one error when a cloud Studio runs on a `legacy` switchboard. The Studio
+ * still starts.
  */
 export function studioSignatureMode(
   reactor: { client: unknown },
@@ -58,10 +57,6 @@ export function studioSignatureMode(
     if (cloud && policy === "legacy") {
       log?.error?.(
         "[signing] this cloud Studio's switchboard creates legacy documents: the agent signs, but writes no legacy document. Run it on a switchboard with createSignaturePolicy v2-required.",
-      );
-    } else if (!cloud && policy === "v2-required") {
-      log?.error?.(
-        "[signing] the switchboard creates v2-required documents, but a local Studio writes unsigned, so its writes are refused. Set VETRA_ENVIRONMENT_ID to sign as the agent, or run a legacy switchboard (hosts/switchboard).",
       );
     }
     return policy;
