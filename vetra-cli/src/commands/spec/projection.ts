@@ -16,14 +16,24 @@
  * result: the consumer reads actual text instead of a JSON-encoded blob.
  */
 import { encode as encodeToon } from "@toon-format/toon";
-import { JSONPath } from "jsonpath-plus";
+import { Piffero } from "piffero-plus";
 
 export type OutputFormat = "json" | "toon";
 
 export function applyJsonPath<T = unknown>(value: unknown, path: string): T {
   let results: unknown[];
   try {
-    results = JSONPath({ path, json: value as object, resultType: "value" });
+    if (value !== null && typeof value === "object") {
+      results = Piffero.query(
+        value as Record<string, unknown> | unknown[],
+        path,
+      );
+    } else {
+      // Piffero.query() treats strings as raw JSON text and rejects primitives/null.
+      // Validate path syntax first, then return the root value only for "$".
+      Piffero.query({}, path);
+      results = path.trim() === "$" ? [value] : [];
+    }
   } catch (err) {
     throw new Error(
       `Invalid JSONPath "${path}": ${err instanceof Error ? err.message : String(err)}`,
