@@ -7,8 +7,12 @@
  * approval → "Authorizing…" (reopens the console on click); approved by a
  * Renown wallet → a "✓ Renown 0x…" chip with Disconnect; acting as the user's
  * pseudonym (a local Studio, nobody logged in) → "Agent acts as Anonymous
- * 0x…" with Withdraw.
+ * 0x…" with Withdraw; that pseudonym locked with a password → a password
+ * field that unlocks it at the server serving this tab.
  */
+import { useRenown } from "@powerhousedao/reactor-browser";
+import { useState } from "react";
+import { unlockAgent } from "./hooks/unlock-agent.js";
 import { useAgentAuth } from "./hooks/useAgentAuth.js";
 
 function shortAddress(addr: string): string {
@@ -22,16 +26,7 @@ export function AgentAuthButton() {
   // Until the first status resolves, render nothing (avoids a flash).
   if (!state) return null;
 
-  if (state.locked) {
-    return (
-      <span
-        className="text-[11px] text-muted-foreground"
-        title="The agent's credential is issued by your pseudonym, whose key is locked with a password. Set PH_IDENTITY_PASSWORD where the Studio runs."
-      >
-        Agent can't sign: your pseudonym is locked
-      </span>
-    );
-  }
+  if (state.locked) return <LockedAgent />;
 
   if (pseudonym) {
     return (
@@ -115,6 +110,63 @@ export function AgentAuthButton() {
     >
       Authorize agent
     </button>
+  );
+}
+
+/**
+ * The agent's credential is issued by the user's pseudonym, whose key is
+ * locked with a password: the password, sent to the server that serves this
+ * tab, unlocks it there (F3d). The next status poll shows the agent signing.
+ */
+function LockedAgent() {
+  const renown = useRenown();
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | undefined>();
+
+  const unlock = async () => {
+    if (busy || !password) return;
+    setBusy(true);
+    const result = await unlockAgent({
+      password,
+      bearer: async () =>
+        renown?.user ? renown.getBearerToken({ expiresIn: 60 }) : undefined,
+      // Safe access: package builds may lack import.meta.env.
+      base: (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL,
+    });
+    setBusy(false);
+    setPassword("");
+    setMessage(result.ok ? "Unlocked: the agent signs again." : result.message);
+  };
+
+  return (
+    <form
+      className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+      title="The agent's credential is issued by your pseudonym, whose key is locked with a password."
+      onSubmit={(event) => {
+        event.preventDefault();
+        void unlock();
+      }}
+    >
+      <span>Agent can't sign: your pseudonym is locked</span>
+      <input
+        type="password"
+        autoComplete="current-password"
+        aria-label="Password of your pseudonym"
+        placeholder="Password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+        className="w-24 rounded border border-border bg-transparent px-1 py-0.5"
+      />
+      <button
+        type="submit"
+        disabled={busy || !password}
+        className="rounded px-1 hover:text-foreground disabled:opacity-50"
+      >
+        Unlock
+      </button>
+      {message ? <span role="status">{message}</span> : null}
+    </form>
   );
 }
 

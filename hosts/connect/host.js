@@ -38,6 +38,11 @@ export default /** @satisfies {PHHost} */ ({
     proxy: {
       target: { $output: { host: "switchboard", path: ["origin"] } },
     },
+    // Sign-in by link: the tab signs as the person who started the Studio,
+    // through a one-time code the Cli prints. A pseudonym locked with a
+    // password is unlocked from the tab, for the agent too: its session
+    // cannot ask for one.
+    localSignIn: { sessions: ["vetra agent vetra-agent"] },
   },
 
   config: {

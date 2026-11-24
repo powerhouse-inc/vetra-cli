@@ -935,8 +935,14 @@ Old `.ph/vetra/agent/` files are not read (the upgrade step removes them).
   labels it `renown-app`) is kept in the session file, and such an approved
   session signs as that wallet whoever is logged in. A cloud Studio's agent
   never acts as a pseudonym, and only for an `ADMINS` wallet. A pseudonym
-  locked with a password signs only when `PH_IDENTITY_PASSWORD` is set where
-  the Studio runs (the Studio cannot ask it yet); the Studio says so.
+  locked with a password: the Studio's top bar asks the password and sends
+  it to the sign-in endpoint of the Connect server (`POST __ph/unlock`,
+  loopback only, with a bearer of the tab's own sign-in), which unlocks the
+  key in its memory and issues the agent's credential; the Studio's connect
+  host declares the session (`runner.localSignIn.sessions`). While the key
+  stays unlocked that server renews the credential two weeks before its
+  end; a held credential signs until it ends even while the key is locked.
+  `PH_IDENTITY_PASSWORD` where the Studio runs also works.
 - **Code.** `src/auth/agent-files.ts` reads the state from the files only
   (`readAgentStatus`; light, for `whoami` and `ready()`). `src/auth/renown.ts`
   opens the session (`openAgentSession`, `@renown/sdk/identity`'s
@@ -1079,7 +1085,14 @@ the Cli runner (`runCli`):
    `studioUrlTrigger` prints `Vetra Studio: <url>/d/<drive id>` (non-TTY)
    or opens it in the browser: `<url>` is the ready Connect member's
    `endpoints.connect` (`http://127.0.0.1:8090/`). Connect does not
-   redirect `/` to the drive: open the printed `/d/<id>` URL.
+   redirect `/` to the drive: open the printed `/d/<id>` URL. Sign-in by
+   link (F3d): the compound makes a secret at each start, hands it to the
+   Connect member and keeps it in its owner-only run record; the trigger
+   mints a one-time code from it and prints `Sign in: <url>#ph-sign-in=<code>`
+   (the link it opens on a TTY). The tab exchanges the code once at the
+   Connect server's loopback endpoint for a credential, signed by the
+   person's own identity, that names the tab's session key. A second
+   `ph vetra` prints a fresh link.
 
 The stack ends when the Cli ends, on Ctrl-C, or on
 `ph run studio --stop`, which stops the members in reverse order.

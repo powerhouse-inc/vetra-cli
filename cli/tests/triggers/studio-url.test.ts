@@ -4,9 +4,23 @@
  * injected spawner (no browser is opened).
  */
 import { spawnSync, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import type { ServiceInstanceStatus } from "@powerhousedao/clint";
-import { browserCommand, openBrowser, studioUrlOf } from "../../src/triggers/studio-url.js";
+import { writeRunRecord } from "@powerhousedao/host-core";
+import {
+  checkSignInCode,
+  LOCAL_SIGN_IN_PARAM,
+  newSignInSecret,
+} from "@powerhousedao/shared/clis/local-sign-in";
+import {
+  browserCommand,
+  openBrowser,
+  studioSignInLink,
+  studioUrlOf,
+} from "../../src/triggers/studio-url.js";
 
 const member = (
   name: string,
@@ -44,6 +58,36 @@ describe("studioUrlOf", () => {
   it("is undefined without a Connect member", () => {
     expect(studioUrlOf([switchboard])).toBeUndefined();
     expect(studioUrlOf([])).toBeUndefined();
+  });
+});
+
+describe("studioSignInLink", () => {
+  it("mints a one-time code from the running Studio's record, and none without one", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vetra-sign-in-link-"));
+    try {
+      fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "lab" }));
+      const url = "http://127.0.0.1:8090/d/studio-drive";
+      const env = {};
+      expect(await studioSignInLink(url, dir, { env, waitMs: 0 })).toBeUndefined();
+      const secret = newSignInSecret();
+      writeRunRecord(dir, {
+        version: 2,
+        host: "studio",
+        projectName: "lab",
+        kind: "compound",
+        verb: "serve",
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        members: {},
+        extra: { signIn: { secret } },
+      });
+      const link = new URL((await studioSignInLink(url, dir, { env, waitMs: 0 }))!);
+      expect(link.origin + link.pathname).toBe(url);
+      const code = new URLSearchParams(link.hash.slice(1)).get(LOCAL_SIGN_IN_PARAM)!;
+      expect(checkSignInCode(secret, code, link.origin).ok).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

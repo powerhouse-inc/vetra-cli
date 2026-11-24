@@ -266,7 +266,7 @@ export class AgentNotAuthorizedError extends Error {
 export class AgentLockedError extends Error {
   constructor() {
     super(
-      "The agent cannot sign: the key of the user's pseudonym is locked with a password, and the Studio has no terminal to ask it on. Set PH_IDENTITY_PASSWORD where the Studio runs.",
+      "The agent cannot sign: the key of the user's pseudonym is locked with a password, and the Studio has no terminal to ask it on. Ask the user to unlock it in Vetra Studio's top bar, or to set PH_IDENTITY_PASSWORD where the Studio runs.",
     );
     this.name = "AgentLockedError";
   }
