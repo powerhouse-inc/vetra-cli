@@ -6,23 +6,23 @@ catalog:
   # @powerhousedao monorepo packages, at the version the monorepo's next/6.4
   # packages carry (pinned together for local-link compatibility).
   # cli/scripts/build-assets.ts reads the ph-cli entry as the Powerhouse version marker.
-  '@powerhousedao/clint': '6.4.0-next.5'
-  '@powerhousedao/clint-common': '6.4.0-next.5'
-  '@powerhousedao/connect': '6.4.0-next.5'
-  '@powerhousedao/design-system': '6.4.0-next.5'
-  '@powerhousedao/host-core': '6.4.0-next.5'
-  '@powerhousedao/ph-cli': '6.4.0-next.5'
-  '@powerhousedao/powerhouse-vetra-packages': '6.4.0-next.5'
-  '@powerhousedao/reactor': '6.4.0-next.5'
-  '@powerhousedao/reactor-api': '6.4.0-next.5'
-  '@powerhousedao/reactor-attachments': '6.4.0-next.5'
-  '@powerhousedao/reactor-browser': '6.4.0-next.5'
-  '@powerhousedao/shared': '6.4.0-next.5'
-  '@powerhousedao/switchboard': '6.4.0-next.5'
-  '@powerhousedao/vetra': '6.4.0-next.5'
-  '@renown/sdk': '6.4.0-next.5'
-  document-model: '6.4.0-next.5'
-  ph-cmd: '6.4.0-next.5'
+  '@powerhousedao/clint': '6.4.0-next.6'
+  '@powerhousedao/clint-common': '6.4.0-next.6'
+  '@powerhousedao/connect': '6.4.0-next.6'
+  '@powerhousedao/design-system': '6.4.0-next.6'
+  '@powerhousedao/host-core': '6.4.0-next.6'
+  '@powerhousedao/ph-cli': '6.4.0-next.6'
+  '@powerhousedao/powerhouse-vetra-packages': '6.4.0-next.6'
+  '@powerhousedao/reactor': '6.4.0-next.6'
+  '@powerhousedao/reactor-api': '6.4.0-next.6'
+  '@powerhousedao/reactor-attachments': '6.4.0-next.6'
+  '@powerhousedao/reactor-browser': '6.4.0-next.6'
+  '@powerhousedao/shared': '6.4.0-next.6'
+  '@powerhousedao/switchboard': '6.4.0-next.6'
+  '@powerhousedao/vetra': '6.4.0-next.6'
+  '@renown/sdk': '6.4.0-next.6'
+  document-model: '6.4.0-next.6'
+  ph-cmd: '6.4.0-next.6'
 
   # The monorepo catalog's pins, which clint and clint-common resolve: the
   # copies on both sides of a local link (or one copy, from npm) agree.
@@ -71,12 +71,12 @@ overrides:
   # it is fed into (cloud-client/controller.ts) stays the host's
   # document-model. Unscoped, so local-link's overrides replace them with
   # links to the monorepo.
-  document-model: '6.4.0-next.5'
-  '@powerhousedao/shared': '6.4.0-next.5'
-  '@powerhousedao/builder-tools': '6.4.0-next.5'
-  '@powerhousedao/common': '6.4.0-next.5'
-  '@powerhousedao/connect': '6.4.0-next.5'
-  '@powerhousedao/design-system': '6.4.0-next.5'
+  document-model: '6.4.0-next.6'
+  '@powerhousedao/shared': '6.4.0-next.6'
+  '@powerhousedao/builder-tools': '6.4.0-next.6'
+  '@powerhousedao/common': '6.4.0-next.6'
+  '@powerhousedao/connect': '6.4.0-next.6'
+  '@powerhousedao/design-system': '6.4.0-next.6'
   #
   # Not applied:
   # - @opentelemetry/* (~121 MiB, 81 dirs, multiple SDK majors): no single safe pin; needs an audit.
